@@ -356,7 +356,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                 if adresse not in abgaenge or (abgaenge[adresse][0] is not None and (erster is None or not nach(erster, abgaenge[adresse][0]))):
                     _, liste, voll = await konto_zahlungen(v, kette, adresse, wert, "aus", ab=erster,
                                                            schritt=f"Station {k['nr']}: Abgänge seit dem Eingang")
-                    liste = [x for x in liste if x["ok"] and x["betrag"] > 0 and not gleich(kette, x["an"], adresse)]
+                    liste = [x for x in liste if x["ok"] and not gleich(kette, x["an"], adresse)]
                     gleiche: Counter = Counter()
                     for x in liste:             # Kennung je Abgang, auch wenn eine Transaktion zweimal denselben Betrag zahlt
                         merkmal = (adresse, x["tx"], x["an"], x["betrag"])
@@ -367,15 +367,18 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                 g.ende(adresse, "unklar", summe, f"Abfrage fehlgeschlagen ({e.antwort.id}): {e.antwort.fehler}")
                 continue
             _, liste, voll = abgaenge[adresse]
+            # Bei der eigenen Währung zählt die Liste auch Aufrufe ohne Betrag mit. Der Text sagt, was gezählt wurde
+            viele, vielen = ((f"über {SEITE} Abgänge", f"über {SEITE} Abgängen") if wert.vertrag is not None
+                             else (f"über {SEITE} ausgehende Transaktionen", f"über {SEITE} ausgehenden Transaktionen"))
             if voll and tiefe > 0 and stand["vertrag"]:
-                g.ende(adresse, "vertrag", summe, f"Programm auf der Kette mit über {SEITE} Abgängen seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
+                g.ende(adresse, "vertrag", summe, f"Programm auf der Kette mit {vielen} seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
                        + (f": {stand['name']}" if stand["name"] else ""), name=stand["name"])
                 continue
             if voll and tiefe > 0:
-                g.ende(adresse, "sammel", summe, f"über {SEITE} Abgänge seit dem Eingang: Sammeladresse, vermutlich ein Dienst")
+                g.ende(adresse, "sammel", summe, f"{viele} seit dem Eingang: Sammeladresse, vermutlich ein Dienst")
                 continue
             if voll:
-                g.hinweis(f"Die Startadresse hat mehr als {SEITE} Abgänge. Verfolgt werden die ersten {SEITE}.")
+                g.hinweis(f"Die Startadresse hat mehr Abgänge, als ein Lauf liest. Verfolgt werden die ersten {len(liste)}.")
             rest_guthaben.setdefault(adresse, stand["guthaben"])
             for p in eingaenge:
                 offen = p["betrag"]

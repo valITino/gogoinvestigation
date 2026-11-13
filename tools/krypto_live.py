@@ -155,6 +155,16 @@ async def alle() -> None:
     await pruefung("Ethereum: Geldfluss einer USDC-Zahlung",
                    k.krypto_geldfluss(FALL, ZWECK, RONIN_USDC, kette="ethereum", wert="USDC", tiefe=3, max_abfragen=60), fluss)
 
+    def fluss_coin(b: dict, r: dict) -> str:
+        """Eigene Währung ab einer Adresse: Die Liste mischt Zahlungen mit Aufrufen ohne Betrag, gelesen wird über mehrere Seiten."""
+        assert b["summe_geht_auf"], f"Summe geht nicht auf: {b.get('nicht_zugeordnet')}"
+        assert b["stationen"], "keine Stationen"
+        if not b["verteilung"]:
+            return f"von der Adresse ist in {b['einheit']} nichts abgeflossen, {b['abfragen']['ausgefuehrt']} Abfragen"
+        return f"Start {b['startbetrag']} {b['einheit']}, {len(b['stationen'])} Stationen, {b['abfragen']['ausgefuehrt']} Abfragen: {verteilung(b)}"
+    await pruefung("Ethereum: Geldfluss in ETH ab einer Adresse (Zahlungen zwischen Aufrufen ohne Betrag)",
+                   k.krypto_geldfluss(FALL, ZWECK, RONIN, kette="ethereum", tiefe=2, max_abfragen=40), fluss_coin)
+
     def zuordnung_eth(b: dict, r: dict) -> str:
         assert b["adressen"][0].get("dienst") == "Binance", b["adressen"][0]
         return f"Dienst {b['adressen'][0]['dienst']}, Etiketten: {[e['name'] for e in b['adressen'][0]['etiketten']][:4]}"
@@ -188,6 +198,7 @@ async def alle() -> None:
         return f"Kette selbst gefunden (Bitcoin kennt die ID nicht), 1 USDT am {b['zeit']}, Gebühr {b['gebuehr']['betrag']} TRX"
     await pruefung("TRON: Transaktion ohne Angabe der Kette", k.krypto_transaktion(FALL, ZWECK, TRON_USDT), zahlung_tron)
     await pruefung("TRON: Geldfluss einer USDT-Zahlung", k.krypto_geldfluss(FALL, ZWECK, TRON_USDT, tiefe=2, max_abfragen=30), fluss)
+    await pruefung("TRON: Geldfluss in TRX ab einer Adresse", k.krypto_geldfluss(FALL, ZWECK, TRON, tiefe=2, max_abfragen=30), fluss_coin)
 
     def kurs(b: dict, r: dict) -> str:
         je = b["kurs_je_einheit"]

@@ -125,6 +125,16 @@ def _kettenquellen(v: Vorgang) -> list[str]:
     return sorted(q for q in v.genutzt if q.split(" (")[0] in ("mempool.space", "Blockstream", "Bitcoin-Explorer", "Blockscout", "Etherscan", "TronGrid"))
 
 
+async def _nebenbei(aufgabe: Any, hinweise: list[str], was: str) -> Any:
+    """Führt eine Abfrage aus, auf die das Ergebnis nicht angewiesen ist. Scheitert sie, steht das als Hinweis da,
+    und das Werkzeug liefert den Rest. Der Fehlschlag selbst ist protokolliert."""
+    try:
+        return await aufgabe
+    except Quellfehler as e:
+        hinweise.append(f"{was} nicht abrufbar ({e.antwort.id}): {e.antwort.fehler}")
+        return None
+
+
 async def _wert_heute(v: Vorgang, w: Wert, betrag: int, ziel: dict) -> None:
     """Hängt den heutigen Gegenwert an, wenn es einen Kurs gibt."""
     if betrag <= 0 or w.stellen is None:
@@ -187,7 +197,8 @@ async def _adresse(v: Vorgang, adresse: str, kette: str | None) -> dict:
         if stand["unbestaetigt"]:
             befund["unbestaetigt"] = {"transaktionen": stand["unbestaetigt"], "saldo": dezimal(stand["unbestaetigt_saldo"], 8)}
         if stand["tx_anzahl"]:
-            _, txs = await btc_txs(v, adr, schritt="Jüngste Transaktionen: erste und letzte Bewegung")
+            seite = await _nebenbei(btc_txs(v, adr, schritt="Jüngste Transaktionen: erste und letzte Bewegung"), hinweise, "Jüngste Transaktionen")
+            txs = seite[1] if seite else []
             zeiten = [t["zeit"] for t in txs if t.get("zeit")]
             if zeiten:
                 befund["letzte_bewegung"] = zeit_iso(max(zeiten))
@@ -222,13 +233,18 @@ async def _adresse(v: Vorgang, adresse: str, kette: str | None) -> dict:
         if info.get("unbenutzt"):
             hinweise.append("Die Quelle kennt die Adresse nicht: Auf dieser Kette gab es noch keine Bewegung.")
         else:
-            _, guthaben = await evm_token_guthaben(v, k, adr)
+            seite = await _nebenbei(evm_token_guthaben(v, k, adr), hinweise, "Token-Guthaben")
+            guthaben = seite[1] if seite else []
             befund["token"] = _token_liste(guthaben)
-            _, erste, _ = await evm_zahlungen(v, k, adr, None, "alle", aufsteigend=True, anzahl=10, schritt="Erste Transaktionen der Adresse")
+            seite = await _nebenbei(evm_zahlungen(v, k, adr, None, "alle", aufsteigend=True, anzahl=10, schritt="Erste Transaktionen der Adresse"),
+                                    hinweise, "Erste Transaktionen")
+            erste = seite[1] if seite else []
             if erste:
                 befund["erste_bewegung"] = zeit_iso(erste[0]["zeit"])
                 finanzierer = next((x for x in erste if x["ok"] and x["betrag"] > 0 and gleich(k, x["an"], adr)), None)
-            _, letzte, _ = await evm_zahlungen(v, k, adr, None, "alle", aufsteigend=False, anzahl=1, schritt="Jüngste Transaktion der Adresse")
+            seite = await _nebenbei(evm_zahlungen(v, k, adr, None, "alle", aufsteigend=False, anzahl=1, schritt="Jüngste Transaktion der Adresse"),
+                                    hinweise, "Jüngste Transaktion")
+            letzte = seite[1] if seite else []
             if letzte:
                 befund["letzte_bewegung"] = zeit_iso(letzte[0]["zeit"])
                 hinweise.append("Erste und letzte Bewegung beziehen sich auf gewöhnliche Transaktionen. Reine Token-Eingänge erscheinen dort nicht.")
@@ -260,8 +276,9 @@ async def _adresse(v: Vorgang, adresse: str, kette: str | None) -> dict:
             befund["token"] = {"bekannte": bekannte, "weitere_token": andere}
             if andere:
                 hinweise.append(f"{andere} weitere Token mit Guthaben. Unverlangt zugeschickte Token sind auf TRON häufig Werbung oder Köder und kein Vermögen.")
-            _, eingaenge, _ = await tron_zahlungen(v, adr, None, "ein", aufsteigend=True, anzahl=20, schritt="Erste Eingänge in TRX")
-            finanzierer = next((x for x in eingaenge if x["ok"] and x["betrag"] > 0), None)
+            seite = await _nebenbei(tron_zahlungen(v, adr, None, "ein", aufsteigend=True, anzahl=20, schritt="Erste Eingänge in TRX"),
+                                    hinweise, "Erste Eingänge")
+            finanzierer = next((x for x in (seite[1] if seite else []) if x["ok"] and x["betrag"] > 0), None)
             await _wert_heute(v, coin(k), konto["guthaben"], befund["guthaben"])
 
     marken = (await z.pruefen(k, [adr], tief=True))[adr]

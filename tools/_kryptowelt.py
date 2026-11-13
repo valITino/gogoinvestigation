@@ -78,6 +78,7 @@ class Welt:
         self.kurse: dict[str, float] = {"coingecko:bitcoin": 61250.0, "coingecko:ethereum": 2410.5, "coingecko:tron": 0.1512,
                                         "coingecko:tether": 1.0003, "coingecko:usd-coin": 0.9998}
         self.aus: set[str] = set()           # Hosts, die gerade «gestört» sind
+        self.gestoert: set[str] = set()      # Teile einer Adresse (Host, Pfad, Anfrage), bei denen nur dieser eine Abruf scheitert
         self.abweichend: set[str] = set()    # Hosts, die eine Bitcoin-Transaktion leicht anders zeigen (für die Gegenprüfung)
         self.aufrufe: list[str] = []
 
@@ -196,11 +197,14 @@ class Welt:
                 daten["type"] = "Contract"
             return _json({"data": [daten], "success": True, "meta": {"at": 1794594478509, "page_size": 1}})
         token = len(teile) == 5
-        zeilen = [z for z in (self.trc20 if token else self.trx) if adresse in (z["von"], z["an"])]
+        if token:
+            zeilen = [z for z in self.trc20 if adresse in (z["von"], z["an"])]
+        else:       # wie bei TronGrid: Token-Zahlungen stehen beim Absender als Aufruf des Token-Vertrags in der Liste, ohne Betrag
+            zeilen = [z for z in self.trx if adresse in (z["von"], z["an"])] + [{**z, "aufruf": True} for z in self.trc20 if z["von"] == adresse]
         if frage.get("only_from"):
             zeilen = [z for z in zeilen if z["von"] == adresse]
         if frage.get("only_to"):
-            zeilen = [z for z in zeilen if z["an"] == adresse]
+            zeilen = [z for z in zeilen if z["an"] == adresse and not z.get("aufruf")]
         if frage.get("contract_address"):
             zeilen = [z for z in zeilen if z["vertrag"] == frage["contract_address"][0]]
         if frage.get("min_timestamp"):
@@ -214,7 +218,13 @@ class Welt:
                                                                 "decimals": 6, "name": "Tether USD"},
                       "block_timestamp": z["zeit_ms"], "from": z["von"], "to": z["an"], "type": "Transfer", "value": str(z["betrag"])} for z in seite]
         else:
-            daten = [{"ret": [{"contractRet": "SUCCESS", "fee": 1_100_000}], "txID": z["tx"], "blockNumber": z["block"], "block_timestamp": z["zeit_ms"],
+            daten = [{"ret": [{"contractRet": "SUCCESS", "fee": 13_844_850}], "txID": z["tx"], "blockNumber": z["block"], "block_timestamp": z["zeit_ms"],
+                      "raw_data": {"contract": [{"type": "TriggerSmartContract", "parameter": {
+                          "type_url": "type.googleapis.com/protocol.TriggerSmartContract",
+                          "value": {"owner_address": tron_zu_hex(z["von"]), "contract_address": tron_zu_hex(z["vertrag"]),
+                                    "data": "a9059cbb" + tron_zu_hex(z["an"])[2:].rjust(64, "0") + f"{z['betrag']:064x}"}}}]}}
+                     if z.get("aufruf") else
+                     {"ret": [{"contractRet": "SUCCESS", "fee": 1_100_000}], "txID": z["tx"], "blockNumber": z["block"], "block_timestamp": z["zeit_ms"],
                       "raw_data": {"contract": [{"type": "TransferContract", "parameter": {
                           "type_url": "type.googleapis.com/protocol.TransferContract",
                           "value": {"amount": z["betrag"], "owner_address": tron_zu_hex(z["von"]), "to_address": tron_zu_hex(z["an"])}}}]}}
@@ -287,7 +297,11 @@ class Welt:
         if aktion == "tokenbalance":
             return _json({"message": "OK", "result": str(k["usdt"]), "status": "1"})
         if aktion in ("txlist", "tokentx"):
-            zeilen = [t for t in (self.evm_tx if aktion == "txlist" else self.evm_token) if adresse in (t["von"].lower(), t["an"].lower())]
+            if aktion == "txlist":      # wie bei Blockscout: Token-Zahlungen stehen beim Absender als Aufruf des Token-Vertrags in der Liste, Wert 0
+                zeilen = [t for t in self.evm_tx if adresse in (t["von"].lower(), t["an"].lower())] \
+                    + [{**t, "an": t["vertrag"], "betrag": 0, "aufruf": True} for t in self.evm_token if t["von"].lower() == adresse]
+            else:
+                zeilen = [t for t in self.evm_token if adresse in (t["von"].lower(), t["an"].lower())]
             if frage.get("contractaddress"):
                 zeilen = [t for t in zeilen if t["vertrag"].lower() == frage["contractaddress"][0].lower()]
             if frage.get("startblock"):
@@ -304,7 +318,8 @@ class Welt:
             if aktion == "txlist":
                 return _json({"message": "OK", "status": "1", "result": [
                     {"blockNumber": str(t["block"]), "timeStamp": str(t["zeit"]), "hash": t["hash"], "from": t["von"].lower(), "to": t["an"].lower(),
-                     "value": str(t["betrag"]), "isError": "0", "txreceipt_status": "1", "input": "0x", "methodId": "0x", "contractAddress": "",
+                     "value": str(t["betrag"]), "isError": "0", "txreceipt_status": "1", "contractAddress": "",
+                     "input": "0xa9059cbb" if t.get("aufruf") else "0x", "methodId": "0xa9059cbb" if t.get("aufruf") else "0x",
                      "transactionIndex": str(t["pos"]), "gasUsed": "21000", "gasPrice": "21000000000", "confirmations": "100", "nonce": "1"}
                     for t in zeilen]})
             return _json({"message": "OK", "status": "1", "result": [
@@ -332,7 +347,7 @@ class Welt:
         host, pfad = anfrage.url.host, anfrage.url.path
         frage = parse_qs(anfrage.url.query.decode())
         self.aufrufe.append(f"{anfrage.method} {host}{pfad}")
-        if host in self.aus:
+        if host in self.aus or any(teil in str(anfrage.url) for teil in self.gestoert):
             return httpx.Response(503, text="Service Unavailable")
         if host in ("mempool.space", "blockstream.info"):
             return self._btc(pfad, frage, host)

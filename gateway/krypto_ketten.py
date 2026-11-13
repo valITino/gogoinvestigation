@@ -841,22 +841,38 @@ async def tron_tx(v: Vorgang, tx: str, schritt: str = "Transaktion") -> tuple[li
 async def konto_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert, richtung: str, *, ab: dict | None = None,
                           aufsteigend: bool = True, anzahl: int = SEITE, schritt: str = "") -> tuple[str, list[dict], bool]:
     """Zahlungen eines Werts auf einer Konto-Kette, ab einem Zeitpunkt. ``ab``: die Zahlung, nach der gesucht wird
-    (ihre Blocknummer oder Zeit). Rückgabe: (Beleg, Zahlungen, voll)."""
-    if kette.familie == "tron":
-        a, zahlungen, marke = await tron_zahlungen(v, adresse, wert, richtung, ab_ms=(ab or {}).get("zeit_ms") or ((ab or {}).get("zeit") or 0) * 1000,
-                                                   aufsteigend=aufsteigend, anzahl=anzahl, schritt=schritt or "Zahlungen der Adresse")
-        return a.id, zahlungen, marke is not None
-    a, zahlungen, voll = await evm_zahlungen(v, kette, adresse, wert, richtung, ab_block=(ab or {}).get("block") or 0,
-                                             aufsteigend=aufsteigend, anzahl=anzahl, schritt=schritt or "Zahlungen der Adresse")
-    return a.id, zahlungen, voll
+    (ihre Blocknummer oder Zeit). Rückgabe: (Beleg, Zahlungen mit Betrag, voll). ``voll`` heisst: Es gibt mehr
+    Zahlungen als die gelieferten ``anzahl``, oder das Ende der Liste war nicht zu sehen.
+
+    Bei der eigenen Währung mischen die Quellen Zahlungen mit Aufrufen von Programmen, die keinen Wert bewegen
+    (auf TRON ist jede USDT-Zahlung ein solcher Aufruf). Deshalb werden bis zu drei Seiten gelesen, und gezählt
+    wird nur, was einen Betrag trägt."""
+    schritt = schritt or "Zahlungen der Adresse"
+    gefunden: list[dict] = []
+    beleg, mehr, seiten = "", True, 0
+    marke: str | None = None
+    hoechstens = 1 if wert.vertrag is not None else 3
+    while mehr and seiten < hoechstens and len(gefunden) < anzahl:
+        seiten += 1
+        text = schritt if seiten == 1 else f"{schritt} (Seite {seiten})"
+        if kette.familie == "tron":
+            a, zahlungen, marke = await tron_zahlungen(v, adresse, wert, richtung, ab_ms=(ab or {}).get("zeit_ms") or ((ab or {}).get("zeit") or 0) * 1000,
+                                                       aufsteigend=aufsteigend, anzahl=anzahl, weiter=marke, schritt=text)
+            mehr = marke is not None
+        else:
+            a, zahlungen, mehr = await evm_zahlungen(v, kette, adresse, wert, richtung, ab_block=(ab or {}).get("block") or 0,
+                                                     aufsteigend=aufsteigend, anzahl=anzahl, seite=seiten, schritt=text)
+        beleg = a.id
+        gefunden += [z for z in zahlungen if z["betrag"] > 0]
+    return beleg, gefunden[:anzahl], mehr or len(gefunden) > anzahl
 
 
 def nach(z: dict, ab: dict | None) -> bool:
     """Liegt die Zahlung z zeitlich nach der Zahlung ``ab`` (und ist nicht diese selbst)?"""
     if not ab:
         return True
-    if z.get("tx") == ab.get("tx"):
-        return False
+    if z.get("tx") == ab.get("tx"):      # dieselbe Transaktion: nur eine andere Zahlung darin zählt (Weiterleitung im selben Zug)
+        return (z.get("von"), z.get("an")) != (ab.get("von"), ab.get("an"))
     if z.get("block") and ab.get("block"):
         if z["block"] != ab["block"]:
             return z["block"] > ab["block"]

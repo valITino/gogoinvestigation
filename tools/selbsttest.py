@@ -1112,6 +1112,50 @@ def _():
     assert sorted(z["befund"]["geprueft"]) == ["Blockscout (Etiketten)", "OFAC", "TRM Labs"], z["befund"]["geprueft"]
 
 
+@test("Krypto: Aufrufe ohne Betrag verdecken keine Zahlung, Weiterleitung in derselben Transaktion, Nebenabfrage darf scheitern")
+def _():
+    TRX1 = 1_000_000
+    # Eine Adresse verschickt nach dem Eingang 205 Mal USDT (in der Liste Aufrufe ohne Betrag) und erst dann die TRX.
+    # Die TRX-Zahlung steht auf der zweiten Seite. Die Station ist kein Dienst, nur weil die erste Seite voll ist.
+    w = kwelt()
+    w.tron_zahlung("x0", "opfer", "taeter", 50_000 * TRX1, T0, vertrag=None)
+    for i in range(205):
+        w.tron_zahlung(f"n{i}", "taeter", f"fremd{i}", (3 + i) * USDT1, T0 + 10 + i)
+    w.tron_zahlung("x1", "taeter", "ziel", 49_000 * TRX1, T0 + 5000, vertrag=None)
+    w.tron_konto("taeter", trx=400 * TRX1)
+    w.tron_konto("ziel", trx=49_000 * TRX1)
+    r = kruf(krypto.krypto_geldfluss, kw.txid("x0"))
+    b = r["befund"]
+    arten = {e["art"]: e["betrag"] for e in b["verteilung"]}
+    assert r["ergebnis"] == "ok" and b["wert"]["symbol"] == "TRX" and b["summe_geht_auf"], r
+    assert arten == {"liegt": "49400", "unklar": "600"}, f"die TRX-Zahlung auf der zweiten Seite muss gefunden werden: {arten}"
+    assert kw.tron("ziel") in {s_["adresse"] for s_ in b["stationen"]}, b["stationen"]
+    seiten = [e for e in kprotokoll().values() if "Abgänge seit dem Eingang (Seite 2)" in e.get("zweck", "")]
+    assert len(seiten) == 1, "die zweite Seite steht als eigene Abfrage im Protokoll"
+    # Ein Verteilprogramm nimmt USDT an und zahlt sie in derselben Transaktion an zwei Adressen aus
+    w = kwelt()
+    w.tron_zahlung("v0", "opfer", "taeter", 20_000 * USDT1, T0)
+    w.tron_zahlung("v1", "taeter", "verteiler", 20_000 * USDT1, T0 + 600)
+    w.tron_zahlung("v1", "verteiler", "z1", 12_000 * USDT1, T0 + 600)
+    w.tron_zahlung("v1", "verteiler", "z2", 8_000 * USDT1, T0 + 600)
+    for name, usdt in (("taeter", 0), ("z1", 12_000 * USDT1), ("z2", 8_000 * USDT1)):
+        w.tron_konto(name, usdt=usdt)
+    w.tron_konto("verteiler", vertrag=True)
+    b = kruf(krypto.krypto_geldfluss, kw.txid("v0"))["befund"]
+    liegt = {e["adresse"]: e["betrag"] for e in b["enden"] if e["art"] == "liegt"}
+    assert liegt == {kw.tron("z1"): "12000", kw.tron("z2"): "8000"} and b["summe_geht_auf"], \
+        f"Auszahlungen in derselben Transaktion wie der Eingang gehören zum Fluss: {b['enden']}"
+    # Guthaben bekannt, Transaktionsliste gestört: Das Werkzeug liefert, was es hat, und nennt die Lücke
+    w = kwelt()
+    w.evm_zahlung("e0", "opfer", "taeter", 5 * ETH1, T0, 20_000_000)
+    w.evm_konto("taeter", wei=5 * ETH1)
+    w.gestoert.add("action=txlist")
+    r = kruf(krypto.krypto_adresse, kw.evm("taeter"))
+    assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "5", r
+    assert any(h.startswith("Erste Transaktionen nicht abrufbar (P-") for h in r["befund"]["hinweise"]), r["befund"]["hinweise"]
+    assert "erste_bewegung" not in r["befund"] and r["fehlgeschlagen"], "eine gescheiterte Nebenabfrage wird genannt, nie verschwiegen"
+
+
 @test("Krypto: Fällt eine Quelle aus, springt die Ausweichquelle ein, und «nicht geprüft» wird nie zu «kein Eintrag»")
 def _():
     w = bitcoin_welt()

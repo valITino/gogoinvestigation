@@ -162,7 +162,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 34 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 35 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -504,6 +504,9 @@ Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der 
 - Ein Lauf hat ein Abfragebudget (Standard 80 Abfragen, vier Stationen tief). Reicht es nicht, nennt das Ergebnis
   die Stelle, an der sich die Verfolgung fortsetzen lässt.
 - Auf Ethereum fehlen in den Listen Eingänge, die ein Programm ausgelöst hat (interne Transaktionen).
+- Bei ETH und TRX stehen Zahlungen in der Liste einer Adresse zwischen Aufrufen von Programmen, die keinen Betrag
+  bewegen. Auf TRON ist jede USDT-Zahlung ein solcher Aufruf. Das Werkzeug liest deshalb je Station bis zu 600
+  Einträge. Hat eine Adresse seit dem Eingang mehr, endet die Verfolgung dort als Sammelbewegung.
 - Der Betreiber eines Explorers sieht, für welche Adressen ihr euch interessiert. Wer das vermeiden will, leitet
   über `OSINT_PROXY` oder trägt eigene Instanzen ein (`KRYPTO_BITCOIN_API` und weitere, siehe `.env.example`).
 - Jede Abfrage eines Laufs steht einzeln im Ermittlungsprotokoll, das errechnete Ergebnis als «Auswertung» mit
@@ -629,17 +632,18 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 34 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 35 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
   Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
-- Sieben dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
+- Acht dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
-  Startbetrag), Börse, Sammeladresse, Mischdienst und gesperrtes Guthaben, Ausfall einer Quelle samt
-  Ausweichquelle, Gegenprüfung bei zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der Sanktionsliste
-  und das Flussbild im Rapport.
+  Startbetrag), Börse, Sammeladresse, Mischdienst und gesperrtes Guthaben, eine Zahlung, die in der Liste hinter
+  200 Aufrufen ohne Betrag steht, ein Programm, das im selben Zug annimmt und weiterzahlt, Ausfall einer Quelle
+  samt Ausweichquelle, Gegenprüfung bei zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der
+  Sanktionsliste und das Flussbild im Rapport.
 - Der Assistent in einem echten Terminal. Unter Linux und macOS fährt ihn ein Selbsttest in einem
   Pseudo-Terminal, unter Windows in einer eigenen, unsichtbaren Konsole, deren Bildschirm er ausliest und in
   deren Eingabepuffer er Tasten legt. Geprüft ist jeweils: Pfeiltasten und Enter kommen an, die Steuerzeichen
