@@ -1,0 +1,81 @@
+# Vorübergehend: Antwortformate öffentlicher Blockchain-Dienste ansehen. Dieser Zweig wird nicht gemergt.
+name: Antwortformate ansehen
+on:
+  push:
+    branches: [probe-apis]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Abfragen
+        shell: bash
+        run: |
+          zeig() {  # Name, dann curl-Argumente
+            local name="$1"; shift
+            echo "::group::$name"
+            local code
+            code=$(curl -sS -m 40 -L -o /tmp/antwort -w '%{http_code}' -A 'osint-gateway/1.0' "$@" || echo "curl-fehler")
+            echo "HTTP $code  $(wc -c < /tmp/antwort) Bytes"
+            head -c "${LAENGE:-2600}" /tmp/antwort; echo
+            echo "::endgroup::"
+            sleep 1
+          }
+          BTC=12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw
+          TX=f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16
+          ETH=0x098B716B8Aaf21512996dC57EB0615e2383E2f96
+          BIN=0x28C6c06298d514Db089934071355E5743bf21d60
+          TRX=TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh
+          zeig "mempool adresse" "https://mempool.space/api/address/$BTC"
+          LAENGE=3600 zeig "mempool txs" "https://mempool.space/api/address/$BTC/txs"
+          zeig "mempool tx" "https://mempool.space/api/tx/$TX"
+          zeig "mempool outspends" "https://mempool.space/api/tx/$TX/outspends"
+          zeig "mempool kurs" "https://mempool.space/api/v1/historical-price?currency=CHF&timestamp=1494806400"
+          zeig "mempool kurs alle" "https://mempool.space/api/v1/historical-price?timestamp=1494806400"
+          zeig "blockstream adresse" "https://blockstream.info/api/address/$BTC"
+          zeig "blockscout eth adresse (Lazarus)" "https://eth.blockscout.com/api/v2/addresses/$ETH"
+          zeig "blockscout eth adresse (Binance)" "https://eth.blockscout.com/api/v2/addresses/$BIN"
+          zeig "blockscout eth counters" "https://eth.blockscout.com/api/v2/addresses/$ETH/counters"
+          LAENGE=4200 zeig "blockscout eth transactions" "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions"
+          LAENGE=4200 zeig "blockscout eth token-transfers" "https://eth.blockscout.com/api/v2/addresses/$ETH/token-transfers?type=ERC-20"
+          zeig "blockscout eth transactions ende" "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions?filter=from"
+          curl -sS -m 40 -A 'osint-gateway/1.0' "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions" -o /tmp/t.json || true
+          echo "::group::blockscout next_page_params und Schluessel"; jq -c '{next_page_params, anzahl: (.items|length), schluessel: (.items[0]|keys)}' /tmp/t.json || true; echo "::endgroup::"
+          HASH=$(jq -r '.items[0].hash' /tmp/t.json 2>/dev/null || echo "")
+          LAENGE=4200 zeig "blockscout eth tx" "https://eth.blockscout.com/api/v2/transactions/$HASH"
+          zeig "blockscout eth tx token-transfers" "https://eth.blockscout.com/api/v2/transactions/$HASH/token-transfers"
+          zeig "blockscout etherscan-kompatibel txlist" "https://eth.blockscout.com/api?module=account&action=txlist&address=$ETH&page=1&offset=2&sort=asc"
+          zeig "blockscout etherscan-kompatibel tokentx" "https://eth.blockscout.com/api?module=account&action=tokentx&address=$ETH&page=1&offset=2&sort=asc"
+          for kette in base optimism arbitrum polygon gnosis; do
+            LAENGE=400 zeig "blockscout $kette" "https://$kette.blockscout.com/api/v2/addresses/$BIN"
+          done
+          LAENGE=600 zeig "blockscout pro api ohne schluessel" "https://api.blockscout.com/1/api/v2/addresses/$BIN"
+          LAENGE=1500 zeig "blockscout metadata" "https://metadata.services.blockscout.com/api/v1/metadata?addresses=$BIN&chainId=1&tagsLimit=20"
+          zeig "trongrid konto" "https://api.trongrid.io/v1/accounts/$TRX"
+          LAENGE=3600 zeig "trongrid transaktionen" "https://api.trongrid.io/v1/accounts/$TRX/transactions?limit=2&only_confirmed=true"
+          LAENGE=3600 zeig "trongrid trc20" "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=3&only_confirmed=true&order_by=block_timestamp,asc"
+          LAENGE=1800 zeig "trongrid trc20 only_from + min_timestamp" "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=2&only_from=true&min_timestamp=1600000000000&order_by=block_timestamp,asc"
+          curl -sS -m 40 "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=1" -o /tmp/r.json || true
+          TTX=$(jq -r '.data[0].transaction_id' /tmp/r.json 2>/dev/null || echo "")
+          zeig "trongrid tx events" "https://api.trongrid.io/v1/transactions/$TTX/events"
+          zeig "trongrid gettransactionbyid" -X POST -H 'Content-Type: application/json' -d "{\"value\":\"$TTX\"}" "https://api.trongrid.io/wallet/gettransactionbyid"
+          zeig "trongrid gettransactioninfobyid" -X POST -H 'Content-Type: application/json' -d "{\"value\":\"$TTX\"}" "https://api.trongrid.io/wallet/gettransactioninfobyid"
+          zeig "tronscan ohne schluessel" "https://apilist.tronscanapi.com/api/accountv2?address=$TRX"
+          zeig "trm sanktionen" -X POST -H 'Content-Type: application/json' -d "[{\"address\":\"$ETH\"},{\"address\":\"$BTC\"},{\"address\":\"$TRX\"}]" "https://api.trmlabs.com/public/v1/sanctions/screening"
+          LAENGE=900 zeig "ofac sls SDN.CSV" "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV"
+          LAENGE=900 zeig "ofac sls SDN_COMMENTS.CSV" "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV"
+          LAENGE=600 zeig "ofac alt sdn.csv" "https://www.treasury.gov/ofac/downloads/sdn.csv"
+          echo "::group::ofac Zeilen mit Digital Currency Address"; curl -sS -m 60 -L "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV" -o /tmp/sdn.csv || true; grep -c "Digital Currency Address" /tmp/sdn.csv || true; grep -m 2 "Digital Currency Address" /tmp/sdn.csv | cut -c1-1500 || true; grep -o "Digital Currency Address - [A-Z0-9]*" /tmp/sdn.csv | sort | uniq -c || true; echo "::endgroup::"
+          echo "::group::ofac comments Zeilen"; curl -sS -m 60 -L "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV" -o /tmp/sdnc.csv || true; wc -c /tmp/sdnc.csv; grep -c "Digital Currency Address" /tmp/sdnc.csv || true; grep -m 1 "Digital Currency Address" /tmp/sdnc.csv | cut -c1-900 || true; grep -c "$ETH" /tmp/sdn.csv /tmp/sdnc.csv || true; echo "::endgroup::"
+          LAENGE=1500 zeig "ransomwhere export" "https://api.ransomwhe.re/export"
+          echo "::group::ransomwhere Aufbau"; curl -sS -m 90 "https://api.ransomwhe.re/export" -o /tmp/rw.json || true; jq -c '{anzahl: (.result|length), erster: (.result[0] | del(.transactions) ), tx: (.result[0].transactions[0]), ketten: ([.result[].blockchain]|unique), wannacry: ([.result[]|select(.address=="'$BTC'")|del(.transactions)])}' /tmp/rw.json || true; echo "::endgroup::"
+          zeig "defillama historisch" "https://coins.llama.fi/prices/historical/1700000000/coingecko:ethereum,coingecko:tron,coingecko:tether,coingecko:bitcoin,coingecko:binancecoin,ethereum:0xdAC17F958D2ee523a2206206994597C13D831ec7"
+          zeig "ecb usd+chf csv" "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A?startPeriod=2023-11-10&endPeriod=2023-11-14&format=csvdata"
+          zeig "ecb usd+chf json" -H 'Accept: application/json' "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A?startPeriod=2023-11-13&endPeriod=2023-11-14&detail=dataonly&format=jsondata"
+          zeig "walletexplorer lookup" "https://www.walletexplorer.com/api/1/address-lookup?address=$BTC&caller=osint-gateway"
+          zeig "walletexplorer address" "https://www.walletexplorer.com/api/1/address?address=$BTC&from=0&count=2&caller=osint-gateway"
+          zeig "graphsense ohne schluessel" "https://api.ikna.io/btc/addresses/$BTC"
+          zeig "chainabuse ohne schluessel" "https://api.chainabuse.com/v0/reports?address=$BTC"
+          zeig "chainalysis ohne schluessel" "https://public.chainalysis.com/api/v1/address/$ETH"
