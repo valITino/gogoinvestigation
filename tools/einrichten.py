@@ -1282,7 +1282,8 @@ class Assistent:
             themen = self.themen()
             eintraege = [(TITEL[t], self.antwort(t), "") for t in themen]
             eintraege += [("", "", ""), (bestaetigen, "", ""), ("Abbrechen", "es wird nichts verändert", "matt")]
-            nr, _ = ui.menue("Übersicht", "So wird eingerichtet. Zum Ändern eine Zeile öffnen.", eintraege, len(themen) + 1)
+            nr, _ = ui.menue("Übersicht", "So wird eingerichtet. Zum Ändern eine Zeile öffnen.", eintraege, len(themen) + 1,
+                             bedenkzeit=0.5)
             if nr >= len(themen):
                 return nr == len(themen) + 1
             with contextlib.suppress(Abbruch):      # Esc in einer Frage führt zurück zur Übersicht

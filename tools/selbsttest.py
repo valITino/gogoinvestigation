@@ -790,7 +790,7 @@ if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
                 os.execve(sys.executable, [sys.executable, str(PROJEKT / "tools" / "einrichten.py"), "--vorschau"], umgebung)
             finally:
                 os._exit(127)
-        roh, ab, eingegeben, echo_aus, schluss = b"", 0, 0, None, time.time() + 150
+        roh, ab, eingegeben, echo_aus, schluss, gesendet, bestaetigt = b"", 0, 0, None, time.time() + 150, 0.0, False
 
         def klar(daten: bytes) -> str:
             return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", daten.decode("utf-8", "replace")).replace("\r", "")
@@ -810,6 +810,9 @@ if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
                 neu = klar(roh[ab:])
                 koepfe = list(re.finditer(r"^  \? (.+?)(?:\s{2,}.*)?$", neu, re.M))
                 if not koepfe or "Esc " not in neu[koepfe[-1].end():]:
+                    if bestaetigt and not neu.strip() and time.time() - gesendet > 2:
+                        os.write(fd, b"\r")         # die Übersicht nimmt in ihrer Bedenkzeit keine Taste an: noch einmal
+                        gesendet = time.time()
                     continue
                 titel, block = koepfe[-1].group(1).strip(), neu[koepfe[-1].end():]
                 zeiger = re.search(r"^    › (?:[●○] )?(.+?)(?:\s{2,}.*)?$", block, re.M)
@@ -828,7 +831,7 @@ if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
                     taste = b"\r" if wo == "Weiter" else b"\x1b[A"
                 else:
                     taste = b"\r"                                             # jede andere Frage: die Vorgabe
-                ab = len(roh)
+                ab, gesendet, bestaetigt = len(roh), time.time(), titel == "Übersicht"
                 os.write(fd, taste)
             else:
                 os.kill(pid, 9)

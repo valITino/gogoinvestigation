@@ -110,7 +110,7 @@ def main() -> int:
 
     try:
         prozess = subprocess.Popen([sys.executable, str(projekt / "tools" / "einrichten.py"), "--vorschau"], cwd=str(projekt))
-        zuletzt, davor, eingegeben, schluss = None, None, 0, time.time() + 200
+        zuletzt, davor, eingegeben, gesendet, schluss = None, None, 0, 0.0, time.time() + 200
         while prozess.poll() is None and time.time() < schluss:
             time.sleep(0.25)
             zeilen = bildschirm()
@@ -118,6 +118,9 @@ def main() -> int:
                 ergebnis["geheim_gesehen"] = True
             stand = frage(zeilen)
             ruhig, davor = stand is not None and stand == davor, stand
+            if ruhig and stand == zuletzt and stand[0] == "Übersicht" and time.time() - gesendet > 2:
+                druecken("enter")                   # die Übersicht nimmt in ihrer Bedenkzeit keine Taste an: noch einmal
+                gesendet = time.time()
             if not ruhig or stand == zuletzt:       # erst handeln, wenn die Frage ruhig dasteht und neu ist
                 continue
             titel, wo, block = stand
@@ -137,7 +140,7 @@ def main() -> int:
                 druecken("enter" if wo == "Weiter" else "hoch")
             else:
                 druecken("enter")                   # jede andere Frage: die Vorgabe
-            zuletzt = stand
+            zuletzt, gesendet = stand, time.time()
         if prozess.poll() is None:
             prozess.kill()
             ergebnis["fehler"] = ergebnis["fehler"] or "der Assistent ist nicht zu Ende gekommen"

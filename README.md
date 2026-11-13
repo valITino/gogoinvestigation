@@ -106,7 +106,9 @@ eine Vorgabe: Wer nur Enter drückt, bekommt eine lauffähige Einrichtung ohne M
 | Testabfragen | Auf Wunsch geht am Ende je eingerichteter Quelle eine harmlose Abfrage hinaus. Das zeigt sofort, ob Schlüssel, Netz und Proxy stimmen. |
 
 Am Schluss steht die Übersicht. Jede Zeile lässt sich öffnen und ändern. Erst «Einrichten» verändert etwas,
-«Abbrechen» lässt alles, wie es war.
+«Abbrechen» lässt alles, wie es war. Tasten, die vor einer Frage getippt wurden, zählen nicht, und die Übersicht
+nimmt die erste halbe Sekunde keine Taste an: Ein doppelt gedrücktes Enter bestätigt nichts, was noch niemand
+lesen konnte.
 
 ![Übersicht vor dem Einrichten](docs/bilder/einrichtung-uebersicht.png)
 
@@ -554,8 +556,8 @@ PowerShell 7:
   Klartext, schlagen drei Selbsttests an. Legt die Vorschau eine Datei an, schlägt der Test im Terminal an.
 - Der Assistent von Anfang bis Ende in einem Pseudo-Terminal: der erste Lauf mit echter Einrichtung, danach
   «Einstellungen ändern» (Schlüssel eintragen, in einem Stück einfügen, entfernen, aus einer Datei übernehmen,
-  Proxy setzen und zurücknehmen), Abbruch mit Esc und mit Strg+C, schmale und niedrige Fenster bis 44 × 12
-  Zeichen, der schlichte Modus. Die Bilder im Abschnitt [Einrichten](#einrichten) stammen aus einem solchen Lauf.
+  Proxy setzen und zurücknehmen), Abbruch mit Esc und mit Strg+C, vorab getippte Tasten und doppeltes Enter vor
+  der Übersicht, schmale und niedrige Fenster bis 44 × 12 Zeichen, der schlichte Modus. Die Bilder im Abschnitt [Einrichten](#einrichten) stammen aus einem solchen Lauf.
 - Der Musterfall läuft durch dieselben Gateway-Werkzeuge wie eine echte Ermittlung, mit vorgefertigten Antworten.
 
 **Nicht geprüft:**

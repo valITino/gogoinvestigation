@@ -130,6 +130,11 @@ def _wartet_posix() -> bool:
     return bool(select.select([sys.stdin.fileno()], [], [], 0)[0])
 
 
+def _verwerfen_posix() -> None:
+    import termios
+    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+
+
 def _taste_windows() -> str:
     import msvcrt
     zeichen = msvcrt.getwch()
@@ -145,6 +150,14 @@ def _taste_windows() -> str:
 def _wartet_windows() -> bool:
     import msvcrt
     return bool(msvcrt.kbhit())
+
+
+def _verwerfen_windows() -> None:
+    import msvcrt
+    for _ in range(4096):
+        if not msvcrt.kbhit():
+            break
+        msvcrt.getwch()
 
 
 # --------------------------------------------------------------------------- Oberfläche
@@ -170,6 +183,7 @@ class Oberflaeche:
         self._eigene_tasten = taste is None
         self._taste = taste or (_taste_windows if plattform.WINDOWS else _taste_posix)
         self._wartet = (_wartet_windows if plattform.WINDOWS else _wartet_posix) if taste is None else (lambda: False)
+        self._verwerfen = (_verwerfen_windows if plattform.WINDOWS else _verwerfen_posix) if taste is None else (lambda: None)
         self._zeile_lesen = zeile_lesen or input
         self._hoehe = 0             # Zeilen des Blocks, der gerade auf dem Bildschirm steht und übermalt werden darf
         self._zeiger_aus = False
@@ -243,10 +257,13 @@ class Oberflaeche:
     @contextlib.contextmanager
     def _frage(self):
         """Rahmen einer Frage im bewegten Modus: Zeiger aus, Tasten einzeln und ohne Echo.
-        Am Ende verschwindet die Frage vom Bildschirm, und das Terminal ist wieder wie vorher."""
+        Am Ende verschwindet die Frage vom Bildschirm, und das Terminal ist wieder wie vorher.
+        Was vor der Frage getippt wurde, zählt nicht: Niemand soll etwas beantworten, das er noch nicht gesehen hat."""
         self._zeiger(False)
         try:
             with (_einzeltasten() if self._eigene_tasten else contextlib.nullcontext()):
+                with contextlib.suppress(Exception):
+                    self._verwerfen()
                 yield
         finally:
             self._raeumen()
@@ -458,10 +475,12 @@ class Oberflaeche:
                     raise Abbruch
 
     def menue(self, titel: str, frage: str, eintraege: Sequence[tuple[str, str, str]], stelle: int = 0,
-              erklaerung: Sequence[str] = (), fortschritt: str = "", tasten: str = "") -> tuple[int, str]:
+              erklaerung: Sequence[str] = (), fortschritt: str = "", tasten: str = "", bedenkzeit: float = 0.0) -> tuple[int, str]:
         """Eine Liste mit Zustand je Zeile: (Name, Zustand, Stil des Zustands). Ein leerer Name ist eine
         Trennlinie. stelle ist die Zeile, auf der der Zeiger anfangs steht. Gibt (Nummer, Taste) zurück.
-        Die Taste ist "enter" oder "entf", im schlichten Modus immer "enter"."""
+        Die Taste ist "enter" oder "entf", im schlichten Modus immer "enter".
+        Mit bedenkzeit zählen Tasten erst nach so vielen Sekunden: Ein doppelt gedrücktes Enter aus der Frage
+        davor soll nicht bestätigen, was noch niemand lesen konnte."""
         waehlbar = [nr for nr, (name, _, _) in enumerate(eintraege) if name]
         if stelle not in waehlbar:
             stelle = waehlbar[0]
@@ -486,6 +505,11 @@ class Oberflaeche:
                                   (f"{name:<{breit}}", "fett" if hier else ""), (zustand, stil)])
                 self._malen(self._fragekopf(titel, frage, erklaerung, fortschritt, len(eintraege) + 2), rumpf, stelle,
                             [[], [(f"    {self.z.pfeile} bewegen · Enter wählen" + (" · " + tasten if tasten else "") + " · Esc abbrechen", "matt")]])
+                if bedenkzeit and self._eigene_tasten:
+                    time.sleep(bedenkzeit)
+                    with contextlib.suppress(Exception):
+                        self._verwerfen()
+                    bedenkzeit = 0.0
                 taste = self._taste()
                 lage = waehlbar.index(stelle)
                 if taste in ("hoch", "k"):
@@ -538,7 +562,7 @@ class Oberflaeche:
                 elif taste == "esc":
                     return None
                 elif taste == "einfuegen":      # alte Windows-Konsole: Strg+V kommt als Zeichen an statt als Text
-                    fehler = "Strg+V kommt in diesem Fenster nicht an. Einfügen mit Rechtsklick."
+                    fehler = "Strg+V kommt in diesem Fenster nicht als Text an. Einfügen mit Rechtsklick."
                 elif taste == "rueck":
                     wert, fehler = wert[:-1], ""
                 elif taste == "leeren":
