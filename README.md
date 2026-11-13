@@ -416,40 +416,50 @@ Meldungen der Einrichtung: `/tmp/osint-setup/` (unter Windows `%TEMP%\osint-setu
 
 ## Stand der Prüfung und Grenzen
 
-Geprüft auf Linux (Ubuntu 24.04, Python 3.13, Claude Code 2.1.323):
+**Bei jeder Änderung geprüft** durch GitHub Actions ([`.github/workflows/pruefung.yml`](.github/workflows/pruefung.yml)),
+zuletzt auf Ubuntu 26.04, macOS 26 und Windows Server 2025, dort je einmal mit Windows PowerShell 5.1 und mit
+PowerShell 7:
 
+- Die Einrichtung in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`. Dabei installiert
+  sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
 - 20 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
-  Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter, Sitzungs-Hook,
-  Dateisperre und gleichzeitige Hooks, PII-Prüfung, Prüfregeln des Rapports, Zuteilung der Modelle,
-  Übereinstimmung der Agenten mit den Werkzeugen. Zwei Gegenproben: Ohne Dateisperre scheitert der Sperrtest,
-  ein absichtlich falscher Wert in den Einstellungen wird von `claude doctor` beanstandet.
-- Die Einrichtung in einem frischen Klon: erster Lauf, zweiter Lauf ohne Neuinstallation, Modellwechsel hin und
-  zurück, Übernahme von Schlüsseln aus einer Datei, und die Fehlerbilder «Claude Code fehlt», «nur ein altes
-  Python», «Ordner unter dem anderen System eingerichtet», «unbekannte Option». Der Klon bleibt danach unverändert
-  (`git status` leer), der Musterfall fällt also Byte für Byte gleich aus.
+  Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
+  Git Bash), Sitzungs-Hook, Dateisperre und gleichzeitige Hooks, PII-Prüfung, Prüfregeln des Rapports, Zuteilung
+  der Modelle, Übereinstimmung der Agenten mit den Werkzeugen.
+- Zwei weitere Läufe mit Modellwechsel auf Mythos und zurück.
+- Der Klon ist danach unverändert (`git status` leer). Der Musterfall fällt also auf allen drei Systemen Byte für
+  Byte gleich aus.
+- `claude doctor` beanstandet die Einstellungen nicht.
+
+**Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
+
+- Claude Code verbindet sich mit dem Gateway (`claude mcp list`) und startet es mit dem Interpreter aus der
+  Umgebungsvariablen `OSINT_PYTHON`.
+- Die Fehlerbilder der Einrichtung: Claude Code fehlt, Installer nicht erreichbar, nur ein altes Python,
+  Ordner unter dem anderen System eingerichtet, unbekannte Option, Übernahme von Schlüsseln aus einer Datei.
+- Zwei Gegenproben: Ohne Dateisperre scheitert der Sperrtest. Einen absichtlich falschen Wert in den
+  Einstellungen beanstandet `claude doctor`.
 - Der Musterfall läuft durch dieselben Gateway-Werkzeuge wie eine echte Ermittlung, mit vorgefertigten Antworten.
-- Claude Code liest `.mcp.json`, verbindet sich mit dem Gateway (`claude mcp list`), übernimmt den Interpreter
-  aus der Umgebungsvariablen `OSINT_PYTHON` und beanstandet die Einstellungen nicht (`claude doctor`).
 
-Bei jeder Änderung prüft GitHub Actions die Einrichtung samt Selbsttests auf Linux, macOS und Windows
-(Windows PowerShell 5.1 und PowerShell 7), siehe [`.github/workflows/pruefung.yml`](.github/workflows/pruefung.yml).
-
-Nicht geprüft:
+**Nicht geprüft:**
 
 - **Die Quellen selbst.** Beim Bau standen weder Schlüssel noch Netzzugang zu den Diensten zur Verfügung. Die
   Endpunkte folgen den Dokumentationen und offiziellen Clients (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
   `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
   sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
-  Zusammenspiel, und damit auch: ob die Sitzung auf Mythos 5.2 läuft und der Abschluss auf Fable 5.2 wechselt.
-  Die Modell-ID `claude-mythos-5-2` und die Felder `model` für Sitzung, Subagenten und Skills stammen aus den
-  Dokumentationen von Anthropic. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
-- **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper, apk und winget sowie
-  `--docker-installieren`. Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt, nicht deren
-  Ausführung auf den jeweiligen Systemen.
+  Zusammenspiel, auf keinem System. Damit auch nicht: dass die Sitzung auf Mythos 5.2 läuft und der Abschluss auf
+  Fable 5.2. Die Modell-ID `claude-mythos-5-2` und die Felder `model` für Sitzung, Subagenten und Skills stammen
+  aus den Dokumentationen von Anthropic. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
+- **Windows auf einem Arbeitsplatzrechner.** Die Prüfung läuft auf Windows Server 2025, nicht auf Windows 10
+  oder 11. Python, Git for Windows und Poppler waren dort schon vorhanden, ihre Installation über winget kam
+  also nicht zum Zug. Dass Claude Code unter Windows `OSINT_PYTHON` übernimmt und die Hooks über Git Bash
+  startet, ist aus den Bausteinen geschlossen (Linux-Lauf, Hook-Starter in Git Bash), nicht in einer Sitzung gesehen.
+- **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie `--docker-installieren`.
+  Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
 - **Robin und Web-Check im Betrieb.** Docker lief beim Bau nicht.
 
-Grenzen:
+**Grenzen:**
 
 - Fable 5.2 hat zusätzliche Schutzmassnahmen im Bereich Cybersicherheit. Der Arbeitsplatz verlangt vom Modell
   Abfragen und deren Auswertung, keine Analyse oder Entwicklung von Schadcode.
