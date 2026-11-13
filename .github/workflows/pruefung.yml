@@ -24,10 +24,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: "Linux", os: ubuntu-latest }
-          - { name: "macOS", os: macos-latest }
+          - { name: "Linux", os: ubuntu-latest, shell: bash }
+          - { name: "macOS", os: macos-latest, shell: bash }
           - { name: "Windows, PowerShell 5.1", os: windows-latest, shell: powershell }
           - { name: "Windows, PowerShell 7", os: windows-latest, shell: pwsh }
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}     # unter Windows läuft die Einrichtung einmal je PowerShell-Version
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +44,6 @@ jobs:
 
       - name: Skript statisch prüfen (Windows)
         if: runner.os == 'Windows'
-        shell: ${{ matrix.shell }}
         run: |
           $fehler = $null
           [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path .\setup.ps1), [ref]$null, [ref]$fehler)
@@ -59,7 +61,6 @@ jobs:
 
       - name: Einrichtung (Windows)
         if: runner.os == 'Windows'
-        shell: ${{ matrix.shell }}
         run: |
           & .\setup.ps1 --ohne-docker
           exit $LASTEXITCODE
