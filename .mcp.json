@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "osint": {
+      "command": "${CLAUDE_PROJECT_DIR:-.}/.venv/bin/python",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/gateway/start.py"],
+      "timeout": 300000
+    },
+    "robin": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "robin-investigations:/app/investigations", "${ROBIN_IMAGE:-apurvsg/robin:latest}", "mcp"],
+      "timeout": 600000
+    }
+  }
+}

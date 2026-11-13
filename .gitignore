@@ -1,0 +1,19 @@
+# Geheimnisse und lokale Umgebung
+.env
+.env.local
+.venv/
+__pycache__/
+*.pyc
+.claude/settings.local.json
+
+# Falldaten bleiben auf dem Rechner. Eingecheckt wird nur der fiktive Musterfall.
+faelle/*
+!faelle/MUSTER-2026-001/
+!faelle/README.md
+/protokoll/
+/intern/
+*.lock
+
+# Betriebssystem, Editor
+.DS_Store
+*.swp

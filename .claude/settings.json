@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "claude-fable-5-2",
+  "permissions": {
+    "allow": [
+      "mcp__osint__fall_status",
+      "mcp__osint__shodan_*",
+      "mcp__osint__spur_*",
+      "mcp__osint__abuseipdb_*",
+      "mcp__osint__virustotal_*",
+      "mcp__osint__urlquery_suche",
+      "mcp__osint__urlquery_bericht",
+      "mcp__osint__urlquery_reputation",
+      "mcp__osint__urlquery_status",
+      "mcp__osint__wayback_verlauf",
+      "mcp__osint__wayback_abruf",
+      "mcp__osint__webcheck_passiv",
+      "mcp__osint__ransomware_*",
+      "mcp__osint__onion_sperrliste",
+      "mcp__osint__telegram_*",
+      "mcp__osint__chan_*",
+      "mcp__osint__mastodon_*",
+      "mcp__robin__*",
+      "Bash(python3 tools/fall.py neu *)",
+      "Bash(python3 tools/fall.py aufnehmen *)",
+      "Bash(python3 tools/fall.py status *)",
+      "Bash(python3 tools/fall.py liste)",
+      "Bash(python3 tools/rapport.py *)",
+      "Bash(python3 tools/protokoll.py *)",
+      "Bash(python3 tools/audit_pruefen.py *)",
+      "Bash(python3 tools/pruefen.py)"
+    ],
+    "ask": [
+      "mcp__osint__urlquery_einreichen",
+      "mcp__osint__wayback_sichern",
+      "mcp__osint__webcheck_aktiv",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./intern/**)",
+      "Edit(./.claude/**)",
+      "Edit(./gateway/**)",
+      "Edit(./tools/**)",
+      "Edit(./protokoll/**)",
+      "Edit(./.mcp.json)",
+      "Edit(./CLAUDE.md)",
+      "Edit(./faelle/*/fall.json)",
+      "Edit(./faelle/*/protokoll/**)",
+      "Edit(./faelle/*/rohdaten/**)",
+      "Edit(./faelle/*/eingang/**)",
+      "Bash(python3 tools/fall.py freigabe *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Bash|Edit|Write|NotebookEdit|mcp__robin__.*",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/waechter.py\"", "timeout": 20 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+    ]
+  }
+}

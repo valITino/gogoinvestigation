@@ -1,0 +1,1 @@
+{"A":[{"address":"203.0.113.7","family":4}],"AAAA":[],"MX":[{"exchange":"mail.kundenportal-sicher.example","priority":10}],"TXT":[["v=spf1 ip4:203.0.113.7 -all"]],"NS":["ns1.beispiel-dns.example","ns2.beispiel-dns.example"],"CNAME":[],"SOA":{"nsname":"ns1.beispiel-dns.example","serial":2026092601},"SRV":[],"PTR":[]}

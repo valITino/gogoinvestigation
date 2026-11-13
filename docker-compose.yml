@@ -1,0 +1,15 @@
+# Dienste, die das Gateway lokal braucht. Start: docker compose up -d
+# Beide Dienste sind nur von diesem Rechner aus erreichbar (127.0.0.1).
+services:
+  webcheck:
+    # Web-Check von Lissy93: Rundumblick auf eine Website. Wird von webcheck_passiv / webcheck_aktiv genutzt.
+    image: lissy93/web-check
+    container_name: osint-webcheck
+    ports:
+      - "127.0.0.1:${WEBCHECK_PORT:-3000}:3000"
+    environment:
+      - DISABLE_GUI=true
+    restart: unless-stopped
+
+# Robin (Dark-Web-Suche über Tor) läuft nicht dauerhaft. Claude Code startet den Container bei Bedarf
+# selbst (siehe .mcp.json). Tor läuft im Robin-Container, auf dem Rechner braucht es kein Tor.
