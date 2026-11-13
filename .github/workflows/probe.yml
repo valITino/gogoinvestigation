@@ -24,58 +24,53 @@ jobs:
             sleep 1
           }
           BTC=12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw
-          TX=f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16
           ETH=0x098B716B8Aaf21512996dC57EB0615e2383E2f96
           BIN=0x28C6c06298d514Db089934071355E5743bf21d60
+          USDT=0xdAC17F958D2ee523a2206206994597C13D831ec7
           TRX=TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh
-          zeig "mempool adresse" "https://mempool.space/api/address/$BTC"
-          LAENGE=3600 zeig "mempool txs" "https://mempool.space/api/address/$BTC/txs"
-          zeig "mempool tx" "https://mempool.space/api/tx/$TX"
-          zeig "mempool outspends" "https://mempool.space/api/tx/$TX/outspends"
-          zeig "mempool kurs" "https://mempool.space/api/v1/historical-price?currency=CHF&timestamp=1494806400"
-          zeig "mempool kurs alle" "https://mempool.space/api/v1/historical-price?timestamp=1494806400"
-          zeig "blockstream adresse" "https://blockstream.info/api/address/$BTC"
-          zeig "blockscout eth adresse (Lazarus)" "https://eth.blockscout.com/api/v2/addresses/$ETH"
-          zeig "blockscout eth adresse (Binance)" "https://eth.blockscout.com/api/v2/addresses/$BIN"
-          zeig "blockscout eth counters" "https://eth.blockscout.com/api/v2/addresses/$ETH/counters"
-          LAENGE=4200 zeig "blockscout eth transactions" "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions"
-          LAENGE=4200 zeig "blockscout eth token-transfers" "https://eth.blockscout.com/api/v2/addresses/$ETH/token-transfers?type=ERC-20"
-          zeig "blockscout eth transactions ende" "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions?filter=from"
-          curl -sS -m 40 -A 'osint-gateway/1.0' "https://eth.blockscout.com/api/v2/addresses/$ETH/transactions" -o /tmp/t.json || true
-          echo "::group::blockscout next_page_params und Schluessel"; jq -c '{next_page_params, anzahl: (.items|length), schluessel: (.items[0]|keys)}' /tmp/t.json || true; echo "::endgroup::"
-          HASH=$(jq -r '.items[0].hash' /tmp/t.json 2>/dev/null || echo "")
-          LAENGE=4200 zeig "blockscout eth tx" "https://eth.blockscout.com/api/v2/transactions/$HASH"
-          zeig "blockscout eth tx token-transfers" "https://eth.blockscout.com/api/v2/transactions/$HASH/token-transfers"
-          zeig "blockscout etherscan-kompatibel txlist" "https://eth.blockscout.com/api?module=account&action=txlist&address=$ETH&page=1&offset=2&sort=asc"
-          zeig "blockscout etherscan-kompatibel tokentx" "https://eth.blockscout.com/api?module=account&action=tokentx&address=$ETH&page=1&offset=2&sort=asc"
-          for kette in base optimism arbitrum polygon gnosis; do
-            LAENGE=400 zeig "blockscout $kette" "https://$kette.blockscout.com/api/v2/addresses/$BIN"
+          TUSDT=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+          echo "::group::trongrid konto: Felder (normal)"; curl -sS -m 40 "https://api.trongrid.io/v1/accounts/$TRX" | jq -c '.data[0] | {schluessel: keys, address, balance, create_time, type, trc20: (.trc20[0:3])}' || true; echo "::endgroup::"; sleep 1
+          echo "::group::trongrid konto: Felder (Vertrag USDT)"; curl -sS -m 40 "https://api.trongrid.io/v1/accounts/$TUSDT" | jq -c '.data[0] | {schluessel: keys, address, balance, type, account_name}' || true; echo "::endgroup::"; sleep 1
+          zeig "trongrid konto unbekannt" "https://api.trongrid.io/v1/accounts/TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjUX"
+          zeig "trongrid konto nie benutzt (gueltig)" "https://api.trongrid.io/v1/accounts/T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"
+          echo "::group::trongrid TRX-Ueberweisungen nur ausgehend, aufsteigend"; curl -sS -m 40 "https://api.trongrid.io/v1/accounts/$TRX/transactions?limit=50&only_from=true&only_confirmed=true&order_by=block_timestamp,asc" | jq -c '{anzahl: (.data|length), typen: ([.data[].raw_data.contract[0].type]|group_by(.)|map({(.[0]): length})|add), beispiel: ([.data[]|select(.raw_data.contract[0].type=="TransferContract")][0] | {txID, block_timestamp, blockNumber, ret, wert: .raw_data.contract[0].parameter.value}), meta: (.meta|{fingerprint: (.fingerprint|tostring|.[0:20]), page_size})}' || true; echo "::endgroup::"; sleep 1
+          LAENGE=1500 zeig "trongrid trc20 nur USDT eingehend" "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=2&only_to=true&contract_address=$TUSDT&order_by=block_timestamp,desc"
+          zeig "trongrid trc20 leer" "https://api.trongrid.io/v1/accounts/T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb/transactions/trc20?limit=2"
+          zeig "trongrid tx unbekannt" -X POST -H 'Content-Type: application/json' -d '{"value":"0000000000000000000000000000000000000000000000000000000000000000"}' "https://api.trongrid.io/wallet/gettransactionbyid"
+          echo "::group::trongrid isBlackListed (USDT)"; curl -sS -m 40 -X POST -H 'Content-Type: application/json' -d '{"owner_address":"'$TRX'","contract_address":"'$TUSDT'","function_selector":"isBlackListed(address)","parameter":"000000000000000000000000608f8da72479edc7dd921e4c30bb7e7cddbe722e","visible":true}' "https://api.trongrid.io/wallet/triggerconstantcontract" | jq -c '{result, constant_result, energy_used}' || true; echo "::endgroup::"; sleep 1
+          for a in 3D2oetdNuZUqQHPJmcMDDHYoqkyNVsFk9r 34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo 1NDyJtNTjmwk5xPNhjgAMu4HDHigtobu1s 1FzWLkAahHooV3kzTgyx6qsswXJ6sCXkSR; do
+            zeig "walletexplorer lookup $a" "https://www.walletexplorer.com/api/1/address-lookup?address=$a&caller=osint-gateway"
           done
-          LAENGE=600 zeig "blockscout pro api ohne schluessel" "https://api.blockscout.com/1/api/v2/addresses/$BIN"
-          LAENGE=1500 zeig "blockscout metadata" "https://metadata.services.blockscout.com/api/v1/metadata?addresses=$BIN&chainId=1&tagsLimit=20"
-          zeig "trongrid konto" "https://api.trongrid.io/v1/accounts/$TRX"
-          LAENGE=3600 zeig "trongrid transaktionen" "https://api.trongrid.io/v1/accounts/$TRX/transactions?limit=2&only_confirmed=true"
-          LAENGE=3600 zeig "trongrid trc20" "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=3&only_confirmed=true&order_by=block_timestamp,asc"
-          LAENGE=1800 zeig "trongrid trc20 only_from + min_timestamp" "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=2&only_from=true&min_timestamp=1600000000000&order_by=block_timestamp,asc"
-          curl -sS -m 40 "https://api.trongrid.io/v1/accounts/$TRX/transactions/trc20?limit=1" -o /tmp/r.json || true
-          TTX=$(jq -r '.data[0].transaction_id' /tmp/r.json 2>/dev/null || echo "")
-          zeig "trongrid tx events" "https://api.trongrid.io/v1/transactions/$TTX/events"
-          zeig "trongrid gettransactionbyid" -X POST -H 'Content-Type: application/json' -d "{\"value\":\"$TTX\"}" "https://api.trongrid.io/wallet/gettransactionbyid"
-          zeig "trongrid gettransactioninfobyid" -X POST -H 'Content-Type: application/json' -d "{\"value\":\"$TTX\"}" "https://api.trongrid.io/wallet/gettransactioninfobyid"
-          zeig "tronscan ohne schluessel" "https://apilist.tronscanapi.com/api/accountv2?address=$TRX"
-          zeig "trm sanktionen" -X POST -H 'Content-Type: application/json' -d "[{\"address\":\"$ETH\"},{\"address\":\"$BTC\"},{\"address\":\"$TRX\"}]" "https://api.trmlabs.com/public/v1/sanctions/screening"
-          LAENGE=900 zeig "ofac sls SDN.CSV" "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV"
-          LAENGE=900 zeig "ofac sls SDN_COMMENTS.CSV" "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV"
-          LAENGE=600 zeig "ofac alt sdn.csv" "https://www.treasury.gov/ofac/downloads/sdn.csv"
-          echo "::group::ofac Zeilen mit Digital Currency Address"; curl -sS -m 60 -L "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV" -o /tmp/sdn.csv || true; grep -c "Digital Currency Address" /tmp/sdn.csv || true; grep -m 2 "Digital Currency Address" /tmp/sdn.csv | cut -c1-1500 || true; grep -o "Digital Currency Address - [A-Z0-9]*" /tmp/sdn.csv | sort | uniq -c || true; echo "::endgroup::"
-          echo "::group::ofac comments Zeilen"; curl -sS -m 60 -L "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_COMMENTS.CSV" -o /tmp/sdnc.csv || true; wc -c /tmp/sdnc.csv; grep -c "Digital Currency Address" /tmp/sdnc.csv || true; grep -m 1 "Digital Currency Address" /tmp/sdnc.csv | cut -c1-900 || true; grep -c "$ETH" /tmp/sdn.csv /tmp/sdnc.csv || true; echo "::endgroup::"
-          LAENGE=1500 zeig "ransomwhere export" "https://api.ransomwhe.re/export"
-          echo "::group::ransomwhere Aufbau"; curl -sS -m 90 "https://api.ransomwhe.re/export" -o /tmp/rw.json || true; jq -c '{anzahl: (.result|length), erster: (.result[0] | del(.transactions) ), tx: (.result[0].transactions[0]), ketten: ([.result[].blockchain]|unique), wannacry: ([.result[]|select(.address=="'$BTC'")|del(.transactions)])}' /tmp/rw.json || true; echo "::endgroup::"
-          zeig "defillama historisch" "https://coins.llama.fi/prices/historical/1700000000/coingecko:ethereum,coingecko:tron,coingecko:tether,coingecko:bitcoin,coingecko:binancecoin,ethereum:0xdAC17F958D2ee523a2206206994597C13D831ec7"
-          zeig "ecb usd+chf csv" "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A?startPeriod=2023-11-10&endPeriod=2023-11-14&format=csvdata"
-          zeig "ecb usd+chf json" -H 'Accept: application/json' "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A?startPeriod=2023-11-13&endPeriod=2023-11-14&detail=dataonly&format=jsondata"
-          zeig "walletexplorer lookup" "https://www.walletexplorer.com/api/1/address-lookup?address=$BTC&caller=osint-gateway"
-          zeig "walletexplorer address" "https://www.walletexplorer.com/api/1/address?address=$BTC&from=0&count=2&caller=osint-gateway"
-          zeig "graphsense ohne schluessel" "https://api.ikna.io/btc/addresses/$BTC"
-          zeig "chainabuse ohne schluessel" "https://api.chainabuse.com/v0/reports?address=$BTC"
-          zeig "chainalysis ohne schluessel" "https://public.chainalysis.com/api/v1/address/$ETH"
+          zeig "walletexplorer wallet" "https://www.walletexplorer.com/api/1/wallet?wallet=d394a6a98aabeeae&from=0&count=1&caller=osint-gateway"
+          zeig "walletexplorer unbekannt" "https://www.walletexplorer.com/api/1/address-lookup?address=bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh&caller=osint-gateway"
+          zeig "blockscout compat balance" "https://eth.blockscout.com/api?module=account&action=balance&address=$ETH"
+          zeig "blockscout compat txlist leer" "https://eth.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000123&page=1&offset=2&sort=asc"
+          zeig "blockscout compat txlist ab block, nur from" "https://eth.blockscout.com/api?module=account&action=txlist&address=$ETH&startblock=14442835&page=1&offset=2&sort=asc&filter_by=from"
+          zeig "blockscout compat tokentx USDT" "https://eth.blockscout.com/api?module=account&action=tokentx&address=$BIN&contractaddress=$USDT&page=1&offset=1&sort=desc"
+          zeig "blockscout compat tokenbalance" "https://eth.blockscout.com/api?module=account&action=tokenbalance&contractaddress=$USDT&address=$BIN"
+          LAENGE=1800 zeig "blockscout compat gettxinfo" "https://eth.blockscout.com/api?module=transaction&action=gettxinfo&txhash=0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b"
+          LAENGE=1200 zeig "blockscout compat eth_getTransactionByHash" "https://eth.blockscout.com/api?module=proxy&action=eth_getTransactionByHash&txhash=0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b"
+          echo "::group::blockscout v2 tx mit Token-Transfer"; curl -sS -m 40 "https://eth.blockscout.com/api/v2/transactions/0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b" | jq -c '{hash, status, result, timestamp, block_number, value, method, transaction_types, from: .from.hash, to: .to.hash, to_contract: .to.is_contract, to_name: .to.name, fee: .fee.value, token_transfers: [.token_transfers[]? | {from: .from.hash, to: .to.hash, token: (.token|{address_hash, symbol, decimals, type}), total}]}' || true; echo "::endgroup::"; sleep 1
+          echo "::group::blockscout v2 adresse Vertrag USDT"; curl -sS -m 40 "https://eth.blockscout.com/api/v2/addresses/$USDT" | jq -c '{hash, is_contract, name, is_verified, token: (.token|{symbol, decimals, type, name}), coin_balance, creation_transaction_hash}' || true; echo "::endgroup::"; sleep 1
+          LAENGE=900 zeig "blockscout v2 adresse unbenutzt" "https://eth.blockscout.com/api/v2/addresses/0x0000000000000000000000000000000000000123"
+          LAENGE=400 zeig "blockscout v2 adresse ungueltig" "https://eth.blockscout.com/api/v2/addresses/0x1234"
+          LAENGE=400 zeig "blockscout v2 tx unbekannt" "https://eth.blockscout.com/api/v2/transactions/0x0000000000000000000000000000000000000000000000000000000000000001"
+          echo "::group::blockscout v2 token-balances"; curl -sS -m 40 "https://eth.blockscout.com/api/v2/addresses/$ETH/token-balances" | jq -c '[.[] | select(.token.symbol=="USDC" or .token.symbol=="USDT" or .token.symbol=="DAI") | {wert: .value, token: (.token|{address_hash, symbol, decimals, name, type})}] | .[0:6]' || true; echo "::endgroup::"; sleep 1
+          LAENGE=1600 zeig "blockscout metadata mehrere" "https://metadata.services.blockscout.com/api/v1/metadata?addresses=$ETH,$BIN,0x0000000000000000000000000000000000000123&chainId=1&tagsLimit=20"
+          LAENGE=900 zeig "blockscout metadata bsc" "https://metadata.services.blockscout.com/api/v1/metadata?addresses=0x8894E0a0c962CB723c1976a4421c95949bE2D4E3&chainId=56&tagsLimit=20"
+          LAENGE=500 zeig "etherscan v2 ohne schluessel" "https://api.etherscan.io/v2/api?chainid=1&module=account&action=balance&address=$ETH&tag=latest"
+          LAENGE=500 zeig "etherscan v2 falscher schluessel bsc" "https://api.etherscan.io/v2/api?chainid=56&module=account&action=txlist&address=$BIN&page=1&offset=1&sort=asc&apikey=UNGUELTIG"
+          curl -sS -m 60 "https://mempool.space/api/address/$BTC/txs" -o /tmp/m.json || true
+          echo "::group::mempool txs: Anzahl erste Seite"; jq -c '{anzahl: length, letzte: .[-1].txid, bestaetigt: ([.[]|select(.status.confirmed)]|length)}' /tmp/m.json || true; echo "::endgroup::"
+          LETZTE=$(jq -r '.[-1].txid' /tmp/m.json 2>/dev/null || echo "")
+          echo "::group::mempool txs/chain Folgeseite"; curl -sS -m 60 "https://mempool.space/api/address/$BTC/txs/chain/$LETZTE" | jq -c '{anzahl: length, erste: .[0].txid, letzte: .[-1].txid}' || true; echo "::endgroup::"; sleep 1
+          echo "::group::mempool txs?after_txid Folgeseite"; curl -sS -m 60 "https://mempool.space/api/address/$BTC/txs?after_txid=$LETZTE" | jq -c '{anzahl: length, erste: .[0].txid, letzte: .[-1].txid}' || true; echo "::endgroup::"; sleep 1
+          zeig "mempool adresse ungueltig" "https://mempool.space/api/address/1A1zP1eP5QGefi2DMPTfTL5SLmv7Divf00"
+          zeig "mempool tx unbekannt" "https://mempool.space/api/tx/0000000000000000000000000000000000000000000000000000000000000001"
+          zeig "mempool adresse unbenutzt" "https://mempool.space/api/address/bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+          zeig "mempool utxo" "https://mempool.space/api/address/$BTC/utxo"
+          echo "::group::mempool tx mit vielen Eingaengen: Kennzahlen"; curl -sS -m 60 "https://mempool.space/api/tx/81e15438df4d1e242afc732046ec05f6d8e3e36f9fe167477305f0e09e34e543/outspends" | jq -c '.' || true; echo "::endgroup::"
+          zeig "defillama tron+bsc vertrag" "https://coins.llama.fi/prices/historical/1700000000/tron:$TUSDT,bsc:0x55d398326f99059fF775485246999027B3197955,coingecko:usd-coin,coingecko:matic-network,coingecko:polygon-ecosystem-token"
+          zeig "defillama frueh (2012)" "https://coins.llama.fi/prices/historical/1340000000/coingecko:bitcoin"
+          zeig "ecb wochenende" "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A?startPeriod=2023-11-11&endPeriod=2023-11-12&format=csvdata"
+          zeig "trm leer" -X POST -H 'Content-Type: application/json' -d '[{"address":"TNiq9AXBp9EjUqhDhrwrfvAA8U3GUQZH81"},{"address":"1FzWLkAahHooV3kzTgyx6qsswXJ6sCXkSR"}]' "https://api.trmlabs.com/public/v1/sanctions/screening"
