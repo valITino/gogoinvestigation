@@ -1,0 +1,549 @@
+{
+  "fall_id": "MUSTER-2026-001",
+  "stand": "2026-11-12T08:09:01Z",
+  "zusammenfassung": [
+    "Die Phishing-Seite, über die am 29.09.2026 Zugangsdaten der [ORG_01] abgegriffen wurden, lag auf einem gemieteten Server in den Niederlanden. Die Domain wurde drei Tage vor der Tat registriert. Derselbe Server lieferte die Phishing-E-Mail ein und ist das Ziel der angehängten Schadsoftware.",
+    "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt."
+  ],
+  "kernaussagen": [
+    {
+      "text": "Phishing-Domain, Mailversand und Schadsoftware laufen auf demselben Server zusammen.",
+      "sicherheit": "hoch",
+      "befunde": [
+        "B-01",
+        "B-05",
+        "B-06"
+      ]
+    },
+    {
+      "text": "Die Domain wurde eigens für die Tat eingerichtet.",
+      "sicherheit": "hoch",
+      "befunde": [
+        "B-02"
+      ]
+    },
+    {
+      "text": "Die Anmelde-IP ist ein VPN-Ausgang und identifiziert keine Person.",
+      "sicherheit": "mittel",
+      "befunde": [
+        "B-04"
+      ]
+    },
+    {
+      "text": "Ob Phishing und Erpressung vom selben Täter stammen, ist offen.",
+      "sicherheit": "tief",
+      "befunde": [
+        "B-08"
+      ]
+    }
+  ],
+  "indikatoren": [
+    {
+      "id": "I-01",
+      "typ": "domain",
+      "wert": "kundenportal-sicher.example",
+      "herkunft": "Rapport Ziff. 2",
+      "rolle": "Phishing-Domain",
+      "bewertung": "boesartig",
+      "kennzahlen": {
+        "vt_boesartig": 14,
+        "vt_gesamt": 93
+      },
+      "belege": [
+        "P-0011",
+        "P-0013",
+        "P-0015"
+      ]
+    },
+    {
+      "id": "I-02",
+      "typ": "url",
+      "wert": "https://kundenportal-sicher.example/login",
+      "herkunft": "Rapport Ziff. 2",
+      "rolle": "Phishing-Seite",
+      "bewertung": "boesartig",
+      "belege": [
+        "P-0014",
+        "P-0012"
+      ]
+    },
+    {
+      "id": "I-03",
+      "typ": "ip",
+      "wert": "203.0.113.7",
+      "herkunft": "Rapport Ziff. 5",
+      "rolle": "Server der Täter",
+      "bewertung": "boesartig",
+      "kennzahlen": {
+        "abuse_score": 87,
+        "vt_boesartig": 9,
+        "vt_gesamt": 93,
+        "offene_ports": [
+          22,
+          25,
+          80,
+          443
+        ]
+      },
+      "belege": [
+        "P-0001",
+        "P-0002",
+        "P-0003",
+        "P-0004"
+      ]
+    },
+    {
+      "id": "I-04",
+      "typ": "ip",
+      "wert": "198.51.100.23",
+      "herkunft": "Rapport Ziff. 3",
+      "rolle": "Anmeldung mit erbeuteten Zugangsdaten",
+      "bewertung": "verdaechtig",
+      "kennzahlen": {
+        "abuse_score": 12
+      },
+      "belege": [
+        "P-0005",
+        "P-0006",
+        "P-0007"
+      ]
+    },
+    {
+      "id": "I-05",
+      "typ": "hash",
+      "wert": "d55be28ccdc9c4a065fbbe7ee97d07e964faf02268afa64c47a046d95e3719f4",
+      "herkunft": "Rapport Ziff. 4",
+      "rolle": "Mailanhang",
+      "bewertung": "boesartig",
+      "kennzahlen": {
+        "vt_boesartig": 41,
+        "vt_gesamt": 72
+      },
+      "belege": [
+        "P-0016",
+        "P-0017"
+      ]
+    },
+    {
+      "id": "I-06",
+      "typ": "email",
+      "wert": "rechnung@kundenportal-sicher.example",
+      "herkunft": "Rapport Ziff. 2",
+      "rolle": "Absender der Phishing-Mail",
+      "bewertung": "verdaechtig",
+      "belege": [
+        "P-0011",
+        "P-0010"
+      ]
+    },
+    {
+      "id": "I-07",
+      "typ": "gruppe",
+      "wert": "MusterLocker",
+      "herkunft": "Rapport Ziff. 6",
+      "rolle": "Unterzeichner des Erpresserschreibens",
+      "bewertung": "boesartig",
+      "belege": [
+        "P-0020"
+      ]
+    },
+    {
+      "id": "I-08",
+      "typ": "onion",
+      "wert": "o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion",
+      "herkunft": "Rapport Ziff. 6",
+      "rolle": "Im Erpresserschreiben genannte Adresse",
+      "bewertung": "verdaechtig",
+      "belege": [
+        "P-0020",
+        "P-0022"
+      ]
+    },
+    {
+      "id": "I-09",
+      "typ": "domain",
+      "wert": "rechnung-portal.example",
+      "herkunft": "Pivot aus P-0009 (frühere Namensauflösungen von I-03)",
+      "rolle": "Weitere Domain auf demselben Server",
+      "bewertung": "verdaechtig",
+      "belege": [
+        "P-0009"
+      ]
+    }
+  ],
+  "befunde": [
+    {
+      "id": "B-01",
+      "titel": "Die Phishing-Domain zeigt auf den Server 203.0.113.7",
+      "art": "feststellung",
+      "sicherheit": "hoch",
+      "quellenbewertung": "B1",
+      "text": "Der DNS-Eintrag der Domain kundenportal-sicher.example verweist auf 203.0.113.7. Der Server meldet unter dieser Adresse den Hostnamen der Domain und liefert auf Port 443 ein TLS-Zertifikat aus, das auf die Domain ausgestellt ist. Die DNS-Abfrage über die eigene Web-Check-Instanz bestätigt die Zuordnung.",
+      "erlaeuterung": "Eine Domain ist wie ein Name im Telefonbuch, die IP-Adresse die Nummer dahinter. Drei voneinander unabhängige Stellen nennen für diesen Namen dieselbe Nummer. Die Phishing-Seite lag also auf diesem Server.",
+      "indikatoren": [
+        "I-01",
+        "I-03"
+      ],
+      "belege": [
+        "P-0011",
+        "P-0001",
+        "P-0010"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-02",
+      "titel": "Die Domain wurde drei Tage vor der Tat registriert",
+      "art": "bewertung",
+      "sicherheit": "hoch",
+      "quellenbewertung": "B2",
+      "text": "Die Domain wurde am 26.09.2026 registriert. Die erste Archivaufnahme der Anmeldeseite stammt vom 28.09.2026, die Phishing-E-Mail vom 29.09.2026. Der Sandbox-Dienst stuft die Domain als jünger als sieben Tage ein. Eine frühere, unverdächtige Nutzung ist nicht ersichtlich.",
+      "erlaeuterung": "Die Internetadresse gab es vor der Tat praktisch nicht. Sie wurde kurz davor angelegt und sofort mit der gefälschten Anmeldeseite bestückt. Das spricht dafür, dass sie eigens für diesen Zweck eingerichtet wurde und nicht einer gehackten, sonst harmlosen Website gehört.",
+      "indikatoren": [
+        "I-01",
+        "I-02"
+      ],
+      "belege": [
+        "P-0011",
+        "P-0015",
+        "P-0014"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-03",
+      "titel": "Der Server steht bei einem Hosting-Anbieter und ist mehrfach als missbräuchlich gemeldet",
+      "art": "feststellung",
+      "sicherheit": "hoch",
+      "quellenbewertung": "B2",
+      "text": "203.0.113.7 gehört zum Netz der Beispiel Hosting AG (AS64500, Niederlande) und wird übereinstimmend als Rechenzentrumsadresse geführt, nicht als Anonymisierungsdienst. Bei AbuseIPDB liegen 64 Meldungen von 23 Meldern vor, Abuse-Score 87 von 100, zuletzt am 05.10.2026 wegen Phishing. Offen sind die Ports 22, 25, 80 und 443.",
+      "erlaeuterung": "Der Server ist ein gemieteter Rechner in einem Rechenzentrum. Der Vermieter kennt seinen Kunden. Über ihn führt der direkteste Weg zum Betreiber. Der Server ist auch anderen schon negativ aufgefallen, was gegen einen Zufall spricht.",
+      "indikatoren": [
+        "I-03"
+      ],
+      "belege": [
+        "P-0001",
+        "P-0002",
+        "P-0004",
+        "P-0003"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-04",
+      "titel": "Die Anmelde-IP ist der Ausgang eines VPN-Dienstes",
+      "art": "bewertung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B2",
+      "text": "198.51.100.23 wird als Ausgangsknoten des VPN-Dienstes «BEISPIEL_VPN» geführt (anonymisierend, rund 214 beobachtete Geräte aus 31 Ländern). Offen sind die Ports 443 und 1194, wie für VPN-Knoten üblich. Missbrauchsmeldungen gibt es wenige (Score 12 von 100). Die Einstufung als VPN stammt von einem einzelnen Anbieter.",
+      "erlaeuterung": "Wer über einen VPN-Dienst ins Internet geht, tritt nach aussen mit der Adresse des Dienstes auf, zusammen mit Hunderten anderer Kunden. Die Adresse aus dem Serverprotokoll gehört also dem VPN-Anbieter und nicht dem Täter. Eine Anfrage beim Anschlussanbieter würde ins Leere laufen.",
+      "indikatoren": [
+        "I-04"
+      ],
+      "belege": [
+        "P-0005",
+        "P-0007",
+        "P-0006"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-05",
+      "titel": "Der Mailanhang ist als Schadsoftware bekannt und kontaktiert denselben Server",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B2",
+      "text": "41 von 72 Sicherheitsprodukten erkennen die Datei als bösartig, überwiegend als Trojaner der Familie «MusterStealer», einer Software zum Abgreifen gespeicherter Zugangsdaten. Die Datei wurde erstmals am 27.09.2026 bei VirusTotal eingereicht. Als kontaktierte Adresse ist 203.0.113.7 verzeichnet.",
+      "erlaeuterung": "Die Datei tarnt sich als Rechnung, ist aber ein Programm, das auf dem Rechner gespeicherte Passwörter sammelt und an die Täter schickt. Sie meldet sich bei demselben Server, auf dem auch die gefälschte Anmeldeseite lag.",
+      "indikatoren": [
+        "I-05",
+        "I-03"
+      ],
+      "belege": [
+        "P-0016",
+        "P-0017"
+      ],
+      "gegenpruefung": "eingeschraenkt",
+      "gegenpruefung_notiz": "Die Zuordnung zur Familie beruht auf den Bezeichnungen der Scanner, nicht auf einer eigenen Analyse der Datei. Erkennungsrate und kontaktierte Adresse sind in den Rohdaten nachvollziehbar."
+    },
+    {
+      "id": "B-06",
+      "titel": "Die Seite ahmt eine Anmeldemaske nach und sendet Eingaben an ein Sammelskript",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B2",
+      "text": "Der Sandbox-Bericht vom 30.09.2026 zeigt eine Seite mit dem Titel «Kundenportal – Anmeldung». Das Formular sendet die Eingaben an /gate.php auf 203.0.113.7. Das Skript ist als Bestandteil eines bekannten Phishing-Baukastens erkannt. Bei VirusTotal lag zur genauen URL keine Analyse vor.",
+      "erlaeuterung": "Die Seite sah aus wie das echte Kundenportal. Was dort eingetippt wurde, ging aber nicht an die [ORG_01], sondern an ein kleines Programm der Täter, das Benutzername und Passwort einsammelt.",
+      "indikatoren": [
+        "I-02",
+        "I-03"
+      ],
+      "belege": [
+        "P-0014",
+        "P-0013",
+        "P-0012"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-07",
+      "titel": "Die Gruppe MusterLocker ist bekannt und führt die genannte Onion-Adresse als Leak-Seite",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "C2",
+      "text": "ransomware.live führt eine Gruppe dieses Namens. Als deren Leak-Seite ist genau die Onion-Adresse verzeichnet, die im Erpresserschreiben steht. Die Gruppe nennt dort derzeit zwei Opfer, zuletzt am 12.09.2026. Die Onion-Adresse steht nicht auf der Sperrliste von Ahmia. Im Breach-Feed fand sich kein Hinweis auf die Phishing-Domain.",
+      "erlaeuterung": "Die Absender des Erpresserschreibens verwenden den Namen und die Adresse einer Gruppe, die es tatsächlich gibt. Ob das Schreiben wirklich von dieser Gruppe stammt oder jemand nur deren Namen benutzt, lässt sich daraus nicht ablesen. Ob die [ORG_01] auf der Opferliste steht, muss im Haus mit dem echten Namen geprüft werden.",
+      "indikatoren": [
+        "I-07",
+        "I-08"
+      ],
+      "belege": [
+        "P-0020",
+        "P-0021",
+        "P-0022",
+        "P-0023"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-08",
+      "titel": "Phishing und Erpressung könnten vom selben Akteur stammen",
+      "art": "hypothese",
+      "sicherheit": "tief",
+      "text": "Zwischen dem Abgriff der Zugangsdaten (29.09.2026) und dem Erpresserschreiben (01.10.2026) liegen zwei Tage. Ein technischer Zusammenhang ist nicht belegt: Weder der Server noch die Domains tauchen im Umfeld der Gruppe auf.",
+      "erlaeuterung": "Es liegt nahe, dass dieselben Täter erst die Zugangsdaten gestohlen und dann erpresst haben. Bewiesen ist das nicht. Die zeitliche Nähe ist das einzige Indiz. Denkbar ist auch, dass die Zugangsdaten weiterverkauft wurden.",
+      "indikatoren": [
+        "I-03",
+        "I-07"
+      ],
+      "belege": [],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-09",
+      "titel": "Auf demselben Server lag eine zweite, ähnlich benannte Domain",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B3",
+      "text": "Laut den bei VirusTotal verzeichneten Namensauflösungen zeigte am 19.09.2026 auch die Domain rechnung-portal.example auf 203.0.113.7, eine Woche vor der Registrierung der Phishing-Domain.",
+      "erlaeuterung": "Die Täter haben auf demselben Server vermutlich schon vorher eine ähnliche Falle betrieben. Das kann auf weitere Geschädigte hinweisen und ist ein zusätzlicher Ansatzpunkt beim Hosting-Anbieter.",
+      "indikatoren": [
+        "I-09",
+        "I-03"
+      ],
+      "belege": [
+        "P-0009"
+      ],
+      "gegenpruefung": "bestaetigt"
+    }
+  ],
+  "beziehungen": [
+    {
+      "von": "I-01",
+      "nach": "I-03",
+      "art": "zeigt auf",
+      "sicherheit": "hoch",
+      "belege": [
+        "P-0011",
+        "P-0001"
+      ]
+    },
+    {
+      "von": "I-02",
+      "nach": "I-01",
+      "art": "liegt auf",
+      "sicherheit": "hoch",
+      "belege": [
+        "P-0014"
+      ]
+    },
+    {
+      "von": "I-06",
+      "nach": "I-01",
+      "art": "Absenderdomain",
+      "sicherheit": "mittel",
+      "quelle": "Rapport Ziff. 2"
+    },
+    {
+      "von": "I-05",
+      "nach": "I-03",
+      "art": "kontaktiert",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0017"
+      ]
+    },
+    {
+      "von": "I-09",
+      "nach": "I-03",
+      "art": "zeigte auf",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0009"
+      ]
+    },
+    {
+      "von": "I-04",
+      "nach": "I-02",
+      "art": "Anmeldung nach Abgriff",
+      "sicherheit": "mittel",
+      "quelle": "Rapport Ziff. 3"
+    },
+    {
+      "von": "I-08",
+      "nach": "I-07",
+      "art": "Leak-Seite von",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0020"
+      ]
+    },
+    {
+      "von": "I-07",
+      "nach": "I-03",
+      "art": "Betreiber?",
+      "sicherheit": "tief"
+    }
+  ],
+  "zeitachse": [
+    {
+      "zeit": "2026-09-19T15:22:00Z",
+      "ereignis": "rechnung-portal.example zeigt auf den Server 203.0.113.7.",
+      "belege": [
+        "P-0009"
+      ]
+    },
+    {
+      "zeit": "2026-09-26T07:41:00Z",
+      "ereignis": "Registrierung der Domain kundenportal-sicher.example.",
+      "belege": [
+        "P-0011"
+      ]
+    },
+    {
+      "zeit": "2026-09-27T11:02:00Z",
+      "ereignis": "Die Schaddatei wird erstmals bei VirusTotal eingereicht.",
+      "belege": [
+        "P-0016"
+      ]
+    },
+    {
+      "zeit": "2026-09-28T10:15:00Z",
+      "ereignis": "Erste Archivaufnahme der gefälschten Anmeldeseite.",
+      "belege": [
+        "P-0015"
+      ]
+    },
+    {
+      "zeit": "2026-09-29T07:14:00Z",
+      "ereignis": "[PERSON_02] erhält die Phishing-E-Mail.",
+      "quelle": "Rapport Ziff. 2"
+    },
+    {
+      "zeit": "2026-09-29T07:31:00Z",
+      "ereignis": "Anmeldung am Kundenportal von 198.51.100.23 (VPN).",
+      "quelle": "Rapport Ziff. 3"
+    },
+    {
+      "zeit": "2026-09-30T06:18:00Z",
+      "ereignis": "Sandbox-Bericht von urlquery stuft die Seite als Phishing ein.",
+      "belege": [
+        "P-0014"
+      ]
+    },
+    {
+      "zeit": "2026-10-01",
+      "ereignis": "Erpresserschreiben im Namen von «MusterLocker» trifft ein.",
+      "quelle": "Rapport Ziff. 6"
+    },
+    {
+      "zeit": "2026-10-02",
+      "ereignis": "[PERSON_01] meldet den Vorfall.",
+      "quelle": "Rapport Ziff. 1"
+    },
+    {
+      "zeit": "2026-10-05T04:11:00Z",
+      "ereignis": "Jüngste Missbrauchsmeldung zum Server bei AbuseIPDB (Phishing).",
+      "belege": [
+        "P-0002"
+      ]
+    }
+  ],
+  "luecken": [
+    "Wer den Server gemietet hat, ist aus offenen Quellen nicht ersichtlich. Das weiss nur der Hosting-Anbieter.",
+    "Hinter der Anmelde-IP steht ein VPN-Dienst. Ob er Verbindungsdaten führt, ist nicht bekannt.",
+    "Der aktuelle Zustand der Phishing-Seite wurde nicht geprüft. Die Freigabe für aktive Massnahmen fehlte, eine Einreichung bei urlquery wurde deshalb abgelehnt (P-0019).",
+    "Die Einzelmeldungen von AbuseIPDB waren wegen des Tageskontingents nicht abrufbar (P-0008). Die Zeitachse stützt sich auf die Kurzübersicht.",
+    "Die Schaddatei wurde nicht selbst untersucht. Die Einordnung beruht auf den Angaben von VirusTotal.",
+    "Ob die [ORG_01] auf der Leak-Seite genannt ist, liess sich nicht prüfen, weil ihr Name pseudonymisiert ist. Die Opferliste der Gruppe liegt in den Rohdaten (P-0021) und ist im Haus mit dem Klarnamen abzugleichen.",
+    "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt)."
+  ],
+  "empfehlungen": [
+    {
+      "text": "Editionsbegehren an die Beispiel Hosting AG zu Kundendaten, Zahlungsmitteln und Zugriffsprotokollen des Servers 203.0.113.7, über den Rechtshilfeweg.",
+      "prioritaet": "hoch"
+    },
+    {
+      "text": "Registrar um Sperrung von kundenportal-sicher.example und rechnung-portal.example ersuchen und Registrierungsdaten sichern.",
+      "prioritaet": "hoch"
+    },
+    {
+      "text": "Zugangsdaten des Kundenportals zurücksetzen und die Anmeldungen seit dem 29.09.2026 auswerten. Rechner von [PERSON_02] forensisch sichern, falls der Anhang geöffnet wurde.",
+      "prioritaet": "hoch"
+    },
+    {
+      "text": "Abklären, ob zu rechnung-portal.example weitere Anzeigen vorliegen.",
+      "prioritaet": "mittel"
+    },
+    {
+      "text": "Freigabe für aktive Massnahmen und Dark-Web-Recherche prüfen, um den Stand der Phishing-Seite und der Leak-Seite zu dokumentieren.",
+      "prioritaet": "mittel"
+    },
+    {
+      "text": "Indikatoren (Anhang indikatoren.csv) an die zuständige Meldestelle und die IT-Sicherheit der [ORG_01] weitergeben.",
+      "prioritaet": "tief"
+    }
+  ],
+  "glossar": [
+    {
+      "begriff": "AS / ASN",
+      "erklaerung": "Autonomes System: das Netz eines Anbieters. Die Nummer zeigt, wem ein Adressbereich gehört."
+    },
+    {
+      "begriff": "Abuse-Score",
+      "erklaerung": "Kennzahl von AbuseIPDB von 0 bis 100. Je höher, desto häufiger und aktueller wurde eine IP-Adresse als missbräuchlich gemeldet."
+    },
+    {
+      "begriff": "Hash (SHA-256)",
+      "erklaerung": "Digitaler Fingerabdruck einer Datei. Gleicher Hash bedeutet gleiche Datei, unabhängig vom Dateinamen."
+    },
+    {
+      "begriff": "Infostealer",
+      "erklaerung": "Schadsoftware, die gespeicherte Passwörter, Sitzungsdaten und Ähnliches vom Rechner sammelt und an die Täter schickt."
+    },
+    {
+      "begriff": "Leak-Seite",
+      "erklaerung": "Website einer Erpressergruppe, auf der sie Opfer nennt und gestohlene Daten veröffentlicht, um Druck aufzubauen."
+    },
+    {
+      "begriff": "Onion-Adresse",
+      "erklaerung": "Adresse einer Website im Tor-Netz. Betreiber und Standort des Servers sind dabei verschleiert."
+    },
+    {
+      "begriff": "Phishing",
+      "erklaerung": "Täuschung mit nachgebauten Websites oder E-Mails, um Zugangsdaten zu erbeuten."
+    },
+    {
+      "begriff": "Sandbox",
+      "erklaerung": "Abgeschottete Umgebung, in der eine verdächtige Seite oder Datei gefahrlos geöffnet und beobachtet wird."
+    },
+    {
+      "begriff": "TLS-Zertifikat",
+      "erklaerung": "Digitaler Ausweis einer Website für verschlüsselte Verbindungen. Er nennt, für welchen Namen er ausgestellt wurde."
+    },
+    {
+      "begriff": "VPN",
+      "erklaerung": "Dienst, der den Datenverkehr über eigene Server umleitet. Nach aussen ist nur die Adresse des Dienstes sichtbar."
+    }
+  ]
+}

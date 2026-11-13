@@ -1,0 +1,1 @@
+{"data":{"type":"ip_address","id":"203.0.113.7","attributes":{"last_analysis_stats":{"malicious":9,"suspicious":1,"undetected":63,"harmless":20,"timeout":0},"reputation":-21,"as_owner":"Beispiel Hosting AG","asn":64500,"country":"NL","network":"203.0.113.0/24","last_analysis_date":1791108300,"last_analysis_results":{"Scanner A":{"category":"malicious","result":"phishing"}}}}}

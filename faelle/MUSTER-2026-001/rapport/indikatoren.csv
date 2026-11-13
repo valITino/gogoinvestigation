@@ -1,0 +1,10 @@
+id;typ;wert;bewertung;rolle;herkunft;belege
+I-01;domain;kundenportal-sicher.example;boesartig;Phishing-Domain;Rapport Ziff. 2;P-0011 P-0013 P-0015
+I-02;url;https://kundenportal-sicher.example/login;boesartig;Phishing-Seite;Rapport Ziff. 2;P-0014 P-0012
+I-03;ip;203.0.113.7;boesartig;Server der Täter;Rapport Ziff. 5;P-0001 P-0002 P-0003 P-0004
+I-04;ip;198.51.100.23;verdaechtig;Anmeldung mit erbeuteten Zugangsdaten;Rapport Ziff. 3;P-0005 P-0006 P-0007
+I-05;hash;d55be28ccdc9c4a065fbbe7ee97d07e964faf02268afa64c47a046d95e3719f4;boesartig;Mailanhang;Rapport Ziff. 4;P-0016 P-0017
+I-06;email;rechnung@kundenportal-sicher.example;verdaechtig;Absender der Phishing-Mail;Rapport Ziff. 2;P-0011 P-0010
+I-07;gruppe;MusterLocker;boesartig;Unterzeichner des Erpresserschreibens;Rapport Ziff. 6;P-0020
+I-08;onion;o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion;verdaechtig;Im Erpresserschreiben genannte Adresse;Rapport Ziff. 6;P-0020 P-0022
+I-09;domain;rechnung-portal.example;verdaechtig;Weitere Domain auf demselben Server;Pivot aus P-0009 (frühere Namensauflösungen von I-03);P-0009
