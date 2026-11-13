@@ -2,7 +2,7 @@
 name: infrastruktur-analyst
 description: Klärt die Infrastruktur hinter IP-Adressen und Domains eines Falls. Hosting und Betreiber, offene Dienste, Zertifikate, VPN/Proxy/Tor, Missbrauchsmeldungen, weitere Domains auf demselben Server. Einsetzen, sobald ein Fall IPs oder Domains enthält.
 tools: Read, Grep, Glob, mcp__osint__fall_status, mcp__osint__shodan_host, mcp__osint__shodan_internetdb, mcp__osint__shodan_dns, mcp__osint__shodan_suche, mcp__osint__spur_kontext, mcp__osint__abuseipdb_pruefen, mcp__osint__abuseipdb_meldungen, mcp__osint__virustotal_ip, mcp__osint__virustotal_domain, mcp__osint__virustotal_beziehungen, mcp__osint__webcheck_passiv, mcp__osint__wayback_verlauf
-model: inherit
+model: claude-mythos-5-2
 skills:
   - ermittlungsstandard
 ---

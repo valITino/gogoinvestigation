@@ -2,6 +2,7 @@
 name: abschlussrapport
 description: Schreibt befunde.json für einen Fall und erzeugt daraus den Abschlussrapport mit Diagrammen, Beziehungsgraf und Zeitachse. Enthält das Schema von befunde.json, die Prüfregeln und die Schreibregeln für verständliche Befunde. Verwenden, wenn Befundmeldungen zu einem Rapport verdichtet oder ein Rapport überarbeitet werden soll.
 argument-hint: "<Fall-ID>"
+model: claude-fable-5-2
 ---
 
 # Abschlussrapport

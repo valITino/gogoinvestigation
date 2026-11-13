@@ -3,7 +3,8 @@ name: protokoll
 description: Erzeugt das Ermittlungsprotokoll eines Falls (wann wurde was, wo, wozu und durch wen abgefragt) als HTML und CSV und prüft die Unverändertheit der Protokollkette.
 argument-hint: "<Fall-ID>"
 disable-model-invocation: true
-allowed-tools: Bash(python3 tools/protokoll.py *), Bash(python3 tools/audit_pruefen.py *)
+model: claude-fable-5-2
+allowed-tools: Bash(python3 tools/protokoll.py *), Bash(python3 tools/audit_pruefen.py *), Bash(python tools/protokoll.py *), Bash(python tools/audit_pruefen.py *)
 ---
 
 # Ermittlungsprotokoll erzeugen

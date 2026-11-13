@@ -58,8 +58,8 @@ flowchart LR
 | **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 36 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
 | **Ermittler-Team** (`.claude/agents/`) | Sechs Subagenten: vier Analysten, ein unabhängiger Gegenprüfer, ein Rapportführer. |
 | **Skills** (`.claude/skills/`) | Die Methodik: Ablauf der Ermittlung, Indikatoren ziehen, Ermittlungsstandard, Rapport, Protokoll. |
-| **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat. |
-| **Werkzeuge** (`tools/`) | Fall anlegen, PII-Prüfung, Rapport und Protokoll erzeugen, Kette prüfen, Einrichtung prüfen. |
+| **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat und mit welchem Modell. |
+| **Werkzeuge** (`tools/`) | Einrichten, Fall anlegen, PII-Prüfung, Rapport und Protokoll erzeugen, Kette prüfen, Einrichtung prüfen. |
 | **Musterfall** (`faelle/MUSTER-2026-001/`, `muster/`) | Ein erfundener Fall, komplett durchgespielt. Zeigt, was am Ende in der Fallakte liegt. Rapport und Protokoll als PDF unter [`muster/`](muster/). |
 
 Die Ergebnisse einer Ermittlung:
@@ -74,50 +74,185 @@ Die Ergebnisse einer Ermittlung:
 
 ## Einrichten
 
-**Voraussetzungen**
-
-| Was | Wozu | Nötig? |
-|---|---|---|
-| Linux, macOS oder Windows mit WSL | Betriebssystem | ja |
-| Python 3.10 oder neuer | Gateway und Werkzeuge | ja |
-| [Claude Code](https://code.claude.com/docs) mit einem Konto, das Fable 5.2 nutzen darf | die Agenten | ja |
-| Docker | Web-Check und Robin (Dark Web) | nein, beides bleibt sonst aus |
-| `pdftotext` (Paket `poppler-utils`) | PDF-Dokumente aufnehmen | nein, `.txt` `.md` `.docx` gehen ohne |
-| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken |
-
-**Installation**
+Ein Befehl richtet den Arbeitsplatz ein. Im Terminal führt ein Assistent hindurch: Er fragt, was nur ihr wissen
+könnt, zeigt eine Übersicht und verändert erst etwas, wenn ihr sie bestätigt. Danach läuft alles von selbst.
+Der Befehl lässt sich beliebig oft wiederholen.
 
 ```bash
 git clone https://github.com/valITino/gogoinvestigation.git
 cd gogoinvestigation
-./setup.sh
+./setup.sh              # Linux, macOS, WSL
 ```
 
-`setup.sh` fragt nichts und lässt sich beliebig oft wiederholen. Es
+```powershell
+.\setup.cmd             # Windows: PowerShell oder Eingabeaufforderung
+```
 
-1. prüft Python, legt `.venv` an und installiert die Pakete,
-2. legt `.env` aus `.env.example` an (eine vorhandene `.env` bleibt unberührt),
-3. startet Web-Check per Docker auf `127.0.0.1:3000` und lädt das Robin-Abbild, falls Docker läuft,
-4. schaltet die MCP-Server für Claude Code frei (`.claude/settings.local.json`),
-5. baut den Musterfall und prüft die Einrichtung mit 14 Selbsttests.
+![Der Assistent fragt nach den Schlüsseln der Quellen](docs/bilder/einrichtung-schluessel.png)
 
-Am Ende steht eine Übersicht, was bereit ist und was fehlt. Optionen: `--ohne-docker`, `--ohne-robin`.
+**Der Assistent**
 
-Danach bleibt von Hand: Schlüssel in `.env` eintragen, und beim ersten Start von `claude` im Projektordner den
-Vertrauensdialog bestätigen. Beides lässt sich bewusst nicht automatisieren.
+Bedient wird er mit den Pfeiltasten und Enter, angekreuzt wird mit der Leertaste, Esc bricht ab. Jede Frage hat
+eine Vorgabe: Wer nur Enter drückt, bekommt eine lauffähige Einrichtung ohne Mythos, ohne Schlüssel und ohne Proxy.
+
+| Frage | Worum es geht |
+|---|---|
+| Installieren | Erscheint nur, wenn etwas fehlt (Claude Code, `pdftotext`, unter Windows Git for Windows). Nennt, was auf welchem Weg installiert würde. |
+| Modelle | Darf euer Konto Claude Mythos 5.2 nutzen? Mit Ja schaltet die Ermittlung von selbst darauf um, siehe [Modelle je Phase](#modelle-je-phase). |
+| Schlüssel | Liste der Quellen mit ihrem Stand. Eine Quelle öffnen und den Schlüssel einfügen. Die Eingabe bleibt unsichtbar, gezeigt wird nur die Zahl der Zeichen. Mit Entf wird ein Schlüssel entfernt. «Aus einer Datei übernehmen» liest eine vorbereitete Kopie von `.env.example`. |
+| Proxy | Sollen die Abfragen an die Quellen über einen Proxy laufen? Kein Proxy, Tor auf diesem Rechner oder eine eigene Adresse. |
+| Dienste | Web-Check und Robin über Docker. Fehlt Docker, bietet der Assistent unter Debian, Ubuntu und Kali die Installation an. Läuft es nur nicht, lässt sich nach dem Start erneut prüfen. |
+| Anmeldung | Erscheint nur, wenn Claude Code noch nicht angemeldet ist. Auf Wunsch startet die Einrichtung am Ende die Anmeldung im Browser. |
+| Testabfragen | Auf Wunsch geht am Ende je eingerichteter Quelle eine harmlose Abfrage hinaus. Das zeigt sofort, ob Schlüssel, Netz und Proxy stimmen. |
+
+Am Schluss steht die Übersicht. Jede Zeile lässt sich öffnen und ändern. Erst «Einrichten» verändert etwas,
+«Abbrechen» lässt alles, wie es war. Tasten, die vor einer Frage getippt wurden, zählen nicht, und die Übersicht
+nimmt die erste halbe Sekunde keine Taste an: Ein doppelt gedrücktes Enter bestätigt nichts, was noch niemand
+lesen konnte.
+
+![Übersicht vor dem Einrichten](docs/bilder/einrichtung-uebersicht.png)
+
+Schlüssel landen nur in der Datei `.env` auf eurem Rechner. Sie erscheinen weder auf dem Bildschirm noch in den
+Meldungen der Einrichtung. Wer den Assistenten erst ansehen will: `./setup.sh --vorschau` stellt die Fragen,
+zeigt die Übersicht und verändert nichts.
+
+**Später etwas ändern.** Auf einem eingerichteten Arbeitsplatz bietet derselbe Befehl drei Wege an: «Prüfen und
+auffrischen» (fragt nichts, die Einstellungen bleiben), «Einstellungen ändern» (führt direkt zur Übersicht) und
+«Nur den Stand zeigen». So kommt ein neuer Schlüssel dazu, ein Proxy weg oder Mythos an.
+
+**Ohne Rückfragen.** Ohne Terminal fragt die Einrichtung von selbst nichts, etwa in einem Skript, in einer
+CI-Umgebung oder wenn die Ausgabe in eine Datei geht. Im Terminal erreicht das `--ohne-rueckfragen`. Dann
+gelten die Optionen der Befehlszeile und die Werte aus `.env`, und Fehlendes wird ohne Nachfrage installiert.
+
+**Wenn das Terminal nicht mitspielt.** `--schlicht` stellt dieselben Fragen als nummerierte Listen, ohne
+Cursorsteuerung und ohne Laufanzeige. Das ist der Weg für Bildschirmleser und sehr alte Terminals. Farben
+schaltet die Umgebungsvariable `NO_COLOR=1` ab. Keine Aussage hängt an der Farbe allein, jeder Zustand hat ein
+Zeichen und ein Wort.
+
+**Voraussetzungen und was die Einrichtung damit tut**
+
+| Was | Wozu | Nötig? | Wenn es fehlt |
+|---|---|---|---|
+| Python 3.10 oder neuer | Gateway, Werkzeuge, Hooks | ja | wird installiert: über die Paketverwaltung des Systems (apt, dnf, yum, pacman, zypper, apk, Homebrew), unter Windows über winget. Im Terminal fragt das Startskript vorher. |
+| `venv` und `pip` | eigene Python-Umgebung `.venv` im Projektordner | ja | wird installiert (Debian, Ubuntu, Kali: Paket `python3-venv`) |
+| [Claude Code](https://code.claude.com/docs) ab 2.1.295 | die Agenten | ja | wird mit dem Installer von Anthropic installiert |
+| Git for Windows, nur unter Windows | Git Bash. Darin führt Claude Code Wächter und Protokoll aus. | ja | wird über winget installiert |
+| `pdftotext` (Poppler) | Rapporte als PDF aufnehmen | nein, `.txt` `.md` `.docx` gehen ohne | wird installiert |
+| Docker | Web-Check und Robin (Dark Web) | nein, beides bleibt sonst aus | wird gemeldet. Debian, Ubuntu, Kali: `./setup.sh --docker-installieren` holt es nach |
+| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken | wird gemeldet |
+| Konto für Claude Code | Anmeldung, Zugang zu Fable 5.2 | ja | bleibt bei euch |
+
+«Wird installiert» heisst im Assistenten: nach eurem Ja auf die Frage «Installieren». Ohne Rückfragen
+geschieht es von selbst, es sei denn, ihr gebt `--nichts-installieren` mit.
+
+Systempakete brauchen unter Linux root. Läuft die Einrichtung nicht als root, fragt `sudo` einmal nach dem
+Passwort. Alles andere landet im Projektordner oder im eigenen Benutzerkonto. Unter Windows kommt die
+Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, kann dessen Installation danach fragen.
+
+**Die sechs Schritte** nach der Bestätigung
+
+1. Voraussetzungen prüfen und Fehlendes installieren.
+2. `.venv` anlegen und die Pakete installieren.
+3. `.env` aus `.env.example` anlegen, nur für das eigene Konto lesbar, und eure Antworten eintragen.
+   Eine vorhandene `.env` bleibt, geändert wird nur, was ihr geändert habt.
+4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
+5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
+   (`.claude/settings.local.json`), Anmeldung prüfen.
+6. Musterfall bauen und die Einrichtung mit 27 Selbsttests prüfen.
+
+Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
+Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
+eingerichtet wurde und was für euch bleibt.
+
+![Ergebnis der Einrichtung](docs/bilder/einrichtung-ergebnis.png)
+
+Die Prüfung erscheint hier als Kurzfassung, jeder Fehler steht einzeln da. Ausführlich zeigt sie
+`python3 tools/pruefen.py`. Die Meldungen der Installationsprogramme liegen im Ordner `osint-setup` des
+temporären Verzeichnisses (`/tmp/osint-setup`, unter Windows `%TEMP%\osint-setup`).
+
+**Optionen**
+
+Alles, was der Assistent fragt, lässt sich auch als Option mitgeben. Im Assistenten sind die Optionen die
+Vorgaben der Fragen. Auf einem schon eingerichteten Arbeitsplatz fragt die Einrichtung nicht nach, wenn eine
+Option etwas einstellt: `./setup.sh --mythos` schaltet Mythos frei und ist fertig.
+
+| Option | Wirkung |
+|---|---|
+| `--ohne-rueckfragen` | fragt nichts. Kurz: `--ja` oder `-y` |
+| `--vorschau` | stellt die Fragen und zeigt die Übersicht, verändert aber nichts |
+| `--schlicht` | Fragen als nummerierte Listen, ohne Cursorsteuerung und ohne Laufanzeige |
+| `--nur-pruefen` | zeigt, was vorhanden ist und was fehlt. Verändert nichts. |
+| `--nichts-installieren` | installiert nichts am System, richtet nur das Projekt ein |
+| `--mythos` | erklärt: Dieses Konto hat Claude Mythos 5.2. Die Ermittlung schaltet dann von selbst darauf um, siehe [Modelle je Phase](#modelle-je-phase). Zurücknehmen: `--ohne-mythos` |
+| `--env-von DATEI` | übernimmt Schlüssel und Einstellungen aus einer vorbereiteten Datei nach `.env` |
+| `--docker-installieren` | installiert Docker aus den Paketquellen mit (Debian, Ubuntu, Kali) |
+| `--ohne-docker`, `--ohne-webcheck`, `--ohne-robin` | lässt Web-Check und Robin aus, oder nur eines von beiden |
+| `--testen` | schickt am Ende je eingerichteter Quelle eine harmlose Testabfrage |
+| `--hilfe` | alle Optionen |
+
+**Mehrere Arbeitsplätze.** Eine ausgefüllte Kopie von `.env.example` an einem geschützten Ort ablegen, auf
+Wunsch mit `OSINT_MYTHOS=ja`. Dann genügt je Laptop ein Befehl, und niemand muss etwas beantworten:
+
+```powershell
+.\setup.cmd --ohne-rueckfragen --env-von \\server\freigabe\osint.env
+```
+
+**Was von Hand bleibt** und sich bewusst nicht automatisieren lässt:
+
+- Schlüssel bei den Anbietern besorgen, siehe [Schlüssel](#schlüssel). Eintragen kann sie der Assistent.
+- Bei Claude Code anmelden. Der Assistent startet die Anmeldung auf Wunsch, durch den Browser geht ihr selbst.
+  Sonst: `claude` starten und der Anmeldung folgen.
+- Beim ersten Start von `claude` im Projektordner den Vertrauensdialog bestätigen. Erst dann gelten Wächter,
+  Protokoll und MCP-Server.
 
 **Kontrolle**
 
 ```bash
-python3 tools/pruefen.py          # Umgebung, Konfiguration, Quellen, Selbsttests
+python3 tools/pruefen.py          # Umgebung, Konfiguration, Modelle, Quellen, alle Selbsttests einzeln
 python3 tools/pruefen.py --live   # zusätzlich eine harmlose Testabfrage je eingerichteter Quelle
 claude mcp list                   # zeigt "osint … Connected", sobald der Ordner als vertrauenswürdig bestätigt ist
 ```
 
+### Windows
+
+Zwei Wege führen zum selben Arbeitsplatz. Nicht mischen: Je System braucht es einen eigenen Klon, denn die
+Python-Umgebungen von Linux und Windows vertragen sich nicht im selben Ordner. Die Einrichtung erkennt das und
+bricht mit einem Hinweis ab.
+
+| Weg | So | Docker |
+|---|---|---|
+| **WSL** | Repository in WSL klonen, dort `./setup.sh`. Es gilt alles, was für Linux gilt. | freie Docker Engine: `./setup.sh --docker-installieren` |
+| **Windows direkt** | `.\setup.cmd` in PowerShell oder der Eingabeaufforderung | Docker Desktop, von Hand |
+
+Für Windows direkt gilt:
+
+- **Der Interpreter heisst `python`**, nicht `python3`. Sonst sind alle Befehle dieser Anleitung gleich:
+  `python tools\fall.py neu 2026-0412 …`.
+- **`setup.cmd` startet `setup.ps1`** mit `-ExecutionPolicy Bypass` für genau diesen einen Lauf. Die Richtlinie
+  des Rechners bleibt, wie sie ist. Sperrt eine Gruppenrichtlinie PowerShell-Skripte ganz, leistet
+  `py tools\einrichten.py` dasselbe, sobald Python installiert ist.
+- **Der Assistent läuft in Windows Terminal, in PowerShell und in der Eingabeaufforderung.** Im alten
+  Konsolenfenster erscheinen schlichtere Zeichen (`>` statt `›`, `ok` statt `✓`), weil dessen Schrift die
+  anderen nicht kennt. Einen Schlüssel fügt ihr dort mit einem Rechtsklick ein, Strg+V kommt in diesem Fenster
+  nicht immer an. In Git Bash startet die Einrichtung nicht.
+- **Nach der Einrichtung ein neues Terminal öffnen.** Die Einrichtung setzt für euer Benutzerkonto die
+  Umgebungsvariable `OSINT_PYTHON`. Über sie startet Claude Code das Gateway, weil es unter Windows kein
+  `python3` gibt. Ein schon offenes Fenster kennt die Variable noch nicht.
+- **Freigaben in PowerShell oder der Eingabeaufforderung erteilen**, nicht im Fenster von Git Bash. Dort
+  erkennt Python kein Terminal und lehnt die Bestätigung ab.
+- **Docker Desktop installiert die Einrichtung nicht.** Laut Docker brauchen grössere Unternehmen und Behörden
+  dafür ein bezahltes Abonnement ([Bedingungen](https://docs.docker.com/desktop/setup/install/windows-install/)).
+  Ohne Docker bleiben nur Web-Check und Robin aus.
+- **Befehle laufen in Git Bash.** Das Projekt schaltet das PowerShell-Werkzeug von Claude Code ab
+  (`CLAUDE_CODE_USE_POWERSHELL_TOOL=0`), damit Wächter und Berechtigungen an einer Stelle greifen. Der Wächter
+  prüft PowerShell-Befehle trotzdem wie Bash, falls das Werkzeug doch aktiv ist.
+
 ## Schlüssel
 
-Alle Schlüssel stehen in `.env`. Jede Quelle ist für sich optional: Was keinen Schlüssel hat, bleibt aus, der
-Rest läuft. Sechs Quellen brauchen gar keinen.
+Alle Schlüssel stehen in `.env`. Eintragen kann sie der Assistent der Einrichtung (`./setup.sh`, auf einem
+eingerichteten Arbeitsplatz «Einstellungen ändern»), von Hand in der Datei geht es genauso. Jede Quelle ist für
+sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Sieben Quellen brauchen gar keinen, eine
+davon (Web-Check) braucht Docker.
 
 | Quelle | Variable in `.env` | Woher | Hinweis |
 |---|---|---|---|
@@ -129,11 +264,11 @@ Rest läuft. Sechs Quellen brauchen gar keinen.
 | ransomware.live | `RANSOMWARE_LIVE_API_KEY` | [my.ransomware.live](https://my.ransomware.live) | API PRO. Die schlüssellose API v2 ist laut Anbieter nur für private Nutzung, darum hier nur mit `RANSOMWARE_LIVE_V2=1`. |
 | Telegram über RapidAPI | `RAPIDAPI_KEY` | [rapidapi.com](https://rapidapi.com), APIs «Telegram Channel» und «Telegram Scraper API» abonnieren | Nur für Kanal-Stammdaten und Kontoabfragen. Drittanbieter unbekannter Herkunft, vor dem Einsatz prüfen. |
 | Shodan InternetDB, Wayback Machine, Ahmia-Sperrliste, Telegram-Kanalvorschau, 4chan, Mastodon | keine | | Laufen sofort. |
-| Web-Check | keine | eigene Instanz, `setup.sh` startet sie | Adresse in `WEBCHECK_URL`. |
-| Robin (Dark Web) | keine | Docker-Abbild, `setup.sh` lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
+| Web-Check | keine | eigene Instanz, die Einrichtung startet sie | Adresse in `WEBCHECK_URL`. |
+| Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
-Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`.
+Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`.
 
 Die Schlüssel liest nur das Gateway. Claude Code darf `.env` nicht lesen, und im Protokoll erscheinen
 Schlüssel als `***`.
@@ -219,8 +354,65 @@ In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>
 Die Hauptsitzung leitet: Sie zieht die Indikatoren, verteilt sie, entscheidet über Pivots (höchstens zwei Runden)
 und ist die einzige, die aktive Massnahmen ausführt.
 
-Alle Agenten laufen mit `model: inherit`, also mit dem Modell der Sitzung. Das Projekt setzt es auf
-`claude-fable-5-2` (`.claude/settings.json`).
+### Modelle je Phase
+
+Zwei Modelle teilen sich die Arbeit. Die Zuteilung steht fest in den Dateien des Projekts und ist für alle gleich:
+
+| Phase | Wer | Verlangt |
+|---|---|---|
+| **Ermittlung** | `/ermittlung` (Leitung, Indikatoren, Pivots, aktive Massnahmen) und die vier Analysten | `claude-mythos-5-2` |
+| **Abschluss** | `gegenpruefer`, `rapportfuehrer` (Befunde, Rapport, Übergabe), `/abschlussrapport`, `/protokoll` | `claude-fable-5-2` |
+| alles andere | die Sitzung vor und nach der Ermittlung, etwa Rückfragen zum Rapport | `claude-fable-5-2` |
+
+Ob die Ermittlung tatsächlich auf Mythos läuft, hängt an einer einzigen Angabe.
+
+**Ohne Angabe läuft alles auf Fable 5.2.** Das Projekt lässt in `.claude/settings.json` nur dieses Modell zu
+(`availableModels`). Verlangt ein Skill oder Agent ein Modell ausserhalb der Liste, übergeht Claude Code den
+Wunsch und nimmt das Modell der Sitzung. So funktioniert das Repository für alle, ohne dass jemand etwas ändert.
+
+**Wer Mythos 5.2 hat, erklärt das einmal:**
+
+```bash
+./setup.sh --mythos          # Windows: .\setup.cmd --mythos        zurücknehmen: --ohne-mythos
+```
+
+oder mit `OSINT_MYTHOS=ja` in `.env`. Die Einrichtung trägt Mythos in die lokale Liste ein
+(`.claude/settings.local.json`, nicht eingecheckt), und Claude Code fügt beide Listen zusammen. Von da an gilt
+bei jeder Ermittlung, ohne Umstellen von Hand:
+
+1. `/ermittlung` schaltet die Sitzung auf Mythos 5.2. Die Analysten laufen auf Mythos 5.2.
+2. Gegenprüfung, Befunde, Rapport, Protokoll und Übergabe laufen auf Fable 5.2.
+3. Mit eurer nächsten Eingabe ist die Sitzung wieder auf Fable 5.2.
+
+Mythos 5.2 ist dasselbe Modell wie Fable 5.2, ohne dessen zusätzliche Schutzmassnahmen für Cybersicherheit und
+Biologie, und steht nur Organisationen offen, die Anthropic verifiziert hat
+([Modellseite](https://platform.claude.com/docs/en/models/mythos-5-2/overview)). Ob euer Konto es nutzen darf,
+zeigt `python3 tools/pruefen.py --live` mit einem kurzen Testaufruf je Modell. Ist Mythos freigeschaltet, das Konto
+aber ohne Zugang, bricht `/ermittlung` gleich beim Start mit der Meldung von Claude Code ab. Dann `--ohne-mythos`.
+
+Gut zu wissen:
+
+- **Die Umschaltung von `/ermittlung` gilt bis zu eurer nächsten Eingabe.** Beantwortet ihr mitten in der
+  Ermittlung eine Rückfrage, leitet danach wieder Fable 5.2. Die Analysten laufen weiter auf Mythos.
+- **Ohne Mythos meldet Claude Code beim Start jedes Analysten**, dass statt des verlangten Modells das der Sitzung
+  läuft. Das ist der Normalfall und kein Fehler.
+- **Die Liste gilt für den ganzen Projektordner.** Mit `/model` lässt sich hier nur wählen, was zugelassen ist.
+  Wer weitere Modelle will, ergänzt `availableModels` in den eigenen Einstellungen (`~/.claude/settings.json`).
+  Legt eure Organisation die Liste zentral fest (verwaltete Einstellungen), gilt allein deren Liste.
+- **Grafiken zeichnet kein Modell.** Die Texte des Rapports und die Daten für Beziehungsgraf und Zeitachse schreibt
+  der Rapportführer in `befunde.json`. Die Grafiken zeichnet `tools/rapport.py` daraus als Programm. Bei gleichen
+  Befunden fallen sie deshalb immer gleich aus.
+
+**Nachsehen, was tatsächlich lief.** Das Sitzungsprotokoll hält fest, welches Modell die Hauptsitzung und jeder
+Subagent benutzt hat, gelesen aus den Transkripten von Claude Code. Das Ermittlungsprotokoll zeigt es unter
+«Sitzungsverlauf» als Zeile «Eingesetzte Sprachmodelle», ebenso jeden Wechsel mit `/model`. Während der Arbeit
+zeigt `/tasks` das Modell jedes laufenden Subagenten.
+
+Die geltende Zuteilung zeigt `python3 tools/pruefen.py` unter «Konfiguration». Selbsttests schlagen an, wenn ein
+Agent des Abschlusses nicht auf Fable 5.2 steht oder das Projekt Mythos von sich aus zuliesse. Wie Claude Code
+Modelle ausserhalb der Liste behandelt, steht in dessen Dokumentation:
+[Modelle einschränken](https://code.claude.com/docs/en/model-config),
+[Modell eines Subagenten](https://code.claude.com/docs/en/sub-agents).
 
 Skills und Subagenten ergänzen sich: Ein **Subagent** ist eine Rolle mit eigenem Kontext und eigenen Werkzeugen.
 Ein **Skill** ist Wissen, wie etwas zu tun ist. Der Skill `ermittlungsstandard` wird in jeden Analysten vorgeladen
@@ -265,10 +457,14 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Keine Abfrage ohne Fall und Zweck | Das Gateway weist sie ab. | `gateway/kern.py` |
 | Aktiv, Dark Web, Personenbezug nur mit Freigabe | Gateway und Wächter prüfen `fall.json`. Abgelehnte Versuche stehen im Protokoll. | `gateway/kern.py`, Wächter |
 | Keine Selbstfreigabe | `fall.py freigabe` verlangt ein Terminal. Wächter und Berechtigungen sperren den Befehl für Agenten. | `tools/fall.py` |
-| Nichts am Protokoll vorbei | `curl`, `wget` und Ähnliches sind gesperrt. `WebFetch` und `WebSearch` fragen jedes Mal nach. | `.claude/settings.json`, Wächter |
+| Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind gesperrt. `WebFetch` und `WebSearch` fragen jedes Mal nach. | `.claude/settings.json`, Wächter |
 | Protokoll und Rohdaten unveränderbar für Agenten | Schreibschutz über Berechtigungen und Wächter. | beide |
+| Agenten stellen die Einrichtung nicht um | `setup.sh`, `setup.cmd` und `tools/einrichten.py` sind für Agenten gesperrt, ebenso das Schreiben an Gateway, Hooks und Einstellungen. | Wächter |
+| Fällt der Wächter aus, läuft nichts | Kann der Wächter nicht starten oder seine Eingabe nicht lesen, sperrt Claude Code den Werkzeugaufruf (`onFailure: block`, ab Claude Code 2.1.295). | `.claude/settings.json`, `.claude/hooks/start.sh` |
+| Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
 | Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. | `gateway/akte.py`, `tools/audit_pruefen.py` |
 | Kein Rapport ohne Belege | Der Generator prüft jede Aussage gegen das Protokoll. `hoch` verlangt zwei verschiedene Quellen. | `tools/rapport.py` |
+| Kein versehentlicher Wechsel auf ein anderes Modell | Im Projektordner sind nur Fable 5.2 und, wenn freigeschaltet, Mythos 5.2 zugelassen. | `availableModels` in `.claude/settings.json` |
 | Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, Adressen im Protokoll sind maskiert. | Einstellungen, Gateway |
 | Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. | `onion_sperrliste` |
 
@@ -294,7 +490,20 @@ Was ihr wissen müsst:
 | Symptom | Ursache | Lösung |
 |---|---|---|
 | `claude mcp list` zeigt `osint … Pending approval` | Ordner noch nicht als vertrauenswürdig bestätigt | `claude` im Projektordner starten, Dialog bestätigen |
-| `osint` verbindet nicht | `.venv` fehlt oder Pakete fehlen | `./setup.sh` |
+| `osint` verbindet nicht | `.venv` fehlt oder Pakete fehlen | `./setup.sh`, unter Windows `.\setup.cmd` |
+| Windows: `osint` verbindet nicht, Meldung nennt `${OSINT_PYTHON}` oder `python3` | Das Terminal kennt die Variable `OSINT_PYTHON` noch nicht, oder sie zeigt ins Leere | neues Terminal öffnen. Hilft das nicht: `.\setup.cmd` |
+| Jeder Werkzeugaufruf wird mit «hook error … blocking because onFailure is "block"» gesperrt | Der Wächter kann nicht starten: kein Python gefunden, unter Windows fehlt Git for Windows | Einrichtung erneut ausführen. Sie nennt, was fehlt. |
+| `/ermittlung` bricht sofort ab, Claude Code meldet, das Modell sei nicht verfügbar | Mythos 5.2 ist freigeschaltet, das Konto hat aber keinen Zugang | `./setup.sh --ohne-mythos`. Vorab prüfen: `python3 tools/pruefen.py --live` |
+| Claude Code meldet beim Start eines Analysten, er laufe auf einem anderen Modell als verlangt | Mythos 5.2 ist nicht freigeschaltet | nichts, das ist der Normalfall. Wer Mythos hat: `./setup.sh --mythos` |
+| `/model` lehnt ein Modell ab | Das Projekt lässt nur Fable 5.2 zu, und Mythos 5.2, wenn freigeschaltet | gewollt. Weitere Modelle: `availableModels` in `~/.claude/settings.json` ergänzen |
+| `fall.py freigabe` meldet «trifft ein Mensch am Terminal», obwohl ihr am Terminal sitzt | Fenster von Git Bash unter Windows | in PowerShell oder der Eingabeaufforderung ausführen |
+| `.\setup.ps1` meldet «Ausführung von Skripts ist deaktiviert» | Ausführungsrichtlinie von PowerShell | `.\setup.cmd` verwenden |
+| Die Einrichtung fragt nichts, obwohl ihr am Terminal sitzt | Sie erkennt kein Terminal: Ausgabe umgeleitet (`\| tee`, `> datei`), Umgebungsvariable `CI` gesetzt, oder der Arbeitsplatz ist eingerichtet und der Aufruf enthält eine Option, die etwas einstellt | ohne Umleitung und ohne Option starten: `./setup.sh` |
+| Im Assistenten wirken die Pfeiltasten nicht, oder es erscheinen Zeichen wie `←[2K` | Das Terminal versteht die Steuerzeichen nicht | `./setup.sh --schlicht` stellt dieselben Fragen als nummerierte Listen |
+| Strg+V fügt im Assistenten nichts ein (altes Konsolenfenster unter Windows) | Dieses Fenster reicht Strg+V nicht als Text weiter | Rechtsklick fügt ein. Oder Windows Terminal verwenden. |
+| Ein Schlüssel wird mit «enthält keine Leerzeichen» oder «zu kurz» abgewiesen | Beim Kopieren ist etwas mitgekommen oder verloren gegangen | noch einmal kopieren, nur den Schlüssel selbst. Notfalls direkt in `.env` eintragen. |
+| Am Ende steht «Eingerichtet» statt «Einsatzbereit» | Nicht jede Testabfrage kam durch | Die Zeilen mit ✗ nennen den Grund: Schlüssel, Netz oder Proxy. Danach `python3 tools/pruefen.py --live` |
+| Einrichtung meldet «Dieser Ordner wurde unter … eingerichtet» | derselbe Ordner unter WSL und unter Windows benutzt | je System ein eigener Klon |
 | Werkzeug meldet «Schlüssel … fehlt in .env» | Quelle nicht eingerichtet | Schlüssel eintragen, Claude Code neu starten |
 | «verweigert den Zugriff (HTTP 401/403)» | Schlüssel falsch, abgelaufen oder Abo deckt den Endpunkt nicht | Schlüssel prüfen, `python3 tools/pruefen.py --live` |
 | «Kontingent oder Ratenlimit erreicht (HTTP 429)» | Tages- oder Minutenlimit der Quelle | Später weiter. Der Rapport nennt die Lücke. |
@@ -304,39 +513,97 @@ Was ihr wissen müsst:
 | «… ist nicht durch die PII-Prüfung freigegeben» | Datei von Hand in den Eingang kopiert oder nachträglich geändert | `python3 tools/fall.py aufnehmen <Fall-ID> <Datei>` |
 | Dokument wird nicht aufgenommen (Sperrfunde) | Personendaten übersehen, oder Fehlalarm | Nachpseudonymisieren. Bei Fehlalarm am Terminal: `--trotzdem "Begründung" --durch "Kürzel"` |
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
-| Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, `./setup.sh` erneut |
+| Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
 | «Protokoll … ABWEICHUNGEN» | Protokoll oder Rohdatei wurde verändert | Nicht reparieren. Vorfall klären. |
 
-Protokolle der Einrichtung: `/tmp/osint-pip.log`, `/tmp/osint-docker.log`, `/tmp/osint-muster.log`.
+Meldungen der Einrichtung: `/tmp/osint-setup/` (unter Windows `%TEMP%\osint-setup\`), je Schritt eine Datei:
+`pakete.log`, `venv.log`, `pip.log`, `claude.log`, `docker.log`, `muster.log`, `pruefung.log`. Was fehlt, ohne
+etwas zu ändern: `./setup.sh --nur-pruefen`.
 
 ## Stand der Prüfung und Grenzen
 
-Geprüft:
+**Bei jeder Änderung geprüft** durch GitHub Actions ([`.github/workflows/pruefung.yml`](.github/workflows/pruefung.yml)),
+zuletzt auf Ubuntu 26.04, macOS 26 und Windows Server 2025, dort je einmal mit Windows PowerShell 5.1 und mit
+PowerShell 7:
 
-- 14 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
-  Manipulationserkennung, Cache, Freigaben, Wächter, Sitzungs-Hook, PII-Prüfung, Prüfregeln des Rapports,
-  Übereinstimmung der Agenten mit den Werkzeugen.
+- Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
+  Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
+- 27 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+  Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
+  Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
+  Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
+  Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
+- Der Assistent in einem echten Terminal. Unter Linux und macOS fährt ihn ein Selbsttest in einem
+  Pseudo-Terminal, unter Windows in einer eigenen, unsichtbaren Konsole, deren Bildschirm er ausliest und in
+  deren Eingabepuffer er Tasten legt. Geprüft ist jeweils: Pfeiltasten und Enter kommen an, die Steuerzeichen
+  für Farbe und Cursor wirken, ein eingegebener Schlüssel steht nie auf dem Bildschirm, die Vorschau verändert
+  nichts, und das Terminal ist danach wieder im alten Zustand.
+- Die ausführliche Prüfung `tools/pruefen.py`.
+- Zwei weitere Läufe: Mythos freischalten und wieder zurücknehmen.
+- Der Klon ist danach unverändert (`git status` leer). Der Musterfall fällt also auf allen drei Systemen Byte für
+  Byte gleich aus.
+- `claude doctor` beanstandet die Einstellungen nicht.
+
+**Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
+
+- Claude Code verbindet sich mit dem Gateway (`claude mcp list`) und startet es mit dem Interpreter aus der
+  Umgebungsvariablen `OSINT_PYTHON`.
+- Die Fehlerbilder der Einrichtung: Claude Code fehlt, Installer nicht erreichbar, nur ein altes Python,
+  Ordner unter dem anderen System eingerichtet, unbekannte Option, Übernahme von Schlüsseln aus einer Datei.
+- `claude doctor` nimmt die Einstellungen in beiden Zuständen an, mit und ohne freigeschaltetes Mythos.
+- Gegenproben: Ohne Dateisperre scheitert der Sperrtest. Absichtlich falsche Werte in den Einstellungen
+  (`onFailure`, `availableModels`) beanstandet `claude doctor`. Zeigt die verdeckte Eingabe den Schlüssel im
+  Klartext, schlagen drei Selbsttests an. Legt die Vorschau eine Datei an, schlägt der Test im Terminal an.
+- Der Assistent von Anfang bis Ende in einem Pseudo-Terminal: der erste Lauf mit echter Einrichtung, danach
+  «Einstellungen ändern» (Schlüssel eintragen, in einem Stück einfügen, entfernen, aus einer Datei übernehmen,
+  Proxy setzen und zurücknehmen), Abbruch mit Esc und mit Strg+C, vorab getippte Tasten und doppeltes Enter vor
+  der Übersicht, schmale und niedrige Fenster bis 44 × 12 Zeichen, der schlichte Modus. Die Bilder im Abschnitt [Einrichten](#einrichten) stammen aus einem solchen Lauf.
 - Der Musterfall läuft durch dieselben Gateway-Werkzeuge wie eine echte Ermittlung, mit vorgefertigten Antworten.
-- Claude Code 2.1.323 liest `.mcp.json`, verbindet sich mit dem Gateway (`claude mcp list`) und beanstandet die
-  Einstellungen nicht (`claude doctor`).
 
-Nicht geprüft:
+**Nicht geprüft:**
 
 - **Die Quellen selbst.** Beim Bau standen weder Schlüssel noch Netzzugang zu den Diensten zur Verfügung. Die
   Endpunkte folgen den Dokumentationen und offiziellen Clients (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
   `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
   sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
-  Zusammenspiel. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
-- **Robin und Web-Check im Betrieb.** Docker lief beim Bau nicht.
+  Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
+- **Die Umschaltung der Modelle in einer Sitzung.** Dass Claude Code den Wunsch nach Mythos übergeht, solange es
+  nicht zugelassen ist, und umschaltet, sobald es das ist, steht so in der Dokumentation von Anthropic (Links
+  unter [Modelle je Phase](#modelle-je-phase)). Gesehen ist es hier nicht: In der Bauumgebung liess sich aus
+  Claude Code heraus kein zweites Claude Code mit einem Modell starten. Geprüft ist, was die Dateien verlangen
+  und was die Einrichtung einträgt. Den Zugang eures Kontos prüft `python3 tools/pruefen.py --live`. Nach der
+  ersten echten Ermittlung zeigt das Ermittlungsprotokoll, welches Modell welchen Teil gemacht hat. Diese
+  Aufzeichnung ist ihrerseits nur an nachgestellten Transkripten getestet.
+- **Windows auf einem Arbeitsplatzrechner.** Die Prüfung läuft auf Windows Server 2025, nicht auf Windows 10
+  oder 11. Python, Git for Windows und Poppler waren dort schon vorhanden, ihre Installation über winget kam
+  also nicht zum Zug. Dass Claude Code unter Windows `OSINT_PYTHON` übernimmt und die Hooks über Git Bash
+  startet, ist aus den Bausteinen geschlossen (Linux-Lauf, Hook-Starter in Git Bash), nicht in einer Sitzung gesehen.
+- **Der Assistent in Windows Terminal und auf Windows 10 oder 11.** Geprüft ist er im klassischen
+  Konsolenfenster von Windows Server 2025, und dort mit Tasten, die der Test in den Eingabepuffer legt. Ob das
+  Einfügen aus der Zwischenablage einen Schlüssel auf jedem Rechner als Text liefert, ist damit nicht gesehen.
+  Für den Fall, dass etwas klemmt, gibt es `--schlicht` und den Eintrag von Hand in `.env`.
+- **Die Anmeldung aus der Einrichtung heraus.** Der Assistent ruft dafür `claude auth login` auf. Den Befehl
+  und seine Schalter gibt es (Claude Code 2.1.323). Der Ablauf im Browser liess sich in der Bauumgebung nicht
+  durchspielen. Misslingt er, meldet die Einrichtung das und nennt den Weg von Hand.
+- **Die Rückfragen ausserhalb des Assistenten:** die Frage der Startskripte vor der Installation von Python
+  (auf den Prüfrechnern war Python vorhanden) und die Passwortfrage von `sudo` (die Prüfrechner brauchen keins).
+  Die Skripte sind statisch geprüft (shellcheck, PowerShell-Parser).
+- **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie die Installation von
+  Docker, ob über `--docker-installieren` oder über die Frage «Dienste».
+  Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
+- **Robin und Web-Check im Betrieb.** Docker lief beim Bau nicht. Die Testabfragen am Ende der Einrichtung
+  liefen deshalb nur gegen eine gesperrte Leitung: Gesehen ist, wie die Einrichtung Fehlschläge meldet, nicht
+  wie eine Quelle antwortet.
 
-Grenzen:
+**Grenzen:**
 
 - Fable 5.2 hat zusätzliche Schutzmassnahmen im Bereich Cybersicherheit. Der Arbeitsplatz verlangt vom Modell
   Abfragen und deren Auswertung, keine Analyse oder Entwicklung von Schadcode.
 - Abfragen mit Klarnamen (etwa die geschädigte Firma auf Leak-Seiten suchen) sind mit pseudonymisierten Dokumenten
   nicht möglich. Der Rapport weist sie als «im Haus nachzuholen» aus.
-- Windows ohne WSL ist nicht vorgesehen (Pfade der `.venv`, Dateisperren).
+- Unter Windows direkt braucht es Git for Windows, und Docker heisst dort Docker Desktop. Wer beides nicht will,
+  nimmt WSL.
 
 ## Erweitern
 

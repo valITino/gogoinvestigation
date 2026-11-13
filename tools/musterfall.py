@@ -16,7 +16,6 @@ import hashlib
 import json
 import os
 import random
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -25,6 +24,12 @@ from urllib.parse import parse_qs
 
 PROJEKT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJEKT))
+
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start(venv=True)      # braucht die Pakete des Gateways (httpx, pydantic)
+
 os.environ.setdefault("OSINT_PROJEKT", str(PROJEKT))
 for _name in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "SPUR_TOKEN", "ABUSEIPDB_API_KEY", "URLQUERY_API_KEY",
               "RANSOMWARE_LIVE_API_KEY"):
@@ -36,10 +41,7 @@ try:
     import httpx
     from gateway import kern, quellen_infrastruktur as infra, quellen_szene as szene, quellen_web as web
 except ModuleNotFoundError as e:
-    venv = PROJEKT / ".venv" / "bin" / "python"
-    if venv.is_file() and Path(sys.executable).resolve() != venv.resolve() and "OSINT_NEUSTART" not in os.environ:
-        os.execve(str(venv), [str(venv), *sys.argv], {**os.environ, "OSINT_NEUSTART": "1"})
-    sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst ./setup.sh ausführen.")
+    sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst {plattform.SETUP} ausführen.")
 
 from gateway.akte import FAELLE, SITZUNGEN  # noqa: E402
 from tools import fall as fallwerkzeug, protokoll, rapport  # noqa: E402
@@ -233,7 +235,7 @@ def hook(ereignis: dict, zeit: str) -> None:
     """Spielt dem Sitzungs-Hook ein Ereignis zu, so wie Claude Code es tun würde."""
     r = subprocess.run([sys.executable, str(PROJEKT / ".claude/hooks/protokoll_hook.py")],
                        input=json.dumps({"session_id": SITZUNG, "cwd": str(PROJEKT), **ereignis}), text=True,
-                       capture_output=True, env={**os.environ, "CLAUDE_PROJECT_DIR": str(PROJEKT), "OSINT_TESTZEIT": zeit})
+                       encoding="utf-8", capture_output=True, env={**os.environ, "CLAUDE_PROJECT_DIR": str(PROJEKT), "OSINT_TESTZEIT": zeit})
     if r.returncode != 0:
         raise RuntimeError(f"Sitzungs-Hook fehlgeschlagen: {r.stderr}")
 
@@ -448,13 +450,9 @@ def befunde(p: dict[str, str], stand: str) -> dict:
 
 def main() -> int:
     pfad = FAELLE / FALL
-    if pfad.exists():
-        for datei in pfad.rglob("*"):
-            if datei.is_file():
-                datei.chmod(0o644)
-        shutil.rmtree(pfad)
+    plattform.baum_loeschen(pfad)       # die Rohdaten des vorigen Laufs sind schreibgeschützt
     for alt in list(SITZUNGEN.glob(f"{SITZUNG}*")) if SITZUNGEN.is_dir() else []:
-        shutil.rmtree(alt) if alt.is_dir() else alt.unlink()
+        plattform.baum_loeschen(alt) if alt.is_dir() else alt.unlink()
     pfad.mkdir(parents=True)
 
     # 1. Fallakte anlegen und das Eingangsdokument durch die PII-Prüfung schicken
@@ -468,7 +466,7 @@ def main() -> int:
         "freigaben": {n: {"erteilt": False, "durch": "", "am": "", "vermerk": ""} for n in ("aktiv", "darkweb", "personenbezug")}})
     fallwerkzeug.jetzt = lambda: "2026-11-12T08:56:00+01:00"
     quelle = pfad / "eingang" / "rapport_pseudonymisiert.md"
-    quelle.write_text(EINGANG, encoding="utf-8")
+    plattform.text_schreiben(quelle, EINGANG)
     if not fallwerkzeug.aufnehmen(FALL, [str(quelle)], None, None):
         print("FEHLER: Das Musterdokument besteht die PII-Prüfung nicht.", file=sys.stderr)
         return 1
@@ -486,7 +484,7 @@ def main() -> int:
     ids = asyncio.run(ermitteln(uhr))
 
     # 3. Befunde schreiben, Rapport und Protokoll erzeugen
-    (pfad / "befunde.json").write_text(json.dumps(befunde(ids, uhr.weiter(240)), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    plattform.text_schreiben(pfad / "befunde.json", json.dumps(befunde(ids, uhr.weiter(240)), ensure_ascii=False, indent=2) + "\n")
     hook({"hook_event_name": "PostToolUse", "tool_name": "Write", "agent_type": "rapportfuehrer", "agent_id": "agent-rapportfuehrer",
           "tool_use_id": "toolu_muster_900", "tool_input": {"file_path": f"faelle/{FALL}/befunde.json", "content": "…"},
           "tool_response": {"type": "create"}, "duration_ms": 12}, uhr.weiter(1))

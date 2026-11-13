@@ -2,7 +2,7 @@
 name: darkweb-analyst
 description: Prüft den Bezug eines Falls zu Ransomware-Gruppen, Leak-Seiten und Datenlecks. Gruppenprofile und Opferlisten über ransomware.live, Breach-Feed auf Telegram, Suche und Lektüre von Onion-Seiten über Robin (nur mit Freigabe darkweb). Einsetzen bei Erpressung, Leak-Verdacht, Gruppennamen oder Onion-Adressen im Fall.
 tools: Read, Grep, Glob, mcp__osint__fall_status, mcp__osint__ransomware_opfer, mcp__osint__ransomware_gruppe, mcp__osint__ransomware_iocs, mcp__osint__ransomware_aktuell, mcp__osint__onion_sperrliste, mcp__osint__telegram_kanal, mcp__osint__telegram_kanalinfo, mcp__robin__robin_health, mcp__robin__robin_search, mcp__robin__robin_refine, mcp__robin__robin_filter, mcp__robin__robin_scrape
-model: inherit
+model: claude-mythos-5-2
 skills:
   - ermittlungsstandard
 ---

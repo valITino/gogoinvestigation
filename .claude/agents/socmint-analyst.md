@@ -2,7 +2,7 @@
 name: socmint-analyst
 description: Wertet öffentliche Kanäle und Foren zu einem Fall aus. 4chan-Threads suchen und sichern, öffentliche Telegram-Kanäle lesen, Mastodon-Instanzen einordnen. Kontoabfragen (Mastodon-Konto, Telegram-Entität) nur mit Freigabe personenbezug. Einsetzen, wenn ein Fall Konten, Kanäle, Handles oder Forenbezug der Täterseite enthält.
 tools: Read, Grep, Glob, mcp__osint__fall_status, mcp__osint__chan_katalog, mcp__osint__chan_thread, mcp__osint__telegram_kanal, mcp__osint__telegram_kanalinfo, mcp__osint__telegram_entitaet, mcp__osint__telegram_suche, mcp__osint__mastodon_instanz, mcp__osint__mastodon_konto
-model: inherit
+model: claude-mythos-5-2
 skills:
   - ermittlungsstandard
 ---

@@ -1,136 +1,108 @@
 #!/usr/bin/env bash
-# Richtet den OSINT-Ermittlungsarbeitsplatz ein. Ohne Rückfragen, beliebig oft wiederholbar.
+# Richtet den OSINT-Ermittlungsarbeitsplatz ein (Linux, macOS, WSL). Beliebig oft wiederholbar.
 #
-#   ./setup.sh                 alles einrichten
-#   ./setup.sh --ohne-docker   Web-Check und Robin auslassen
-#   ./setup.sh --ohne-robin    nur Robin (Dark Web) auslassen
+#   ./setup.sh                              im Terminal: Ein Assistent fragt, zeigt eine Übersicht und richtet dann ein
+#   ./setup.sh --ohne-rueckfragen           nichts fragen (so läuft es auch ohne Terminal, etwa in einem Skript)
+#   ./setup.sh --nur-pruefen                nur zeigen, was vorhanden ist und was fehlt
+#   ./setup.sh --hilfe                      alle Optionen
 #
-# Was geschieht:
-#   1. Python prüfen, .venv anlegen, Pakete installieren
-#   2. .env aus .env.example anlegen (vorhandene .env bleibt unberührt)
-#   3. Web-Check per Docker starten, Robin-Abbild laden (wenn Docker läuft)
-#   4. MCP-Server für Claude Code freischalten (.claude/settings.local.json)
-#   5. Musterfall bauen und Einrichtung prüfen
-set -uo pipefail
-cd "$(dirname "$0")"
+# Dieses Skript sorgt nur für ein brauchbares Python (3.10 oder neuer) und übergibt dann an
+# tools/einrichten.py. Dort steht alles Weitere, für Linux, macOS und Windows gemeinsam.
+# Unter Windows ohne WSL: setup.cmd
+set -u
+cd "$(dirname "$0")" || exit 1
 
-MIT_DOCKER=1; MIT_ROBIN=1
+fehler() {
+  printf '\nFEHLER: %s\n' "$1" >&2
+  shift
+  for zeile in "$@"; do printf '        %s\n' "$zeile" >&2; done
+  exit 1
+}
+
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    fehler "Das ist Git Bash unter Windows." \
+      "Bitte in PowerShell oder der Eingabeaufforderung starten:  .\\setup.cmd" \
+      "Oder in einem WSL-Terminal:  ./setup.sh" ;;
+esac
+
+DARF=1      # darf dieses Skript Python nachinstallieren?
+FRAGEN=0    # vorher fragen? Nur im Terminal, und nicht wenn ohne Rückfragen gewünscht
+if [ -t 0 ] && [ -t 1 ] && [ -z "${CI:-}" ]; then FRAGEN=1; fi
 for arg in "$@"; do
   case "$arg" in
-    --ohne-docker) MIT_DOCKER=0; MIT_ROBIN=0 ;;
-    --ohne-robin)  MIT_ROBIN=0 ;;
-    -h|--help|--hilfe) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unbekannte Option: $arg (Hilfe: ./setup.sh --hilfe)"; exit 2 ;;
+    --nur-pruefen|--nichts-installieren|--vorschau|--hilfe|--help|-h) DARF=0 ;;
+    --ohne-rueckfragen|--ja|-y) FRAGEN=0 ;;
   esac
 done
 
-schritt() { printf '\n\033[1m[%s/5] %s\033[0m\n' "$1" "$2"; }
-gut()     { printf '  \033[32m✓\033[0m %s\n' "$1"; }
-aus()     { printf '  – %s\n' "$1"; }
-abbruch() { printf '\n\033[31mFEHLER:\033[0m %s\n' "$1"; [ -n "${2:-}" ] && printf '        %s\n' "$2"; exit 1; }
+python_ok() { "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; }
 
-# ------------------------------------------------------------------ 1 Python
-schritt 1 "Python-Umgebung"
-command -v python3 >/dev/null 2>&1 || abbruch "python3 wurde nicht gefunden." \
-  "Installieren: Debian/Ubuntu 'sudo apt install python3 python3-venv', macOS 'brew install python'."
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || abbruch \
-  "Python $(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))') ist zu alt. Nötig ist 3.10 oder neuer."
-gut "Python $(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
-
-if [ ! -x .venv/bin/python ]; then
-  python3 -m venv .venv 2>/tmp/osint-venv.log || abbruch "Die Python-Umgebung .venv liess sich nicht anlegen." \
-    "Meist fehlt das Paket python3-venv: 'sudo apt install python3-venv'. Details: /tmp/osint-venv.log"
-  gut ".venv angelegt"
-else
-  gut ".venv vorhanden"
-fi
-if ! .venv/bin/python -m pip install --quiet --disable-pip-version-check -r requirements.txt 2>/tmp/osint-pip.log; then
-  tail -n 5 /tmp/osint-pip.log
-  abbruch "Die Python-Pakete liessen sich nicht installieren." \
-    "Internetzugang und Proxy prüfen (HTTPS_PROXY). Vollständige Meldung: /tmp/osint-pip.log"
-fi
-gut "Pakete installiert (mcp, httpx, pydantic)"
-chmod +x .claude/hooks/*.py tools/*.py gateway/start.py 2>/dev/null || true
-
-# ------------------------------------------------------------------ 2 .env
-schritt 2 "Schlüsseldatei"
-if [ -f .env ]; then
-  gut ".env vorhanden, bleibt unverändert"
-else
-  cp .env.example .env && chmod 600 .env
-  gut ".env aus .env.example angelegt. Schlüssel dort eintragen."
-fi
-mkdir -p faelle protokoll/sitzungen
-
-# ------------------------------------------------------------------ 3 Docker
-schritt 3 "Web-Check und Robin (Docker)"
-DOCKER_OK=0; ROBIN_OK=0
-if [ "$MIT_DOCKER" = 0 ]; then
-  aus "übersprungen (--ohne-docker)"
-elif ! command -v docker >/dev/null 2>&1; then
-  aus "Docker ist nicht installiert. Web-Check und Robin bleiben aus, alles andere läuft."
-elif ! docker info >/dev/null 2>&1; then
-  aus "Docker ist installiert, aber der Dienst läuft nicht oder ihr habt keinen Zugriff darauf."
-  aus "Docker starten und ./setup.sh erneut ausführen, um Web-Check und Robin zu aktivieren."
-else
-  DOCKER_OK=1
-  if docker compose up -d webcheck >/tmp/osint-docker.log 2>&1; then
-    gut "Web-Check läuft auf 127.0.0.1:${WEBCHECK_PORT:-3000}"
-  else
-    aus "Web-Check liess sich nicht starten (Port belegt? WEBCHECK_PORT setzen). Details: /tmp/osint-docker.log"
-  fi
-  if [ "$MIT_ROBIN" = 1 ]; then
-    ROBIN_IMAGE="${ROBIN_IMAGE:-$(grep -E '^ROBIN_IMAGE=' .env 2>/dev/null | tail -n1 | cut -d= -f2-)}"
-    ROBIN_IMAGE="${ROBIN_IMAGE:-apurvsg/robin:latest}"
-    if docker image inspect "$ROBIN_IMAGE" >/dev/null 2>&1 || docker pull "$ROBIN_IMAGE" >>/tmp/osint-docker.log 2>&1; then
-      ROBIN_OK=1; gut "Robin-Abbild bereit ($ROBIN_IMAGE)"
-    else
-      aus "Robin-Abbild $ROBIN_IMAGE liess sich nicht laden. Dark-Web-Suche bleibt aus. Details: /tmp/osint-docker.log"
+PYTHON=""
+finde_python() {
+  for p in python3 python3.13 python3.12 python3.11 python3.10 python; do
+    command -v "$p" >/dev/null 2>&1 || continue
+    # macOS: /usr/bin/python3 ist ohne die Command Line Tools ein Platzhalter, der nur ein Installationsfenster öffnet
+    if [ "$(uname -s)" = Darwin ] && [ "$(command -v "$p")" = /usr/bin/python3 ] && ! xcode-select -p >/dev/null 2>&1; then
+      continue
     fi
-  else
-    aus "Robin übersprungen (--ohne-robin)"
+    if python_ok "$p"; then PYTHON="$p"; return 0; fi
+  done
+  return 1
+}
+
+als_root() {
+  if [ "$(id -u)" = 0 ]; then "$@"
+  elif command -v sudo >/dev/null 2>&1; then sudo "$@"
+  else return 127
+  fi
+}
+
+python_installieren() {
+  LOG="${TMPDIR:-/tmp}/osint-setup"
+  mkdir -p "$LOG" 2>/dev/null
+  LOG="$LOG/python.log"
+  printf '  + Python 3.10 oder neuer fehlt. Es wird über die Paketverwaltung installiert'
+  [ "$(id -u)" = 0 ] || command -v brew >/dev/null 2>&1 || printf ' (sudo fragt dafür einmal nach eurem Passwort)'
+  printf ' ...\n'
+  if command -v apt-get >/dev/null 2>&1; then
+    als_root apt-get update -qq >>"$LOG" 2>&1
+    als_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv >>"$LOG" 2>&1
+  elif command -v dnf >/dev/null 2>&1; then als_root dnf install -y python3 >>"$LOG" 2>&1
+  elif command -v yum >/dev/null 2>&1; then als_root yum install -y python3 >>"$LOG" 2>&1
+  elif command -v pacman >/dev/null 2>&1; then als_root pacman -S --noconfirm --needed python >>"$LOG" 2>&1
+  elif command -v zypper >/dev/null 2>&1; then als_root zypper --non-interactive install python3 >>"$LOG" 2>&1
+  elif command -v apk >/dev/null 2>&1; then als_root apk add python3 >>"$LOG" 2>&1
+  elif command -v brew >/dev/null 2>&1; then brew install python >>"$LOG" 2>&1
+  else return 1
+  fi
+}
+
+if ! finde_python && [ "$DARF" = 1 ]; then
+  if [ "$FRAGEN" = 1 ]; then
+    printf '\n  Die Einrichtung braucht Python 3.10 oder neuer. Auf diesem Rechner fehlt es.\n'
+    printf '  Jetzt über die Paketverwaltung installieren? [J/n] '
+    read -r antwort
+    case "$antwort" in n|N|nein|Nein|NEIN|no|No) DARF=0 ;; esac
+  fi
+  if [ "$DARF" = 1 ]; then
+    python_installieren
+    hash -r 2>/dev/null
+    finde_python
   fi
 fi
 
-# ------------------------------------------------------------------ 4 Claude Code
-schritt 4 "Claude Code"
-ROBIN_OK="$ROBIN_OK" python3 - <<'PY'
-import json, os, pathlib
-datei = pathlib.Path(".claude/settings.local.json")
-try:
-    daten = json.loads(datei.read_text()) if datei.is_file() else {}
-except json.JSONDecodeError:
-    daten = {}
-robin = os.environ.get("ROBIN_OK") == "1"
-an = [s for s in daten.get("enabledMcpjsonServers", []) if s not in ("osint", "robin")] + ["osint"] + (["robin"] if robin else [])
-ab = [s for s in daten.get("disabledMcpjsonServers", []) if s not in ("osint", "robin")] + ([] if robin else ["robin"])
-daten["enabledMcpjsonServers"] = an
-daten["disabledMcpjsonServers"] = ab
-datei.write_text(json.dumps(daten, indent=2) + "\n")
-print("  \033[32m✓\033[0m MCP-Server freigeschaltet: " + ", ".join(an) + ("" if robin else "  (robin aus: kein Docker oder kein Abbild)"))
-PY
-if command -v claude >/dev/null 2>&1; then
-  gut "Claude Code gefunden: $(claude --version 2>/dev/null | head -n1)"
-else
-  aus "Claude Code ist nicht installiert. Anleitung: https://code.claude.com/docs"
+if [ -z "$PYTHON" ]; then
+  gefunden=""
+  if command -v python3 >/dev/null 2>&1; then
+    gefunden="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null)"
+  fi
+  fehler "Python 3.10 oder neuer wird gebraucht${gefunden:+, gefunden wurde nur $gefunden}." \
+    "Debian, Ubuntu, Kali:  sudo apt install python3 python3-venv" \
+    "Fedora:                sudo dnf install python3" \
+    "macOS:                 brew install python     (Homebrew: https://brew.sh)" \
+    "Bringt die Distribution nur ein älteres Python mit, hilft eine neuere Version der Distribution." \
+    "Danach ./setup.sh erneut starten.${LOG:+ Meldungen der Paketverwaltung: $LOG}"
 fi
 
-# ------------------------------------------------------------------ 5 Musterfall und Prüfung
-schritt 5 "Musterfall und Prüfung"
-if .venv/bin/python tools/musterfall.py >/tmp/osint-muster.log 2>&1; then
-  gut "Musterfall gebaut: faelle/MUSTER-2026-001/rapport/Abschlussrapport.html"
-else
-  tail -n 5 /tmp/osint-muster.log
-  abbruch "Der Musterfall liess sich nicht bauen." "Vollständige Meldung: /tmp/osint-muster.log"
-fi
-python3 tools/pruefen.py
-STAND=$?
-
-printf '\n\033[1mSo geht es weiter\033[0m\n'
-cat <<'TEXT'
-  1. Schlüssel in .env eintragen (jede Quelle ist für sich optional). Stand: python3 tools/pruefen.py --live
-  2. Musterfall ansehen:  faelle/MUSTER-2026-001/rapport/Abschlussrapport.html
-  3. Fall anlegen:        python3 tools/fall.py neu 2026-0001 --titel "…" --rapport <pseudonymisiertes Dokument>
-  4. Ermitteln:           claude      und dort      /ermittlung 2026-0001
-TEXT
-exit $STAND
+exec "$PYTHON" tools/einrichten.py "$@"
