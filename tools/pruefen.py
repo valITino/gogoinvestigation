@@ -114,6 +114,12 @@ def umgebung(env: dict[str, str]) -> None:
         zeile(GUT, "Web-Check", f"erreichbar unter {adresse}")
     else:
         zeile(AUS, "Web-Check", f"nicht erreichbar unter {adresse} (Start: docker compose up -d webcheck)")
+    from tools.pdf import browser_finden
+    browser = browser_finden()
+    if browser:
+        zeile(GUT, "Browser für PDF", Path(browser).name)
+    else:
+        zeile(AUS, "Browser für PDF", "kein Chrome, Chromium, Edge oder Brave: PDF dann über 'Drucken' im Browser")
     if shutil.which("pdftotext"):
         zeile(GUT, "pdftotext", "PDF-Dokumente können aufgenommen werden")
     else:

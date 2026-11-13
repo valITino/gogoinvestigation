@@ -14,6 +14,10 @@ darüber, wann was wo und wozu abgefragt wurde.
 
 ![Abschlussrapport des Musterfalls](docs/bilder/abschlussrapport.png)
 
+**Muster ansehen:** [Abschlussrapport (PDF, 12 Seiten)](muster/Abschlussrapport.pdf) ·
+[Ermittlungsprotokoll (PDF, 7 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+[was der Musterfall zeigt](muster/README.md). Der Fall ist frei erfunden.
+
 ## Inhalt
 
 - [Was ihr bekommt](#was-ihr-bekommt)
@@ -56,7 +60,7 @@ flowchart LR
 | **Skills** (`.claude/skills/`) | Die Methodik: Ablauf der Ermittlung, Indikatoren ziehen, Ermittlungsstandard, Rapport, Protokoll. |
 | **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat. |
 | **Werkzeuge** (`tools/`) | Fall anlegen, PII-Prüfung, Rapport und Protokoll erzeugen, Kette prüfen, Einrichtung prüfen. |
-| **Musterfall** (`faelle/MUSTER-2026-001/`) | Ein erfundener Fall, komplett durchgespielt. Zeigt, was am Ende in der Fallakte liegt. |
+| **Musterfall** (`faelle/MUSTER-2026-001/`, `muster/`) | Ein erfundener Fall, komplett durchgespielt. Zeigt, was am Ende in der Fallakte liegt. Rapport und Protokoll als PDF unter [`muster/`](muster/). |
 
 Die Ergebnisse einer Ermittlung:
 
@@ -64,6 +68,7 @@ Die Ergebnisse einer Ermittlung:
   Lücken, Empfehlungen, Glossar. Eine Datei, ohne Abhängigkeiten, aus dem Browser als PDF druckbar.
 - `Ermittlungsprotokoll.html` und `.csv`: jede Abfrage mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und Agent.
 - `indikatoren.csv`: die Indikatorliste zum Weitergeben.
+- Beide Dokumente als PDF im Format A4: `python3 tools/pdf.py <Fall-ID>`.
 
 ![Beziehungsgraf](docs/bilder/beziehungsgraf.png)
 
@@ -78,6 +83,7 @@ Die Ergebnisse einer Ermittlung:
 | [Claude Code](https://code.claude.com/docs) mit einem Konto, das Fable 5.2 nutzen darf | die Agenten | ja |
 | Docker | Web-Check und Robin (Dark Web) | nein, beides bleibt sonst aus |
 | `pdftotext` (Paket `poppler-utils`) | PDF-Dokumente aufnehmen | nein, `.txt` `.md` `.docx` gehen ohne |
+| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken |
 
 **Installation**
 
@@ -172,7 +178,11 @@ python3 tools/fall.py freigabe 2026-0412 personenbezug --durch "…" --vermerk "
 
 Der Befehl verlangt eine Bestätigung am Terminal. Ein Agent kann sich keine Freigabe selbst erteilen.
 
-**4. Ergebnis ansehen.** `faelle/2026-0412/rapport/Abschlussrapport.html` im Browser öffnen, als PDF drucken.
+**4. Ergebnis ansehen.** `faelle/2026-0412/rapport/Abschlussrapport.html` im Browser öffnen. Als PDF:
+
+```bash
+python3 tools/pdf.py 2026-0412
+```
 
 **5. Zurückführen, im Haus.** Die Platzhalter im fertigen Rapport ersetzt ihr ausserhalb von Claude Code:
 
@@ -188,6 +198,7 @@ python3 tools/fall.py status 2026-0412         # Stand und Freigaben
 python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
 python3 tools/rapport.py 2026-0412             # Rapport neu erzeugen (--entwurf, --nur-pruefen)
 python3 tools/protokoll.py 2026-0412           # Protokoll neu erzeugen
+python3 tools/pdf.py 2026-0412                 # beide Dokumente als PDF (A4)
 python3 tools/audit_pruefen.py 2026-0412       # Protokollkette prüfen
 python3 tools/musterfall.py                    # Musterfall neu bauen
 ```

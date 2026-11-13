@@ -50,6 +50,8 @@ th{{text-align:left;font-weight:600;color:var(--tinte-2);font-size:12px;border-b
 td{{border-bottom:1px solid var(--raster);padding:7px 10px 7px 0;vertical-align:top}}
 td.zahl,th.zahl{{text-align:right;font-variant-numeric:tabular-nums}}
 .tabelle-breit{{overflow-x:auto}} .nw{{white-space:nowrap}} td.wert{{min-width:230px}}
+table.eintraege{{table-layout:fixed}} .eintrag{{break-inside:avoid}}
+.eintrag .haupt td{{border-bottom:0;padding-bottom:3px}} .eintrag .technik td{{padding-top:0;overflow-wrap:anywhere}}
 .marke{{display:inline-block;border:1px solid var(--achse);border-radius:999px;padding:0 8px;font-size:12px;
   line-height:20px;white-space:nowrap;color:var(--tinte-2)}}
 .punkt{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}}
@@ -75,9 +77,14 @@ svg .zweit{{fill:var(--tinte-2)}} svg .leise{{fill:var(--gedaempft)}}
   background:var(--serie);box-shadow:0 0 0 2px var(--flaeche)}}
 .zeitachse .text{{padding-bottom:16px}}
 .fuss{{margin-top:48px;padding-top:14px;border-top:1px solid var(--raster);font-size:12.5px;color:var(--tinte-2)}}
-@media print{{body{{background:#fff}} main{{border:0;max-width:none;padding:0}} h2{{break-after:avoid}}
+@media print{{
+  :root{{--flaeche:#fff;--seite:#fff}}
+  *{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  body{{background:#fff;font-size:13.5px}} main{{border:0;max-width:none;padding:0;min-height:0;background:#fff}}
+  h2{{break-after:avoid;margin-top:28px}} h3{{break-after:avoid}} tr{{break-inside:avoid}}
+  tr:first-child{{break-after:avoid}} thead{{display:table-header-group}}
   a{{text-decoration:none}} .nicht-drucken{{display:none}}}}
-@page{{margin:16mm 14mm}}
+@page{{size:A4;margin:16mm 14mm}}
 """
 
 

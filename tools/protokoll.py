@@ -59,6 +59,20 @@ def groesse(n: int | None) -> str:
     return f"{n} B" if n < 1024 else f"{n / 1024:.1f} kB" if n < 1 << 20 else f"{n / (1 << 20):.1f} MB"
 
 
+KOPFZEILE = ("<thead><tr><th style='width:7.5%'>Nr.</th><th style='width:11%'>Zeit</th><th style='width:27%'>Quelle / Werkzeug</th>"
+             "<th>Ziel und Zweck</th><th style='width:19.5%'>Ergebnis / durch</th></tr></thead>")
+
+
+def eintrag(e: dict, quelle: str, ziel: str, ergebnis: str, durch: str | None, technik: list[str]) -> str:
+    """Ein Protokolleintrag: Hauptzeile, darunter die technischen Angaben über die volle Breite.
+    Die Bausteine sind bereits HTML und von der aufrufenden Stelle maskiert."""
+    zeit = esc(lokal(e.get("zeit_utc"))).replace(" ", "<br>")
+    return (f"<tbody class='eintrag' id='{esc(e['id'])}'><tr class='haupt'><td class='beleg'>{esc(e['id'])}</td>"
+            f"<td title='{esc(e.get('zeit_utc', ''))} UTC'>{zeit}</td><td>{quelle}</td><td>{ziel}</td>"
+            f"<td>{ergebnis}<div class='klein' style='margin-top:3px'>{esc(durch or '–')}</div></td></tr>"
+            f"<tr class='technik'><td></td><td colspan='4' class='klein mono'>{'<br>'.join(technik)}</td></tr></tbody>")
+
+
 def sitzungen_laden(fall_id: str) -> tuple[list[dict], list[str]]:
     """Alle Einträge der Sitzungen, die diesen Fall berührt haben, plus Meldungen zur Kettenprüfung."""
     eintraege: list[dict] = []
@@ -150,34 +164,28 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
              "Dritten befragt, das Ziel selbst wurde nicht kontaktiert. «Aktiv» heisst: Das Ziel wurde aufgerufen. "
              "Schlüssel und Zugangsdaten sind in den Adressen unkenntlich gemacht.</p>")
     if abfragen:
-        h.append("<div class='tabelle-breit'><table><tr><th>Nr.</th><th>Zeit</th><th>Quelle / Werkzeug</th><th>Ziel und Zweck</th>"
-                 "<th>Ergebnis</th><th>Durch</th></tr>")
+        h.append("<div class='tabelle-breit'><table class='eintraege'>" + KOPFZEILE)
         for e in abfragen:
             antwort = e.get("antwort") or {}
             anfrage = e.get("anfrage") or {}
             text, farbe = ERGEBNIS.get(e.get("ergebnis"), ("?", "var(--neutral)"))
             akteur = akteure.get(e["id"]) or {}
-            technik = f"{anfrage.get('methode', '')} {anfrage.get('url', '')}"
+            technik = [esc(f"{anfrage.get('methode', '')} {anfrage.get('url', '')}")]
             if antwort:
-                technik += f" → HTTP {antwort.get('status')}, {groesse(antwort.get('bytes'))}, {antwort.get('dauer_ms')} ms"
-            nachweis = ""
+                technik[0] += esc(f" → HTTP {antwort.get('status')}, {groesse(antwort.get('bytes'))}, {antwort.get('dauer_ms')} ms")
             if antwort.get("rohdaten"):
-                nachweis = (f"<br>Rohdaten: <a href='../{esc(antwort['rohdaten'])}'>{esc(antwort['rohdaten'])}</a>"
-                            f"<br>SHA-256: {esc(antwort.get('sha256') or '')}")
+                technik.append(f"Rohdaten: <a href='../{esc(antwort['rohdaten'])}'>{esc(antwort['rohdaten'])}</a>"
+                               f" · SHA-256: {esc(antwort.get('sha256') or '')}")
             if antwort.get("aus_cache"):
-                nachweis += f"<br>Aus dem Fall-Cache, ursprüngliche Abfrage: <a href='#{esc(antwort['aus_cache'])}'>{esc(antwort['aus_cache'])}</a>"
+                technik.append(f"Aus dem Fall-Cache, ursprüngliche Abfrage: <a href='#{esc(antwort['aus_cache'])}'>{esc(antwort['aus_cache'])}</a>")
             if e.get("fehler"):
-                nachweis += f"<br>Meldung: {esc(e['fehler'])}"
+                technik.append(f"Meldung: {esc(e['fehler'])}")
             art = "aktiv" if e.get("art") == "aktiv" else "passiv"
-            h.append(
-                f"<tr id='{esc(e['id'])}'><td class='beleg'>{esc(e['id'])}</td>"
-                f"<td title='{esc(e.get('zeit_utc', ''))} UTC'>{esc(lokal(e.get('zeit_utc'))).replace(' ', '<br>')}</td>"
-                f"<td class='nw'>{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span><br>"
-                f"<span class='marke'>{art}</span>{' <span class=marke>über Proxy</span>' if anfrage.get('proxy') else ''}</td>"
-                f"<td><span class='mono'>{esc(e.get('ziel', ''))}</span><br>{esc(e.get('zweck', ''))}"
-                f"<div class='klein mono' style='margin-top:4px'>{esc(technik)}{nachweis}</div></td>"
-                f"<td><span class='marke'><span class='punkt' style='background:{farbe}'></span>{esc(text)}</span></td>"
-                f"<td>{esc(akteur.get('agent') or '–')}</td></tr>")
+            marken = f"<span class='marke'>{art}</span>" + (" <span class='marke'>über Proxy</span>" if anfrage.get("proxy") else "")
+            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span><br>{marken}",
+                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span><br>{esc(e.get('zweck', ''))}",
+                             f"<span class='marke'><span class='punkt' style='background:{farbe}'></span>{esc(text)}</span>",
+                             akteur.get("agent"), technik))
         h.append("</table></div>")
     else:
         h.append("<p class='klein'>Noch keine Abfragen.</p>")
@@ -187,16 +195,15 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
              "<p class='klein'>Aufrufe von MCP-Servern ausserhalb des Gateways, zum Beispiel die Dark-Web-Suche Robin über Tor. "
              "Der Sitzungs-Hook sichert jede Antwort vollständig in der Fallakte und verkettet sie wie die Abfragen des Gateways.</p>")
     if extern:
-        h.append("<div class='tabelle-breit'><table><tr><th>Nr.</th><th>Zeit</th><th>Quelle / Werkzeug</th><th>Eingabe</th><th>Durch</th></tr>")
+        h.append("<div class='tabelle-breit'><table class='eintraege'>" + KOPFZEILE.replace("Ziel und Zweck", "Eingabe"))
         for e in extern:
             antwort = e.get("antwort") or {}
-            h.append(f"<tr id='{esc(e['id'])}'><td class='beleg'>{esc(e['id'])}</td>"
-                     f"<td title='{esc(e.get('zeit_utc', ''))} UTC'>{esc(lokal(e.get('zeit_utc'))).replace(' ', '<br>')}</td>"
-                     f"<td class='nw'>{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span></td>"
-                     f"<td><span class='mono'>{esc(e.get('ziel', ''))}</span>"
-                     f"<div class='klein mono' style='margin-top:4px'>Rohdaten: <a href='../{esc(antwort.get('rohdaten', ''))}'>{esc(antwort.get('rohdaten', ''))}</a>"
-                     f"<br>SHA-256: {esc(antwort.get('sha256') or '')}, {groesse(antwort.get('bytes'))}</div></td>"
-                     f"<td>{esc(e.get('agent') or '–')}</td></tr>")
+            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span>",
+                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span>",
+                             "<span class='marke'><span class='punkt' style='background:var(--gut)'></span>✓ gesichert</span>",
+                             e.get("agent"),
+                             [f"Rohdaten: <a href='../{esc(antwort.get('rohdaten', ''))}'>{esc(antwort.get('rohdaten', ''))}</a>"
+                              f" · SHA-256: {esc(antwort.get('sha256') or '')}, {groesse(antwort.get('bytes'))}"]))
         h.append("</table></div>")
     else:
         h.append("<p class='klein'>Keine.</p>")
