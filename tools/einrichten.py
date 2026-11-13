@@ -1414,7 +1414,7 @@ def main(argv: list[str]) -> int:
             ui.erledigt("Es fehlt Nötiges:", ", ".join(dict.fromkeys(stand.noetig)), FEHLT, breit=0)
         else:
             ui.erledigt("Alles Nötige ist vorhanden.", "", breit=0)
-        ui.liste("Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
+        ui.liste("Das ist zu tun" if stand.noetig else "Noch offen", list(dict.fromkeys(stand.offen)), nummeriert=True)
         ui.paare("Weiter", [("Einrichten", SETUP)])
         return 1 if stand.noetig else 0
     if "venv und pip" in stand.noetig or not python_umgebung():
