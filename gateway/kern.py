@@ -105,7 +105,7 @@ INTERVALL = {
     "WalletExplorer": 0.6,
     "Chainabuse": 1.0,
     "TRM Labs": 1.1,            # ohne Schlüssel: eine Anfrage je Sekunde, 100 am Tag
-    "Blockscout": 0.55,         # antwortet bei dichterer Folge mit HTTP 429
+    "Blockscout": 0.25 if einstellung("BLOCKSCOUT_API_KEY") else 1.0,   # ohne Schlüssel drosselt Blockscout früh (HTTP 429)
 }
 # Wartezeit vor dem zweiten Versuch eines Vorgangs. Austauschbar, damit Tests nicht warten.
 schlaf: Callable[[float], Any] = asyncio.sleep
@@ -191,6 +191,7 @@ class Antwort:
     aus_cache: str | None = None
     fehler: str | None = None
     quelle: str | None = None
+    warten: float | None = None   # Sekunden, die die Quelle bei Überlast zu warten bittet (Kopfzeile Retry-After)
 
     def als_dict(self, befund: Any = None, **zusatz: Any) -> dict:
         d: dict[str, Any] = {"protokoll_id": self.id, "ergebnis": self.ergebnis, "status": self.status}
@@ -309,12 +310,15 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
         client_args["proxy"] = proxy
 
     start = stoppuhr()
+    drossel: dict[str, str] = {}
     try:
         async with httpx.AsyncClient(**client_args) as client:
             r = await client.request(methode, url, params={k: v for k, v in (params or {}).items()
                                                            if v is not None} or None,
                                      headers=kopfzeilen, json=json_koerper, data=form)
         inhalt, status, fehler = r.content, r.status_code, None
+        if status == 429:       # was die Quelle zur Drossel sagt, gehört ins Protokoll: Es erklärt die Lücke
+            drossel = {name: r.headers[name][:40] for name in _DROSSEL_KOPF if name in r.headers}
     except (httpx.HTTPError, OSError, ValueError) as exc:
         inhalt, status = b"", 0
         fehler = f"Keine Verbindung zu {quelle} ({type(exc).__name__}: {exc})."
@@ -340,11 +344,20 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     antwort = {"status": status, "bytes": len(inhalt),
                "sha256": hashlib.sha256(inhalt).hexdigest() if inhalt else None,
                "rohdaten": None, "dauer_ms": dauer, "aus_cache": None}
+    if drossel:
+        antwort["drossel"] = drossel
     e = protokollieren(akte, {**basis, "antwort": antwort, "ergebnis": ergebnis, "fehler": fehler,
                               "schluessel": key}, inhalt if inhalt else None, endung)
     roh = e["antwort"]["rohdaten"]
+    try:
+        warten = float(drossel["retry-after"]) if "retry-after" in drossel else None
+    except ValueError:
+        warten = None
     return Antwort(e["id"], status, ergebnis, daten, text,
-                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler, quelle)
+                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler, quelle, warten)
+
+
+_DROSSEL_KOPF = ("retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset")
 
 
 def _http_fehler(quelle: str, status: int) -> str:
@@ -397,7 +410,7 @@ class Vorgang:
                           url=url, **angaben)
         self._merken(a, quelle, ziel)
         if nochmal and a.ergebnis == "fehler" and a.status in (0, 429, 500, 502, 503, 504):
-            await schlaf(6.0 if a.status == 429 else 2.0)
+            await schlaf(min(max(a.warten or 6.0, 1.0), 30.0) if a.status == 429 else 2.0)
             a = await abfrage(self.fall, zweck + " (zweiter Versuch)", werkzeug=self.abruf, quelle=quelle, ziel=ziel,
                               ziel_typ=ziel_typ, url=url, **angaben)
             self._merken(a, quelle, ziel)

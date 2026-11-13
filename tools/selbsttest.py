@@ -898,7 +898,7 @@ async def _ohne_warten(_sekunden: float) -> None:
 
 kern.schlaf = _ohne_warten
 KRYPTO_SCHLUESSEL = ("ETHERSCAN_API_KEY", "TRONSCAN_API_KEY", "TRONGRID_API_KEY", "CHAINABUSE_API_KEY", "IKNAIO_API_KEY",
-                     "KRYPTO_BITCOIN_API", "KRYPTO_ETHEREUM_API", "KRYPTO_TRON_API")
+                     "BLOCKSCOUT_API_KEY", "KRYPTO_BITCOIN_API", "KRYPTO_ETHEREUM_API", "KRYPTO_TRON_API")
 
 
 def kwelt() -> kw.Welt:
@@ -1199,6 +1199,53 @@ def _():
     r = kruf(krypto.krypto_zuordnung, [kw.evm(f"viele{i}") for i in range(40)], kette="ethereum")
     assert r["befund"]["quellenstand"]["TRM Labs"]["ergebnis"] == "ok", r["befund"]["quellenstand"]["TRM Labs"]
     assert sum(1 for a in w.aufrufe if a == "POST api.trmlabs.com/public/v1/sanctions/screening") == 3, w.aufrufe
+
+
+@test("Krypto: Drosselt die Quelle, endet der Lauf mit Fortsetzungsstelle. Blockscout mit Schlüssel, Schlüssel nie im Protokoll")
+def _():
+    # 10 ETH, weiter an zwei Adressen. Bei der grösseren winkt Blockscout ab (HTTP 429, «drei Sekunden warten»)
+    w = kwelt()
+    w.evm_zahlung("d0", "opfer", "taeter", 10 * ETH1, T0, 22_000_000)
+    w.evm_zahlung("d1", "taeter", "n1", 6 * ETH1, T0 + 600, 22_000_050)
+    w.evm_zahlung("d2", "taeter", "n2", 4 * ETH1, T0 + 700, 22_000_060)
+    w.evm_konto("n1", wei=6 * ETH1)
+    w.evm_konto("n2", wei=4 * ETH1)
+    w.gedrosselt.add(f"/addresses/{kw.evm('n1')}")
+    pausen: list[float] = []
+
+    async def merken(sekunden: float) -> None:
+        pausen.append(sekunden)
+    kern.schlaf = merken
+    try:
+        r = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("d0"), kette="ethereum")
+    finally:
+        kern.schlaf = _ohne_warten
+    b = r["befund"]
+    assert r["ergebnis"] == "ok" and b["summe_geht_auf"] and {e["art"]: e["betrag"] for e in b["verteilung"]} == {"grenze": "10"}, b["verteilung"]
+    assert [e["grund"] for e in b["enden"]] == ["Blockscout drosselt die Abfragen (HTTP 429)"] * 2, b["enden"]
+    assert {e["fortsetzen"]["adresse"] for e in b["enden"]} == {kw.evm("n1"), kw.evm("n2")}, "jede offene Station nennt, wo es weitergeht"
+    assert any("BLOCKSCOUT_API_KEY" in h and "Beleg P-" in h for h in b["hinweise"]), b["hinweise"]
+    assert pausen == [3.0], f"gewartet wird, so lange die Quelle es verlangt, und nur einmal: {pausen}"
+    assert not any(kw.evm("n2") in a for a in w.aufrufe if "/addresses/" in a), "nach der Abweisung wird die Quelle nicht für jede Station neu gefragt"
+    abgewiesen = [e for e in kprotokoll().values() if (e.get("antwort") or {}).get("status") == 429]
+    assert len(abgewiesen) == 2 and abgewiesen[0]["antwort"]["drossel"] == {"retry-after": "3", "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0"}, abgewiesen
+    # Mit Schlüssel geht jede Abfrage an die eine Adresse für alle Ketten. Polygon ist damit erreichbar
+    w = kwelt()
+    w.evm_zahlung("p0", "boerse", "taeter", 3 * ETH1, T0, 60_000_000)
+    w.evm_konto("taeter", wei=3 * ETH1)
+    os.environ["BLOCKSCOUT_API_KEY"] = w.blockscout_key
+    try:
+        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="polygon")
+        assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "3" and r["befund"]["kette"] == "polygon", r
+        assert w.blockscout_ketten == {"137"} and not any("polygon.blockscout.com" in a for a in w.aufrufe), (w.blockscout_ketten, w.aufrufe)
+        protokoll = lesen(PROJEKT / "faelle" / KFALL / "protokoll" / "abfragen.jsonl")
+        assert w.blockscout_key not in protokoll and "apikey=***" in protokoll, "der Blockscout-Schlüssel steht im Protokoll"
+        kwelt()
+        os.environ["BLOCKSCOUT_API_KEY"] = "proapi_falsch"
+        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="ethereum")
+        assert r["ergebnis"] == "fehler" and "BLOCKSCOUT_API_KEY in .env prüfen" in r["fehler"] and "proapi_falsch" not in json.dumps(r), r
+    finally:
+        del os.environ["BLOCKSCOUT_API_KEY"]
 
 
 @test("Krypto: Fällt eine Quelle aus, springt die Ausweichquelle ein, und «nicht geprüft» wird nie zu «kein Eintrag»")

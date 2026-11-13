@@ -79,6 +79,9 @@ class Welt:
                                         "coingecko:tether": 1.0003, "coingecko:usd-coin": 0.9998}
         self.aus: set[str] = set()           # Hosts, die gerade «gestört» sind
         self.gestoert: set[str] = set()      # Teile einer Adresse (Host, Pfad, Anfrage), bei denen nur dieser eine Abruf scheitert
+        self.gedrosselt: set[str] = set()    # ebenso, aber die Quelle antwortet mit HTTP 429 und bittet, drei Sekunden zu warten
+        self.blockscout_key = "proapi_selbsttest0001"
+        self.blockscout_ketten: set[str] = set()     # Ketten, die über den Zugang mit Schlüssel gefragt wurden
         self.abweichend: set[str] = set()    # Hosts, die eine Bitcoin-Transaktion leicht anders zeigen (für die Gegenprüfung)
         self.aufrufe: list[str] = []
 
@@ -349,6 +352,14 @@ class Welt:
         self.aufrufe.append(f"{anfrage.method} {host}{pfad}")
         if host in self.aus or any(teil in str(anfrage.url) for teil in self.gestoert):
             return httpx.Response(503, text="Service Unavailable")
+        if any(teil.lower() in str(anfrage.url).lower() for teil in self.gedrosselt):
+            return httpx.Response(429, text="Too Many Requests", headers={"Retry-After": "3", "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0"})
+        if host == "api.blockscout.com":         # Zugang mit Schlüssel: /{chain_id}/api/…, ohne gültigen Schlüssel keine Antwort
+            if frage.get("apikey") != [self.blockscout_key]:
+                return _json({"message": "Invalid or missing API key"}, 401)
+            _, kette, rest = pfad.split("/", 2)
+            self.blockscout_ketten.add(kette)
+            return self._blockscout("/" + rest, frage)
         if host in ("mempool.space", "blockstream.info"):
             return self._btc(pfad, frage, host)
         if host == "api.trongrid.io":

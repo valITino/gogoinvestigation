@@ -162,7 +162,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 36 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 37 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -267,13 +267,14 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 | urlquery | `URLQUERY_API_KEY` | Konto auf [urlquery.net](https://urlquery.net) | |
 | ransomware.live | `RANSOMWARE_LIVE_API_KEY` | [my.ransomware.live](https://my.ransomware.live) | API PRO. Die schlüssellose API v2 ist laut Anbieter nur für private Nutzung, darum hier nur mit `RANSOMWARE_LIVE_V2=1`. |
 | Telegram über RapidAPI | `RAPIDAPI_KEY` | [rapidapi.com](https://rapidapi.com), APIs «Telegram Channel» und «Telegram Scraper API» abonnieren | Nur für Kanal-Stammdaten und Kontoabfragen. Drittanbieter unbekannter Herkunft, vor dem Einsatz prüfen. |
+| Ethereum-Familie (Blockscout) | `BLOCKSCOUT_API_KEY` | [dev.blockscout.com](https://dev.blockscout.com), kostenlos | Ethereum läuft auch ohne, dann gedrosselt. Mit Schlüssel kommen Base, Arbitrum, Polygon und Gnosis verlässlich dazu. Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein: Der Schlüssel ist der Weg, den der Anbieter für Programme vorsieht. |
 | TRON (TronGrid) | `TRONGRID_API_KEY` | [trongrid.io](https://www.trongrid.io), kostenlos | TRON läuft auch ohne, dann stark gedrosselt. Für Geldflüsse über viele Stationen lohnt sich der Schlüssel. |
 | Etherscan | `ETHERSCAN_API_KEY` | [etherscan.io/apidashboard](https://etherscan.io/apidashboard), kostenlos | Weitere Ketten (Polygon, Arbitrum, Gnosis) und die Gegenprüfung von Ethereum-Transaktionen. BNB Smart Chain, Base und Optimism verlangen dort ein bezahltes Abo. |
 | Tronscan | `TRONSCAN_API_KEY` | [Anleitung von Tronscan](https://docs.tronscan.org/getting-started/api-keys), kostenlos | Namen von Börsen und Diensten für TRON-Adressen. Ohne ihn endet eine Verfolgung auf TRON bei «Sammeladresse, Dienst unbekannt». |
 | Chainabuse | `CHAINABUSE_API_KEY` | Profil auf [chainabuse.com](https://www.chainabuse.com) | Betrugsmeldungen Geschädigter. Das kostenlose Kontingent ist sehr klein, gefragt wird nur auf ausdrücklichen Wunsch. |
 | Iknaio GraphSense | `IKNAIO_API_KEY` | [ikna.io](https://www.ikna.io), Zugang für Behörden auf Anfrage | Etiketten und Cluster für Bitcoin, Ethereum, TRON. |
 | Shodan InternetDB, Wayback Machine, Ahmia-Sperrliste, Telegram-Kanalvorschau, 4chan, Mastodon | keine | | Laufen sofort. |
-| Bitcoin (mempool.space), Ethereum (Blockscout), Krypto-Zuordnung (OFAC, TRM Labs, Ransomwhere, WalletExplorer), Krypto-Kurse (DefiLlama, EZB) | keine | | Laufen sofort. |
+| Bitcoin (mempool.space), Krypto-Zuordnung (OFAC, TRM Labs, Ransomwhere, WalletExplorer), Krypto-Kurse (DefiLlama, EZB) | keine | | Laufen sofort. |
 | Web-Check | keine | eigene Instanz, die Einrichtung startet sie | Adresse in `WEBCHECK_URL`. |
 | Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
 
@@ -454,8 +455,8 @@ einem solchen Dienst ankommt, und nennt, was die fallführende Stelle dort verla
 | Kette | Ohne Schlüssel | Mit Schlüssel |
 |---|---|---|
 | Bitcoin | mempool.space, bei Störung Blockstream. Zuordnung über OFAC, TRM Labs, Ransomwhere, WalletExplorer. | Iknaio: Etiketten und Cluster |
-| Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken | Etherscan: Gegenprüfung von Transaktionen |
-| Polygon, Arbitrum, Gnosis, Base | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Etherscan (Base nur mit bezahltem Abo) |
+| Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken. Gedrosselt: Ein Geldfluss über viele Stationen bricht ohne Schlüssel ab und nennt, wo er sich fortsetzen lässt. | Blockscout: ohne Drossel. Etherscan: Gegenprüfung von Transaktionen |
+| Polygon, Arbitrum, Gnosis, Base | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Blockscout: alle vier. Etherscan (Base nur mit bezahltem Abo) |
 | BNB Smart Chain | nicht abfragbar | Etherscan mit bezahltem Abo |
 | TRON | TronGrid: TRX, USDT, USDC und jeder andere Token, Sperrliste von Tether. Gedrosselt. | TronGrid: ohne Drossel. Tronscan: Namen von Börsen und Diensten |
 | Monero, Litecoin, Bitcoin Cash, Dogecoin, Solana | werden erkannt und als nicht abfragbar gemeldet. Monero lässt sich grundsätzlich nicht verfolgen. | |
@@ -471,7 +472,7 @@ dieser Enden ankommt:
 | Liegt unbewegt | Der Betrag wurde seit dem Eingang nicht weitergeleitet. Bei USDT und USDC kann der Emittent ihn sperren. |
 | Mischdienst | Adresse eines Mischdienstes laut Etikett, oder Transaktion mit dessen Muster. Dahinter ist keine belastbare Zuordnung möglich. |
 | Programm auf der Kette | Tauschbörse oder Brücke. Was dort geschah, zeigen die genutzten Quellen nicht. |
-| Nicht weiterverfolgt | Grenze des Laufs: Tiefe, Kleinbetrag oder Abfragebudget. Das Ergebnis nennt, wo es weitergeht. |
+| Nicht weiterverfolgt | Grenze des Laufs: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht geantwortet. Das Ergebnis nennt, wo es weitergeht. |
 
 Die Summe aller Enden ist der Startbetrag. Was nicht aufgeht, steht als «Verbleib unklar» da.
 
@@ -510,6 +511,11 @@ Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der 
 - Zahlt eine Station Kleinbeträge (unter 2 % des Startbetrags) an viele Adressen, stehen die zwölf grössten
   Empfänger einzeln im Ergebnis und der Rest als Summe. Sonst verbrauchte eine Adresse, die an Hunderte zahlt,
   alle 60 Stationen eines Laufs.
+- Blockscout drosselt Abfragen ohne Schlüssel (HTTP 429), in der Prüfung schon nach wenigen Dutzend Abfragen eines
+  Laufs. Das Werkzeug wartet einmal, so lange die Quelle es verlangt, und hört dann auf zu fragen: Die offenen
+  Stationen stehen unter «Nicht weiterverfolgt», jede mit der Stelle, an der es weitergeht. Für Fälle auf
+  Ethereum lohnt sich deshalb der kostenlose `BLOCKSCOUT_API_KEY`. Das freie Kontingent (100'000 Credits am Tag,
+  20 bis 30 je Abfrage) reicht für mehrere tausend Abfragen.
 - TRM Labs erlaubt ohne Schlüssel 100 Anfragen am Tag je Internetanschluss. Ein Geldfluss auf Bitcoin braucht
   davon in der Regel eine, auf Ethereum und TRON eine je Stufe, bei vielen Stationen mehr. Ist das Kontingent
   erschöpft, steht TRM im Ergebnis als «nicht geprüft». Die Sanktionsliste von OFAC lädt das Gateway selbst, sie
@@ -639,19 +645,19 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 36 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 37 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
   Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
-- Neun dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
+- Zehn dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
   Startbetrag), Börse, Sammeladresse, Mischdienst und gesperrtes Guthaben, eine Zahlung, die in der Liste hinter
   200 Aufrufen ohne Betrag steht, ein Programm, das im selben Zug annimmt und weiterzahlt, eine sanktionierte
-  Adresse mit Namen, die kein Dienst ist, Kleinbeträge an viele Adressen, Ausfall einer Quelle samt
-  Ausweichquelle, Gegenprüfung bei zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der Sanktionsliste
-  und das Flussbild im Rapport.
+  Adresse mit Namen, die kein Dienst ist, Kleinbeträge an viele Adressen, eine Quelle, die drosselt, Blockscout
+  mit Schlüssel (der Schlüssel steht nie im Protokoll), Ausfall einer Quelle samt Ausweichquelle, Gegenprüfung bei
+  zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der Sanktionsliste und das Flussbild im Rapport.
 - Der Assistent in einem echten Terminal. Unter Linux und macOS fährt ihn ein Selbsttest in einem
   Pseudo-Terminal, unter Windows in einer eigenen, unsichtbaren Konsole, deren Bildschirm er ausliest und in
   deren Eingabepuffer er Tasten legt. Geprüft ist jeweils: Pfeiltasten und Enter kommen an, die Steuerzeichen
@@ -707,8 +713,10 @@ fällt es dort auf und nicht erst in einem Fall.
   (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
   `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
   sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
-- **Die Blockchain-Quellen mit Schlüssel:** Etherscan, Tronscan, Chainabuse, Iknaio und TronGrid mit Schlüssel.
-  Sie sind nach den Dokumentationen der Anbieter umgesetzt und nie gegen den echten Dienst gelaufen. Damit sind
+- **Die Blockchain-Quellen mit Schlüssel:** Blockscout, Etherscan, Tronscan, Chainabuse, Iknaio und TronGrid mit
+  Schlüssel. Sie sind nach den Dokumentationen der Anbieter umgesetzt und nie gegen den echten Dienst gelaufen.
+  Wer einen `BLOCKSCOUT_API_KEY` oder `TRONGRID_API_KEY` hat, prüft diese beiden Zugänge selbst mit
+  `python3 tools/krypto_live.py`: Das Skript nimmt dann den Weg mit Schlüssel. Damit sind
   auch alle Ketten ungeprüft, die nur über Etherscan erreichbar sind (BNB Smart Chain) oder die Blockscout aus dem
   Rechenzentrum der Prüfung abwies (Polygon, Arbitrum, Gnosis, Base mit HTTP 403). Ob Blockscout diese Ketten von
   einem Arbeitsplatz aus beantwortet, zeigt `python3 tools/pruefen.py --live` nicht von selbst: Dafür ein Werkzeug

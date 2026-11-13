@@ -10,9 +10,10 @@ Geld Station um Station, bis es an einer Stelle ankommt, an der die Verfolgung e
     mischer   Es ging an einen Mischdienst (laut Etikett) oder durch eine Transaktion mit dessen Muster.
     vertrag   Es ging an ein Programm auf der Kette (Tauschbörse, Brücke). Was dieses damit tat, ist
               mit den hier genutzten Quellen nicht sichtbar.
-    grenze    Die Verfolgung wurde abgebrochen: Tiefe, Kleinbetrag oder Abfragebudget.
+    grenze    Die Verfolgung wurde abgebrochen: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht
+              geantwortet. Das Ergebnis nennt, wo sich fortsetzen lässt.
     gebuehr   Anteil, der als Transaktionsgebühr an die Miner ging (Bitcoin).
-    unklar    Kein passender Abgang gefunden, oder eine Abfrage ist fehlgeschlagen.
+    unklar    Kein passender Abgang gefunden, oder eine Form, der sich nicht folgen lässt.
 
 Die Summe aller Enden ist der Startbetrag. Was nicht aufgeht, wird als «unklar» ausgewiesen, nie verschwiegen.
 
@@ -47,9 +48,9 @@ ENDEN = {  # Art -> (Bezeichnung, Erklärung für Leser ohne Vorwissen)
     "liegt": ("Liegt unbewegt", "Der Betrag wurde seit dem Eingang nicht weitergeleitet."),
     "mischer": ("Durch Mischdienst", "Mischdienst laut Etikett, oder Transaktion mit dessen Muster: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht."),
     "vertrag": ("An Programm auf der Kette", "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht."),
-    "grenze": ("Nicht weiterverfolgt", "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag oder Abfragebudget."),
+    "grenze": ("Nicht weiterverfolgt", "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht geantwortet."),
     "gebuehr": ("Transaktionsgebühren", "Anteil, der als Gebühr an die Betreiber des Netzes ging."),
-    "unklar": ("Verbleib unklar", "Kein passender Abgang gefunden oder Abfrage fehlgeschlagen."),
+    "unklar": ("Verbleib unklar", "Kein passender Abgang gefunden, oder eine Form, der sich nicht folgen lässt."),
 }
 SAMMEL_EINGAENGE = 8      # Bitcoin: ab so vielen verschiedenen Absenderadressen gilt eine Transaktion als Sammelbewegung
 SAMMEL_AUSGAENGE = 20     # Bitcoin: ab so vielen Empfängern gilt sie als Sammelauszahlung
@@ -238,7 +239,7 @@ async def btc_fluss(v: Vorgang, z: Zuordner, g: Graf, posten: list[tuple], grenz
                         g.ende(schluessel, "unklar", anteil, f"Die weiterleitende Transaktion {stand['tx']} ist der Quelle nicht bekannt")
                         continue
             except Quellfehler as fehler:
-                g.ende(schluessel, "unklar", anteil, f"Abfrage fehlgeschlagen ({fehler.antwort.id}): {fehler.antwort.fehler}")
+                g.ende(schluessel, "grenze", anteil, f"Abfrage fehlgeschlagen ({fehler.antwort.id}): {fehler.antwort.fehler}", fortsetzen=weiter_bei)
                 continue
             art, grund = muster(folge)
             if art:
@@ -321,6 +322,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
     belegt: Counter = Counter()                # schon zugeordneter Teil jedes Abgangs
     rest_guthaben: dict[str, int] = {}         # Guthaben je Adresse, das noch keinem Eingang zugeordnet ist
     abgaenge: dict[str, tuple[dict | None, list[dict], bool]] = {}
+    gedrosselt: str | None = None              # Name der Quelle, sobald sie Abfragen mit HTTP 429 abweist
     ebene = [{"tiefe": 0, **s} for s in start]
     while ebene:
         tiefe = ebene[0]["tiefe"]
@@ -349,6 +351,10 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                 g.ende(adresse, "grenze", summe, "Abfragebudget aufgebraucht",
                        fortsetzen={"adresse": adresse, "tx": (eingaenge[0]["ab"] or {}).get("tx")})
                 continue
+            if gedrosselt:           # die Quelle hat eben erst zweimal abgewinkt: nicht für jede weitere Station erneut anklopfen
+                g.ende(adresse, "grenze", summe, f"{gedrosselt} drosselt die Abfragen (HTTP 429)",
+                       fortsetzen={"adresse": adresse, "tx": (eingaenge[0]["ab"] or {}).get("tx")})
+                continue
             try:
                 stand = await _konto_stand(v, kette, wert, adresse, k["nr"])
                 for m in stand["etiketten"]:
@@ -375,7 +381,13 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                         gleiche[merkmal] += 1
                     abgaenge[adresse] = (erster, liste, voll)
             except Quellfehler as e:
-                g.ende(adresse, "unklar", summe, f"Abfrage fehlgeschlagen ({e.antwort.id}): {e.antwort.fehler}")
+                weiter = {"adresse": adresse, "tx": (eingaenge[0]["ab"] or {}).get("tx")}
+                if e.antwort.status == 429:
+                    gedrosselt = e.antwort.quelle or "Die Quelle"
+                    g.ende(adresse, "grenze", summe, f"{gedrosselt} drosselt die Abfragen (HTTP 429)", fortsetzen=weiter)
+                    g.hinweis(f"{e.antwort.fehler} Beleg {e.antwort.id}. Die betroffenen Stationen stehen unter «Nicht weiterverfolgt».")
+                else:
+                    g.ende(adresse, "grenze", summe, f"Abfrage fehlgeschlagen ({e.antwort.id}): {e.antwort.fehler}", fortsetzen=weiter)
                 continue
             _, liste, voll = abgaenge[adresse]
             # Bei der eigenen Währung zählt die Liste auch Aufrufe ohne Betrag mit. Der Text sagt, was gezählt wurde

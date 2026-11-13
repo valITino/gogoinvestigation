@@ -50,6 +50,8 @@ wiederholbar mit `python3 tools/krypto_live.py`.
 | | Listen von Zahlungen, Guthaben eines Tokens | `GET …/api?module=account&action={txlist,tokentx,tokenbalance}` | live geprüft |
 | | Etiketten | `GET metadata.services.blockscout.com/api/v1/metadata?addresses=…&chainId=…` | live geprüft (Ethereum) |
 | | Polygon, Arbitrum, Gnosis, Base | dieselben Pfade auf `{kette}.blockscout.com` | Aus dem Rechenzentrum der Prüfung mit HTTP 403 abgewiesen. Nicht geprüft. |
+| | Zugang mit `BLOCKSCOUT_API_KEY`, alle sechs Ketten | dieselben Pfade auf `api.blockscout.com/{chain_id}/api/v2/…` und `api.blockscout.com/{chain_id}/api?module=…`, Schlüssel als `apikey`. Frei: 100'000 Credits am Tag, 20 bis 30 je Abfrage. | Dokumentation des Anbieters. Nicht geprüft. |
+| | Drossel ohne Schlüssel | Antwort HTTP 429. Das Gateway wartet einmal (Kopfzeile `Retry-After`, sonst sechs Sekunden) und schreibt die Angaben der Quelle zur Drossel ins Protokoll. Laut Anbieter wird der Zugang je Kette ohne Schlüssel eingestellt. | live gesehen |
 | Etherscan | Ketten der Ethereum-Familie, Gegenprüfung | `GET api.etherscan.io/v2/api?chainid=…&module=…&action=…`, dazu `module=proxy` für Transaktion, Quittung und Blockzeit | Dokumentation des Anbieters. Ohne Schlüssel gesehen: nur die Fehlermeldungen. |
 | TronGrid | TRON: Konto, Zahlungen in TRX und Token | `GET api.trongrid.io/v1/accounts/{a}`, `/transactions`, `/transactions/trc20` | live geprüft (ohne Schlüssel) |
 | | Transaktion, Leseaufrufe an Verträge (Sperrliste von Tether, Kürzel und Dezimalstellen fremder Token) | `POST /wallet/gettransactionbyid`, `/wallet/gettransactioninfobyid`, `/wallet/triggerconstantcontract` | live geprüft |
@@ -95,7 +97,7 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | `telegram_kanalinfo`, `_entitaet`, `_suche` | RapidAPI und den Betreiber der jeweiligen API: Schlüssel, Adresse, Kanal- oder Benutzername | nichts Bekanntes. Wie der Betreiber die Daten beschafft, ist nicht dokumentiert. |
 | `mastodon_*` | die abgefragte Instanz: eure Adresse, den Suchbegriff | Betreibt das Ziel die Instanz selbst, sieht es die Abfrage. |
 | Robin | Tor-Ausgangsknoten sehen nichts Zuordenbares. Die Onion-Suchmaschinen sehen den Suchbegriff. | Aufruf über Tor |
-| Block-Explorer (mempool.space, Blockstream, Blockscout, Etherscan, TronGrid) | eure Adresse, bei Etherscan und TronGrid den Schlüssel, und jede abgefragte Wallet-Adresse und Transaktion. Bei einem Geldfluss also die ganze Kette der Stationen. | nichts. Eine Blockchain lässt sich lesen, ohne dass der Inhaber einer Adresse es merkt. |
+| Block-Explorer (mempool.space, Blockstream, Blockscout, Etherscan, TronGrid) | eure Adresse, bei Blockscout, Etherscan und TronGrid den Schlüssel, soweit eingetragen, und jede abgefragte Wallet-Adresse und Transaktion. Bei einem Geldfluss also die ganze Kette der Stationen. | nichts. Eine Blockchain lässt sich lesen, ohne dass der Inhaber einer Adresse es merkt. |
 | WalletExplorer, Tronscan, Chainabuse, Iknaio, Blockscout-Etiketten | eure Adresse, die abgefragten Wallet-Adressen | nichts |
 | TRM Labs | eure Adresse und alle Wallet-Adressen eines Laufs, in Sammelabfragen | nichts |
 | OFAC, Ransomwhere | dass jemand die Liste lädt. **Nicht** die geprüfte Adresse, der Vergleich läuft lokal. | nichts |

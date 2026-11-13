@@ -36,7 +36,7 @@ for _name in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "SPUR_TOKEN", "ABUSEIPDB_A
               "RANSOMWARE_LIVE_API_KEY"):
     os.environ[_name] = "MUSTER-SCHLUESSEL-0000"
 for _name in ("OSINT_PROXY", "ETHERSCAN_API_KEY", "TRONSCAN_API_KEY", "TRONGRID_API_KEY", "CHAINABUSE_API_KEY", "IKNAIO_API_KEY",
-              "KRYPTO_BITCOIN_API"):
+              "BLOCKSCOUT_API_KEY", "KRYPTO_BITCOIN_API"):
     os.environ.pop(_name, None)         # der Musterfall läuft ohne die Zusatzschlüssel der Blockchain-Analyse
 os.environ["OSINT_ZEITZONE"] = "Europe/Zurich"     # der Musterfall soll auf jedem Rechner identisch ausfallen
 

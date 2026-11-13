@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prüft die Blockchain-Werkzeuge gegen die echten Dienste, ohne Schlüssel.
+"""Prüft die Blockchain-Werkzeuge gegen die echten Dienste. Schlüssel braucht es dafür keine.
 
     python3 tools/krypto_live.py                  eine Zeile je Prüfung
     python3 tools/krypto_live.py --ausfuehrlich   dazu die Ergebnisse der Werkzeuge
@@ -10,8 +10,9 @@ erwarten: Schnittstellen ändern sich, und ein Dienst, der sein Format umstellt,
 Fall auf. Abgefragt werden nur Adressen und Transaktionen, die seit Jahren öffentlich bekannt sind
 (die erste Bitcoin-Zahlung, eine WannaCry-Adresse, eine sanktionierte Adresse, Adressen einer Börse).
 
-Fallakte: faelle/SELBSTTEST, wie bei tools/pruefen.py --live. Mit gesetzten Schlüsseln (Etherscan, Tronscan)
-prüft das Skript nichts Zusätzliches. Dafür ist tools/pruefen.py --live da.
+Fallakte: faelle/SELBSTTEST, wie bei tools/pruefen.py --live. Ist BLOCKSCOUT_API_KEY oder TRONGRID_API_KEY gesetzt,
+laufen dieselben Prüfungen über den Zugang mit Schlüssel, mit BLOCKSCOUT_API_KEY kommt eine für Polygon dazu. Die
+übrigen Schlüssel (Etherscan, Tronscan, Chainabuse, Iknaio) prüft tools/pruefen.py --live.
 Rückgabewert 0: alles wie erwartet. 1: mindestens eine Abweichung.
 """
 from __future__ import annotations
@@ -31,8 +32,9 @@ if __name__ == "__main__":
     plattform.start(venv=True)
 
 try:
+    import httpx
     from gateway import kern, krypto_ketten, quellen_krypto as k
-    from gateway.akte import FAELLE
+    from gateway.akte import FAELLE, jsonl_lesen
     from tools import fall as fallwerkzeug
 except ModuleNotFoundError as e:
     sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst {plattform.SETUP} ausführen.")
@@ -91,9 +93,15 @@ async def pruefung(name: str, aufruf, erwartung) -> dict | None:
     print(f"{plattform.GUT if ok else plattform.FEHLT} {name}" + (f"\n    {detail}" if detail else ""), flush=True)
     if isinstance(r, dict):
         zeigen(r)
-        aus = [f"{f['quelle']} ({str(f.get('ziel') or '')[:44]}): {str(f['fehler'])[:80]}" for f in r.get("fehlgeschlagen") or []]
-        if aus:
-            print(f"    {len(aus)} Ausfälle unterwegs: " + " | ".join(aus[:6]), flush=True)
+        aus = r.get("fehlgeschlagen") or []
+        if aus:             # was genau abgewiesen wurde, steht im Protokoll: Adresse der Abfrage, Status, Angaben der Quelle zur Drossel
+            je = {e["id"]: e for e in jsonl_lesen(FAELLE / FALL / "protokoll" / "abfragen.jsonl")}
+            print(f"    {len(aus)} Ausfälle unterwegs:", flush=True)
+            for f in aus[:8]:
+                e = je.get(f.get("beleg"), {})
+                antwort = e.get("antwort") or {}
+                print(f"      {f.get('beleg')} {f['quelle']} HTTP {antwort.get('status')} {str((e.get('anfrage') or {}).get('url'))[:150]}"
+                      + (f" Drossel: {antwort['drossel']}" if antwort.get("drossel") else ""), flush=True)
     return r if isinstance(r, dict) else None
 
 
@@ -232,7 +240,26 @@ async def alle() -> None:
         assert b["art"].startswith("Programm"), b
         return f"{b.get('name')}, {b['guthaben']['betrag']} ETH"
     await pruefung("Optimism über Blockscout", k.krypto_adresse(FALL, ZWECK, "0x4200000000000000000000000000000000000006", kette="optimism"), optimism)
+    if kern.einstellung("BLOCKSCOUT_API_KEY"):
+        def polygon(b: dict, r: dict) -> str:
+            assert b["kette"] == "polygon" and b.get("art"), b
+            return f"{b['art']}, {b['guthaben']['betrag']} {b['guthaben'].get('einheit', '')}, Zugang mit Schlüssel"
+        await pruefung("Polygon über Blockscout mit Schlüssel", k.krypto_adresse(FALL, ZWECK, BINANCE_ETH, kette="polygon"), polygon)
+    else:
+        await ohne_schluessel()
     await tokenliste()
+
+
+async def ohne_schluessel() -> None:
+    """Keine Prüfung, eine Beobachtung: Wie antwortet der Zugang, den Blockscout für Programme vorsieht, wenn der
+    Schlüssel fehlt? Die Antwort zeigt, ob Adresse und Pfad stimmen, die das Gateway mit BLOCKSCOUT_API_KEY nutzt."""
+    url = f"{krypto_ketten.BLOCKSCOUT_API}/1/api/v2/addresses/{BINANCE_ETH}"
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": kern.einstellung("OSINT_USER_AGENT", "osint-gateway/1.0"), "Accept": "application/json"})
+        print(f"  Beobachtung: {url} ohne Schlüssel: HTTP {r.status_code}, {' '.join(r.text.split())[:160]}", flush=True)
+    except httpx.HTTPError as e:
+        print(f"  Beobachtung: {url} ohne Schlüssel: keine Verbindung ({type(e).__name__})", flush=True)
 
 
 def main() -> int:

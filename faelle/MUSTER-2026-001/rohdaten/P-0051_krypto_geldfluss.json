@@ -481,9 +481,9 @@
    "liegt": "Der Betrag wurde seit dem Eingang nicht weitergeleitet.",
    "mischer": "Mischdienst laut Etikett, oder Transaktion mit dessen Muster: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht.",
    "vertrag": "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht.",
-   "grenze": "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag oder Abfragebudget.",
+   "grenze": "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht geantwortet.",
    "gebuehr": "Anteil, der als Gebühr an die Betreiber des Netzes ging.",
-   "unklar": "Kein passender Abgang gefunden oder Abfrage fehlgeschlagen."
+   "unklar": "Kein passender Abgang gefunden, oder eine Form, der sich nicht folgen lässt."
   },
   "start": {
    "art": "zahlung",
