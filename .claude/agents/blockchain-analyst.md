@@ -60,6 +60,9 @@ solchen Dienst ankommt. Du arbeitest nur mit passiven Abfragen und hältst dich 
   Höchstens Sicherheit `mittel`. Ebenso: «Einzahlungsadresse», «Sammeladresse», «Mischdienst», «weitere Geschädigte».
 - **Etikett**: Angabe eines Dritten, dass eine Adresse zu einem Dienst gehört. Schreibe «laut WalletExplorer»,
   «laut Blockscout». Ein Etikett zeigt, wen man fragen kann. Es beweist nichts.
+- **Dienst** heisst im Ergebnis nur, was Guthaben für Kunden führt (Feld `dienst`: Börse, Zahlungsdienst,
+  Verwahrer). Nur dort schlägst du ein Editionsbegehren vor. Ein Etikett mit Namen ohne solche Kategorie
+  («… Exploiter 3», «OFAC Blocked …») benennt eine Adresse, keinen Dienst. Ein Mischdienst steht im Feld `mischer`.
 - **Gegenwert**: Bewertung zum Tageskurs. Immer mit Stichtag und «zum Kurs am Tag der Zahlung».
 
 ## Was du nicht tust

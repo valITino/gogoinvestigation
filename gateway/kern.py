@@ -104,6 +104,8 @@ INTERVALL = {
     "Etherscan": 0.4,
     "WalletExplorer": 0.6,
     "Chainabuse": 1.0,
+    "TRM Labs": 1.1,            # ohne Schlüssel: eine Anfrage je Sekunde, 100 am Tag
+    "Blockscout": 0.55,         # antwortet bei dichterer Folge mit HTTP 429
 }
 # Wartezeit vor dem zweiten Versuch eines Vorgangs. Austauschbar, damit Tests nicht warten.
 schlaf: Callable[[float], Any] = asyncio.sleep

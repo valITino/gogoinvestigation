@@ -28,7 +28,7 @@ from .krypto_ketten import (BEGEHRT, BEKANNT, KETTEN, Kette, Quellfehler, Wert, 
                             btc_verbleib, coin, dezimal, evm_adresse, evm_token_guthaben, evm_tx, evm_zahlungen, gleich,
                             kette_finden, konto_zahlungen, tron_konto, tron_tx, tron_zahlungen, wert_finden, zeit_iso)
 from .krypto_kurse import gegenwert, gegenwert_menge, kurs, kurs_als_dict
-from .krypto_zuordnung import QUELLEN as ZUORDNUNGSQUELLEN, Zuordner, dienst, kurz, quellen_pruefen
+from .krypto_zuordnung import QUELLEN as ZUORDNUNGSQUELLEN, Zuordner, dienst, kurz, mischer, quellen_pruefen
 
 ABRUF = "krypto_abruf"                    # so heissen die einzelnen Abfragen eines Vorgangs im Protokoll
 PLATZHALTER = re.compile(r"\[[A-ZÄÖÜ]+(?:_[A-ZÄÖÜ0-9]+)*\]")
@@ -290,6 +290,10 @@ async def _adresse(v: Vorgang, adresse: str, kette: str | None) -> dict:
         befund["dienst"] = name
         ansatz.append(f"Die Adresse gehört laut Etikett zu {name}. Der Dienst kann auf ein Editionsbegehren hin sagen, welchem Kunden "
                       "eine bestimmte Einzahlung gutgeschrieben wurde. Dazu die genaue Transaktion angeben.")
+    if mischer(marken):
+        befund["mischer"] = mischer(marken)
+        hinweise.append(f"Die Adresse gehört laut Etikett zu einem Mischdienst ({mischer(marken)}). Was dorthin fliesst, lässt sich "
+                        "mit offenen Quellen dahinter nicht belastbar zuordnen.")
     if finanzierer:
         f_marken = (await z.pruefen(k, [finanzierer["von"]], tief=True))[finanzierer["von"]]
         f_name = dienst(f_marken)
@@ -811,7 +815,8 @@ async def _zuordnung(v: Vorgang, adressen: list[str], kette: str | None, meldung
         for adr in dict.fromkeys(liste):
             m = marken.get(adr) or []
             zeilen.append({"adresse": adr, "kette": name, "etiketten": _etiketten(m),
-                           **({"dienst": dienst(m)} if dienst(m) else {}), **({"auffaellig": _auffaellig(m)} if _auffaellig(m) else {})})
+                           **({"dienst": dienst(m)} if dienst(m) else {}), **({"mischer": mischer(m)} if mischer(m) else {}),
+                           **({"auffaellig": _auffaellig(m)} if _auffaellig(m) else {})})
     geprueft = [n for n, s in z.stand.items() if s["ergebnis"] == "ok"]
     if not geprueft:
         return {"ergebnis": "fehler", "belege": list(v.belege), "quellenstand": z.stand,

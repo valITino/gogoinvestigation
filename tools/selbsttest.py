@@ -1156,6 +1156,51 @@ def _():
     assert "erste_bewegung" not in r["befund"] and r["fehlgeschlagen"], "eine gescheiterte Nebenabfrage wird genannt, nie verschwiegen"
 
 
+@test("Krypto: Ein Name macht keinen Dienst, Mischdienst laut Etikett, Kleinbeträge an viele Adressen, Stückelung für TRM")
+def _():
+    # 100 ETH: 60 an eine sanktionierte Adresse mit Namen (kein Dienst, es geht weiter), 30 an einen Mischdienst,
+    # 20 Kleinbeträge an 20 Adressen, der Rest liegt
+    w = kwelt()
+    w.evm_zahlung("m0", "opfer", "taeter", 100 * ETH1, T0, 21_000_000)
+    w.evm_zahlung("m1", "taeter", "sanktioniert", 60 * ETH1, T0 + 600, 21_000_050)
+    w.evm_zahlung("m2", "taeter", "mixer", 30 * ETH1, T0 + 700, 21_000_060)
+    for i in range(20):
+        w.evm_zahlung(f"k{i}", "taeter", f"klein{i}", (i + 1) * ETH1 // 50, T0 + 800 + i, 21_000_070 + i)
+    w.evm_zahlung("m3", "sanktioniert", "weiter", 60 * ETH1, T0 + 2000, 21_000_200)
+    w.evm_konto("taeter", wei=58 * ETH1 // 10)
+    w.evm_konto("weiter", wei=60 * ETH1)
+    w.evm_konto("mixer", vertrag=True, bezeichnung="TornadoCash_Eth_10")
+    w.marken[kw.evm("sanktioniert").lower()] = [
+        {"slug": "ofac-blocked-0x3cf", "name": "OFAC Blocked: 0x3Cf...073", "tagType": "name", "ordinal": 10, "meta": json.dumps({"main_entity": "Lazarus Group"})},
+        {"slug": "sanctioned", "name": "SANCTIONED", "tagType": "generic", "ordinal": 0, "meta": json.dumps({"info": ["OFAC Sanctioned"]})},
+        {"slug": "attacker", "name": "ATTACKER", "tagType": "classifier", "ordinal": 0, "meta": "{}"}]
+    w.marken[kw.evm("mixer").lower()] = [
+        {"slug": "tornado-cash-10-eth", "name": "Tornado.Cash: 10 ETH", "tagType": "name", "ordinal": 10, "meta": json.dumps({"main_entity": "Tornado Cash"})}]
+    r = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("m0"), kette="ethereum")
+    b = r["befund"]
+    arten = {e["art"]: e["betrag"] for e in b["verteilung"]}
+    assert arten == {"liegt": "65.8", "mischer": "30", "grenze": "4.2"} and b["summe_geht_auf"], arten
+    je = {s_["adresse"]: s_ for s_ in b["stationen"]}
+    assert je[kw.evm("sanktioniert")]["art"] == "station" and je[kw.evm("sanktioniert")]["auffaellig"] == ["sanktion"], \
+        f"eine sanktionierte Adresse mit Namen ist kein Dienst: {je[kw.evm('sanktioniert')]}"
+    assert je[kw.evm("mixer")]["art"] == "mischer" and je[kw.evm("mixer")]["name"] == "Tornado.Cash: 10 ETH", je[kw.evm("mixer")]
+    assert not any("Editionsbegehren" in a for a in b["ansatzpunkte"]), f"hier gibt es keine Stelle, die einen Kunden kennt: {b['ansatzpunkte']}"
+    assert any("laut Etikett ein Mischdienst (Tornado.Cash: 10 ETH)" in a for a in b["ansatzpunkte"]), b["ansatzpunkte"]
+    einzeln = [a for a in je if a in {kw.evm(f"klein{i}") for i in range(20)}]
+    rest = [e for e in b["enden"] if "weitere Adressen" in e.get("grund", "")]
+    assert len(einzeln) == 12 and kw.evm("klein19") in einzeln and kw.evm("klein0") not in einzeln, "die zwölf grössten Kleinbeträge stehen einzeln da"
+    assert len(rest) == 1 and rest[0]["betrag"] == "0.72" and rest[0]["grund"].startswith("8 Zahlungen an 8 weitere Adressen") \
+        and rest[0]["fortsetzen"]["adresse"] == kw.evm("klein7"), rest
+    z = kruf(krypto.krypto_zuordnung, [kw.evm("sanktioniert"), kw.evm("mixer")], kette="ethereum")["befund"]
+    je = {x["adresse"]: x for x in z["adressen"]}
+    assert "dienst" not in je[kw.evm("sanktioniert")] and "dienst" not in je[kw.evm("mixer")] and je[kw.evm("mixer")]["mischer"], je
+    # 40 Adressen: TRM nimmt höchstens 1 KB je Anfrage, die erfundene Welt weist Grösseres ab wie der echte Dienst
+    w = kwelt()
+    r = kruf(krypto.krypto_zuordnung, [kw.evm(f"viele{i}") for i in range(40)], kette="ethereum")
+    assert r["befund"]["quellenstand"]["TRM Labs"]["ergebnis"] == "ok", r["befund"]["quellenstand"]["TRM Labs"]
+    assert sum(1 for a in w.aufrufe if a == "POST api.trmlabs.com/public/v1/sanctions/screening") == 3, w.aufrufe
+
+
 @test("Krypto: Fällt eine Quelle aus, springt die Ausweichquelle ein, und «nicht geprüft» wird nie zu «kein Eintrag»")
 def _():
     w = bitcoin_welt()

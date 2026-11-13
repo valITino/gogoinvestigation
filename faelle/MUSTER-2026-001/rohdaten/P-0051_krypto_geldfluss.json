@@ -479,7 +479,7 @@
    "dienst": "Börse oder Zahlungsdienst. Der Dienst weiss, welchem Kunden die Einzahlung gutgeschrieben wurde.",
    "sammel": "Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt.",
    "liegt": "Der Betrag wurde seit dem Eingang nicht weitergeleitet.",
-   "mischer": "Transaktion mit dem Muster eines Mischdienstes: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht.",
+   "mischer": "Mischdienst laut Etikett, oder Transaktion mit dessen Muster: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht.",
    "vertrag": "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht.",
    "grenze": "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag oder Abfragebudget.",
    "gebuehr": "Anteil, der als Gebühr an die Betreiber des Netzes ging.",

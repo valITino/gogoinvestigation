@@ -162,7 +162,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 35 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 36 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -466,10 +466,10 @@ dieser Enden ankommt:
 
 | Ende | Bedeutung |
 |---|---|
-| Bei einem Dienst | Die Adresse gehört laut Etikett einer Börse oder einem Zahlungsdienst. Dort ist ein Editionsbegehren möglich. |
+| Bei einem Dienst | Die Adresse gehört laut Etikett einer Börse, einem Zahlungsdienst oder einem Verwahrer. Dort ist ein Editionsbegehren möglich. Massgebend ist die Kategorie, die die Quelle vergibt. Ein Name allein genügt nicht: Namen tragen auch Adressen von Tätern und von Sanktionierten. |
 | Sammelbewegung | Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt. |
 | Liegt unbewegt | Der Betrag wurde seit dem Eingang nicht weitergeleitet. Bei USDT und USDC kann der Emittent ihn sperren. |
-| Mischdienst | Transaktion mit dem Muster eines Mischdienstes. Dahinter ist keine belastbare Zuordnung möglich. |
+| Mischdienst | Adresse eines Mischdienstes laut Etikett, oder Transaktion mit dessen Muster. Dahinter ist keine belastbare Zuordnung möglich. |
 | Programm auf der Kette | Tauschbörse oder Brücke. Was dort geschah, zeigen die genutzten Quellen nicht. |
 | Nicht weiterverfolgt | Grenze des Laufs: Tiefe, Kleinbetrag oder Abfragebudget. Das Ergebnis nennt, wo es weitergeht. |
 
@@ -507,6 +507,13 @@ Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der 
 - Bei ETH und TRX stehen Zahlungen in der Liste einer Adresse zwischen Aufrufen von Programmen, die keinen Betrag
   bewegen. Auf TRON ist jede USDT-Zahlung ein solcher Aufruf. Das Werkzeug liest deshalb je Station bis zu 600
   Einträge. Hat eine Adresse seit dem Eingang mehr, endet die Verfolgung dort als Sammelbewegung.
+- Zahlt eine Station Kleinbeträge (unter 2 % des Startbetrags) an viele Adressen, stehen die zwölf grössten
+  Empfänger einzeln im Ergebnis und der Rest als Summe. Sonst verbrauchte eine Adresse, die an Hunderte zahlt,
+  alle 60 Stationen eines Laufs.
+- TRM Labs erlaubt ohne Schlüssel 100 Anfragen am Tag je Internetanschluss. Ein Geldfluss auf Bitcoin braucht
+  davon in der Regel eine, auf Ethereum und TRON eine je Stufe, bei vielen Stationen mehr. Ist das Kontingent
+  erschöpft, steht TRM im Ergebnis als «nicht geprüft». Die Sanktionsliste von OFAC lädt das Gateway selbst, sie
+  ist davon nicht betroffen.
 - Der Betreiber eines Explorers sieht, für welche Adressen ihr euch interessiert. Wer das vermeiden will, leitet
   über `OSINT_PROXY` oder trägt eigene Instanzen ein (`KRYPTO_BITCOIN_API` und weitere, siehe `.env.example`).
 - Jede Abfrage eines Laufs steht einzeln im Ermittlungsprotokoll, das errechnete Ergebnis als «Auswertung» mit
@@ -632,18 +639,19 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 35 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 36 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
   Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
-- Acht dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
+- Neun dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
   Startbetrag), Börse, Sammeladresse, Mischdienst und gesperrtes Guthaben, eine Zahlung, die in der Liste hinter
-  200 Aufrufen ohne Betrag steht, ein Programm, das im selben Zug annimmt und weiterzahlt, Ausfall einer Quelle
-  samt Ausweichquelle, Gegenprüfung bei zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der
-  Sanktionsliste und das Flussbild im Rapport.
+  200 Aufrufen ohne Betrag steht, ein Programm, das im selben Zug annimmt und weiterzahlt, eine sanktionierte
+  Adresse mit Namen, die kein Dienst ist, Kleinbeträge an viele Adressen, Ausfall einer Quelle samt
+  Ausweichquelle, Gegenprüfung bei zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der Sanktionsliste
+  und das Flussbild im Rapport.
 - Der Assistent in einem echten Terminal. Unter Linux und macOS fährt ihn ein Selbsttest in einem
   Pseudo-Terminal, unter Windows in einer eigenen, unsichtbaren Konsole, deren Bildschirm er ausliest und in
   deren Eingabepuffer er Tasten legt. Geprüft ist jeweils: Pfeiltasten und Enter kommen an, die Steuerzeichen
@@ -708,7 +716,7 @@ fällt es dort auf und nicht erst in einem Fall.
 - **Die Faustregeln der Geldfluss-Verfolgung an vielen echten Fällen.** Ab acht Absenderadressen gilt eine
   Bitcoin-Transaktion als Sammelbewegung eines Dienstes, ab fünf gleich hohen Ausgängen als Mischdienst, eine
   Adresse mit über 200 Abgängen seit dem Eingang als Sammeladresse. Gesehen sind sie an der erfundenen Kette und an
-  den drei echten Läufen oben. Wo sie falsch liegen, nennt das Ergebnis den Grund des Endes, und die Verfolgung
+  den echten Läufen oben. Wo sie falsch liegen, nennt das Ergebnis den Grund des Endes, und die Verfolgung
   lässt sich von dort fortsetzen.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
   Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.

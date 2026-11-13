@@ -36,23 +36,33 @@ OFAC_URLS = (
     ("https://www.treasury.gov/ofac/downloads/sdn.csv", "https://www.treasury.gov/ofac/downloads/sdn_comments.csv"),
 )
 _OFAC_ADRESSE = re.compile(r"Digital Currency Address - ([A-Z0-9]{2,8}) ([A-Za-z0-9]{20,110})")
-# Etiketten von Blockscout, die einen Dienst kennzeichnen: Dort endet eine Verfolgung, weil der Dienst die
-# Gelder seiner Kunden zusammenlegt und nur er weiss, wem eine Einzahlung gutgeschrieben wurde.
-_DIENST_MARKEN = {"exchange", "cex", "dex", "hot-wallet", "cold-wallet", "deposit-wallet", "bridge", "mixer", "gambling",
-                  "defi", "lending", "otc", "payment", "payments", "custody", "custodian", "staking", "nft-marketplace",
-                  "aggregator", "swap", "wallet-provider", "fund", "market-maker", "mev-bot", "liquid-staking"}
-_IKNAIO_DIENST = {"exchange", "service", "market", "gambling", "mixing_service", "payment_processor", "wallet_service",
-                  "defi", "defi_dex", "defi_bridge", "defi_lending", "miner", "mining_pool", "hosted_wallet", "atm"}
+# Ein «Dienst» im Sinn dieses Moduls führt Guthaben für Kunden: Börse, Zahlungsdienst, Verwahrer. Dort endet eine
+# Verfolgung, weil der Dienst die Gelder zusammenlegt und nur er weiss, wem eine Einzahlung gutgeschrieben wurde.
+# Massgebend ist die Kategorie, die die Quelle vergibt. Ein Name allein genügt nicht: Namen tragen auch Adressen
+# von Tätern («… Exploiter 3») und von Sanktionierten. Tauschprogramme, Brücken und Mischdienste haben keine Kunden,
+# die sich erfragen liessen. Sie gelten nicht als Dienst.
+_KUNDEN_MARKEN = {"exchange", "cex", "centralized-exchange", "hot-wallet", "cold-wallet", "deposit-wallet", "deposit-address",
+                  "otc", "payment", "payments", "payment-processor", "custody", "custodian", "gambling", "casino"}
+_MISCH_MARKEN = {"mixer", "mixing", "mixing-service", "tumbler", "coinjoin"}
+_MISCH_NAME = re.compile(r"tornado[ .]?cash|mixer|mixing|tumbler|coin ?join|joinmarket|wasabi|samourai|whirlpool|bitcoin ?fog|blender\.io|sinbad|railgun",
+                         re.IGNORECASE)
+_IKNAIO_DIENST = {"exchange", "service", "gambling", "payment_processor", "wallet_service", "hosted_wallet", "atm", "mining_pool"}
+_IKNAIO_MISCHER = {"mixing_service", "mixer", "coinjoin"}
+TRM_KOERPER = 900          # TRM nimmt je Anfrage höchstens 1 KB an. Grössere Listen gehen in mehreren Anfragen
 QUELLEN = ("ofac", "trm", "ransomwhere", "blockscout", "walletexplorer", "tether", "tronscan", "chainabuse", "iknaio")
 
 
-def etikett(quelle: str, art: str, name: str, detail: str = "", dienst: bool = False, beleg: str = "", betreiber: str = "") -> dict:
+def etikett(quelle: str, art: str, name: str, detail: str = "", dienst: bool = False, beleg: str = "", betreiber: str = "",
+            mischer: bool = False) -> dict:
     """art: sanktion | ransomware | gesperrt | meldung | name | kategorie | hinweis.
-    ``dienst``: Die Adresse gehört einem Dienst mit Kunden. ``betreiber``: dessen Name, wenn die Quelle ihn nennt."""
+    ``dienst``: Die Adresse gehört einem Dienst mit Kunden. ``betreiber``: dessen Name, wenn die Quelle ihn nennt.
+    ``mischer``: Die Adresse gehört einem Mischdienst. Beides zugleich gibt es nicht."""
     d: dict[str, Any] = {"quelle": quelle, "art": art, "name": saeubern(name, 90)}
     if detail:
         d["detail"] = saeubern(detail, 260)
-    if dienst:
+    if mischer:
+        d["mischer"] = True
+    elif dienst:
         d["dienst"] = True
     if betreiber:
         d["betreiber"] = saeubern(betreiber, 60)
@@ -69,7 +79,7 @@ def _schluessel(adresse: str) -> str:
 
 def blockscout_etiketten(tags: list, beleg: str = "") -> list[dict]:
     """Etiketten aus der Form, in der Blockscout sie liefert, in die einheitliche Form."""
-    ergebnis, ist_dienst = [], False
+    ergebnis, ist_dienst, ist_mischer = [], False, False
     marken = []
     for t in tags or []:
         if not isinstance(t, dict):
@@ -82,8 +92,10 @@ def blockscout_etiketten(tags: list, beleg: str = "") -> list[dict]:
                 meta = {}
         meta = meta if isinstance(meta, dict) else {}
         slug, typ = str(t.get("slug") or "").lower(), str(t.get("tagType") or "")
-        if typ == "generic" and slug in _DIENST_MARKEN or meta.get("main_entity"):
+        if typ in ("generic", "classifier") and slug in _KUNDEN_MARKEN:
             ist_dienst = True
+        if slug in _MISCH_MARKEN or typ in ("name", "protocol") and _MISCH_NAME.search(str(t.get("name") or "")):
+            ist_mischer = True
         marken.append((slug, typ, str(t.get("name") or ""), meta, int(t.get("ordinal") or 0)))
     for slug, typ, name, meta, _ in sorted(marken, key=lambda m: -m[4]):
         info = ", ".join(str(x) for x in meta.get("info") or [] if x)
@@ -94,9 +106,11 @@ def blockscout_etiketten(tags: list, beleg: str = "") -> list[dict]:
         elif typ == "note":
             ergebnis.append(etikett("Blockscout", "hinweis", "Hinweis", str(meta.get("data") or ""), beleg=beleg))
         elif typ == "name":
-            ergebnis.append(etikett("Blockscout", "name", name, dienst=ist_dienst, beleg=beleg, betreiber=str(meta.get("main_entity") or "")))
+            ergebnis.append(etikett("Blockscout", "name", name, dienst=ist_dienst, mischer=ist_mischer, beleg=beleg,
+                                    betreiber=str(meta.get("main_entity") or "") if ist_dienst else ""))
         elif typ in ("generic", "classifier", "protocol"):
-            ergebnis.append(etikett("Blockscout", "kategorie", name, dienst=slug in _DIENST_MARKEN, beleg=beleg))
+            ergebnis.append(etikett("Blockscout", "kategorie", name, dienst=slug in _KUNDEN_MARKEN and typ != "protocol",
+                                    mischer=slug in _MISCH_MARKEN, beleg=beleg))
     return ergebnis
 
 
@@ -208,8 +222,12 @@ class Zuordner:
 
     async def _trm(self, adressen: list[str]) -> dict[str, list[dict]]:
         ergebnis: dict[str, list[dict]] = {}
-        for i in range(0, len(adressen), 40):
-            teil = adressen[i:i + 40]
+        teile: list[list[str]] = [[]]
+        for x in adressen:
+            if teile[-1] and len(json.dumps([{"address": y} for y in teile[-1] + [x]])) > TRM_KOERPER:
+                teile.append([])
+            teile[-1].append(x)
+        for teil in teile if adressen else []:
             a = await self.v.hole("TRM Labs", f"{len(teil)} Adresse(n)", "wallet", "https://api.trmlabs.com/public/v1/sanctions/screening",
                                   schritt="Sanktionsprüfung", methode="POST", json_koerper=[{"address": x} for x in teil])
             if a.ergebnis != "ok" or not isinstance(a.daten, list):
@@ -252,7 +270,8 @@ class Zuordner:
             self.cluster[adresse] = str(a.daten["wallet_id"])
         if a.daten.get("label"):
             return [etikett("WalletExplorer", "name", str(a.daten["label"]),
-                            f"Wallet-Kennung {a.daten.get('wallet_id')}: Zuordnung über gemeinsam ausgegebene Adressen", dienst=True, beleg=a.id)]
+                            f"Wallet-Kennung {a.daten.get('wallet_id')}: Zuordnung über gemeinsam ausgegebene Adressen", dienst=True,
+                            mischer=bool(_MISCH_NAME.search(str(a.daten["label"]))), beleg=a.id)]
         return []
 
     async def _tether(self, adresse: str) -> list[dict]:
@@ -284,7 +303,7 @@ class Zuordner:
         for feld in ("addressTag", "publicTag", "blueTag"):
             name = str(d.get(feld) or "").strip()
             if name and name != adresse and not any(e["name"] == saeubern(name, 90) for e in ergebnis):
-                ergebnis.append(etikett("Tronscan", "name", name, dienst=True, beleg=a.id))
+                ergebnis.append(etikett("Tronscan", "name", name, dienst=True, mischer=bool(_MISCH_NAME.search(name)), beleg=a.id))
         if str(d.get("redTag") or "").strip():
             ergebnis.append(etikett("Tronscan", "meldung", str(d["redTag"]), "Warnhinweis von Tronscan", beleg=a.id))
         if str(d.get("greyTag") or "").strip():
@@ -343,9 +362,10 @@ class Zuordner:
         kategorie = str(d.get("broad_category") or "").strip()
         if name:
             ergebnis.append(etikett("Iknaio", "name", name, f"Kategorie {kategorie or 'ohne Angabe'}, {d.get('tag_count') or 0} Etikett(en)",
-                                    dienst=kategorie.lower() in _IKNAIO_DIENST, beleg=a.id))
+                                    dienst=kategorie.lower() in _IKNAIO_DIENST, mischer=kategorie.lower() in _IKNAIO_MISCHER, beleg=a.id))
         elif kategorie and kategorie.lower() not in ("user", "unknown"):
-            ergebnis.append(etikett("Iknaio", "kategorie", kategorie, dienst=kategorie.lower() in _IKNAIO_DIENST, beleg=a.id))
+            ergebnis.append(etikett("Iknaio", "kategorie", kategorie, dienst=kategorie.lower() in _IKNAIO_DIENST,
+                                    mischer=kategorie.lower() in _IKNAIO_MISCHER, beleg=a.id))
         if kette.familie == "bitcoin":
             b = await self.v.hole("Iknaio", adresse, "wallet", f"https://api.ikna.io/{kuerzel}/addresses/{adresse}/entity",
                                   schritt="Cluster der Adresse", kopf=kopf)
@@ -407,8 +427,16 @@ class Zuordner:
         return {e["quelle"] for liste in self._marken.values() for e in liste}
 
 
+def mischer(marken: list[dict]) -> str | None:
+    """Name des Mischdienstes, wenn ein Etikett die Adresse einem zuordnet. Sonst None."""
+    namen = [m["name"] for m in marken if m.get("mischer")]
+    return (next((m["name"] for m in marken if m.get("mischer") and m["art"] == "name"), None) or namen[0]) if namen else None
+
+
 def dienst(marken: list[dict]) -> str | None:
-    """Name des Dienstes, wenn die Etiketten die Adresse einem zuordnen. Sonst None."""
+    """Name des Dienstes mit Kunden (Börse, Zahlungsdienst), wenn die Etiketten die Adresse einem zuordnen. Sonst None."""
+    if mischer(marken):
+        return None
     namen = [m.get("betreiber") or m["name"] for m in marken if m.get("dienst") and m["art"] == "name"]
     if namen:
         return namen[0]

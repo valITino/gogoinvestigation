@@ -7,7 +7,7 @@ Geld Station um Station, bis es an einer Stelle ankommt, an der die Verfolgung e
     dienst    Es ist bei einem benannten Dienst angekommen (Börse, Zahlungsdienst). Dort ist ein
               Editionsbegehren möglich: Der Dienst weiss, wem die Einzahlung gutgeschrieben wurde.
     sammel    Es ist in einer Sammelbewegung aufgegangen, wie sie Dienste machen. Name unbekannt.
-    mischer   Es ist durch eine Transaktion mit dem Muster eines Mischdienstes gegangen.
+    mischer   Es ging an einen Mischdienst (laut Etikett) oder durch eine Transaktion mit dessen Muster.
     vertrag   Es ging an ein Programm auf der Kette (Tauschbörse, Brücke). Was dieses damit tat, ist
               mit den hier genutzten Quellen nicht sichtbar.
     grenze    Die Verfolgung wurde abgebrochen: Tiefe, Kleinbetrag oder Abfragebudget.
@@ -39,13 +39,13 @@ from typing import Any
 from .kern import Abbruch, Vorgang
 from .krypto_ketten import (SEITE, Kette, Quellfehler, Wert, btc_tx, btc_txs, btc_verbleib, dezimal, evm_adresse,
                             gleich, konto_zahlungen, nach, tron_konto, zeit_iso, _evm_liste, _zahl)
-from .krypto_zuordnung import Zuordner, dienst, kurz
+from .krypto_zuordnung import Zuordner, dienst, kurz, mischer
 
 ENDEN = {  # Art -> (Bezeichnung, Erklärung für Leser ohne Vorwissen)
     "dienst": ("Bei einem Dienst angekommen", "Börse oder Zahlungsdienst. Der Dienst weiss, welchem Kunden die Einzahlung gutgeschrieben wurde."),
     "sammel": ("In Sammelbewegung aufgegangen", "Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt."),
     "liegt": ("Liegt unbewegt", "Der Betrag wurde seit dem Eingang nicht weitergeleitet."),
-    "mischer": ("Durch Mischdienst", "Transaktion mit dem Muster eines Mischdienstes: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht."),
+    "mischer": ("Durch Mischdienst", "Mischdienst laut Etikett, oder Transaktion mit dessen Muster: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht."),
     "vertrag": ("An Programm auf der Kette", "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht."),
     "grenze": ("Nicht weiterverfolgt", "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag oder Abfragebudget."),
     "gebuehr": ("Transaktionsgebühren", "Anteil, der als Gebühr an die Betreiber des Netzes ging."),
@@ -55,6 +55,7 @@ SAMMEL_EINGAENGE = 8      # Bitcoin: ab so vielen verschiedenen Absenderadressen
 SAMMEL_AUSGAENGE = 20     # Bitcoin: ab so vielen Empfängern gilt sie als Sammelauszahlung
 MISCH_GLEICHE = 5         # Bitcoin: ab so vielen gleich hohen Ausgängen (und Eingängen) Muster eines Mischdienstes
 START_SEITEN = 6          # Bitcoin: so viele Seiten zu 50 Transaktionen werden für eine Startadresse geladen
+KLEIN_JE_STATION = 12     # Konto-Ketten: so viele Empfänger von Kleinbeträgen zeigt eine Station einzeln, die grössten zuerst
 
 
 @dataclass
@@ -280,6 +281,20 @@ async def btc_fluss(v: Vorgang, z: Zuordner, g: Graf, posten: list[tuple], grenz
 
 # --------------------------------------------------------------------------- Konto-Ketten (Ethereum-Familie, TRON)
 
+def _etikett_ende(g: Graf, z: Zuordner, adresse: str, betrag: int) -> bool:
+    """Beendet die Verfolgung an einer Adresse, die laut Etikett einem Mischdienst oder einem Dienst mit Kunden gehört."""
+    marken = z.bekannt(g.kette, adresse)
+    name = mischer(marken)
+    if name:
+        g.ende(adresse, "mischer", betrag, "laut Etikett ein Mischdienst", name=name)
+        return True
+    name = dienst(marken)
+    if name:
+        g.ende(adresse, "dienst", betrag, "laut Etikett ein Dienst", name=name)
+        return True
+    return False
+
+
 async def _konto_stand(v: Vorgang, kette: Kette, wert: Wert, adresse: str, nr: int) -> dict:
     """Vertrag ja/nein, Name und aktuelles Guthaben im verfolgten Wert."""
     schritt = f"Station {nr}: Konto oder Programm, aktuelles Guthaben"
@@ -320,9 +335,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
             eingaenge = sorted(je_adresse[adresse], key=lambda p: ((p["ab"] or {}).get("zeit") or 0, (p["ab"] or {}).get("block") or 0))
             summe = sum(p["betrag"] for p in eingaenge)
             k = g.knoten[adresse]
-            name = dienst(z.bekannt(kette, adresse)) if tiefe > 0 else None
-            if name:
-                g.ende(adresse, "dienst", summe, "laut Etikett ein Dienst", name=name)
+            if tiefe > 0 and _etikett_ende(g, z, adresse, summe):
                 continue
             if tiefe > grenzen.tiefe:
                 g.ende(adresse, "grenze", summe, f"Tiefe von {grenzen.tiefe} Stationen erreicht",
@@ -344,9 +357,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                     k["vertrag"] = True
                     if stand["name"]:
                         k["name"] = stand["name"]
-                name = dienst(z.bekannt(kette, adresse)) if tiefe > 0 else None
-                if name:
-                    g.ende(adresse, "dienst", summe, "laut Etikett ein Dienst", name=name)
+                if tiefe > 0 and _etikett_ende(g, z, adresse, summe):
                     continue
                 if stand["vertrag"] and wert.vertrag is None and tiefe > 0:
                     g.ende(adresse, "vertrag", summe, "Zahlung an ein Programm auf der Kette" + (f" ({stand['name']})" if stand["name"] else ""),
@@ -380,6 +391,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
             if voll:
                 g.hinweis(f"Die Startadresse hat mehr Abgänge, als ein Lauf liest. Verfolgt werden die ersten {len(liste)}.")
             rest_guthaben.setdefault(adresse, stand["guthaben"])
+            zuteilung: list[tuple[dict, int, dict]] = []        # (Abgang, Teilbetrag, Eingang)
             for p in eingaenge:
                 offen = p["betrag"]
                 for x in liste:
@@ -393,14 +405,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                     teil = min(offen, frei)
                     belegt[x["kennung"]] += teil
                     offen -= teil
-                    neu = x["an"] not in g.knoten
-                    if neu and len(g.knoten) >= grenzen.stationen:
-                        g.ende(adresse, "grenze", teil, f"Höchstzahl von {grenzen.stationen} Stationen erreicht",
-                               fortsetzen={"adresse": x["an"], "tx": x["tx"]})
-                        continue
-                    g.station(x["an"], x["an"], tiefe + 1)
-                    g.fluss(adresse, x["an"], teil, x["tx"], x.get("zeit"), passgenau=teil == x["betrag"] == p["betrag"])
-                    naechste.append({"tiefe": tiefe + 1, "adresse": x["an"], "betrag": teil, "ab": x})
+                    zuteilung.append((x, teil, p))
                 if offen > 0:
                     liegt = min(offen, max(0, rest_guthaben[adresse]))
                     rest_guthaben[adresse] -= liegt
@@ -409,6 +414,38 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                     if offen - liegt > 0:
                         g.ende(adresse, "unklar", offen - liegt,
                                f"kein Abgang in {wert.symbol} gefunden: getauscht, in anderer Form abgeflossen oder als Gebühr verbraucht")
+            # Wer bekommt eine eigene Station? Zuerst die grossen Empfänger. Von den Empfängern von Kleinbeträgen zeigt eine
+            # Station die grössten einzeln, der Rest steht als Summe. So verbraucht eine Adresse, die an Hunderte zahlt,
+            # nicht alle Stationen des Laufs, und die Höchstzahl trifft die kleinsten Beträge, nicht die spätesten.
+            je_ziel: Counter = Counter()
+            for x, teil, _ in zuteilung:
+                je_ziel[x["an"]] += teil
+            schwelle = max(1, int(g.start * grenzen.min_anteil))
+            neue = sorted((a for a in je_ziel if a not in g.knoten), key=lambda a: -je_ziel[a])
+            kleine = [a for a in neue if je_ziel[a] < schwelle]
+            gesammelt = set(kleine[KLEIN_JE_STATION:])
+            frei_stationen = max(0, grenzen.stationen - len(g.knoten))
+            einzeln = [a for a in neue if a not in gesammelt]
+            abgewiesen = set(einzeln[frei_stationen:])
+            klein_summe = klein_zahl = 0
+            for x, teil, p in zuteilung:
+                an = x["an"]
+                if an in gesammelt:
+                    klein_summe += teil
+                    klein_zahl += 1
+                    continue
+                if an in abgewiesen:
+                    g.ende(adresse, "grenze", teil, f"Höchstzahl von {grenzen.stationen} Stationen erreicht",
+                           fortsetzen={"adresse": einzeln[frei_stationen], "tx": next(y["tx"] for y, _, _ in zuteilung if y["an"] == einzeln[frei_stationen])})
+                    continue
+                g.station(an, an, tiefe + 1)
+                g.fluss(adresse, an, teil, x["tx"], x.get("zeit"), passgenau=teil == x["betrag"] == p["betrag"])
+                naechste.append({"tiefe": tiefe + 1, "adresse": an, "betrag": teil, "ab": x})
+            if klein_summe:
+                groesste = kleine[KLEIN_JE_STATION]
+                g.ende(adresse, "grenze", klein_summe,
+                       f"{klein_zahl} Zahlungen an {len(gesammelt)} weitere Adressen, je Adresse unter {grenzen.min_anteil:.0%} des Startbetrags",
+                       fortsetzen={"adresse": groesste, "tx": next(y["tx"] for y, _, _ in zuteilung if y["an"] == groesste)})
         ebene = naechste
 
 
@@ -435,7 +472,12 @@ async def nacharbeit(v: Vorgang, z: Zuordner, g: Graf, hoechstens: int = 8) -> N
         if not e["knoten"]:
             continue
         k = g.knoten[e["knoten"]]
-        name = dienst(z.bekannt(g.kette, k["adresse"])) if k.get("adresse") else None
+        marken = z.bekannt(g.kette, k["adresse"]) if k.get("adresse") else []
+        misch = mischer(marken)
+        if misch and e["art"] in ("sammel", "liegt", "grenze", "vertrag", "unklar") and k["rolle"] != "start":
+            e.update(art="mischer", name=misch, text="laut Etikett ein Mischdienst")
+            continue
+        name = dienst(marken)
         if name and (e["art"] == "sammel" or e["art"] in ("liegt", "grenze") and k["rolle"] != "start"):
             if e["art"] == "sammel" and k.get("sammel_tx"):
                 e["text"] = f"{e['text']}. Die Adresse gehört laut Etikett zu {name}"
@@ -504,6 +546,9 @@ def ansatzpunkte(g: Graf, z: Zuordner) -> list[str]:
                 punkte.append(f"Auf {adresse} liegen {_b(g, e['betrag'])} {s}. Die Adresse ist vom Emittenten bereits gesperrt.")
             else:
                 punkte.append(f"Auf {adresse} liegen {_b(g, e['betrag'])} {s} unbewegt. Adresse beobachten und die Verfolgung fortsetzen, sobald sich der Betrag bewegt.")
+        elif e["art"] == "mischer" and e.get("name"):
+            punkte.append(f"{_b(g, e['betrag'])} {s} gingen an {adresse}, laut Etikett ein Mischdienst ({e['name']}). "
+                          "Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar.")
         elif e["art"] == "mischer":
             punkte.append(f"{_b(g, e['betrag'])} {s} gingen ab {adresse} durch eine Transaktion mit dem Muster eines Mischdienstes"
                           + (f" ({e['tx']})" if e.get("tx") else "") + ". Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar.")
@@ -527,7 +572,8 @@ def methode(g: Graf, grenzen: Grenzen) -> str:
     else:
         text = (f"{g.kette.anzeige}: Die Kette führt Kontostände. Ein Eingang wird den zeitlich nächsten Abgängen derselben Währung "
                 "zugeordnet, bis er aufgebraucht ist (zuerst herein, zuerst hinaus). Lag auf der Adresse schon Guthaben, ist das eine Annahme. "
-                f"Adressen mit über {SEITE} Abgängen seit dem Eingang gelten als Sammeladresse eines Dienstes.")
+                f"Adressen mit über {SEITE} Abgängen seit dem Eingang gelten als Sammeladresse eines Dienstes. Zahlt eine Station "
+                f"Kleinbeträge an viele Adressen, stehen die {KLEIN_JE_STATION} grössten Empfänger einzeln da und der Rest als Summe.")
     return (text + f" Grenzen dieses Laufs: {grenzen.tiefe} Stationen ab Start, Teilbeträge unter {grenzen.min_anteil:.0%} des Startbetrags "
             f"und mehr als {grenzen.stationen} Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind Feststellungen, "
             "die Zuordnung über mehrere Stationen ist eine Bewertung nach diesem Verfahren.")

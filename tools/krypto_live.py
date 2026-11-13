@@ -54,9 +54,23 @@ AUSFUEHRLICH = "--ausfuehrlich" in sys.argv
 
 
 def zeigen(r: dict) -> None:
-    if AUSFUEHRLICH:
-        text = json.dumps(r.get("befund", r), ensure_ascii=False)
-        print("    " + (text if len(text) < 9000 else text[:9000] + " … gekürzt"), flush=True)
+    if not AUSFUEHRLICH:
+        return
+    b = r.get("befund", r)
+    if isinstance(b, dict) and "enden" in b:        # Geldfluss: das Wesentliche lesbar, statt eines abgeschnittenen Blocks
+        for e in b["enden"][:14]:
+            print(f"    Ende  {e['bezeichnung']}: {e['betrag']} {b['einheit']} ({e['anteil']} %)"
+                  + (f" bei {e['name']}" if e.get("name") else "") + (f" an {e['adresse']}" if e.get("adresse") else "")
+                  + (f". {e['grund']}" if e.get("grund") else ""), flush=True)
+        for a in b.get("ansatzpunkte", [])[:6]:
+            print(f"    Ansatz  {a}", flush=True)
+        for h in b.get("hinweise", [])[:5]:
+            print(f"    Hinweis  {h}", flush=True)
+        stand = {n: s["ergebnis"] + (f" ({s['hinweis'][:70]})" if s.get("hinweis") and s["ergebnis"] != "ok" else "") for n, s in (b.get("quellenstand") or {}).items()}
+        print(f"    Quellen  {stand}", flush=True)
+        b = {k: v for k, v in b.items() if k not in ("enden", "ansatzpunkte", "hinweise", "quellenstand", "fluesse", "methode")}
+    text = json.dumps(b, ensure_ascii=False)
+    print("    " + (text if len(text) < 6000 else text[:6000] + " … gekürzt"), flush=True)
 
 
 async def pruefung(name: str, aufruf, erwartung) -> dict | None:
@@ -77,9 +91,9 @@ async def pruefung(name: str, aufruf, erwartung) -> dict | None:
     print(f"{plattform.GUT if ok else plattform.FEHLT} {name}" + (f"\n    {detail}" if detail else ""), flush=True)
     if isinstance(r, dict):
         zeigen(r)
-        aus = [f"{f['quelle']}: {f['fehler']}" for f in r.get("fehlgeschlagen") or []]
+        aus = [f"{f['quelle']} ({str(f.get('ziel') or '')[:44]}): {str(f['fehler'])[:80]}" for f in r.get("fehlgeschlagen") or []]
         if aus:
-            print("    Ausfälle unterwegs: " + " | ".join(aus[:4]), flush=True)
+            print(f"    {len(aus)} Ausfälle unterwegs: " + " | ".join(aus[:6]), flush=True)
     return r if isinstance(r, dict) else None
 
 
@@ -159,6 +173,9 @@ async def alle() -> None:
         """Eigene Währung ab einer Adresse: Die Liste mischt Zahlungen mit Aufrufen ohne Betrag, gelesen wird über mehrere Seiten."""
         assert b["summe_geht_auf"], f"Summe geht nicht auf: {b.get('nicht_zugeordnet')}"
         assert b["stationen"], "keine Stationen"
+        falsch = [e for e in b["enden"] if e["art"] == "dienst" and ("OFAC" in e.get("name", "") or "Exploiter" in e.get("name", ""))]
+        assert not falsch, f"Adresse eines Sanktionierten oder Täters als Dienst gewertet: {falsch[:2]}"
+        assert not any("Editionsbegehren an OFAC" in a for a in b.get("ansatzpunkte", [])), b["ansatzpunkte"]
         if not b["verteilung"]:
             return f"von der Adresse ist in {b['einheit']} nichts abgeflossen, {b['abfragen']['ausgefuehrt']} Abfragen"
         return f"Start {b['startbetrag']} {b['einheit']}, {len(b['stationen'])} Stationen, {b['abfragen']['ausgefuehrt']} Abfragen: {verteilung(b)}"

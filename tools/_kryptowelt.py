@@ -371,6 +371,8 @@ class Welt:
                                       "transactions": [{"hash": txid("rw|" + a), "time": 1587839053, "amount": 43577930, "amountUSD": 3298.82}]}
                                      for a, f in self.ransomwhere.items()]})
         if host == "api.trmlabs.com":
+            if len(anfrage.content) > 1000:          # wie der echte Dienst: höchstens 1 KB je Anfrage
+                return httpx.Response(413, text="Payload Too Large")
             return _json([{"address": e["address"], "isSanctioned": e["address"] in self.trm} for e in json.loads(anfrage.content)], 201)
         if host == "apilist.tronscanapi.com":
             if anfrage.headers.get("TRON-PRO-API-KEY") is None:

@@ -54,7 +54,7 @@ wiederholbar mit `python3 tools/krypto_live.py`.
 | TronGrid | TRON: Konto, Zahlungen in TRX und Token | `GET api.trongrid.io/v1/accounts/{a}`, `/transactions`, `/transactions/trc20` | live geprüft (ohne Schlüssel) |
 | | Transaktion, Leseaufrufe an Verträge (Sperrliste von Tether, Kürzel und Dezimalstellen fremder Token) | `POST /wallet/gettransactionbyid`, `/wallet/gettransactioninfobyid`, `/wallet/triggerconstantcontract` | live geprüft |
 | OFAC | Sanktionsliste SDN mit Krypto-Adressen | `GET sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV` und `SDN_COMMENTS.CSV`, Ausweichadresse `www.treasury.gov/ofac/downloads/` | live geprüft |
-| TRM Labs | Sanktionsprüfung | `POST api.trmlabs.com/public/v1/sanctions/screening` | live geprüft |
+| TRM Labs | Sanktionsprüfung | `POST api.trmlabs.com/public/v1/sanctions/screening`. Ohne Schlüssel laut Anbieter eine Anfrage je Sekunde, 100 am Tag, höchstens 1 KB je Anfrage. Das Gateway teilt längere Listen auf (rund 15 Adressen je Anfrage). | live geprüft. Grössere Anfragen wies der Dienst mit HTTP 413 ab. |
 | Ransomwhere | bekannte Lösegeld-Adressen (Bitcoin) | `GET api.ransomwhe.re/export` | live geprüft |
 | WalletExplorer | Bitcoin: Zuordnung zu benannten Diensten | `GET www.walletexplorer.com/api/1/address-lookup` | live geprüft |
 | Tronscan | TRON: Etiketten, Risikohinweise | `GET apilist.tronscanapi.com/api/accountv2`, `/api/security/account/data`, Kopfzeile `TRON-PRO-API-KEY` | Dokumentation des Anbieters. Nicht geprüft. |
@@ -97,7 +97,7 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | Robin | Tor-Ausgangsknoten sehen nichts Zuordenbares. Die Onion-Suchmaschinen sehen den Suchbegriff. | Aufruf über Tor |
 | Block-Explorer (mempool.space, Blockstream, Blockscout, Etherscan, TronGrid) | eure Adresse, bei Etherscan und TronGrid den Schlüssel, und jede abgefragte Wallet-Adresse und Transaktion. Bei einem Geldfluss also die ganze Kette der Stationen. | nichts. Eine Blockchain lässt sich lesen, ohne dass der Inhaber einer Adresse es merkt. |
 | WalletExplorer, Tronscan, Chainabuse, Iknaio, Blockscout-Etiketten | eure Adresse, die abgefragten Wallet-Adressen | nichts |
-| TRM Labs | eure Adresse und alle Wallet-Adressen eines Laufs in einer Sammelabfrage | nichts |
+| TRM Labs | eure Adresse und alle Wallet-Adressen eines Laufs, in Sammelabfragen | nichts |
 | OFAC, Ransomwhere | dass jemand die Liste lädt. **Nicht** die geprüfte Adresse, der Vergleich läuft lokal. | nichts |
 | DefiLlama, EZB | eure Adresse, Währung und Stichtag. **Nicht** den Betrag und keine Wallet-Adresse. | nichts |
 
