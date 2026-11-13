@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Sitzungsprotokoll. Hält fest, was in einer Claude-Code-Sitzung verlangt und ausgeführt wurde:
 Eingaben des Sachbearbeiters, jeder Werkzeugaufruf (auch der Subagenten), Start und Ende der
-Subagenten. Schreibt nach protokoll/sitzungen/<Sitzung>.jsonl, hash-verkettet.
+Subagenten, und welches Sprachmodell jeweils gearbeitet hat. Schreibt nach
+protokoll/sitzungen/<Sitzung>.jsonl, hash-verkettet.
 
 Das Abfrageprotokoll der Fallakte führt das Gateway selbst. Dieser Hook ergänzt es um das
 Wer (welcher Agent, welche Sitzung) und um alles, was nicht über das Gateway läuft.
@@ -46,6 +47,31 @@ def kuerzen(wert, tiefe: int = 3):
     if isinstance(wert, list):
         return [kuerzen(v, tiefe - 1) for v in wert[:40]]
     return wert
+
+
+def modell_aus(transkript: object) -> str | None:
+    """Das Modell der letzten Antwort in einem Transkript von Claude Code (eine JSON-Zeile je Eintrag).
+    So hält das Protokoll fest, welches Modell die Hauptsitzung und jeder Subagent tatsächlich benutzt hat."""
+    if not isinstance(transkript, str) or not transkript:
+        return None
+    try:
+        with open(os.path.expanduser(transkript), "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 400_000))
+            zeilen = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    for zeile in reversed(zeilen):
+        if '"assistant"' not in zeile:
+            continue
+        try:
+            eintrag = json.loads(zeile)
+        except json.JSONDecodeError:
+            continue        # angeschnittene erste Zeile
+        modell = (eintrag.get("message") or {}).get("model") if eintrag.get("type") == "assistant" else None
+        if isinstance(modell, str) and modell.startswith("claude-"):
+            return modell
+    return None
 
 
 def fall_erkennen(ereignis: dict, text: str) -> str | None:
@@ -133,6 +159,17 @@ def main() -> int:
                      "ereignis": art, "sitzung": sitzung, "fall": fall,
                      "agent": ereignis.get("agent_type") or "hauptsitzung",
                      "agent_id": ereignis.get("agent_id")}
+    if art == "PostModelSwitch":      # jemand hat das Modell der Sitzung gewechselt, oder Claude Code ist ausgewichen
+        modell = ereignis.get("to_model") if isinstance(ereignis.get("to_model"), str) else None
+        eintrag["modell_vorher"], eintrag["anlass"] = ereignis.get("from_model"), ereignis.get("source")
+    elif art == "SubagentStop":
+        modell = modell_aus(ereignis.get("agent_transcript_path"))
+    elif ereignis.get("tool_name") and not ereignis.get("agent_id"):
+        modell = modell_aus(ereignis.get("transcript_path"))        # Schritt der Hauptsitzung
+    else:
+        modell = None
+    if modell:
+        eintrag["modell"] = modell
     if art == "UserPromptSubmit":
         eintrag["eingabe"] = kuerzen(ereignis.get("prompt") or "")
     if ereignis.get("tool_name"):

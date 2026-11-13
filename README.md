@@ -58,7 +58,7 @@ flowchart LR
 | **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 36 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
 | **Ermittler-Team** (`.claude/agents/`) | Sechs Subagenten: vier Analysten, ein unabhängiger Gegenprüfer, ein Rapportführer. |
 | **Skills** (`.claude/skills/`) | Die Methodik: Ablauf der Ermittlung, Indikatoren ziehen, Ermittlungsstandard, Rapport, Protokoll. |
-| **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat. |
+| **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat und mit welchem Modell. |
 | **Werkzeuge** (`tools/`) | Einrichten, Fall anlegen, PII-Prüfung, Rapport und Protokoll erzeugen, Kette prüfen, Einrichtung prüfen. |
 | **Musterfall** (`faelle/MUSTER-2026-001/`, `muster/`) | Ein erfundener Fall, komplett durchgespielt. Zeigt, was am Ende in der Fallakte liegt. Rapport und Protokoll als PDF unter [`muster/`](muster/). |
 
@@ -110,9 +110,9 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 2. `.venv` anlegen und die Pakete installieren.
 3. `.env` aus `.env.example` anlegen, nur für das eigene Konto lesbar. Eine vorhandene `.env` bleibt.
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
-5. Claude Code: MCP-Server freischalten und das Modell der Ermittlungsphase setzen (`.claude/settings.local.json`),
-   Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 20 Selbsttests prüfen.
+5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
+   (`.claude/settings.local.json`), Anmeldung prüfen.
+6. Musterfall bauen und die Einrichtung mit 23 Selbsttests prüfen.
 
 Am Ende steht, was neu eingerichtet wurde, was bereit ist und was für euch bleibt. Die Meldungen der
 Installationsprogramme liegen im Ordner `osint-setup` des temporären Verzeichnisses (`/tmp/osint-setup`, unter
@@ -124,14 +124,14 @@ Windows `%TEMP%\osint-setup`).
 |---|---|
 | `--nur-pruefen` | zeigt, was vorhanden ist und was fehlt. Verändert nichts. |
 | `--nichts-installieren` | installiert nichts am System, richtet nur das Projekt ein |
-| `--ermittlungsmodell mythos` | stellt die Ermittlungsphase auf Claude Mythos 5.2, siehe [Modelle je Phase](#modelle-je-phase) |
+| `--mythos` | erklärt: Dieses Konto hat Claude Mythos 5.2. Die Ermittlung schaltet dann von selbst darauf um, siehe [Modelle je Phase](#modelle-je-phase). Zurücknehmen: `--ohne-mythos` |
 | `--env-von DATEI` | übernimmt Schlüssel und Einstellungen aus einer vorbereiteten Datei nach `.env` |
 | `--docker-installieren` | installiert Docker aus den Paketquellen mit (Debian, Ubuntu, Kali) |
 | `--ohne-docker`, `--ohne-robin` | lässt Web-Check und Robin aus, oder nur Robin |
 | `--hilfe` | alle Optionen |
 
 **Mehrere Arbeitsplätze.** Eine ausgefüllte Kopie von `.env.example` an einem geschützten Ort ablegen, auf
-Wunsch mit `OSINT_ERMITTLUNGSMODELL=mythos`. Dann genügt je Laptop ein Befehl:
+Wunsch mit `OSINT_MYTHOS=ja`. Dann genügt je Laptop ein Befehl:
 
 ```powershell
 .\setup.cmd --env-von \\server\freigabe\osint.env
@@ -201,7 +201,7 @@ Rest läuft. Sechs Quellen brauchen gar keinen.
 | Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
-Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_ERMITTLUNGSMODELL`.
+Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`.
 
 Die Schlüssel liest nur das Gateway. Claude Code darf `.env` nicht lesen, und im Protokoll erscheinen
 Schlüssel als `***`.
@@ -289,32 +289,63 @@ und ist die einzige, die aktive Massnahmen ausführt.
 
 ### Modelle je Phase
 
-Zwei Modelle teilen sich die Arbeit: eines ermittelt, Claude Fable 5.2 schliesst ab.
+Zwei Modelle teilen sich die Arbeit. Die Zuteilung steht fest in den Dateien des Projekts und ist für alle gleich:
 
-| Phase | Wer | Modell | Wo festgelegt |
-|---|---|---|---|
-| **Ermittlung** | Hauptsitzung (Leitung, Indikatoren, Pivots, aktive Massnahmen) und die vier Analysten | das Modell der Sitzung. Standard `claude-fable-5-2`, umstellbar auf `claude-mythos-5-2` | `.claude/settings.json`, lokal übersteuert in `.claude/settings.local.json`. Die Analysten haben `model: inherit`. |
-| **Abschluss** | `gegenpruefer`, `rapportfuehrer`, `/abschlussrapport`, `/protokoll` | fest `claude-fable-5-2` | `model:` in den Agenten- und Skill-Dateien |
+| Phase | Wer | Verlangt |
+|---|---|---|
+| **Ermittlung** | `/ermittlung` (Leitung, Indikatoren, Pivots, aktive Massnahmen) und die vier Analysten | `claude-mythos-5-2` |
+| **Abschluss** | `gegenpruefer`, `rapportfuehrer` (Befunde, Rapport, Übergabe), `/abschlussrapport`, `/protokoll` | `claude-fable-5-2` |
+| alles andere | die Sitzung vor und nach der Ermittlung, etwa Rückfragen zum Rapport | `claude-fable-5-2` |
 
-Wer Zugang zu Claude Mythos 5.2 hat, stellt die Ermittlungsphase mit einem Befehl um:
+Ob die Ermittlung tatsächlich auf Mythos läuft, hängt an einer einzigen Angabe.
+
+**Ohne Angabe läuft alles auf Fable 5.2.** Das Projekt lässt in `.claude/settings.json` nur dieses Modell zu
+(`availableModels`). Verlangt ein Skill oder Agent ein Modell ausserhalb der Liste, übergeht Claude Code den
+Wunsch und nimmt das Modell der Sitzung. So funktioniert das Repository für alle, ohne dass jemand etwas ändert.
+
+**Wer Mythos 5.2 hat, erklärt das einmal:**
 
 ```bash
-./setup.sh --ermittlungsmodell mythos      # zurück: --ermittlungsmodell fable
+./setup.sh --mythos          # Windows: .\setup.cmd --mythos        zurücknehmen: --ohne-mythos
 ```
+
+oder mit `OSINT_MYTHOS=ja` in `.env`. Die Einrichtung trägt Mythos in die lokale Liste ein
+(`.claude/settings.local.json`, nicht eingecheckt), und Claude Code fügt beide Listen zusammen. Von da an gilt
+bei jeder Ermittlung, ohne Umstellen von Hand:
+
+1. `/ermittlung` schaltet die Sitzung auf Mythos 5.2. Die Analysten laufen auf Mythos 5.2.
+2. Gegenprüfung, Befunde, Rapport, Protokoll und Übergabe laufen auf Fable 5.2.
+3. Mit eurer nächsten Eingabe ist die Sitzung wieder auf Fable 5.2.
 
 Mythos 5.2 ist dasselbe Modell wie Fable 5.2, ohne dessen zusätzliche Schutzmassnahmen für Cybersicherheit und
 Biologie, und steht nur Organisationen offen, die Anthropic verifiziert hat
-([Modellseite](https://platform.claude.com/docs/en/models/mythos-5-2/overview)). Fehlt der Zugang, meldet
-Claude Code das beim Start. Dann zurückstellen. Statt `mythos` oder `fable` nimmt die Option auch jede Modell-ID.
+([Modellseite](https://platform.claude.com/docs/en/models/mythos-5-2/overview)). Ob euer Konto es nutzen darf,
+zeigt `python3 tools/pruefen.py --live` mit einem kurzen Testaufruf je Modell. Ist Mythos freigeschaltet, das Konto
+aber ohne Zugang, bricht `/ermittlung` gleich beim Start mit der Meldung von Claude Code ab. Dann `--ohne-mythos`.
 
-Was «Abschluss auf Fable 5.2» heisst: Die Texte des Rapports (Zusammenfassung, Befunde, «Einfach erklärt»,
-Lücken, Empfehlungen) und die Daten für Beziehungsgraf und Zeitachse schreibt der Rapportführer in
-`befunde.json`. Die Grafiken selbst zeichnet `tools/rapport.py` daraus als Programm, ohne Modell. Bei gleichen
-Befunden fallen sie deshalb immer gleich aus.
+Gut zu wissen:
 
-Die geltende Zuteilung zeigt `python3 tools/pruefen.py` unter «Konfiguration». Ein Selbsttest schlägt an, wenn ein
-Agent des Abschlusses nicht auf Fable 5.2 steht. Die Hauptsitzung gibt beim Start eines Subagenten kein Modell
-mit, sonst würde sie diese Zuteilung übersteuern (so steht es im Skill `ermittlung`).
+- **Die Umschaltung von `/ermittlung` gilt bis zu eurer nächsten Eingabe.** Beantwortet ihr mitten in der
+  Ermittlung eine Rückfrage, leitet danach wieder Fable 5.2. Die Analysten laufen weiter auf Mythos.
+- **Ohne Mythos meldet Claude Code beim Start jedes Analysten**, dass statt des verlangten Modells das der Sitzung
+  läuft. Das ist der Normalfall und kein Fehler.
+- **Die Liste gilt für den ganzen Projektordner.** Mit `/model` lässt sich hier nur wählen, was zugelassen ist.
+  Wer weitere Modelle will, ergänzt `availableModels` in den eigenen Einstellungen (`~/.claude/settings.json`).
+  Legt eure Organisation die Liste zentral fest (verwaltete Einstellungen), gilt allein deren Liste.
+- **Grafiken zeichnet kein Modell.** Die Texte des Rapports und die Daten für Beziehungsgraf und Zeitachse schreibt
+  der Rapportführer in `befunde.json`. Die Grafiken zeichnet `tools/rapport.py` daraus als Programm. Bei gleichen
+  Befunden fallen sie deshalb immer gleich aus.
+
+**Nachsehen, was tatsächlich lief.** Das Sitzungsprotokoll hält fest, welches Modell die Hauptsitzung und jeder
+Subagent benutzt hat, gelesen aus den Transkripten von Claude Code. Das Ermittlungsprotokoll zeigt es unter
+«Sitzungsverlauf» als Zeile «Eingesetzte Sprachmodelle», ebenso jeden Wechsel mit `/model`. Während der Arbeit
+zeigt `/tasks` das Modell jedes laufenden Subagenten.
+
+Die geltende Zuteilung zeigt `python3 tools/pruefen.py` unter «Konfiguration». Selbsttests schlagen an, wenn ein
+Agent des Abschlusses nicht auf Fable 5.2 steht oder das Projekt Mythos von sich aus zuliesse. Wie Claude Code
+Modelle ausserhalb der Liste behandelt, steht in dessen Dokumentation:
+[Modelle einschränken](https://code.claude.com/docs/en/model-config),
+[Modell eines Subagenten](https://code.claude.com/docs/en/sub-agents).
 
 Skills und Subagenten ergänzen sich: Ein **Subagent** ist eine Rolle mit eigenem Kontext und eigenen Werkzeugen.
 Ein **Skill** ist Wissen, wie etwas zu tun ist. Der Skill `ermittlungsstandard` wird in jeden Analysten vorgeladen
@@ -366,6 +397,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
 | Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. | `gateway/akte.py`, `tools/audit_pruefen.py` |
 | Kein Rapport ohne Belege | Der Generator prüft jede Aussage gegen das Protokoll. `hoch` verlangt zwei verschiedene Quellen. | `tools/rapport.py` |
+| Kein versehentlicher Wechsel auf ein anderes Modell | Im Projektordner sind nur Fable 5.2 und, wenn freigeschaltet, Mythos 5.2 zugelassen. | `availableModels` in `.claude/settings.json` |
 | Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, Adressen im Protokoll sind maskiert. | Einstellungen, Gateway |
 | Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. | `onion_sperrliste` |
 
@@ -394,7 +426,9 @@ Was ihr wissen müsst:
 | `osint` verbindet nicht | `.venv` fehlt oder Pakete fehlen | `./setup.sh`, unter Windows `.\setup.cmd` |
 | Windows: `osint` verbindet nicht, Meldung nennt `${OSINT_PYTHON}` oder `python3` | Das Terminal kennt die Variable `OSINT_PYTHON` noch nicht, oder sie zeigt ins Leere | neues Terminal öffnen. Hilft das nicht: `.\setup.cmd` |
 | Jeder Werkzeugaufruf wird mit «hook error … blocking because onFailure is "block"» gesperrt | Der Wächter kann nicht starten: kein Python gefunden, unter Windows fehlt Git for Windows | Einrichtung erneut ausführen. Sie nennt, was fehlt. |
-| Claude Code meldet beim Start, das Modell sei nicht verfügbar | Ermittlungsphase steht auf Mythos 5.2, das Konto hat keinen Zugang | `./setup.sh --ermittlungsmodell fable` |
+| `/ermittlung` bricht sofort ab, Claude Code meldet, das Modell sei nicht verfügbar | Mythos 5.2 ist freigeschaltet, das Konto hat aber keinen Zugang | `./setup.sh --ohne-mythos`. Vorab prüfen: `python3 tools/pruefen.py --live` |
+| Claude Code meldet beim Start eines Analysten, er laufe auf einem anderen Modell als verlangt | Mythos 5.2 ist nicht freigeschaltet | nichts, das ist der Normalfall. Wer Mythos hat: `./setup.sh --mythos` |
+| `/model` lehnt ein Modell ab | Das Projekt lässt nur Fable 5.2 zu, und Mythos 5.2, wenn freigeschaltet | gewollt. Weitere Modelle: `availableModels` in `~/.claude/settings.json` ergänzen |
 | `fall.py freigabe` meldet «trifft ein Mensch am Terminal», obwohl ihr am Terminal sitzt | Fenster von Git Bash unter Windows | in PowerShell oder der Eingabeaufforderung ausführen |
 | `.\setup.ps1` meldet «Ausführung von Skripts ist deaktiviert» | Ausführungsrichtlinie von PowerShell | `.\setup.cmd` verwenden |
 | Einrichtung meldet «Dieser Ordner wurde unter … eingerichtet» | derselbe Ordner unter WSL und unter Windows benutzt | je System ein eigener Klon |
@@ -422,11 +456,11 @@ PowerShell 7:
 
 - Die Einrichtung in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`. Dabei installiert
   sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 20 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 23 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
-  Git Bash), Sitzungs-Hook, Dateisperre und gleichzeitige Hooks, PII-Prüfung, Prüfregeln des Rapports, Zuteilung
-  der Modelle, Übereinstimmung der Agenten mit den Werkzeugen.
-- Zwei weitere Läufe mit Modellwechsel auf Mythos und zurück.
+  Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
+  Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den Werkzeugen.
+- Zwei weitere Läufe: Mythos freischalten und wieder zurücknehmen.
 - Der Klon ist danach unverändert (`git status` leer). Der Musterfall fällt also auf allen drei Systemen Byte für
   Byte gleich aus.
 - `claude doctor` beanstandet die Einstellungen nicht.
@@ -437,8 +471,9 @@ PowerShell 7:
   Umgebungsvariablen `OSINT_PYTHON`.
 - Die Fehlerbilder der Einrichtung: Claude Code fehlt, Installer nicht erreichbar, nur ein altes Python,
   Ordner unter dem anderen System eingerichtet, unbekannte Option, Übernahme von Schlüsseln aus einer Datei.
-- Zwei Gegenproben: Ohne Dateisperre scheitert der Sperrtest. Einen absichtlich falschen Wert in den
-  Einstellungen beanstandet `claude doctor`.
+- `claude doctor` nimmt die Einstellungen in beiden Zuständen an, mit und ohne freigeschaltetes Mythos.
+- Gegenproben: Ohne Dateisperre scheitert der Sperrtest. Absichtlich falsche Werte in den Einstellungen
+  (`onFailure`, `availableModels`) beanstandet `claude doctor`.
 - Der Musterfall läuft durch dieselben Gateway-Werkzeuge wie eine echte Ermittlung, mit vorgefertigten Antworten.
 
 **Nicht geprüft:**
@@ -448,9 +483,14 @@ PowerShell 7:
   `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
   sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
-  Zusammenspiel, auf keinem System. Damit auch nicht: dass die Sitzung auf Mythos 5.2 läuft und der Abschluss auf
-  Fable 5.2. Die Modell-ID `claude-mythos-5-2` und die Felder `model` für Sitzung, Subagenten und Skills stammen
-  aus den Dokumentationen von Anthropic. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
+  Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
+- **Die Umschaltung der Modelle in einer Sitzung.** Dass Claude Code den Wunsch nach Mythos übergeht, solange es
+  nicht zugelassen ist, und umschaltet, sobald es das ist, steht so in der Dokumentation von Anthropic (Links
+  unter [Modelle je Phase](#modelle-je-phase)). Gesehen ist es hier nicht: In der Bauumgebung liess sich aus
+  Claude Code heraus kein zweites Claude Code mit einem Modell starten. Geprüft ist, was die Dateien verlangen
+  und was die Einrichtung einträgt. Den Zugang eures Kontos prüft `python3 tools/pruefen.py --live`. Nach der
+  ersten echten Ermittlung zeigt das Ermittlungsprotokoll, welches Modell welchen Teil gemacht hat. Diese
+  Aufzeichnung ist ihrerseits nur an nachgestellten Transkripten getestet.
 - **Windows auf einem Arbeitsplatzrechner.** Die Prüfung läuft auf Windows Server 2025, nicht auf Windows 10
   oder 11. Python, Git for Windows und Poppler waren dort schon vorhanden, ihre Installation über winget kam
   also nicht zum Zug. Dass Claude Code unter Windows `OSINT_PYTHON` übernimmt und die Hooks über Git Bash

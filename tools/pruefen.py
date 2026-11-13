@@ -2,7 +2,8 @@
 """Prüft die Einrichtung des Arbeitsplatzes und sagt, was noch fehlt.
 
     python3 tools/pruefen.py            Umgebung, Konfiguration, Modelle, Quellen, Selbsttests (ohne Netz)
-    python3 tools/pruefen.py --live     zusätzlich je eingerichteter Quelle eine harmlose Testabfrage
+    python3 tools/pruefen.py --live     zusätzlich je eingerichteter Quelle eine harmlose Testabfrage und
+                                        je Modell (Fable 5.2, Mythos 5.2 wenn freigeschaltet) ein kurzer Testaufruf
     python3 tools/pruefen.py --kurz     nur die Übersicht, ohne Selbsttests
 
 Unter Windows heisst der Interpreter python statt python3.
@@ -35,7 +36,8 @@ if __name__ == "__main__":
 
 from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
 from gateway.quellen import QUELLEN  # noqa: E402
-from tools.einrichten import CLAUDE_MIN, MODELLE, agentenmodelle, benutzervariable, claude_stand, git_bash  # noqa: E402
+from tools.einrichten import (CLAUDE_MIN, MODELLE, benutzervariable, claude_stand, git_bash, modell_testen,  # noqa: E402
+                              modellzuteilung)
 
 VENV = plattform.venv_python(PROJEKT)
 noetig_fehlt: list[str] = []
@@ -189,18 +191,37 @@ def konfiguration(env: dict[str, str]) -> None:
             zeile(FEHLT, "Python fürs Gateway", "Umgebungsvariable OSINT_PYTHON fehlt oder zeigt ins Leere")
             noetig_fehlt.append("OSINT_PYTHON")
             schritte.append(f"{SETUP} ausführen (setzt die Variable)")
-    projekt = json.loads((PROJEKT / ".claude" / "settings.json").read_text(encoding="utf-8")).get("model", "")
-    ermittlung = daten.get("model") or projekt
-    modelle = agentenmodelle()
-    zeile(GUT, "Modell Ermittlung", f"{ermittlung}   (Hauptsitzung, {', '.join(n for n, m in modelle.items() if m == 'inherit')})")
-    feste = sorted({m for m in modelle.values() if m != "inherit"})
-    zeile(GUT if feste == [MODELLE["fable"]] else FEHLT, "Modell Abschluss",
-          f"{', '.join(feste) or 'nicht festgelegt'}   ({', '.join(n for n, m in modelle.items() if m != 'inherit')})")
-    if ermittlung != projekt:
-        schritte.append(f"Modell der Ermittlung ist lokal auf {ermittlung} gestellt. Zurück auf den Standard: "
-                        f"{SETUP} --ermittlungsmodell fable")
+    modelle(nur_merken=False)
     zeile(GUT if env.get("OSINT_PROXY") else AUS, "Proxy für Abfragen",
           "gesetzt" if env.get("OSINT_PROXY") else "keiner: Quellen sehen eure Internetadresse (OSINT_PROXY in .env)")
+
+
+def modelle(nur_merken: bool) -> dict:
+    """Zeigt, welches Modell in welcher Phase läuft. Die Zuteilung steht fest in Skills und Agenten.
+    Ob Mythos greift, entscheidet die Liste availableModels (siehe tools/einrichten.py)."""
+    z = modellzuteilung()
+    if nur_merken:
+        return z
+    fable, mythos = MODELLE["fable"], MODELLE["mythos"]
+    if z["mythos_frei"]:
+        zeile(GUT, "Mythos 5.2", "freigeschaltet: Die Ermittlung schaltet von selbst um")
+    else:
+        zeile(AUS, "Mythos 5.2", f"nicht freigeschaltet. Wer es hat: {SETUP} --mythos")
+    zeile(GUT, "Modell Ermittlung", f"{mythos if z['mythos_frei'] else z['sitzung']}   ({', '.join(z['ermittlung'])})")
+    falsch = sorted(n for n in ("gegenpruefer", "rapportfuehrer") if z["agenten"].get(n) != fable)
+    if falsch:
+        zeile(FEHLT, "Modell Abschluss", f"nicht auf {fable}: {', '.join(falsch)}")
+        noetig_fehlt.append("Modell des Abschlusses")
+    elif z["sitzung"] != fable:     # eigene Wahl in .claude/settings.local.json: erlaubt, aber nicht der Zuschnitt des Projekts
+        zeile(AUS, "Modell Abschluss", f"Agenten auf {fable}, die Sitzung selbst aber auf {z['sitzung']}")
+        schritte.append("In .claude/settings.local.json steht ein eigenes \"model\". Soll ausserhalb der Ermittlung Fable 5.2 "
+                        "laufen, diese Zeile entfernen.")
+    else:
+        zeile(GUT, "Modell Abschluss", f"{fable}   ({', '.join(z['abschluss'])}, und alles ausserhalb der Ermittlung)")
+    if not z["ermittlung"]:
+        zeile(FEHLT, "Modell Ermittlung", "kein Skill und kein Agent verlangt Mythos: Die Umschaltung fehlt")
+        noetig_fehlt.append("Zuteilung der Modelle")
+    return z
 
 
 def quellen(env: dict[str, str]) -> list:
@@ -238,6 +259,25 @@ def selbsttests() -> None:
         noetig_fehlt.append("Selbsttests")
         if r.stderr.strip():
             print("  " + r.stderr.strip().splitlines()[-1])
+
+
+def live_modelle() -> None:
+    """Je Modell ein kurzer Testaufruf über Claude Code: Darf dieses Konto das Modell nutzen?"""
+    print("\nLive-Test der Modelle (je ein kurzer Aufruf über Claude Code, ausserhalb des Projekts)")
+    z = modelle(nur_merken=True)
+    for modell in [MODELLE["fable"]] + ([MODELLE["mythos"]] if z["mythos_frei"] else []):
+        ergebnis, text = modell_testen(modell)
+        if ergebnis == "ok":
+            zeile(GUT, modell, "antwortet")
+        elif ergebnis == "unbekannt":
+            zeile(AUS, modell, f"nicht prüfbar: {text}")
+        else:
+            zeile(FEHLT, modell, text)
+            if modell == MODELLE["mythos"]:
+                schritte.append(f"Mythos 5.2 ist freigeschaltet, antwortet aber nicht. Anmeldung prüfen. Hat das Konto keinen "
+                                f"Zugang: {SETUP} --ohne-mythos")
+    if not z["mythos_frei"]:
+        zeile(AUS, MODELLE["mythos"], f"nicht freigeschaltet, deshalb nicht getestet ({SETUP} --mythos)")
 
 
 def live(bereit: list) -> None:
@@ -301,6 +341,7 @@ def main() -> int:
         selbsttests()
     if "--live" in sys.argv:
         live(bereit)
+        live_modelle()
     print()
     if eingebettet:                     # die Einrichtung zieht das Fazit und nennt die nächsten Schritte selbst
         if not noetig_fehlt:

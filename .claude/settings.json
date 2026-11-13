@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "model": "claude-fable-5-2",
+  "availableModels": [
+    "claude-fable-5-2"
+  ],
   "env": {
     "CLAUDE_CODE_USE_POWERSHELL_TOOL": "0"
   },
@@ -138,6 +141,17 @@
       }
     ],
     "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
       {
         "hooks": [
           {

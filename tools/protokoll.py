@@ -217,18 +217,30 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
 
     # ---- 4 Sitzungsverlauf
     uebrige = [z for z in sitzung if z.get("werkzeug") and not z["werkzeug"].startswith("mcp__")
-               or z.get("ereignis") in ("SubagentStart", "SubagentStop")]
+               or z.get("ereignis") in ("SubagentStart", "SubagentStop", "PostModelSwitch")]
     h.append("<h2>4 Sitzungsverlauf</h2>"
              "<p class='klein'>Alle übrigen Schritte der beteiligten Sitzungen: gelesene und geschriebene Dateien, "
              "ausgeführte Befehle, Einsatz der Subagenten.</p>")
+    eingesetzt: dict[str, set[str]] = {}
+    for z in sitzung:
+        if z.get("modell"):
+            eingesetzt.setdefault(z.get("agent") or "hauptsitzung", set()).add(z["modell"])
+    if eingesetzt:      # welches Sprachmodell welchen Teil der Arbeit gemacht hat, laut den Transkripten von Claude Code
+        h.append("<p class='klein'><b>Eingesetzte Sprachmodelle:</b> "
+                 + " · ".join(f"{esc(agent)}: <span class='mono'>{esc(', '.join(sorted(modelle)))}</span>"
+                              for agent, modelle in sorted(eingesetzt.items())) + "</p>")
     if uebrige:
         grenze = 600
         h.append("<div class='tabelle-breit'><table><tr><th>Zeit</th><th>Durch</th><th>Schritt</th><th>Angabe</th></tr>")
         for z in uebrige[:grenze]:
-            schritt = z.get("werkzeug") or {"SubagentStart": "Subagent gestartet", "SubagentStop": "Subagent beendet"}.get(z.get("ereignis"), "")
+            schritt = z.get("werkzeug") or {"SubagentStart": "Subagent gestartet", "SubagentStop": "Subagent beendet",
+                                            "PostModelSwitch": "Modell der Sitzung gewechselt"}.get(z.get("ereignis"), "")
             fehler = " ✕ fehlgeschlagen" if z.get("ereignis") == "PostToolUseFailure" else ""
             h.append(f"<tr><td>{esc(lokal(z.get('zeit_utc')))}</td><td>{esc(z.get('agent') or '')}</td>"
-                     f"<td class='mono'>{esc(schritt)}{fehler}</td><td class='klein'>{esc(eingabe_kurz(z.get('eingabe')))}</td></tr>")
+                     f"<td class='mono'>{esc(schritt)}{fehler}</td><td class='klein'>{esc(eingabe_kurz(z.get('eingabe')))}"
+                     + (f"Modell {esc(z['modell'])}" if z.get("modell") and z.get("ereignis") == "SubagentStop" else "")
+                     + (f"von {esc(z.get('modell_vorher') or '?')} auf {esc(z.get('modell') or '?')}"
+                        if z.get("ereignis") == "PostModelSwitch" else "") + "</td></tr>")
         h.append("</table></div>")
         if len(uebrige) > grenze:
             h.append(f"<p class='klein'>{len(uebrige) - grenze} weitere Schritte stehen in den Sitzungsprotokollen unter protokoll/sitzungen/.</p>")

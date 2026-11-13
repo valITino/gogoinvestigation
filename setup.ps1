@@ -2,7 +2,7 @@
 #
 #   .\setup.cmd                              alles einrichten (startet dieses Skript)
 #   .\setup.cmd --nur-pruefen                nur zeigen, was vorhanden ist und was fehlt
-#   .\setup.cmd --ermittlungsmodell mythos   Ermittlungsphase auf Claude Mythos 5.2 stellen
+#   .\setup.cmd --mythos                     erklären, dass dieses Konto Claude Mythos 5.2 hat
 #   .\setup.cmd --hilfe                      alle Optionen
 #
 # Dieses Skript sorgt nur für ein brauchbares Python (3.10 oder neuer, bei Bedarf über winget) und übergibt

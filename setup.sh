@@ -3,7 +3,7 @@
 #
 #   ./setup.sh                              alles einrichten
 #   ./setup.sh --nur-pruefen                nur zeigen, was vorhanden ist und was fehlt
-#   ./setup.sh --ermittlungsmodell mythos   Ermittlungsphase auf Claude Mythos 5.2 stellen
+#   ./setup.sh --mythos                     erklären, dass dieses Konto Claude Mythos 5.2 hat
 #   ./setup.sh --hilfe                      alle Optionen
 #
 # Dieses Skript sorgt nur für ein brauchbares Python (3.10 oder neuer) und übergibt dann an

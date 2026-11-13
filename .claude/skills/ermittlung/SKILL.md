@@ -3,6 +3,7 @@ name: ermittlung
 description: Führt eine OSINT-Ermittlung zu einem Fall von Anfang bis Ende durch. Legt den Fall bei Bedarf an, zieht die Indikatoren, setzt das Ermittler-Team ein, lässt die Befunde gegenprüfen und erzeugt Abschlussrapport und Ermittlungsprotokoll.
 argument-hint: "<Fall-ID> [Pfad zum pseudonymisierten Dokument]"
 disable-model-invocation: true
+model: claude-mythos-5-2
 ---
 
 # Ermittlung durchführen
@@ -14,8 +15,10 @@ Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexte
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.
 
-Zwei Modelle teilen sich die Arbeit. Die Ermittlung (du und die vier Analysten) läuft auf dem Modell der Sitzung,
-der Abschluss (`gegenpruefer`, `rapportfuehrer`) fest auf Claude Fable 5.2. Das steht in den Agenten-Definitionen.
+Zwei Modelle teilen sich die Arbeit, und die Zuteilung steht fest in den Dateien: Dieser Skill und die vier
+Analysten verlangen Claude Mythos 5.2, der Abschluss (`gegenpruefer`, `rapportfuehrer`) Claude Fable 5.2.
+Claude Code schaltet nur dann auf Mythos, wenn es an diesem Arbeitsplatz freigeschaltet ist. Sonst läuft alles auf
+dem Modell der Sitzung. Du musst nichts umstellen und nichts prüfen.
 **Gib beim Start eines Subagenten kein Modell an**, sonst übersteuerst du diese Zuteilung.
 
 Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten gelten sonst unverändert.
@@ -116,7 +119,9 @@ Höchstens drei Durchgänge. Bleiben Mängel, erzeuge mit `--entwurf` und sage d
 
 ## Phase 9: Übergabe
 
-Schreibe dem Sachbearbeiter:
+Die Übergabe ist Teil des Abschlusses. Lass sie vom `rapportfuehrer` formulieren und gib seinen Text unverändert
+weiter. Nenne ihm dafür, was nur du weisst: welche Freigaben fehlten, welche Massnahmen der Sachbearbeiter
+abgelehnt hat, und den letzten Kettenwert aus der Ausgabe von `protokoll.py`. Die Übergabe nennt:
 - wo die Ergebnisse liegen (`faelle/<Fall-ID>/rapport/Abschlussrapport.html`, `Ermittlungsprotokoll.html`, `indikatoren.csv`),
 - die drei bis fünf wichtigsten Befunde mit ihrer Sicherheit,
 - was offen blieb und warum,

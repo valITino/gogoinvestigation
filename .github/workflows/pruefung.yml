@@ -65,16 +65,16 @@ jobs:
           & .\setup.ps1 --ohne-docker
           exit $LASTEXITCODE
 
-      - name: Erneuter Lauf mit Modellwechsel (Linux, macOS)
+      - name: Mythos freischalten und zurücknehmen (Linux, macOS)
         if: runner.os != 'Windows'
-        run: ./setup.sh --ohne-docker --ermittlungsmodell mythos && ./setup.sh --ohne-docker --ermittlungsmodell fable
+        run: ./setup.sh --ohne-docker --mythos && ./setup.sh --ohne-docker --ohne-mythos
 
-      - name: Erneuter Lauf mit Modellwechsel über setup.cmd (Windows)
+      - name: Mythos freischalten und zurücknehmen über setup.cmd (Windows)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          call setup.cmd --ohne-docker --ermittlungsmodell mythos || exit /b 1
-          call setup.cmd --ohne-docker --ermittlungsmodell fable || exit /b 1
+          call setup.cmd --ohne-docker --mythos || exit /b 1
+          call setup.cmd --ohne-docker --ohne-mythos || exit /b 1
 
       - name: Meldungen der Installationsprogramme (nur bei Fehlern)
         if: failure()

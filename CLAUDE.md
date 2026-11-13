@@ -62,9 +62,10 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 Das Team (Subagenten unter `.claude/agents/`): `infrastruktur-analyst`, `malware-url-analyst`, `darkweb-analyst`,
 `socmint-analyst`, `gegenpruefer`, `rapportfuehrer`. Der gemeinsame Massstab steht im Skill `ermittlungsstandard`.
 
-Modelle: Die Ermittlung (Hauptsitzung und die vier Analysten) läuft auf dem Modell der Sitzung, der Abschluss
-(`gegenpruefer`, `rapportfuehrer`) fest auf Claude Fable 5.2. Das legen die Agenten-Definitionen fest. Beim Start
-eines Subagenten wird deshalb kein Modell angegeben.
+Modelle: Die Zuteilung steht in den Dateien. `/ermittlung` und die vier Analysten verlangen Claude Mythos 5.2, der
+Abschluss (`gegenpruefer`, `rapportfuehrer`) Claude Fable 5.2. Claude Code schaltet nur dann auf Mythos, wenn es an
+diesem Arbeitsplatz freigeschaltet ist. Sonst läuft alles auf Fable 5.2. Niemand stellt etwas um, und beim Start
+eines Subagenten wird kein Modell angegeben.
 
 ## Befehle
 

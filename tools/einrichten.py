@@ -12,7 +12,9 @@ Optionen:
     --docker-installieren     Docker mitinstallieren (Debian, Ubuntu, Kali; braucht root oder sudo)
     --ohne-docker             Web-Check und Robin auslassen
     --ohne-robin              nur Robin (Dark Web) auslassen
-    --ermittlungsmodell M     Modell der Ermittlungsphase: fable, mythos oder eine Modell-ID
+    --mythos                  erklären: Dieses Konto darf Claude Mythos 5.2 nutzen. Die Ermittlung schaltet dann
+                              von selbst darauf um, der Abschluss bleibt auf Claude Fable 5.2.
+    --ohne-mythos             die Erklärung zurücknehmen: alles läuft auf Claude Fable 5.2
     --env-von DATEI           Schlüssel aus einer vorbereiteten Datei nach .env übernehmen
     --hilfe                   diese Hilfe
 
@@ -22,7 +24,7 @@ Ablauf:
     2. Python-Umgebung .venv anlegen, Pakete installieren
     3. Schlüsseldatei .env und Ordner anlegen
     4. Web-Check starten und Robin-Abbild laden, wenn Docker läuft
-    5. Claude Code: MCP-Server freischalten, Modelle je Phase setzen, Anmeldung prüfen
+    5. Claude Code: MCP-Server freischalten, Mythos freischalten (wenn erklärt), Anmeldung prüfen
     6. Musterfall bauen und Einrichtung prüfen
 
 Rückgabewert 0: einsatzbereit. 1: etwas Nötiges fehlt oder ist fehlgeschlagen. 2: falscher Aufruf.
@@ -53,6 +55,7 @@ from gateway import plattform  # noqa: E402
 from gateway.plattform import AUS, FEHLT, GUT, NEU, PY, SETUP, WINDOWS  # noqa: E402
 
 MODELLE = {"fable": "claude-fable-5-2", "mythos": "claude-mythos-5-2"}
+JA, NEIN = {"ja", "j", "yes", "y", "true", "1", "an"}, {"nein", "n", "no", "false", "0", "aus"}
 CLAUDE_MIN = (2, 1, 295)        # ab dieser Version sperrt Claude Code, wenn der Wächter-Hook selbst ausfällt
 LOGS = Path(tempfile.gettempdir()) / "osint-setup"
 VENV = plattform.venv_python(PROJEKT)
@@ -105,11 +108,12 @@ def schritt(nr: int, titel: str) -> None:
     print("\n" + fett(f"[{nr}/6] {titel}"), flush=True)
 
 
-def lauf(befehl: list[str], zeit: int = 900, log: str | None = None, env: dict | None = None) -> tuple[int, str]:
+def lauf(befehl: list[str], zeit: int = 900, log: str | None = None, env: dict | None = None,
+         cwd: str | None = None) -> tuple[int, str]:
     """Führt einen Befehl aus. Gibt Rückgabewert und Ausgabe zurück, 127 wenn es das Programm nicht gibt."""
     try:
         r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=zeit,
-                           env=env, stdin=subprocess.DEVNULL)
+                           env=env, cwd=cwd, stdin=subprocess.DEVNULL)
         code, text = r.returncode, (r.stdout + r.stderr).strip()
     except FileNotFoundError:
         code, text = 127, f"Programm nicht gefunden: {befehl[0]}"
@@ -531,7 +535,7 @@ def konfiguration(a: argparse.Namespace) -> None:
     if a.env_von:
         quelle = Path(a.env_von).expanduser()
         bekannt = {m.group(2) for z in vorlage.read_text(encoding="utf-8").splitlines() if (m := ZUWEISUNG.match(z))}
-        bekannt.add("OSINT_ERMITTLUNGSMODELL")
+        bekannt.add("OSINT_MYTHOS")
         werte = {k: w for k, w in env_lesen(quelle).items() if k in bekannt}
         fremd = sorted(set(env_lesen(quelle)) - bekannt)
         geaendert = env_setzen(datei, werte)
@@ -588,51 +592,137 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
 
 # --------------------------------------------------------------------------- Schritt 5: Claude Code
 
-def modellwunsch(a: argparse.Namespace) -> str | None:
-    """Gewünschtes Modell der Ermittlungsphase: Option, sonst OSINT_ERMITTLUNGSMODELL aus .env, sonst None (unverändert)."""
-    wunsch = (a.ermittlungsmodell or env_lesen(PROJEKT / ".env").get("OSINT_ERMITTLUNGSMODELL") or "").strip()
-    if not wunsch:
+# Modelle je Phase. Die Zuteilung steht fest in den Dateien des Projekts:
+#
+#   /ermittlung und die vier Analysten verlangen   claude-mythos-5-2    (model: im Kopf von Skill und Agenten)
+#   gegenpruefer, rapportfuehrer, /abschlussrapport, /protokoll verlangen   claude-fable-5-2
+#
+# Ob Mythos tatsächlich läuft, entscheidet die Liste availableModels in den Einstellungen von Claude Code.
+# Das Projekt lässt nur Fable 5.2 zu (.claude/settings.json). Verlangt ein Skill oder Agent ein Modell ausserhalb
+# der Liste, übergeht Claude Code das und nimmt das Modell der Sitzung. Ohne weiteres Zutun läuft also alles auf
+# Fable 5.2. Wer Mythos hat, erklärt das einmal (--mythos oder OSINT_MYTHOS=ja in .env). Die Einrichtung trägt
+# Mythos dann in die lokale Liste ein (.claude/settings.local.json). Claude Code fügt die Listen zusammen, und von
+# da an schalten Skill und Agenten von selbst um.
+
+def mythos_wunsch(a: argparse.Namespace) -> bool | None:
+    """Was zu Mythos erklärt wurde: True (vorhanden), False (nicht vorhanden), None (nichts gesagt, es bleibt wie es ist).
+    Die Option gilt vor OSINT_MYTHOS aus .env."""
+    if a.mythos and a.ohne_mythos:
+        raise SystemExit("FEHLER: --mythos und --ohne-mythos schliessen sich aus.")
+    if a.mythos or a.ohne_mythos:
+        return bool(a.mythos)
+    wert = env_lesen(PROJEKT / ".env").get("OSINT_MYTHOS", "").strip().lower()
+    if not wert:
         return None
-    modell = MODELLE.get(wunsch.lower(), wunsch)
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:\[\]@/-]{1,80}", modell):
-        raise SystemExit(f"FEHLER: '{wunsch}' ist kein Modellname. Erlaubt: fable, mythos oder eine Modell-ID wie "
-                         f"{MODELLE['mythos']}. (Angabe über --ermittlungsmodell oder OSINT_ERMITTLUNGSMODELL in .env)")
-    return modell
+    if wert in JA | NEIN:
+        return wert in JA
+    raise SystemExit(f"FEHLER: OSINT_MYTHOS={wert} in .env ist weder ja noch nein.")
 
 
-def agentenmodelle() -> dict[str, str]:
+def einstellungen(datei: Path) -> dict:
+    try:
+        daten = json.loads(datei.read_text(encoding="utf-8"))
+        return daten if isinstance(daten, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def kopfmodelle(muster: str) -> dict[str, str]:
+    """Das Feld model aus dem Kopf der Agenten- oder Skill-Dateien. Fehlt es, gilt das Modell der Sitzung."""
     modelle = {}
-    for datei in sorted((PROJEKT / ".claude" / "agents").glob("*.md")):
+    for datei in sorted((PROJEKT / ".claude").glob(muster)):
         m = re.search(r"^model:\s*(\S+)\s*$", datei.read_text(encoding="utf-8").split("---")[1], re.M)
-        modelle[datei.stem] = m.group(1) if m else "inherit"
+        modelle[datei.parent.name if datei.name == "SKILL.md" else datei.stem] = m.group(1) if m else "inherit"
     return modelle
 
 
-def lokale_einstellungen(robin: bool, wunsch: str | None) -> tuple[list[str], str, bool]:
-    """Schreibt .claude/settings.local.json: freigeschaltete MCP-Server und Modell der Ermittlungsphase.
-    Fremde Einträge bleiben erhalten. Gibt (freigeschaltete Server, Modell der Ermittlung, Datei neu angelegt) zurück."""
+def agentenmodelle() -> dict[str, str]:
+    return kopfmodelle("agents/*.md")
+
+
+def skillmodelle() -> dict[str, str]:
+    return kopfmodelle("skills/*/SKILL.md")
+
+
+def erlaubt(modell: str, liste: list) -> bool:
+    """Ob availableModels das Modell zulässt. Ein Eintrag ist eine Modell-ID, ein Versionsanfang
+    (claude-fable-5 lässt auch 5.2 zu) oder eine Familie (fable). Eine leere Liste schränkt nichts ein."""
+    if not liste:
+        return True
+    return any(modell == e or modell.startswith((e + "-", e + "[", f"claude-{e}-")) for e in liste if isinstance(e, str))
+
+
+def modellzuteilung() -> dict:
+    """Welches Modell in welcher Phase läuft, aus den Dateien gelesen, so wie Claude Code sie zusammensetzt:
+    Die Listen availableModels aus Projekt, lokalen Einstellungen und Benutzerkonto werden zusammengefügt.
+    (Verwaltete Einstellungen einer Organisation gingen vor. Die sieht dieses Werkzeug nicht.)"""
+    projekt = einstellungen(PROJEKT / ".claude" / "settings.json")
+    lokal = einstellungen(PROJEKT / ".claude" / "settings.local.json")
+    konto = einstellungen(Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "settings.json")
+    liste = [m for quelle in (projekt, lokal, konto) for m in (quelle.get("availableModels") or []) if isinstance(m, str)]
+    sitzung = lokal.get("model") or projekt.get("model") or ""
+
+    def wirksam(verlangt: str) -> str:
+        return verlangt if verlangt != "inherit" and erlaubt(verlangt, liste) else sitzung
+    agenten = {name: wirksam(m) for name, m in agentenmodelle().items()}
+    skills = {name: wirksam(m) for name, m in skillmodelle().items() if m != "inherit"}
+    mythos = MODELLE["mythos"]
+    verlangen_mythos = [f"/{n}" for n, m in skillmodelle().items() if m == mythos] + [n for n, m in agentenmodelle().items() if m == mythos]
+    return {"sitzung": sitzung, "liste": liste, "mythos_frei": bool(liste) and erlaubt(mythos, liste),
+            "agenten": agenten, "skills": skills, "ermittlung": verlangen_mythos,
+            "abschluss": [n for n, m in agentenmodelle().items() if m == MODELLE["fable"]]
+                         + [f"/{n}" for n, m in skillmodelle().items() if m == MODELLE["fable"]]}
+
+
+def lokale_einstellungen(robin: bool, mythos: bool | None) -> tuple[list[str], bool, bool]:
+    """Schreibt .claude/settings.local.json: freigeschaltete MCP-Server und, wenn erklärt, Mythos in availableModels.
+    Fremde Einträge bleiben erhalten. Gibt (freigeschaltete Server, Datei neu angelegt, Altlast entfernt) zurück."""
     datei = PROJEKT / ".claude" / "settings.local.json"
     erstmals = not datei.is_file()
-    try:
-        daten = json.loads(datei.read_text(encoding="utf-8")) if datei.is_file() else {}
-    except json.JSONDecodeError:
-        daten = {}
-    if not isinstance(daten, dict):
-        daten = {}
+    daten = einstellungen(datei)
     an = [s for s in daten.get("enabledMcpjsonServers", []) if s not in ("osint", "robin")] + ["osint"] + (["robin"] if robin else [])
     ab = [s for s in daten.get("disabledMcpjsonServers", []) if s not in ("osint", "robin")] + ([] if robin else ["robin"])
     daten["enabledMcpjsonServers"], daten["disabledMcpjsonServers"] = an, ab
 
-    projektmodell = json.loads((PROJEKT / ".claude" / "settings.json").read_text(encoding="utf-8")).get("model", "")
-    if wunsch is not None:
-        if wunsch == projektmodell:
-            daten.pop("model", None)        # entspricht dem Standard des Projekts: keine lokale Abweichung nötig
-        else:
-            daten["model"] = wunsch
-    ermittlung = daten.get("model") or projektmodell
-
+    liste = [m for m in daten.get("availableModels") or [] if isinstance(m, str)] if isinstance(daten.get("availableModels"), list) else []
+    if mythos is True and MODELLE["mythos"] not in liste:
+        liste.append(MODELLE["mythos"])
+    elif mythos is False:
+        liste = [m for m in liste if m != MODELLE["mythos"]]
+    if liste:
+        daten["availableModels"] = liste
+    else:
+        daten.pop("availableModels", None)
+    # Altlast: Eine frühere Fassung stellte die ganze Sitzung auf Mythos. Jetzt schaltet /ermittlung selbst um,
+    # und ausserhalb der Ermittlung soll Fable 5.2 laufen.
+    altlast = daten.get("model") == MODELLE["mythos"]
+    if altlast:
+        daten.pop("model")
     plattform.text_schreiben(datei, json.dumps(daten, indent=2, ensure_ascii=False) + "\n")
-    return an, ermittlung, erstmals
+    return an, erstmals, altlast
+
+
+def modell_testen(modell: str) -> tuple[str, str]:
+    """Ein kurzer Testaufruf über Claude Code, ausserhalb des Projekts: Darf dieses Konto das Modell nutzen?
+    Gibt ("ok" | "anderes" | "fehler" | "unbekannt", Erklärung) zurück. Verbraucht einen kleinen Aufruf."""
+    pfad = plattform.programm("claude")
+    if not pfad:
+        return "unbekannt", "Claude Code fehlt"
+    with tempfile.TemporaryDirectory(prefix="osint-modelltest-") as ordner:    # leerer Ordner: keine Hooks, kein Gateway
+        code, text = lauf([pfad, "-p", "Antworte nur mit dem Wort OK.", "--model", modell, "--output-format", "json",
+                           "--no-session-persistence"], 180, cwd=ordner)
+    try:
+        antwort = json.loads(text[text.index("{"):text.rindex("}") + 1])
+    except ValueError:
+        return "unbekannt", (text.strip().splitlines() or [f"keine Antwort (Rückgabewert {code})"])[-1][:200]
+    benutzt = sorted(antwort.get("modelUsage") or {})
+    if antwort.get("is_error") or code != 0:
+        return "fehler", str(antwort.get("result") or f"Rückgabewert {code}").strip().splitlines()[0][:200]
+    if any(m.startswith(modell) for m in benutzt):
+        return "ok", "antwortet"
+    if benutzt:     # Claude Code hat ein anderes Modell genommen, etwa weil eine Liste des Kontos dieses nicht zulässt
+        return "anderes", "geantwortet hat stattdessen " + ", ".join(benutzt)
+    return "unbekannt", "Antwort erhalten, aber ohne Angabe des Modells"
 
 
 def benutzervariable(name: str) -> str:
@@ -667,18 +757,25 @@ def gateway_python() -> None:
 
 def claude_code(a: argparse.Namespace, robin: bool) -> None:
     schritt(5, "Claude Code")
-    an, ermittlung, erstmals = lokale_einstellungen(robin, modellwunsch(a))
+    vorher = modellzuteilung()["mythos_frei"]
+    an, erstmals, altlast = lokale_einstellungen(robin, mythos_wunsch(a))
     zeile(GUT, "MCP-Server", "freigeschaltet: " + ", ".join(an) + ("" if robin else "   (robin aus: kein Docker oder kein Abbild)"))
     if WINDOWS:
         gateway_python()
-    modelle = agentenmodelle()
-    analysten = [n for n, m in modelle.items() if m == "inherit"]
-    abschluss = sorted({m for m in modelle.values() if m != "inherit"})
-    zeile(GUT, "Modell Ermittlung", f"{ermittlung}   (Hauptsitzung und {len(analysten)} Analysten)")
-    zeile(GUT, "Modell Abschluss", f"{', '.join(abschluss) or ermittlung}   ({', '.join(n for n, m in modelle.items() if m != 'inherit')}, Rapport und Protokoll)")
-    if ermittlung == MODELLE["mythos"]:
-        stand.offen.append("Mythos 5.2 steht nur verifizierten Organisationen offen. Meldet Claude Code beim Start, das Modell sei "
-                           f"nicht verfügbar: {SETUP} --ermittlungsmodell fable")
+    z = modellzuteilung()
+    fable, mythos = MODELLE["fable"], MODELLE["mythos"]
+    if z["mythos_frei"]:
+        zeile(GUT if vorher else NEU, "Mythos 5.2", "freigeschaltet. Die Ermittlung schaltet von selbst um, der Abschluss bleibt auf Fable 5.2.")
+        if not vorher:
+            stand.neu.append("Mythos 5.2 für die Ermittlung freigeschaltet")
+            stand.offen.append(f"Prüfen, ob euer Konto Mythos 5.2 nutzen darf (zwei kurze Testaufrufe): {PY} tools/pruefen.py --live   "
+                               f"Falls nicht: {SETUP} --ohne-mythos")
+    else:
+        zeile(AUS, "Mythos 5.2", f"nicht freigeschaltet, alles läuft auf Fable 5.2. Wer Mythos hat: {SETUP} --mythos")
+    zeile(GUT, "Modell Ermittlung", f"{mythos if z['mythos_frei'] else z['sitzung']}   ({', '.join(z['ermittlung'])})")
+    zeile(GUT, "Modell Abschluss", f"{fable}   ({', '.join(z['abschluss'])}, und alles ausserhalb der Ermittlung)")
+    if altlast:
+        zeile(NEU, "Sitzungsmodell", f"zurück auf {z['sitzung']}. Auf Mythos schaltet jetzt /ermittlung selbst um.")
 
     pfad = plattform.programm("claude")
     if not pfad:
@@ -747,15 +844,18 @@ def abschluss(code: int) -> int:
 def main(argv: list[str]) -> int:
     plattform.utf8()
     p = argparse.ArgumentParser(add_help=False)
-    for name in ("nur-pruefen", "nichts-installieren", "docker-installieren", "ohne-docker", "ohne-robin"):
+    for name in ("nur-pruefen", "nichts-installieren", "docker-installieren", "ohne-docker", "ohne-robin", "mythos", "ohne-mythos"):
         p.add_argument(f"--{name}", action="store_true")
-    p.add_argument("--ermittlungsmodell")
     p.add_argument("--env-von")
     p.add_argument("-h", "--hilfe", "--help", action="store_true", dest="hilfe")
     a, unbekannt = p.parse_known_args(argv)
     if a.hilfe:
         print(__doc__)
         return 0
+    if "--ermittlungsmodell" in unbekannt:
+        print(f"FEHLER: --ermittlungsmodell gibt es nicht mehr. Wer Mythos 5.2 hat, erklärt das einmal: {SETUP} --mythos\n"
+              "        Die Ermittlung schaltet dann von selbst um, der Abschluss bleibt auf Fable 5.2.", file=sys.stderr)
+        return 2
     if unbekannt:
         print(f"FEHLER: Unbekannte Option: {' '.join(unbekannt)}   (Hilfe: {SETUP} --hilfe)", file=sys.stderr)
         return 2
@@ -763,14 +863,13 @@ def main(argv: list[str]) -> int:
         print(f"FEHLER: --env-von: Datei nicht gefunden: {a.env_von}", file=sys.stderr)
         return 2
     os.chdir(PROJEKT)
-    modellwunsch(a)         # eine falsche Angabe soll sofort auffallen, nicht erst nach der halben Einrichtung
+    mythos_wunsch(a)        # eine falsche Angabe soll sofort auffallen, nicht erst nach der halben Einrichtung
     sysinfo = system()
     print(fett("OSINT-Ermittlungsarbeitsplatz einrichten") + ("   (nur prüfen, es wird nichts verändert)" if a.nur_pruefen else ""))
     print(f"System: {sysinfo['name']}   Paketverwaltung: {sysinfo['paketverwaltung'] or 'keine gefunden'}   Ordner: {PROJEKT}")
 
     docker = voraussetzungen(a, sysinfo)
     if a.nur_pruefen:
-        modellwunsch(a)
         print("\n" + (fett("Es fehlt Nötiges: ") + ", ".join(dict.fromkeys(stand.noetig)) if stand.noetig
                       else "Alles Nötige ist vorhanden."))
         for nr, was in enumerate(dict.fromkeys(stand.offen), 1):
