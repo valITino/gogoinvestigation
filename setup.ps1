@@ -1,8 +1,8 @@
-﻿# Richtet den OSINT-Ermittlungsarbeitsplatz unter Windows ein. Ohne Rückfragen, beliebig oft wiederholbar.
+﻿# Richtet den OSINT-Ermittlungsarbeitsplatz unter Windows ein. Beliebig oft wiederholbar.
 #
-#   .\setup.cmd                              alles einrichten (startet dieses Skript)
+#   .\setup.cmd                              im Terminal: Ein Assistent fragt, zeigt eine Übersicht und richtet dann ein
+#   .\setup.cmd --ohne-rueckfragen           nichts fragen (so läuft es auch ohne Terminal, etwa in einem Skript)
 #   .\setup.cmd --nur-pruefen                nur zeigen, was vorhanden ist und was fehlt
-#   .\setup.cmd --mythos                     erklären, dass dieses Konto Claude Mythos 5.2 hat
 #   .\setup.cmd --hilfe                      alle Optionen
 #
 # Dieses Skript sorgt nur für ein brauchbares Python (3.10 oder neuer, bei Bedarf über winget) und übergibt
@@ -19,9 +19,16 @@ $env:PYTHONUTF8 = '1'
 
 $Argumente = @($args)
 $Darf = $true       # darf dieses Skript Python nachinstallieren?
-foreach ($schalter in @('--nur-pruefen', '--nichts-installieren', '--hilfe', '--help', '-h')) {
+foreach ($schalter in @('--nur-pruefen', '--nichts-installieren', '--vorschau', '--hilfe', '--help', '-h')) {
     if ($Argumente -contains $schalter) { $Darf = $false }
 }
+$Fragen = -not $env:CI      # vorher fragen? Nur im Terminal, und nicht wenn ohne Rückfragen gewünscht
+foreach ($schalter in @('--ohne-rueckfragen', '--ja', '-y')) {
+    if ($Argumente -contains $schalter) { $Fragen = $false }
+}
+try {
+    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { $Fragen = $false }
+} catch { $Fragen = $false }
 $Mindestversion = [version]'3.10.0'
 $Log = Join-Path ([System.IO.Path]::GetTempPath()) 'osint-setup\python.log'
 
@@ -95,7 +102,15 @@ function Install-Python {
 }
 
 $python = Find-Python
-if ((-not $python) -and $Darf) { $python = Install-Python }
+if ((-not $python) -and $Darf) {
+    if ($Fragen) {
+        Write-Host ''
+        Write-Host '  Die Einrichtung braucht Python 3.10 oder neuer. Auf diesem Rechner fehlt es.'
+        $antwort = Read-Host '  Python 3.12 jetzt über winget für euer Benutzerkonto installieren? [J/n]'
+        if ("$antwort".Trim() -match '^(n|nein|no)$') { $Darf = $false }
+    }
+    if ($Darf) { $python = Install-Python }
+}
 
 if (-not $python) {
     Write-Host ''

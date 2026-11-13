@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Richtet den OSINT-Ermittlungsarbeitsplatz ein (Linux, macOS, WSL). Ohne Rückfragen, beliebig oft wiederholbar.
+# Richtet den OSINT-Ermittlungsarbeitsplatz ein (Linux, macOS, WSL). Beliebig oft wiederholbar.
 #
-#   ./setup.sh                              alles einrichten
+#   ./setup.sh                              im Terminal: Ein Assistent fragt, zeigt eine Übersicht und richtet dann ein
+#   ./setup.sh --ohne-rueckfragen           nichts fragen (so läuft es auch ohne Terminal, etwa in einem Skript)
 #   ./setup.sh --nur-pruefen                nur zeigen, was vorhanden ist und was fehlt
-#   ./setup.sh --mythos                     erklären, dass dieses Konto Claude Mythos 5.2 hat
 #   ./setup.sh --hilfe                      alle Optionen
 #
 # Dieses Skript sorgt nur für ein brauchbares Python (3.10 oder neuer) und übergibt dann an
@@ -27,8 +27,13 @@ case "$(uname -s 2>/dev/null)" in
 esac
 
 DARF=1      # darf dieses Skript Python nachinstallieren?
+FRAGEN=0    # vorher fragen? Nur im Terminal, und nicht wenn ohne Rückfragen gewünscht
+if [ -t 0 ] && [ -t 1 ] && [ -z "${CI:-}" ]; then FRAGEN=1; fi
 for arg in "$@"; do
-  case "$arg" in --nur-pruefen|--nichts-installieren|--hilfe|--help|-h) DARF=0 ;; esac
+  case "$arg" in
+    --nur-pruefen|--nichts-installieren|--vorschau|--hilfe|--help|-h) DARF=0 ;;
+    --ohne-rueckfragen|--ja|-y) FRAGEN=0 ;;
+  esac
 done
 
 python_ok() { "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; }
@@ -74,9 +79,17 @@ python_installieren() {
 }
 
 if ! finde_python && [ "$DARF" = 1 ]; then
-  python_installieren
-  hash -r 2>/dev/null
-  finde_python
+  if [ "$FRAGEN" = 1 ]; then
+    printf '\n  Die Einrichtung braucht Python 3.10 oder neuer. Auf diesem Rechner fehlt es.\n'
+    printf '  Jetzt über die Paketverwaltung installieren? [J/n] '
+    read -r antwort
+    case "$antwort" in n|N|nein|Nein|NEIN|no|No) DARF=0 ;; esac
+  fi
+  if [ "$DARF" = 1 ]; then
+    python_installieren
+    hash -r 2>/dev/null
+    finde_python
+  fi
 fi
 
 if [ -z "$PYTHON" ]; then

@@ -1,22 +1,35 @@
 #!/usr/bin/env python3
-"""Richtet den OSINT-Ermittlungsarbeitsplatz ein. Ohne Rückfragen, beliebig oft wiederholbar.
+"""Richtet den OSINT-Ermittlungsarbeitsplatz ein. Beliebig oft wiederholbar.
 
 Aufruf über die Startskripte. Sie sorgen zuerst für ein brauchbares Python und übergeben dann hierher:
 
     ./setup.sh [Optionen]         Linux, macOS, WSL
     .\\setup.cmd [Optionen]        Windows (startet setup.ps1)
 
+Im Terminal führt ein Assistent durch die Einrichtung. Er fragt nach Mythos, Schlüsseln, Proxy und Diensten,
+zeigt eine Übersicht und richtet erst nach der Bestätigung ein. Ohne Terminal (CI, Skript, Umleitung in eine
+Datei) oder mit --ohne-rueckfragen läuft alles ohne Fragen durch. Dann gelten die Optionen und die Werte aus .env.
+
 Optionen:
+    --ohne-rueckfragen        nichts fragen (für Skripte und das Ausrollen auf viele Arbeitsplätze). Kurz: --ja, -y
+    --schlicht                Fragen als nummerierte Listen statt mit Pfeiltasten, ohne Laufanzeige
+                              (Bildschirmleser, sehr alte Terminals)
+    --vorschau                Fragen stellen und die Übersicht zeigen, aber nichts verändern
     --nur-pruefen             nur zeigen, was vorhanden ist und was fehlt. Es wird nichts verändert.
     --nichts-installieren     nichts am System installieren (Pakete, Claude Code), nur das Projekt einrichten
     --docker-installieren     Docker mitinstallieren (Debian, Ubuntu, Kali; braucht root oder sudo)
     --ohne-docker             Web-Check und Robin auslassen
+    --ohne-webcheck           nur Web-Check auslassen
     --ohne-robin              nur Robin (Dark Web) auslassen
     --mythos                  erklären: Dieses Konto darf Claude Mythos 5.2 nutzen. Die Ermittlung schaltet dann
                               von selbst darauf um, der Abschluss bleibt auf Claude Fable 5.2.
     --ohne-mythos             die Erklärung zurücknehmen: alles läuft auf Claude Fable 5.2
     --env-von DATEI           Schlüssel aus einer vorbereiteten Datei nach .env übernehmen
+    --testen                  am Ende je eingerichteter Quelle eine harmlose Testabfrage senden
     --hilfe                   diese Hilfe
+
+Im Assistenten sind die Optionen die Vorgaben der Fragen. Auf einem schon eingerichteten Arbeitsplatz
+wird mit einer Option, die etwas einstellt (etwa --mythos), nicht nachgefragt.
 
 Ablauf:
     1. Voraussetzungen prüfen und Fehlendes installieren (Python-venv, Claude Code, pdftotext,
@@ -26,8 +39,10 @@ Ablauf:
     4. Web-Check starten und Robin-Abbild laden, wenn Docker läuft
     5. Claude Code: MCP-Server freischalten, Mythos freischalten (wenn erklärt), Anmeldung prüfen
     6. Musterfall bauen und Einrichtung prüfen
+    Auf Wunsch danach: Anmeldung bei Claude Code, Testabfragen an die Quellen
 
 Rückgabewert 0: einsatzbereit. 1: etwas Nötiges fehlt oder ist fehlgeschlagen. 2: falscher Aufruf.
+130: abgebrochen.
 """
 from __future__ import annotations
 
@@ -37,29 +52,36 @@ if sys.version_info < (3, 10):
     sys.exit("FEHLER: Python %d.%d ist zu alt. Nötig ist 3.10 oder neuer." % sys.version_info[:2])
 
 import argparse  # noqa: E402
+import contextlib  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import platform  # noqa: E402
 import re  # noqa: E402
 import shutil  # noqa: E402
+import socket  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import urllib.request  # noqa: E402
 from pathlib import Path  # noqa: E402
+from urllib.parse import urlsplit  # noqa: E402
 
 PROJEKT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJEKT))
 
 from gateway import plattform  # noqa: E402
 from gateway.plattform import AUS, FEHLT, GUT, NEU, PY, SETUP, WINDOWS  # noqa: E402
+from gateway.quellen import QUELLEN  # noqa: E402
+from tools._oberflaeche import Abbruch, Oberflaeche  # noqa: E402
 
 MODELLE = {"fable": "claude-fable-5-2", "mythos": "claude-mythos-5-2"}
 JA, NEIN = {"ja", "j", "yes", "y", "true", "1", "an"}, {"nein", "n", "no", "false", "0", "aus"}
 CLAUDE_MIN = (2, 1, 295)        # ab dieser Version sperrt Claude Code, wenn der Wächter-Hook selbst ausfällt
 LOGS = Path(tempfile.gettempdir()) / "osint-setup"
 VENV = plattform.venv_python(PROJEKT)
-FARBE = sys.stdout.isatty() and "NO_COLOR" not in os.environ and (not WINDOWS or bool(os.environ.get("WT_SESSION")))
+TOR = "socks5h://127.0.0.1:9050"
+SCHLUESSELQUELLEN = tuple(q for q in QUELLEN if q.env)     # Quellen, die einen Schlüssel brauchen
+ui = Oberflaeche()
 
 # Paketnamen je Paketverwaltung
 PAKETE = {
@@ -87,33 +109,34 @@ class Stand:
         self.neues_terminal: list[str] = []     # was erst in einem neuen Terminal gilt
         self.apt_aktuell = False
         self.sudo_gemeldet = False
+        self.assistent = False              # der Mensch hat die Fragen des Assistenten beantwortet
 
 
 stand = Stand()
+HINWEIS_ANMELDEN = ("Bei Claude Code anmelden: im Projektordner 'claude' starten und der Anmeldung im Browser folgen. "
+                    "(Läuft Claude Code bei euch über einen API-Schlüssel oder Cloud-Anbieter, entfällt das.)")
 
 
 # --------------------------------------------------------------------------- Ausgabe und Befehle
 
-def fett(text: str) -> str:
-    return f"\033[1m{text}\033[0m" if FARBE else text
-
-
 def zeile(zeichen: str, was: str, wie: str = "") -> None:
-    farbe = {GUT: "32", NEU: "32", FEHLT: "31"}.get(zeichen)
-    z = f"\033[{farbe}m{zeichen}\033[0m" if FARBE and farbe else zeichen
-    print(f"  {z} {was:<22} {wie}".rstrip(), flush=True)
+    ui.zeile(zeichen, was, wie)
 
 
 def schritt(nr: int, titel: str) -> None:
-    print("\n" + fett(f"[{nr}/6] {titel}"), flush=True)
+    ui.schritt(nr, 6, titel)
 
 
 def lauf(befehl: list[str], zeit: int = 900, log: str | None = None, env: dict | None = None,
-         cwd: str | None = None) -> tuple[int, str]:
-    """Führt einen Befehl aus. Gibt Rückgabewert und Ausgabe zurück, 127 wenn es das Programm nicht gibt."""
+         cwd: str | None = None, anzeige: str | None = None) -> tuple[int, str]:
+    """Führt einen Befehl aus. Gibt Rückgabewert und Ausgabe zurück, 127 wenn es das Programm nicht gibt.
+    Mit anzeige läuft währenddessen eine Zeile mit, die sagt, was gerade geschieht."""
+    if befehl[:1] == ["sudo"] and befehl[1:2] != ["-n"]:
+        anzeige = None      # sudo fragt vielleicht nach dem Passwort: Die Laufanzeige würde die Frage übermalen
     try:
-        r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=zeit,
-                           env=env, cwd=cwd, stdin=subprocess.DEVNULL)
+        with ui.arbeit(anzeige):
+            r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=zeit,
+                               env=env, cwd=cwd, stdin=subprocess.DEVNULL)
         code, text = r.returncode, (r.stdout + r.stderr).strip()
     except FileNotFoundError:
         code, text = 127, f"Programm nicht gefunden: {befehl[0]}"
@@ -165,8 +188,11 @@ def root_praefix(wofuer: str) -> list[str] | None:
         return ["sudo", "-n"]
     if sys.stdin.isatty():
         if not stand.sudo_gemeldet:
-            print(f"    Für {wofuer} fragt sudo jetzt einmal nach eurem Passwort.", flush=True)
             stand.sudo_gemeldet = True
+            ui.text(f"Für {wofuer} braucht es einmal euer Passwort (sudo).", einzug=4)
+            subprocess.call(["sudo", "-v"])     # fragt jetzt, in Ruhe, bevor etwas anderes auf dem Bildschirm läuft
+            if lauf(["sudo", "-n", "true"], 15)[0] == 0:
+                return ["sudo", "-n"]
         return ["sudo"]
     return None
 
@@ -177,18 +203,19 @@ def paket_installieren(was: str, sysinfo: dict, namen: dict[str, list[str]] | No
     pakete = (namen or PAKETE[was]).get(verwaltung or "")
     if not verwaltung or not pakete:
         return False, "keine passende Paketverwaltung gefunden"
+    anzeige = f"{' '.join(pakete)} wird installiert ({verwaltung})"
     if verwaltung == "winget":
         for paket in pakete:
             basis = ["winget", "install", "--id", paket, "-e", "--source", "winget", "--silent",
                      "--accept-package-agreements", "--accept-source-agreements"]
             # ältere winget-Versionen kennen --disable-interactivity nicht: dann ohne
-            if lauf(basis + ["--disable-interactivity"], 900, "pakete.log")[0] != 0:
-                lauf(basis, 900, "pakete.log")
+            if lauf(basis + ["--disable-interactivity"], 900, "pakete.log", anzeige=anzeige)[0] != 0:
+                lauf(basis, 900, "pakete.log", anzeige=anzeige)
         return True, "winget install --id " + " ".join(pakete)
     if verwaltung == "brew":
         if os.geteuid() == 0:
             return False, "Homebrew läuft nicht als root: brew install " + " ".join(pakete)
-        lauf(INSTALLIEREN["brew"] + pakete, 1800, "pakete.log")
+        lauf(INSTALLIEREN["brew"] + pakete, 1800, "pakete.log", anzeige=anzeige)
         return True, "brew install " + " ".join(pakete)
     befehl = INSTALLIEREN[verwaltung] + pakete
     vor = root_praefix(f"die Installation von {' '.join(pakete)}")
@@ -196,10 +223,11 @@ def paket_installieren(was: str, sysinfo: dict, namen: dict[str, list[str]] | No
         return False, "sudo " + " ".join(befehl)
     umgebung = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
     if verwaltung == "apt" and not stand.apt_aktuell:
-        lauf(vor + ["apt-get", "update", "-qq"], 600, "pakete.log", umgebung)
+        lauf(vor + ["apt-get", "update", "-qq"], 600, "pakete.log", umgebung, anzeige="Paketlisten werden aktualisiert (apt)")
         stand.apt_aktuell = True
     # sudo gibt eine veränderte Umgebung nicht weiter, deshalb über env
-    code, _ = lauf(vor + (["env", "DEBIAN_FRONTEND=noninteractive"] if vor else []) + befehl, 1800, "pakete.log", umgebung)
+    code, _ = lauf(vor + (["env", "DEBIAN_FRONTEND=noninteractive"] if vor else []) + befehl, 1800, "pakete.log", umgebung,
+                   anzeige=anzeige)
     return True, ("sudo " if vor else "") + " ".join(befehl) + ("" if code == 0 else f"   (Details: {LOGS / 'pakete.log'})")
 
 
@@ -236,12 +264,14 @@ def claude_installieren() -> str | None:
         umgebung = {k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"}
         code, text = lauf(["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
                            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
-                           "irm https://claude.ai/install.ps1 | iex"], 900, "claude.log", umgebung)
+                           "irm https://claude.ai/install.ps1 | iex"], 900, "claude.log", umgebung,
+                          anzeige="Claude Code wird installiert")
     else:
         LOGS.mkdir(parents=True, exist_ok=True)
         skript = LOGS / "claude-install.sh"
         if shutil.which("curl"):
-            code, text = lauf(["curl", "-fsSL", "https://claude.ai/install.sh", "-o", str(skript)], 120, "claude.log")
+            code, text = lauf(["curl", "-fsSL", "https://claude.ai/install.sh", "-o", str(skript)], 120, "claude.log",
+                              anzeige="Installer von Claude Code wird geladen")
         else:
             try:
                 with urllib.request.urlopen("https://claude.ai/install.sh", timeout=60) as antwort:
@@ -254,7 +284,7 @@ def claude_installieren() -> str | None:
         anfang = skript.read_bytes()[:200].lstrip()
         if not anfang.startswith(b"#!"):
             return "claude.ai lieferte kein Installationsskript (Region, Proxy oder Filter?)."
-        code, text = lauf(["bash", str(skript)], 900, "claude.log")
+        code, text = lauf(["bash", str(skript)], 900, "claude.log", anzeige="Claude Code wird installiert")
     if code != 0:
         return f"Der Installer meldet einen Fehler. Details: {LOGS / 'claude.log'}"
     return None
@@ -410,9 +440,10 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
                                f"{SETUP} erneut. Ohne Compose bleibt Web-Check aus.")
     elif docker["installiert"]:
         zeile(AUS, "Docker", "installiert, aber der Dienst läuft nicht oder euer Konto hat keinen Zugriff")
-        stand.offen.append(("Docker Desktop starten" if sysinfo["art"] != "linux" or sysinfo["wsl"] else
-                            "Docker starten (sudo systemctl start docker) und das Konto in die Gruppe docker aufnehmen")
-                           + f", dann {SETUP} erneut. Bis dahin bleiben Web-Check und Robin aus.")
+        if not stand.assistent:     # im Assistenten war «ohne Docker weiter» eine bewusste Entscheidung
+            stand.offen.append(("Docker Desktop starten" if sysinfo["art"] != "linux" or sysinfo["wsl"] else
+                                "Docker starten (sudo systemctl start docker) und das Konto in die Gruppe docker aufnehmen")
+                               + f", dann {SETUP} erneut. Bis dahin bleiben Web-Check und Robin aus.")
     else:
         if sysinfo["art"] == "linux" and sysinfo["paketverwaltung"] == "apt":
             wie = f"Nachholen: {SETUP} --docker-installieren"
@@ -439,7 +470,8 @@ def python_umgebung() -> bool:
     if VENV.is_file() and lauf([str(VENV), "-c", "import sys"], 60)[0] == 0:
         zeile(GUT, ".venv", "vorhanden")
     else:
-        code, text = lauf([sys.executable, "-m", "venv", "--clear", str(PROJEKT / ".venv")], 600, "venv.log")
+        code, text = lauf([sys.executable, "-m", "venv", "--clear", str(PROJEKT / ".venv")], 600, "venv.log",
+                          anzeige="Python-Umgebung .venv wird angelegt")
         if code != 0 or not VENV.is_file():
             zeile(FEHLT, ".venv", "liess sich nicht anlegen")
             print(letzte_zeilen(text))
@@ -457,9 +489,9 @@ def python_umgebung() -> bool:
         zeile(GUT, "Pakete", "mcp, httpx, pydantic sind installiert")
         return True
     befehl = [str(VENV), "-m", "pip", "install", "--disable-pip-version-check", "--quiet", "-r", str(anforderungen)]
-    code, text = lauf(befehl, 1800, "pip.log")
+    code, text = lauf(befehl, 1800, "pip.log", anzeige="Pakete werden installiert (mcp, httpx, pydantic)")
     if code != 0:      # ein zweiter Versuch fängt kurze Netzstörungen ab
-        code, text = lauf(befehl, 1800, "pip.log")
+        code, text = lauf(befehl, 1800, "pip.log", anzeige="Pakete werden installiert, zweiter Versuch")
     if code != 0 or lauf(pruefung, 120)[0] != 0:
         zeile(FEHLT, "Pakete", "liessen sich nicht installieren")
         print(letzte_zeilen(text))
@@ -491,17 +523,23 @@ def env_lesen(datei: Path) -> dict[str, str]:
 
 
 def env_setzen(datei: Path, werte: dict[str, str]) -> list[str]:
-    """Trägt Werte in .env ein, an der Stelle, an der der Name schon steht. Gibt die geänderten Namen zurück."""
+    """Trägt Werte in .env ein, an der Stelle, an der der Name schon steht. Ein leerer Wert nimmt die
+    Einstellung zurück. Gibt die geänderten Namen zurück."""
     zeilen = datei.read_text(encoding="utf-8").splitlines()
     geaendert = []
     for name, wert in werte.items():
         aktiv = next((i for i, z in enumerate(zeilen) if (m := ZUWEISUNG.match(z)) and m.group(2) == name and not m.group(1)), None)
         auskommentiert = next((i for i, z in enumerate(zeilen) if (m := ZUWEISUNG.match(z)) and m.group(2) == name and m.group(1)), None)
         neu = f"{name}={wert}"
+        if not wert and aktiv is None:
+            continue                    # nichts da, was zurückzunehmen wäre
         if aktiv is not None:
             if zeilen[aktiv].strip() == neu:
                 continue
-            zeilen[aktiv] = neu
+            if not wert and auskommentiert is not None:
+                del zeilen[aktiv]       # die auskommentierte Zeile der Vorlage bleibt als Gedächtnisstütze stehen
+            else:
+                zeilen[aktiv] = neu
         elif auskommentiert is not None:
             zeilen.insert(auskommentiert + 1, neu)
         else:
@@ -522,6 +560,15 @@ def nur_fuer_mich(datei: Path) -> None:
         lauf(["icacls", str(datei), "/inheritance:r", "/grant:r", f"{konto}:(F)"], 30, "env.log")
 
 
+def aus_datei(quelle: Path) -> tuple[dict[str, str], list[str]]:
+    """Einstellungen aus einer vorbereiteten Datei: (übernommene Werte, Namen die .env.example nicht kennt)."""
+    vorlage = PROJEKT / ".env.example"
+    bekannt = {m.group(2) for z in vorlage.read_text(encoding="utf-8").splitlines() if (m := ZUWEISUNG.match(z))}
+    bekannt.add("OSINT_MYTHOS")
+    alle = env_lesen(quelle)
+    return {k: w for k, w in alle.items() if k in bekannt}, sorted(set(alle) - bekannt)
+
+
 def konfiguration(a: argparse.Namespace) -> None:
     schritt(3, "Schlüsseldatei und Ordner")
     datei, vorlage = PROJEKT / ".env", PROJEKT / ".env.example"
@@ -534,25 +581,28 @@ def konfiguration(a: argparse.Namespace) -> None:
         stand.neu.append("Schlüsseldatei .env")
     if a.env_von:
         quelle = Path(a.env_von).expanduser()
-        bekannt = {m.group(2) for z in vorlage.read_text(encoding="utf-8").splitlines() if (m := ZUWEISUNG.match(z))}
-        bekannt.add("OSINT_MYTHOS")
-        werte = {k: w for k, w in env_lesen(quelle).items() if k in bekannt}
-        fremd = sorted(set(env_lesen(quelle)) - bekannt)
+        werte, fremd = aus_datei(quelle)
         geaendert = env_setzen(datei, werte)
         zeile(NEU if geaendert else GUT, "Übernahme", f"{len(geaendert)} Einstellung(en) aus {quelle.name} eingetragen"
               + (f": {', '.join(geaendert)}" if geaendert else " (alles schon aktuell)")
               + (f". Unbekannt und ausgelassen: {', '.join(fremd)}" if fremd else ""))
+    if a.werte:         # Antworten aus dem Assistenten. Sie gelten vor der Datei. Werte erscheinen nie in der Ausgabe.
+        geaendert = env_setzen(datei, a.werte)
+        gesetzt = [n for n in geaendert if a.werte[n]]
+        entfernt = [n for n in geaendert if not a.werte[n]]
+        if geaendert:
+            zeile(NEU, "Eingaben", "; ".join(t for t in (f"eingetragen: {', '.join(gesetzt)}" if gesetzt else "",
+                                                           f"entfernt: {', '.join(entfernt)}" if entfernt else "") if t))
     for ordner in ("faelle", "protokoll/sitzungen"):
         (PROJEKT / ordner).mkdir(parents=True, exist_ok=True)
     gesetzt = env_lesen(datei)
-    schluessel = [n for n in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "SPUR_TOKEN", "ABUSEIPDB_API_KEY", "URLQUERY_API_KEY",
-                              "RANSOMWARE_LIVE_API_KEY", "RAPIDAPI_KEY")]
-    vorhanden = [n for n in schluessel if gesetzt.get(n)]
-    zeile(GUT if vorhanden else AUS, "Schlüssel", f"{len(vorhanden)} von {len(schluessel)} eingetragen"
-          + ("" if len(vorhanden) == len(schluessel) else ". Jede Quelle ist für sich optional, sechs laufen ohne Schlüssel."))
-    if len(vorhanden) < len(schluessel):
-        stand.offen.append("Schlüssel in .env eintragen (welche fehlen und woher man sie bekommt, steht oben unter Quellen). "
-                           f"Danach testen: {PY} tools/pruefen.py --live")
+    vorhanden = [q.name for q in SCHLUESSELQUELLEN if gesetzt.get(q.env)]
+    ohne = len(QUELLEN) - len(SCHLUESSELQUELLEN)
+    zeile(GUT if vorhanden else AUS, "Schlüssel", f"{len(vorhanden)} von {len(SCHLUESSELQUELLEN)} eingetragen"
+          + ("" if len(vorhanden) == len(SCHLUESSELQUELLEN) else f". Jede Quelle ist für sich optional, {ohne} brauchen keinen Schlüssel."))
+    if len(vorhanden) < len(SCHLUESSELQUELLEN) and not stand.assistent:     # im Assistenten war das eine bewusste Entscheidung
+        stand.offen.append(f"Schlüssel eintragen: {SETUP} im Terminal starten und «Einstellungen ändern» wählen, oder direkt "
+                           f"in .env. Welche fehlen, steht oben bei «Ohne Schlüssel». Danach testen: {PY} tools/pruefen.py --live")
 
 
 # --------------------------------------------------------------------------- Schritt 4: Dienste
@@ -567,8 +617,11 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
         zeile(AUS, "Docker", "läuft nicht: Web-Check und Robin bleiben aus. Alles andere funktioniert.")
         return False
     env = {**os.environ, **{k: v for k, v in env_lesen(PROJEKT / ".env").items() if k in ("WEBCHECK_PORT", "ROBIN_IMAGE")}}
-    if docker["compose"]:
-        code, text = lauf(docker["compose"] + ["-f", str(PROJEKT / "docker-compose.yml"), "up", "-d", "webcheck"], 1800, "docker.log", env)
+    if a.ohne_webcheck:
+        zeile(AUS, "Web-Check", "übersprungen")
+    elif docker["compose"]:
+        code, text = lauf(docker["compose"] + ["-f", str(PROJEKT / "docker-compose.yml"), "up", "-d", "webcheck"], 1800, "docker.log", env,
+                          anzeige="Web-Check wird gestartet (beim ersten Mal lädt Docker das Abbild)")
         if code == 0:
             zeile(GUT, "Web-Check", f"läuft auf 127.0.0.1:{env.get('WEBCHECK_PORT', '3000')}")
         else:
@@ -576,13 +629,13 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
     else:
         zeile(AUS, "Web-Check", "braucht Docker Compose")
     if a.ohne_robin:
-        zeile(AUS, "Robin", "übersprungen (--ohne-robin)")
+        zeile(AUS, "Robin", "übersprungen")
         return False
     abbild = env.get("ROBIN_IMAGE") or "apurvsg/robin:latest"
     if lauf(docker["vor"] + ["docker", "image", "inspect", abbild], 60)[0] == 0:
         zeile(GUT, "Robin", f"Abbild bereit ({abbild})")
         return True
-    if lauf(docker["vor"] + ["docker", "pull", abbild], 3600, "docker.log")[0] == 0:
+    if lauf(docker["vor"] + ["docker", "pull", abbild], 3600, "docker.log", anzeige=f"Robin-Abbild wird geladen ({abbild})")[0] == 0:
         zeile(NEU, "Robin", f"Abbild geladen ({abbild})")
         stand.neu.append("Robin-Abbild")
         return True
@@ -755,11 +808,30 @@ def gateway_python() -> None:
         stand.neues_terminal.append("die Variable OSINT_PYTHON, über die Claude Code das Gateway startet")
 
 
+def anmeldung() -> tuple[bool | None, str]:
+    """Ob Claude Code angemeldet ist: (ja oder nein, auf welchem Weg). None, wenn Claude Code fehlt."""
+    pfad = plattform.programm("claude")
+    if not pfad:
+        return None, ""
+    code, text = lauf([pfad, "auth", "status", "--json"], 60)
+    try:
+        status = json.loads(text[text.index("{"):text.rindex("}") + 1])
+    except ValueError:
+        status = {}
+    if status.get("loggedIn"):
+        return True, str(status.get("authMethod") or "Konto")
+    ueber_umgebung = [n for n in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
+                                  "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY") if os.environ.get(n)]
+    if ueber_umgebung:
+        return True, "über die Umgebung gesetzt: " + ", ".join(ueber_umgebung)
+    return False, ""
+
+
 def claude_code(a: argparse.Namespace, robin: bool) -> None:
     schritt(5, "Claude Code")
     vorher = modellzuteilung()["mythos_frei"]
     an, erstmals, altlast = lokale_einstellungen(robin, mythos_wunsch(a))
-    zeile(GUT, "MCP-Server", "freigeschaltet: " + ", ".join(an) + ("" if robin else "   (robin aus: kein Docker oder kein Abbild)"))
+    zeile(GUT, "MCP-Server", "freigeschaltet: " + ", ".join(an) + ("" if robin else "   (robin aus: kein Docker, kein Abbild oder abgewählt)"))
     if WINDOWS:
         gateway_python()
     z = modellzuteilung()
@@ -768,8 +840,9 @@ def claude_code(a: argparse.Namespace, robin: bool) -> None:
         zeile(GUT if vorher else NEU, "Mythos 5.2", "freigeschaltet. Die Ermittlung schaltet von selbst um, der Abschluss bleibt auf Fable 5.2.")
         if not vorher:
             stand.neu.append("Mythos 5.2 für die Ermittlung freigeschaltet")
-            stand.offen.append(f"Prüfen, ob euer Konto Mythos 5.2 nutzen darf (zwei kurze Testaufrufe): {PY} tools/pruefen.py --live   "
-                               f"Falls nicht: {SETUP} --ohne-mythos")
+            if not a.testen:
+                stand.offen.append(f"Prüfen, ob euer Konto Mythos 5.2 nutzen darf (zwei kurze Testaufrufe): {PY} tools/pruefen.py --live   "
+                                   f"Falls nicht: {SETUP} --ohne-mythos")
     else:
         zeile(AUS, "Mythos 5.2", f"nicht freigeschaltet, alles läuft auf Fable 5.2. Wer Mythos hat: {SETUP} --mythos")
     zeile(GUT, "Modell Ermittlung", f"{mythos if z['mythos_frei'] else z['sitzung']}   ({', '.join(z['ermittlung'])})")
@@ -777,25 +850,17 @@ def claude_code(a: argparse.Namespace, robin: bool) -> None:
     if altlast:
         zeile(NEU, "Sitzungsmodell", f"zurück auf {z['sitzung']}. Auf Mythos schaltet jetzt /ermittlung selbst um.")
 
-    pfad = plattform.programm("claude")
-    if not pfad:
+    angemeldet, wie = anmeldung()
+    if angemeldet is None:
         zeile(AUS, "Anmeldung", "nicht prüfbar, Claude Code fehlt")
         return
-    code, text = lauf([pfad, "auth", "status", "--json"], 60)
-    try:
-        status = json.loads(text[text.index("{"):text.rindex("}") + 1])
-    except ValueError:
-        status = {}
-    ueber_umgebung = [n for n in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
-                                  "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY") if os.environ.get(n)]
-    if status.get("loggedIn"):
-        zeile(GUT, "Anmeldung", f"angemeldet ({status.get('authMethod') or 'Konto'})")
-    elif ueber_umgebung:
-        zeile(GUT, "Anmeldung", f"über die Umgebung gesetzt ({', '.join(ueber_umgebung)})")
+    if angemeldet:
+        zeile(GUT, "Anmeldung", f"angemeldet ({wie})")
+    elif a.anmelden:
+        zeile(AUS, "Anmeldung", "noch nicht angemeldet. Die Anmeldung startet gleich, nach der Prüfung.")
     else:
         zeile(AUS, "Anmeldung", "keine Anmeldung gefunden")
-        stand.offen.append("Bei Claude Code anmelden: im Projektordner 'claude' starten und der Anmeldung im Browser folgen. "
-                           "(Läuft Claude Code bei euch über einen API-Schlüssel oder Cloud-Anbieter, entfällt das.)")
+        stand.offen.append(HINWEIS_ANMELDEN)
     if erstmals:
         stand.offen.append("Beim ersten Start von 'claude' im Projektordner fragt Claude Code einmal, ob es dem Ordner "
                            "vertrauen soll. Mit Ja bestätigen: Erst dann gelten Wächter, Protokoll und MCP-Server.")
@@ -803,52 +868,503 @@ def claude_code(a: argparse.Namespace, robin: bool) -> None:
 
 # --------------------------------------------------------------------------- Schritt 6: Musterfall und Prüfung
 
-def pruefung() -> int:
+def pruefung() -> tuple[int, str]:
+    """Baut den Musterfall und prüft die Einrichtung. Gibt (Rückgabewert, Fazit in einem Satz) zurück."""
     schritt(6, "Musterfall und Prüfung")
-    code, text = lauf([str(VENV), str(PROJEKT / "tools" / "musterfall.py")], 600, "muster.log")
+    code, text = lauf([str(VENV), str(PROJEKT / "tools" / "musterfall.py")], 600, "muster.log", anzeige="Musterfall wird gebaut")
     if code != 0:
         zeile(FEHLT, "Musterfall", "liess sich nicht bauen")
-        print(letzte_zeilen(text, 6))
+        print(letzte_zeilen(text, 6), flush=True)
         stand.noetig.append("Musterfall")
         stand.offen.append(f"Meldung oben beheben. Vollständig: {LOGS / 'muster.log'}")
-        return 1
+        return 1, ""
     zeile(GUT, "Musterfall", "gebaut: faelle/MUSTER-2026-001/rapport/Abschlussrapport.html")
+    # Die Prüfung meldet ihr Ergebnis als eine Zeile JSON. Gezeigt wird die Kurzfassung, ausführlich: tools/pruefen.py
+    code, text = lauf([str(VENV), str(PROJEKT / "tools" / "pruefen.py"), "--eingebettet"], 1200, "pruefung.log",
+                      anzeige="Einrichtung wird geprüft (Einstellungen, Quellen, Selbsttests)")
+    ergebnis = None
+    for z in reversed(text.splitlines()):
+        if z.startswith('{"osint_pruefung"'):
+            with contextlib.suppress(json.JSONDecodeError):
+                ergebnis = json.loads(z)
+            break
+    if not isinstance(ergebnis, dict):
+        zeile(FEHLT, "Prüfung", "lieferte kein Ergebnis")
+        print(letzte_zeilen(text, 6), flush=True)
+        stand.noetig.append("Prüfung der Einrichtung")
+        stand.offen.append(f"Von Hand prüfen: {PY} tools/pruefen.py   Vollständig: {LOGS / 'pruefung.log'}")
+        return 1, ""
+    art = {"gut": GUT, "aus": AUS, "fehlt": FEHLT}
+    for kind, was, wie in ergebnis.get("zeilen", []):
+        zeile(art.get(kind, AUS), was, wie)
+    for was in ergebnis.get("fehlt", []):
+        stand.noetig.append(was)
+    if ergebnis.get("fehlt"):
+        stand.offen.append(f"Einzelheiten zu den Fehlern oben: {PY} tools/pruefen.py")
+    return (1 if ergebnis.get("fehlt") or code else 0), f"mit {ergebnis.get('bereit')} von {ergebnis.get('quellen')} Quellen"
+
+
+# --------------------------------------------------------------------------- Auf Wunsch danach: Anmeldung, Testabfragen
+
+def anmelden(a: argparse.Namespace) -> None:
+    """Startet die Anmeldung bei Claude Code. Sie läuft im Vordergrund und führt selbst durch den Browser."""
+    pfad = plattform.programm("claude")
+    if not a.anmelden or not pfad or anmeldung()[0]:
+        return
+    ui.abschnitt("Anmeldung bei Claude Code")
+    ui.text("Claude Code öffnet den Browser. Dort anmelden, danach geht es hier von selbst weiter. Überspringen mit Strg+C.", "matt")
+    ui.leer()
+    try:
+        subprocess.call([pfad, "auth", "login", "--console" if a.anmelden == "console" else "--claudeai"])
+    except KeyboardInterrupt:
+        ui.leer()
+    angemeldet, wie = anmeldung()
+    if angemeldet:
+        zeile(GUT, "Anmeldung", f"angemeldet ({wie})")
+        stand.neu.append("Anmeldung bei Claude Code")
+    else:
+        zeile(AUS, "Anmeldung", "nicht abgeschlossen")
+        stand.offen.append(HINWEIS_ANMELDEN)
+
+
+def testabfragen(a: argparse.Namespace) -> bool:
+    """Je eingerichteter Quelle eine harmlose Abfrage, je Modell ein kurzer Aufruf. Die Ausgabe kommt von
+    tools/pruefen.py. Gibt zurück, ob alles durchkam (auch dann, wenn nichts zu testen war)."""
+    if not a.testen:
+        return True
     sys.stdout.flush()
-    return subprocess.call([str(VENV), str(PROJEKT / "tools" / "pruefen.py"), "--eingebettet"])
+    try:
+        code = subprocess.call([str(VENV), str(PROJEKT / "tools" / "pruefen.py"), "--nur-live"])
+    except KeyboardInterrupt:
+        ui.leer()
+        code = 130
+    if code == 130:
+        stand.offen.append(f"Die Testabfragen wurden abgebrochen. Nachholen: {PY} tools/pruefen.py --live")
+    elif code:
+        stand.offen.append("Nicht jede Testabfrage kam durch (Zeilen mit " + FEHLT + " oben). Schlüssel, Netz und Proxy prüfen, "
+                           f"dann erneut: {PY} tools/pruefen.py --live")
+    return code == 0
 
 
-def abschluss(code: int) -> int:
+def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
     if stand.neues_terminal:
         stand.offen.insert(0, "Ein neues Terminal öffnen, bevor ihr 'claude' startet. Erst dort gilt: "
                            + " und ".join(stand.neues_terminal) + ".")
-    if stand.neu:
-        print("\n" + fett("Neu eingerichtet"))
-        for was in stand.neu:
-            print(f"  {NEU} {was}")
-    if stand.offen:
-        print("\n" + fett("Das bleibt für euch"))
-        for nr, was in enumerate(dict.fromkeys(stand.offen), 1):
-            print(f"  {nr}. {was}")
-    if stand.noetig or code:
-        print("\n" + fett("NICHT einsatzbereit.") + (f" Es fehlt: {', '.join(dict.fromkeys(stand.noetig))}." if stand.noetig else "")
-              + (" Die Prüfung oben meldet Fehler (Zeilen mit " + FEHLT + ")." if code and "Musterfall" not in stand.noetig else ""))
+    bereit = not (stand.noetig or code)
+    ui.leer()
+    ui.linie()
+    if bereit and tests_ok:
+        ui.erledigt("Einsatzbereit", fazit, breit=0)
+    elif bereit:        # eingerichtet ist alles, aber «einsatzbereit» wäre zu viel gesagt, solange Quellen nicht antworten
+        ui.erledigt("Eingerichtet", fazit + ". Nicht jede Testabfrage kam durch, siehe oben.", AUS, breit=0)
+    else:
+        ui.erledigt("NICHT einsatzbereit.", ("Es fehlt: " + ", ".join(dict.fromkeys(stand.noetig)) + "." if stand.noetig
+                                             else "Die Prüfung oben meldet Fehler."), FEHLT, breit=0)
+    ui.liste("Neu eingerichtet", stand.neu)
+    ui.liste("Noch offen" if bereit else "Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
+    if not bereit:
         return 1
-    print("\n" + fett("So geht es weiter"))
-    print(f"  Musterfall ansehen:  faelle/MUSTER-2026-001/rapport/Abschlussrapport.html\n"
-          f"  Fall anlegen:        {PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <pseudonymisiertes Dokument>\n"
-          f"  Ermitteln:           claude      und dort      /ermittlung 2026-0001\n"
-          f"  Stand prüfen:        {PY} tools/pruefen.py      mit Testabfragen: {PY} tools/pruefen.py --live")
+    ui.paare("Loslegen", [
+        ("Musterfall ansehen", "faelle/MUSTER-2026-001/rapport/Abschlussrapport.html"),
+        ("Fall anlegen", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>"),
+        ("Ermitteln", "claude   und dort   /ermittlung 2026-0001"),
+        ("Stand prüfen", f"{PY} tools/pruefen.py"),
+        ("Einstellungen ändern", SETUP),
+    ])
     return 0
+
+
+# --------------------------------------------------------------------------- Assistent
+
+THEMEN = ("installieren", "modelle", "schluessel", "proxy", "dienste", "anmeldung", "testen")
+TITEL = {"installieren": "Installieren", "modelle": "Modelle", "schluessel": "Schlüssel", "proxy": "Proxy",
+         "dienste": "Dienste", "anmeldung": "Anmeldung", "testen": "Testabfragen"}
+
+
+def bestand(a: argparse.Namespace, sysinfo: dict) -> dict:
+    """Was auf diesem Rechner und in diesem Ordner schon da ist. Verändert nichts. Daraus ergeben sich die Fragen."""
+    verwaltung = sysinfo["paketverwaltung"] or ""
+    fehlend: list[tuple[str, str]] = []        # (was fehlt, wie es installiert würde)
+    if lauf([sys.executable, "-c", "import ensurepip, venv"], 60)[0] != 0:
+        pakete = PAKETE["venv"].get(verwaltung)
+        fehlend.append(("venv und pip", f"Paket {pakete[0]} über {verwaltung}" if pakete else "von Hand, keine Paketverwaltung gefunden"))
+    if WINDOWS and not git_bash():
+        fehlend.append(("Git for Windows", "über winget" if verwaltung == "winget" else "von Hand, winget fehlt"))
+    claude = claude_stand()[0]
+    if not claude:
+        fehlend.append(("Claude Code", "mit dem Installer von Anthropic (claude.ai/install)"))
+    if not plattform.programm("pdftotext") and PAKETE["pdftotext"].get(verwaltung):
+        fehlend.append(("pdftotext", f"Paket {PAKETE['pdftotext'][verwaltung][0]} über {verwaltung}"))
+    return {
+        "fehlend": fehlend,
+        "braucht_sudo": (not WINDOWS and os.geteuid() != 0 and verwaltung not in ("", "brew")
+                         and any(was in ("venv und pip", "pdftotext") for was, _ in fehlend)),
+        "claude": bool(claude),
+        "angemeldet": anmeldung()[0],
+        "docker": None if a.ohne_docker else docker_stand(),
+        "env": env_lesen(PROJEKT / ".env"),
+        "mythos_frei": modellzuteilung()["mythos_frei"],
+        "eingerichtet": VENV.is_file() and (PROJEKT / ".env").is_file() and (PROJEKT / ".claude" / "settings.local.json").is_file(),
+    }
+
+
+def schluessel_pruefen(wert: str) -> str | None:
+    """Fängt ab, was beim Einfügen eines Schlüssels typischerweise schiefgeht. Ob er gilt, zeigt erst die Testabfrage."""
+    if re.match(r"[A-Z][A-Z0-9_]*=", wert):
+        return "Nur den Schlüssel selbst einfügen, ohne den Namen und das Gleichheitszeichen davor."
+    if re.search(r"\s", wert):
+        return "Ein Schlüssel enthält keine Leerzeichen. Bitte noch einmal einfügen."
+    if not wert.isascii() or not wert.isprintable() or any(z in wert for z in "\"'#"):
+        return "Das enthält Zeichen, die in einem Schlüssel nicht vorkommen. Bitte noch einmal einfügen."
+    if len(wert) < 8:
+        return "Das ist für einen Schlüssel zu kurz. Bitte prüfen."
+    return None
+
+
+def proxy_pruefen(adresse: str) -> str | None:
+    try:
+        teile = urlsplit(adresse)
+        teile.port      # eine unsinnige Portangabe fällt erst beim Zugriff auf
+    except ValueError:
+        return "Das ist keine gültige Adresse. Beispiel: http://proxy.intern:3128"
+    if teile.scheme not in ("http", "https", "socks5", "socks5h"):
+        return "Die Adresse beginnt mit http://, https://, socks5:// oder socks5h://"
+    if not teile.hostname or re.search(r"\s", adresse):
+        return "Es fehlt der Name oder die Adresse des Proxys. Beispiel: http://proxy.intern:3128"
+    return None
+
+
+def proxy_zeigen(adresse: str) -> str:
+    """Die Adresse eines Proxys für die Anzeige, ein Passwort darin unkenntlich."""
+    return re.sub(r"(://[^:/@]+):[^@]*@", r"\1:***@", adresse)
+
+
+def pfad_aus_eingabe(text: str) -> Path:
+    """Ein eingetippter oder ins Terminal gezogener Pfad. Beim Hineinziehen setzt das Terminal ihn oft in Anführungszeichen."""
+    return Path(text.strip().strip("\"'").replace("\\ ", " ")).expanduser()
+
+
+def port_offen(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.4):
+            return True
+    except OSError:
+        return False
+
+
+class Assistent:
+    """Führt im Terminal durch die Einrichtung: fragen, Übersicht zeigen, bestätigen lassen.
+    Verändert selbst nichts. Am Ende stehen die Antworten in den Optionen (a), so als wären sie auf der
+    Befehlszeile mitgegeben worden. Die sechs Schritte danach laufen ohne weitere Fragen."""
+
+    def __init__(self, a: argparse.Namespace, sysinfo: dict, b: dict) -> None:
+        self.a, self.sysinfo, self.b = a, sysinfo, b
+        wunsch = mythos_wunsch(a)
+        erstmals = not b["eingerichtet"]
+        self.w = {
+            "installieren": not a.nichts_installieren,
+            "mythos": b["mythos_frei"] if wunsch is None else wunsch,
+            "werte": {},                        # neu eingegebene Schlüssel je Name in .env. Leer heisst: entfernen
+            "env_von": a.env_von,
+            "proxy": b["env"].get("OSINT_PROXY", ""),
+            "docker_installieren": a.docker_installieren,
+            "webcheck": not a.ohne_webcheck,
+            "robin": not a.ohne_robin,
+            "anmelden": "claudeai" if erstmals else "",     # "", "claudeai" (Abo) oder "console"
+            "testen": a.testen or erstmals,
+        }
+
+    # ----------------------------------------------------------------------- Stand der Antworten
+
+    def themen(self) -> list[str]:
+        b = self.b
+        return [t for t in THEMEN if {"installieren": bool(b["fehlend"]), "dienste": b["docker"] is not None,
+                                      "anmeldung": not b["angemeldet"]}.get(t, True)]
+
+    def datei_werte(self) -> dict[str, str]:
+        if not self.w["env_von"]:
+            return {}
+        return aus_datei(pfad_aus_eingabe(self.w["env_von"]))[0]
+
+    def hat_schluessel(self, q) -> bool:
+        if self.w["werte"].get(q.env) or self.datei_werte().get(q.env) or os.environ.get(q.env, "").strip():
+            return True
+        return bool(self.b["env"].get(q.env)) and q.env not in self.w["werte"]
+
+    def schluessel_stand(self, q) -> tuple[str, str]:
+        """Zustand eines Schlüssels für die Liste: (Text, Stil). Der Schlüssel selbst erscheint nie."""
+        if q.env in self.w["werte"]:
+            wert = self.w["werte"][q.env]
+            return (f"neu eingegeben ({len(wert)} Zeichen)", "gut") if wert else ("wird entfernt", "warn")
+        if self.datei_werte().get(q.env):
+            return "aus der Datei", "gut"
+        if self.b["env"].get(q.env):
+            return "eingetragen", "gut"
+        # Das Gateway nimmt einen Schlüssel auch aus der Umgebung, und die gilt dort vor .env
+        return ("in der Umgebung gesetzt", "gut") if os.environ.get(q.env, "").strip() else ("fehlt", "matt")
+
+    def antwort(self, thema: str) -> str:
+        """Die Antwort auf ein Thema in einer Zeile, für die Übersicht."""
+        w, b = self.w, self.b
+        if thema == "installieren":
+            namen = ", ".join(was for was, _ in b["fehlend"])
+            return namen if w["installieren"] else f"nichts. Es fehlt weiterhin: {namen}"
+        if thema == "modelle":
+            return "Ermittlung auf Mythos 5.2, Abschluss auf Fable 5.2" if w["mythos"] else "alles auf Fable 5.2"
+        if thema == "schluessel":
+            text = f"{sum(1 for q in SCHLUESSELQUELLEN if self.hat_schluessel(q))} von {len(SCHLUESSELQUELLEN)} Quellen mit Schlüssel"
+            neu = [q.name for q in SCHLUESSELQUELLEN if w["werte"].get(q.env)]
+            weg = [q.name for q in SCHLUESSELQUELLEN if w["werte"].get(q.env) == ""]
+            return (text + (f", neu: {', '.join(neu)}" if neu else "") + (f", entfernt: {', '.join(weg)}" if weg else "")
+                    + (f", Datei {pfad_aus_eingabe(w['env_von']).name}" if w["env_von"] else ""))
+        if thema == "proxy":
+            if not w["proxy"]:
+                return "keiner. Die Quellen sehen die Internetadresse dieses Rechners"
+            return ("Tor, " if w["proxy"] == TOR else "") + proxy_zeigen(w["proxy"])
+        if thema == "dienste":
+            docker = b["docker"]
+            if docker["laeuft"]:
+                return ", ".join(n for n, an in (("Web-Check", w["webcheck"]), ("Robin", w["robin"])) if an) or "keine"
+            if w["docker_installieren"]:
+                return "Docker installieren, dann Web-Check und Robin"
+            return "ohne Docker. Web-Check und Robin bleiben aus"
+        if thema == "anmeldung":
+            return {"claudeai": "am Ende, mit dem Claude-Abo", "console": "am Ende, mit der Anthropic Console", "": "später, von Hand"}[w["anmelden"]]
+        return "am Ende jede eingerichtete Quelle einmal abfragen" if w["testen"] else "keine"
+
+    # ----------------------------------------------------------------------- Fragen
+
+    def fragen(self, thema: str, fortschritt: str = "") -> None:
+        getattr(self, "frage_" + thema)(fortschritt)
+
+    def frage_installieren(self, f: str) -> None:
+        fehlend = self.b["fehlend"]
+        nr = ui.auswahl(TITEL["installieren"], f"Auf diesem Rechner fehlt noch: {', '.join(was for was, _ in fehlend)}. "
+                        "Soll die Einrichtung das installieren?",
+                        [("Ja, installieren", ""), ("Nein, nichts am System verändern", "nur das Projekt einrichten")],
+                        0 if self.w["installieren"] else 1,
+                        [f"{was}: {wie}" for was, wie in fehlend]
+                        + (["Die Paketverwaltung braucht dafür einmal euer Passwort (sudo)."] if self.b["braucht_sudo"] else []), f)
+        self.w["installieren"] = nr == 0
+
+    def frage_modelle(self, f: str) -> None:
+        nr = ui.auswahl(TITEL["modelle"], "Darf euer Konto Claude Mythos 5.2 nutzen?",
+                        [("Nein", "alles läuft auf Fable 5.2"), ("Ja", "die Ermittlung schaltet von selbst auf Mythos 5.2")],
+                        1 if self.w["mythos"] else 0,
+                        ["Mythos 5.2 steht nur Organisationen offen, die Anthropic verifiziert hat. Der Abschluss (Gegenprüfung, "
+                         "Rapport, Protokoll) läuft in jedem Fall auf Fable 5.2.",
+                         "Im Zweifel Nein. Die Antwort lässt sich jederzeit ändern."], f)
+        self.w["mythos"] = nr == 1
+
+    def frage_schluessel(self, f: str) -> None:
+        w = self.w
+        ohne = [q.name for q in QUELLEN if not q.env]
+        stelle = 0 if not any(self.hat_schluessel(q) for q in SCHLUESSELQUELLEN) else None
+        while True:
+            eintraege = [(q.name, *self.schluessel_stand(q)) for q in SCHLUESSELQUELLEN]
+            eintraege += [("", "", ""), ("Aus einer Datei übernehmen …" + (f"  ({pfad_aus_eingabe(w['env_von']).name})" if w["env_von"] else ""), "", ""),
+                          ("Weiter", "", "")]
+            weiter = len(eintraege) - 1
+            nr, taste = ui.menue(TITEL["schluessel"], "Welche Quellen sollen einen Schlüssel bekommen?", eintraege,
+                                 weiter if stelle is None or not ui.bewegt else stelle,     # mit Nummern ist Enter immer «Weiter»
+                                 [f"Jede Quelle ist für sich optional. Keinen Schlüssel brauchen {len(ohne)} Quellen: {', '.join(ohne)}.",
+                                  "Eingaben bleiben unsichtbar und stehen danach nur in der Datei .env auf diesem Rechner."],
+                                 f, "Entf entfernen")
+            if nr == weiter:
+                return
+            if nr == weiter - 1:
+                pfad = ui.eingabe("Schlüssel aus einer Datei", "Pfad zu einer ausgefüllten Kopie von .env.example:", vorgabe=w["env_von"] or "",
+                                  erklaerung=["Übernommen werden nur Einstellungen, die .env.example kennt. Was ihr hier von Hand eingebt, geht vor.",
+                                              "Die Datei lässt sich auch ins Terminal ziehen."],
+                                  pruefung=lambda t: None if pfad_aus_eingabe(t).is_file() else "Diese Datei gibt es nicht.")
+                if pfad:
+                    w["env_von"] = str(pfad_aus_eingabe(pfad))
+                stelle = None
+                continue
+            q = SCHLUESSELQUELLEN[nr]
+            if taste == "entf":
+                if q.env in w["werte"]:
+                    del w["werte"][q.env]               # eine eben gemachte Eingabe zurücknehmen
+                elif self.b["env"].get(q.env):
+                    w["werte"][q.env] = ""              # einen eingetragenen Schlüssel aus .env entfernen
+                stelle = nr
+                continue
+            wert = ui.eingabe(q.name, f"Schlüssel für {q.name} einfügen oder eintippen:", verdeckt=True, pruefung=schluessel_pruefen,
+                              erklaerung=[q.zweck, f"Woher: {q.woher}"] + ([q.hinweis] if q.hinweis else []))
+            if wert:
+                w["werte"][q.env] = wert
+            stelle = nr + 1 if wert and nr + 1 < len(SCHLUESSELQUELLEN) else None if wert else nr
+
+    def frage_proxy(self, f: str) -> None:
+        w = self.w
+        while True:
+            eigener = w["proxy"] if w["proxy"] not in ("", TOR) else ""
+            nr = ui.auswahl(TITEL["proxy"], "Sollen die Abfragen an die Quellen über einen Proxy laufen?",
+                            [("Kein Proxy", "die Quellen sehen die Internetadresse dieses Rechners"),
+                             ("Tor auf diesem Rechner", TOR + (", Tor antwortet" if port_offen(9050) else ", dort antwortet gerade nichts")),
+                             ("Eigener Proxy …", proxy_zeigen(eigener) if eigener else "Adresse eingeben")],
+                            0 if not w["proxy"] else 1 if w["proxy"] == TOR else 2,
+                            ["Das betrifft nur die Abfragen des Gateways, nicht Claude Code selbst."], f)
+            if nr == 0:
+                w["proxy"] = ""
+            elif nr == 1:
+                w["proxy"] = TOR
+            else:
+                adresse = ui.eingabe(TITEL["proxy"], "Adresse des Proxys:", vorgabe=eigener, pruefung=proxy_pruefen,
+                                     erklaerung=["Beispiele: http://proxy.intern:3128   socks5h://127.0.0.1:9050"])
+                if not adresse:
+                    continue
+                w["proxy"] = adresse
+            return
+
+    def frage_dienste(self, f: str) -> None:
+        w = self.w
+        ohne = ("Ohne Docker weiter", "Web-Check und Robin bleiben aus, alles andere läuft")
+        while True:
+            docker = self.b["docker"]
+            if docker["laeuft"]:
+                wahl = ui.mehrfach(TITEL["dienste"], "Welche Dienste sollen über Docker laufen?",
+                                   [("Web-Check", "eigene Instanz für Website-Prüfungen, nur auf diesem Rechner erreichbar"),
+                                    ("Robin", "Suche im Dark Web über Tor. Jede Abfrage braucht zusätzlich eine Freigabe im Fall")],
+                                   {nr for nr, an in enumerate((w["webcheck"], w["robin"])) if an},
+                                   ["Beim ersten Mal lädt Docker die Abbilder. Das kann einige Minuten dauern."]
+                                   + ([] if docker["compose"] else ["Docker Compose fehlt: Web-Check lässt sich so nicht starten."]), f)
+                w["webcheck"], w["robin"], w["docker_installieren"] = 0 in wahl, 1 in wahl, False
+                return
+            if not docker["installiert"] and self.sysinfo["art"] == "linux" and self.sysinfo["paketverwaltung"] == "apt":
+                nr = ui.auswahl(TITEL["dienste"], "Docker ist nicht installiert. Web-Check und Robin brauchen es.",
+                                [ohne, ("Docker installieren", "Paket docker.io über apt, braucht sudo")],
+                                1 if w["docker_installieren"] else 0, [], f)
+                w["docker_installieren"] = nr == 1
+                return
+            if docker["installiert"]:
+                lage = "Docker ist installiert, aber der Dienst läuft nicht oder euer Konto hat keinen Zugriff."
+                wie = ("Docker Desktop starten." if self.sysinfo["art"] != "linux" or self.sysinfo["wsl"]
+                       else "Starten: sudo systemctl start docker   Zugriff: das Konto in die Gruppe docker aufnehmen.")
+            else:
+                lage = "Docker ist nicht installiert."
+                wie = ("Installation: https://docs.docker.com/engine/install/" if self.sysinfo["art"] == "linux"
+                       else "Docker Desktop von Hand installieren. Lizenz beachten, siehe README.")
+            nr = ui.auswahl(TITEL["dienste"], lage + " Web-Check und Robin brauchen es.",
+                            [ohne, ("Erneut prüfen", "nachdem Docker läuft")], 0, [wie], f)
+            if nr == 0:
+                return
+            with ui.arbeit("Docker wird geprüft"):
+                self.b["docker"] = docker_stand()
+
+    def frage_anmeldung(self, f: str) -> None:
+        fehlt = "" if self.b["claude"] else " (sobald es installiert ist)"
+        nr = ui.auswahl(TITEL["anmeldung"], f"Claude Code ist auf diesem Rechner noch nicht angemeldet{fehlt}. "
+                        "Soll die Einrichtung am Ende die Anmeldung starten?",
+                        [("Ja, mit dem Claude-Abo", "Pro, Max, Team oder Enterprise"),
+                         ("Ja, mit der Anthropic Console", "Abrechnung nach Verbrauch"),
+                         ("Nein, später", "beim ersten Start von 'claude'")],
+                        {"claudeai": 0, "console": 1, "": 2}[self.w["anmelden"]],
+                        ["Die Anmeldung öffnet den Browser. Hier im Terminal wird kein Passwort eingegeben.",
+                         "Läuft Claude Code bei euch über einen API-Schlüssel oder einen Cloud-Anbieter: Nein."], f)
+        self.w["anmelden"] = ("claudeai", "console", "")[nr]
+
+    def frage_testen(self, f: str) -> None:
+        nr = ui.auswahl(TITEL["testen"], "Soll die Einrichtung am Ende jede eingerichtete Quelle einmal abfragen?",
+                        [("Ja, testen", "zeigt sofort, ob Schlüssel, Netz und Proxy stimmen"),
+                         ("Nein, später", f"{PY} tools/pruefen.py --live")],
+                        0 if self.w["testen"] else 1,
+                        ["Je Quelle geht eine harmlose Abfrage hinaus (8.8.8.8, example.com). Sie verbraucht einen Abruf aus eurem "
+                         "Kontingent und wird in der Fallakte SELBSTTEST protokolliert.",
+                         "Ist Claude Code angemeldet, kommt je Modell ein kurzer Testaufruf dazu."], f)
+        self.w["testen"] = nr == 0
+
+    # ----------------------------------------------------------------------- Ablauf
+
+    def uebersicht(self, bestaetigen: str) -> bool:
+        """Alle Antworten als Liste. Eine Zeile öffnen, um sie zu ändern. Gibt zurück, ob eingerichtet werden soll."""
+        while True:
+            themen = self.themen()
+            eintraege = [(TITEL[t], self.antwort(t), "") for t in themen]
+            eintraege += [("", "", ""), (bestaetigen, "", ""), ("Abbrechen", "es wird nichts verändert", "matt")]
+            nr, _ = ui.menue("Übersicht", "So wird eingerichtet. Zum Ändern eine Zeile öffnen.", eintraege, len(themen) + 1)
+            if nr >= len(themen):
+                return nr == len(themen) + 1
+            with contextlib.suppress(Abbruch):      # Esc in einer Frage führt zurück zur Übersicht
+                self.fragen(themen[nr])
+
+    def uebernehmen(self) -> None:
+        """Schreibt die Antworten in die Optionen. Ab hier verhält sich die Einrichtung wie mit diesen Optionen gestartet."""
+        a, w, b = self.a, self.w, self.b
+        if b["fehlend"]:
+            a.nichts_installieren = not w["installieren"]
+        a.mythos, a.ohne_mythos = w["mythos"], not w["mythos"]
+        a.env_von = w["env_von"]
+        a.werte = dict(w["werte"])
+        if w["proxy"] != b["env"].get("OSINT_PROXY", ""):
+            a.werte["OSINT_PROXY"] = w["proxy"]
+        # Steht OSINT_MYTHOS in .env (etwa aus der Datei fürs Ausrollen), muss es zur Antwort passen.
+        # Sonst nähme der nächste Lauf ohne Rückfragen die Antwort wieder zurück.
+        kuenftig = {**b["env"], **self.datei_werte()}.get("OSINT_MYTHOS", "").strip().lower()
+        if kuenftig and (kuenftig in JA) != w["mythos"]:
+            a.werte["OSINT_MYTHOS"] = "ja" if w["mythos"] else "nein"
+        if b["docker"] is not None:
+            a.docker_installieren = w["docker_installieren"]
+            a.ohne_webcheck, a.ohne_robin = not w["webcheck"], not w["robin"]
+        a.anmelden = w["anmelden"] if "anmeldung" in self.themen() else ""
+        a.testen = w["testen"]
+        stand.assistent = True
+
+    def kurzstand(self) -> str:
+        w = self.w
+        return " · ".join(("Ermittlung auf Mythos 5.2" if w["mythos"] else "alles auf Fable 5.2",
+                           f"{sum(1 for q in SCHLUESSELQUELLEN if self.hat_schluessel(q))} von {len(SCHLUESSELQUELLEN)} Schlüsseln",
+                           "Proxy " + (proxy_zeigen(w["proxy"]) if w["proxy"] else "keiner")))
+
+    def fuehren(self) -> bool | int:
+        """True: einrichten. Eine Zahl: mit diesem Rückgabewert enden. Abbruch: Der Mensch hat abgebrochen."""
+        a, b = self.a, self.b
+        if b["eingerichtet"]:
+            gezielt = any((a.mythos, a.ohne_mythos, a.env_von, a.docker_installieren, a.ohne_docker, a.ohne_webcheck, a.ohne_robin,
+                           a.nichts_installieren, a.testen))
+            if gezielt and not a.vorschau:
+                ui.text("Dieser Arbeitsplatz ist schon eingerichtet. Die Optionen werden ohne Rückfragen übernommen.", "matt")
+                return True
+            nr = ui.auswahl("Schon eingerichtet", "Dieser Arbeitsplatz ist bereits eingerichtet. Was soll geschehen?",
+                            [("Prüfen und auffrischen", "nichts fragen, die Einstellungen bleiben"),
+                             ("Einstellungen ändern", "Mythos, Schlüssel, Proxy, Dienste"),
+                             ("Nur den Stand zeigen", "verändert nichts"),
+                             ("Beenden", "")], 0, ["Derzeit: " + self.kurzstand()])
+            if nr == 0:
+                return True
+            if nr == 2:
+                return subprocess.call([str(VENV), str(PROJEKT / "tools" / "pruefen.py")])
+            if nr == 3:
+                return 0
+            bestaetigen = "Änderungen übernehmen"
+        else:
+            ui.text("Ein paar Fragen, dann eine Übersicht. Verändert wird erst etwas, wenn ihr sie bestätigt.", "matt")
+            ui.leer()
+            themen = self.themen()
+            for nr, thema in enumerate(themen, 1):
+                self.fragen(thema, f"{nr} von {len(themen)}")
+                ui.erledigt(TITEL[thema], self.antwort(thema))
+            ui.zurueck(len(themen))         # die Antworten erscheinen gleich wieder, als Übersicht zum Ändern
+            bestaetigen = "Einrichten"
+        if not self.uebersicht(bestaetigen):
+            raise Abbruch
+        for thema in self.themen():
+            ui.erledigt(TITEL[thema], self.antwort(thema))
+        self.uebernehmen()
+        return True
 
 
 def main(argv: list[str]) -> int:
     plattform.utf8()
     p = argparse.ArgumentParser(add_help=False)
-    for name in ("nur-pruefen", "nichts-installieren", "docker-installieren", "ohne-docker", "ohne-robin", "mythos", "ohne-mythos"):
+    for name in ("nur-pruefen", "nichts-installieren", "docker-installieren", "ohne-docker", "ohne-webcheck", "ohne-robin",
+                 "mythos", "ohne-mythos", "schlicht", "vorschau", "testen"):
         p.add_argument(f"--{name}", action="store_true")
+    p.add_argument("--ohne-rueckfragen", "--ja", "-y", action="store_true", dest="ohne_rueckfragen")
     p.add_argument("--env-von")
     p.add_argument("-h", "--hilfe", "--help", action="store_true", dest="hilfe")
     a, unbekannt = p.parse_known_args(argv)
+    a.werte, a.anmelden = {}, ""        # füllt nur der Assistent
     if a.hilfe:
         print(__doc__)
         return 0
@@ -862,31 +1378,61 @@ def main(argv: list[str]) -> int:
     if a.env_von and not Path(a.env_von).expanduser().is_file():
         print(f"FEHLER: --env-von: Datei nicht gefunden: {a.env_von}", file=sys.stderr)
         return 2
+    if a.schlicht or ui.zeilenzahl < 10:        # in einem sehr niedrigen Fenster hat keine Liste Platz
+        ui.bewegt = False
+    fragen = ui.interaktiv and not (a.ohne_rueckfragen or a.nur_pruefen or os.environ.get("CI"))
+    if a.vorschau and not fragen:
+        print("FEHLER: --vorschau zeigt die Fragen des Assistenten und braucht dafür ein Terminal.", file=sys.stderr)
+        return 2
     os.chdir(PROJEKT)
     mythos_wunsch(a)        # eine falsche Angabe soll sofort auffallen, nicht erst nach der halben Einrichtung
     sysinfo = system()
-    print(fett("OSINT-Ermittlungsarbeitsplatz einrichten") + ("   (nur prüfen, es wird nichts verändert)" if a.nur_pruefen else ""))
-    print(f"System: {sysinfo['name']}   Paketverwaltung: {sysinfo['paketverwaltung'] or 'keine gefunden'}   Ordner: {PROJEKT}")
+    ui.kopf("OSINT-Ermittlungsarbeitsplatz · Einrichtung"
+            + ("   (nur prüfen, es wird nichts verändert)" if a.nur_pruefen else "   (Vorschau, es wird nichts verändert)" if a.vorschau else ""),
+            f"{sysinfo['name']} · Paketverwaltung {sysinfo['paketverwaltung'] or 'keine gefunden'} · {PROJEKT}")
+
+    if fragen:
+        try:
+            with ui.arbeit("Bestandsaufnahme"):
+                b = bestand(a, sysinfo)
+            weiter = Assistent(a, sysinfo, b).fuehren()
+        except Abbruch:
+            ui.text("Abgebrochen. Es wurde nichts verändert.")
+            return 130
+        if weiter is not True:
+            return int(weiter)
+        if a.vorschau:
+            ui.leer()
+            ui.text("Vorschau: Es wurde nichts verändert. Ohne --vorschau würde jetzt so eingerichtet.", "matt")
+            return 0
 
     docker = voraussetzungen(a, sysinfo)
     if a.nur_pruefen:
-        print("\n" + (fett("Es fehlt Nötiges: ") + ", ".join(dict.fromkeys(stand.noetig)) if stand.noetig
-                      else "Alles Nötige ist vorhanden."))
-        for nr, was in enumerate(dict.fromkeys(stand.offen), 1):
-            print(f"  {nr}. {was}")
-        print(f"Einrichten: {SETUP}")
+        ui.leer()
+        ui.linie()
+        if stand.noetig:
+            ui.erledigt("Es fehlt Nötiges:", ", ".join(dict.fromkeys(stand.noetig)), FEHLT, breit=0)
+        else:
+            ui.erledigt("Alles Nötige ist vorhanden.", "", breit=0)
+        ui.liste("Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
+        ui.paare("Weiter", [("Einrichten", SETUP)])
         return 1 if stand.noetig else 0
     if "venv und pip" in stand.noetig or not python_umgebung():
         return abschluss(1)
     konfiguration(a)
     robin = dienste(a, docker)
     claude_code(a, robin)
-    return abschluss(pruefung())
+    code, fazit = pruefung()
+    tests_ok = True
+    if code == 0:
+        anmelden(a)
+        tests_ok = testabfragen(a)
+    return abschluss(code, fazit, tests_ok)
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main(sys.argv[1:]))
     except KeyboardInterrupt:
-        print(f"\nAbgebrochen. {SETUP} lässt sich jederzeit erneut starten.", file=sys.stderr)
+        print(f"\n  Abgebrochen. {SETUP} lässt sich jederzeit erneut starten.", file=sys.stderr)
         sys.exit(130)

@@ -64,6 +64,7 @@ try:
     from gateway.akte import jsonl_lesen, kette, kette_pruefen
     from gateway.quellen import ROBIN_WERKZEUGE, alle_werkzeuge
     from tools import einrichten, fall as fallwerkzeug, rapport
+    from tools._oberflaeche import Abbruch, Oberflaeche
     from tools.pii_pruefung import pruefen as pii_pruefen
 except ModuleNotFoundError as e:
     print(f"{plattform.FEHLT} Python-Paket '{e.name}' fehlt. Bitte {plattform.SETUP} ausführen.")
@@ -574,9 +575,275 @@ def _():
         assert werte["WEBCHECK_URL"] == "http://127.0.0.1:3000" and "VIRUSTOTAL_API_KEY" not in werte
         assert lesen(datei).count("SHODAN_API_KEY=") == 1 and "# Shodan:" in lesen(datei), "Kommentare und Aufbau müssen bleiben"
         assert einrichten.env_setzen(datei, {"SHODAN_API_KEY": "abc123"}) == [], "gleicher Wert darf nichts ändern"
+        # zurücknehmen: Der Schlüssel wird geleert, eine Einstellung mit auskommentierter Vorlage verschwindet wieder
+        einrichten.env_setzen(datei, {"OSINT_PROXY": "socks5h://127.0.0.1:9050"})
+        assert einrichten.env_setzen(datei, {"SHODAN_API_KEY": "", "OSINT_PROXY": "", "RAPIDAPI_KEY": ""}) == ["SHODAN_API_KEY", "OSINT_PROXY"]
+        werte = einrichten.env_lesen(datei)
+        assert "SHODAN_API_KEY" not in werte and "OSINT_PROXY" not in werte, werte
+        assert "SHODAN_API_KEY=\n" in lesen(datei) and "# OSINT_PROXY=" in lesen(datei) and "\nOSINT_PROXY=" not in lesen(datei)
         assert b"\r" not in datei.read_bytes()
     finally:
         datei.unlink(missing_ok=True)
+
+
+def oberflaeche(tasten=(), **angaben):
+    """Eine Oberfläche mit vorgegebenen Tasten statt Tastatur und einem Puffer statt Bildschirm."""
+    aus, folge = io.StringIO(), iter(tasten)
+    werte = {"interaktiv": True, "bewegt": True, "farbe": False, "modern": True, "breite": 100, "hoehe": 50, **angaben}
+    return Oberflaeche(aus=aus, taste=lambda: next(folge), **werte), aus
+
+
+@test("Oberfläche: Auswahl, Ankreuzen, Liste und verdeckte Eingabe, auch ohne Pfeiltasten und ohne Terminal")
+def _():
+    ui, aus = oberflaeche(["runter", "enter"])
+    assert ui.auswahl("Modelle", "Mythos?", [("Nein", "alles Fable"), ("Ja", "")]) == 1
+    ui, aus = oberflaeche(["leer", "runter", "leer", "enter"])
+    assert ui.mehrfach("Dienste", "Welche?", [("Web-Check", ""), ("Robin", "")], {0}) == {1}
+    ui, aus = oberflaeche(["runter", "runter", "entf"])
+    liste = [("Shodan", "fehlt", "matt"), ("VirusTotal", "eingetragen", "gut"), ("", "", ""), ("Weiter", "", "")]
+    assert ui.menue("Schlüssel", "Welche?", liste) == (3, "entf"), "die Trennlinie muss übersprungen werden"
+    geheim = "GEHEIM-0123456789abcdef"
+    ui, aus = oberflaeche(list("kurz") + ["enter", "leeren"] + list(geheim) + ["rueck", "f", "enter"])
+    assert ui.eingabe("Shodan", "Schlüssel:", verdeckt=True, pruefung=einrichten.schluessel_pruefen) == geheim
+    assert "GEHEIM" not in aus.getvalue() and "0123456789" not in aus.getvalue(), "ein Schlüssel darf nie auf dem Bildschirm stehen"
+    assert "zu kurz" in aus.getvalue() and f"{len(geheim)} Zeichen" in aus.getvalue()
+    ui, aus = oberflaeche(["esc"])
+    try:
+        ui.auswahl("Frage", "?", [("a", ""), ("b", "")])
+        raise AssertionError("Esc muss die Frage abbrechen")
+    except Abbruch:
+        pass
+    ui, aus = oberflaeche(["esc"])
+    assert ui.eingabe("Proxy", "Adresse:") is None, "Esc in einer Eingabe führt zurück, bricht aber nicht alles ab"
+
+    # niedriges Fenster: Die Liste wird zum Ausschnitt, der Block bleibt kleiner als der Bildschirm
+    ui, aus = oberflaeche(["runter"] * 11 + ["enter"], hoehe=12)
+    hoehen, echt = [], ui._zeichnen
+    ui._zeichnen = lambda zeilen: (hoehen.append(len(zeilen)), echt(zeilen))[1]
+    lang = [(f"Quelle {n}", "fehlt", "matt") for n in range(12)]
+    assert ui.menue("Schlüssel", "Welche?", lang, erklaerung=["Eine lange Erklärung."] * 3) == (11, "enter")
+    assert max(hoehen) < 12, f"Block mit {max(hoehen)} Zeilen in einem Fenster mit 12"
+    assert "weiter unten" in aus.getvalue() and "weiter oben" in aus.getvalue()
+
+    # schlicht: nummerierte Liste, Antwort als Zahl. Falsche Eingaben führen zur Rückfrage
+    antworten = iter(["9", "x", "2"])
+    ui = Oberflaeche(aus=io.StringIO(), zeile_lesen=lambda frage: next(antworten), interaktiv=True, bewegt=False, farbe=False, breite=80)
+    assert ui.auswahl("Modelle", "Mythos?", [("Nein", ""), ("Ja", "")]) == 1
+    assert "\033" not in ui._aus.getvalue() and "Bitte eine Zahl von 1 bis 2" in ui._aus.getvalue()
+    antworten = iter(["1,2", geheim])
+    ui = Oberflaeche(aus=io.StringIO(), zeile_lesen=lambda frage: next(antworten), interaktiv=True, bewegt=False, farbe=False, breite=80)
+    assert ui.mehrfach("Dienste", "Welche?", [("Web-Check", ""), ("Robin", "")], set()) == {0, 1}
+    assert ui.eingabe("Shodan", "Schlüssel:", verdeckt=True) == geheim and "GEHEIM" not in ui._aus.getvalue()
+
+    # ohne Terminal (CI, Umleitung): Jede Frage liefert ihre Vorgabe, nichts wartet auf eine Taste
+    ui = Oberflaeche(aus=io.StringIO(), interaktiv=False)
+    assert ui.auswahl("Frage", "?", [("a", ""), ("b", "")], vorgabe=1) == 1 and ui.mehrfach("Frage", "?", [("a", "")], {0}) == {0}
+    assert ui.menue("Frage", "?", liste, stelle=3) == (3, "enter") and ui.eingabe("Frage", "?", vorgabe="x") == "x"
+    with ui.arbeit("läuft"):
+        pass
+    ui.zeile(plattform.GUT, "Python", "eine sehr lange Angabe " * 20)
+    assert ui._aus.getvalue().count("\n") == 1 and "…" not in ui._aus.getvalue(), "in einer Datei wird nichts umbrochen oder gekürzt"
+
+
+@test("Oberfläche: Tasten werden unter Linux, macOS und Windows gleich verstanden")
+def _():
+    from tools import _oberflaeche
+    echt = sys.modules.get("msvcrt")
+    folge = iter(["\xe0", "H", "\x00", "P", "\xe0", "S", "\r", " ", "\x08", "ä", "\x16", "\x1b"])
+
+    class Konsole:      # so liefert msvcrt die Tasten der Windows-Konsole: Pfeile und Entf als zwei Zeichen
+        getwch = staticmethod(lambda: next(folge))
+        kbhit = staticmethod(lambda: False)
+    sys.modules["msvcrt"] = Konsole
+    try:
+        gelesen = [_oberflaeche._taste_windows() for _ in range(9)]
+    finally:
+        if echt is None:
+            del sys.modules["msvcrt"]
+        else:
+            sys.modules["msvcrt"] = echt
+    assert gelesen == ["hoch", "runter", "entf", "enter", "leer", "rueck", "ä", "einfuegen", "esc"], gelesen
+    if WINDOWS:
+        return
+    lesen_fd, schreiben_fd = os.pipe()      # ein Terminal schickt Pfeiltasten als Folge, die mit Esc beginnt
+
+    class Eingabe:
+        fileno = staticmethod(lambda: lesen_fd)
+    echt_stdin, sys.stdin = sys.stdin, Eingabe
+    try:
+        os.write(schreiben_fd, b"\x1b[A\x1b[B\x1bOA\x1b[3~\r\x7f \xc3\xa4\x1b[200~x")
+        gelesen = [_oberflaeche._taste_posix() for _ in range(10)]
+        assert gelesen == ["hoch", "runter", "hoch", "entf", "enter", "rueck", "leer", "ä", "", "x"], gelesen
+        os.write(schreiben_fd, b"\x1b")
+        assert _oberflaeche._taste_posix() == "esc", "ein einzelnes Esc ist die Taste Esc"
+        os.close(schreiben_fd)
+        try:
+            _oberflaeche._taste_posix()
+            raise AssertionError("das Ende der Eingabe muss die Frage abbrechen")
+        except Abbruch:
+            pass
+    finally:
+        sys.stdin = echt_stdin
+        os.close(lesen_fd)
+
+
+@test("Assistent: Antworten werden zu Optionen und landen in .env, Schlüssel erscheinen nirgends")
+def _():
+    geheim = "ASSISTENT-GEHEIM-0123456789"
+    env, echt_ui, echt_umgebung = PROJEKT / ".env", einrichten.ui, dict(os.environ)
+    for name in [n for n in os.environ if n.endswith(("_API_KEY", "_TOKEN"))]:
+        del os.environ[name]            # die Testschlüssel des Gateways sollen hier nicht als «in der Umgebung gesetzt» gelten
+
+    def optionen(**angaben):
+        werte = dict(nichts_installieren=False, mythos=False, ohne_mythos=False, env_von=None, docker_installieren=False, ohne_docker=False,
+                     ohne_webcheck=False, ohne_robin=False, testen=False, vorschau=False, werte={}, anmelden="")
+        return argparse.Namespace(**{**werte, **angaben})
+
+    def bestand(**angaben):
+        return {"fehlend": [], "braucht_sudo": False, "claude": True, "angemeldet": True, "env": einrichten.env_lesen(env), "mythos_frei": False,
+                "docker": {"installiert": True, "laeuft": True, "compose": ["docker", "compose"], "vor": []}, "eingerichtet": False, **angaben}
+    system = {"art": "linux", "name": "Test", "paketverwaltung": "apt", "wsl": False}
+    try:
+        # erster Lauf: sieben Fragen, dann die Übersicht
+        a = optionen()
+        einrichten.ui, aus = oberflaeche(
+            ["enter",                                                   # Installieren: ja
+             "runter", "enter",                                         # Modelle: Mythos vorhanden
+             "enter", *geheim, "enter", "hoch", "hoch", "enter",        # Schlüssel: Shodan eingeben, dann über den Rand zu «Weiter»
+             "runter", "enter",                                         # Proxy: Tor
+             "runter", "leer", "enter",                                 # Dienste: Robin abwählen
+             "runter", "runter", "enter",                               # Anmeldung: später
+             "runter", "enter",                                         # Testabfragen: nein
+             "enter"])                                                  # Übersicht: einrichten
+        b = bestand(fehlend=[("Claude Code", "mit dem Installer")], claude=False, angemeldet=None)
+        assert einrichten.Assistent(a, system, b).fuehren() is True
+        assert (a.nichts_installieren, a.mythos, a.ohne_mythos, a.ohne_webcheck, a.ohne_robin, a.anmelden, a.testen) == \
+            (False, True, False, False, True, "", False), vars(a)
+        assert a.werte == {"SHODAN_API_KEY": geheim, "OSINT_PROXY": einrichten.TOR}, sorted(a.werte)
+        einrichten.konfiguration(a)
+        werte = einrichten.env_lesen(env)
+        assert werte["SHODAN_API_KEY"] == geheim and werte["OSINT_PROXY"] == einrichten.TOR
+        assert "GEHEIM" not in aus.getvalue(), "der Schlüssel steht in der Ausgabe"
+        assert "eingetragen: SHODAN_API_KEY, OSINT_PROXY" in aus.getvalue()
+
+        # zweiter Lauf: «Einstellungen ändern», Shodan entfernen, Proxy auf keinen
+        a = optionen()
+        einrichten.ui, aus = oberflaeche(
+            ["runter", "enter",                                         # Einstellungen ändern
+             "hoch", "hoch", "hoch", "hoch", "hoch", "enter", "esc",    # Modelle öffnen und mit Esc zurück: nichts ändert sich
+             "hoch", "hoch", "hoch", "hoch", "enter",                   # Schlüssel öffnen
+             "runter", "entf", "hoch", "enter",                         # von «Weiter» über den Rand zu Shodan, entfernen, zurück zu «Weiter»
+             "hoch", "hoch", "hoch", "enter", "hoch", "enter",          # Proxy öffnen: von Tor zu «Kein Proxy»
+             "enter"])                                                  # Änderungen übernehmen
+        assert einrichten.Assistent(a, system, bestand(eingerichtet=True)).fuehren() is True
+        assert a.werte == {"SHODAN_API_KEY": "", "OSINT_PROXY": ""} and a.ohne_mythos and not a.mythos, (sorted(a.werte), a.mythos)
+        einrichten.konfiguration(a)
+        werte = einrichten.env_lesen(env)
+        assert "SHODAN_API_KEY" not in werte and "OSINT_PROXY" not in werte, sorted(werte)
+        assert "entfernt: SHODAN_API_KEY, OSINT_PROXY" in aus.getvalue()
+
+        # eine Option, die etwas einstellt, wird auf einem eingerichteten Arbeitsplatz ohne Rückfrage übernommen
+        a = optionen(mythos=True)
+        einrichten.ui, aus = oberflaeche([])
+        assert einrichten.Assistent(a, system, bestand(eingerichtet=True)).fuehren() is True and a.mythos and a.werte == {}
+        # «Beenden» und «Abbrechen» verändern nichts
+        einrichten.ui, aus = oberflaeche(["runter", "runter", "runter", "enter"])
+        assert einrichten.Assistent(optionen(), system, bestand(eingerichtet=True)).fuehren() == 0
+        a = optionen()
+        einrichten.ui, aus = oberflaeche(["runter", "enter", "runter", "enter"])
+        try:
+            einrichten.Assistent(a, system, bestand(eingerichtet=True)).fuehren()
+            raise AssertionError("«Abbrechen» in der Übersicht muss abbrechen")
+        except Abbruch:
+            assert a.werte == {} and not a.mythos and not a.ohne_mythos
+
+        # was beim Einfügen schiefgeht, fällt auf
+        for falsch in ("SHODAN_API_KEY=abcdefgh12345678", "abcd efgh 1234 5678", "kurz", "schlüssel-mit-ümlaut"):
+            assert einrichten.schluessel_pruefen(falsch), falsch
+        assert einrichten.schluessel_pruefen("AbC-123_xyz.456+789/==") is None
+        assert einrichten.proxy_pruefen("socks5h://127.0.0.1:9050") is None and einrichten.proxy_pruefen("http://nutzer:pw@proxy.intern:3128") is None
+        for falsch in ("proxy.intern:3128", "ftp://proxy.intern", "http://", "http://proxy.intern:hafen"):
+            assert einrichten.proxy_pruefen(falsch), falsch
+        assert einrichten.proxy_zeigen("http://nutzer:geheim@proxy.intern:3128") == "http://nutzer:***@proxy.intern:3128"
+    finally:
+        einrichten.ui, einrichten.stand = echt_ui, einrichten.Stand()
+        os.environ.clear()
+        os.environ.update(echt_umgebung)
+        env.unlink(missing_ok=True)
+
+
+if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
+    @test("Assistent im echten Terminal: Pfeiltasten, verdeckte Eingabe, Vorschau verändert nichts")
+    def _():
+        import pty
+        import select
+        import termios
+        import time
+        geheim = "PTY-GEHEIM-0123456789abcdef"
+        umgebung = {k: v for k, v in os.environ.items() if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("CI", "NO_COLOR")}
+        umgebung.update({"TERM": "xterm-256color", "COLUMNS": "100", "LINES": "44"})
+        spuren = [PROJEKT / ".env", PROJEKT / ".venv", PROJEKT / ".claude" / "settings.local.json"]
+        vorher = [s.exists() for s in spuren]
+        pid, fd = pty.fork()
+        if pid == 0:
+            try:
+                os.execve(sys.executable, [sys.executable, str(PROJEKT / "tools" / "einrichten.py"), "--vorschau"], umgebung)
+            finally:
+                os._exit(127)
+        roh, ab, eingegeben, echo_aus, schluss = b"", 0, 0, None, time.time() + 150
+
+        def klar(daten: bytes) -> str:
+            return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", daten.decode("utf-8", "replace")).replace("\r", "")
+        try:
+            while time.time() < schluss:
+                bereit, _, _ = select.select([fd], [], [], 0.5)
+                if bereit:
+                    try:
+                        stueck = os.read(fd, 65536)
+                    except OSError:         # Linux meldet so, dass das Programm sein Terminal geschlossen hat
+                        break
+                    if not stueck:
+                        break
+                    roh += stueck
+                    continue
+                # Ruhe auf dem Bildschirm: Steht seit der letzten Taste eine vollständige Frage da?
+                neu = klar(roh[ab:])
+                koepfe = list(re.finditer(r"^  \? (.+?)(?:\s{2,}.*)?$", neu, re.M))
+                if not koepfe or "Esc " not in neu[koepfe[-1].end():]:
+                    continue
+                titel, block = koepfe[-1].group(1).strip(), neu[koepfe[-1].end():]
+                zeiger = re.search(r"^    › (?:[●○] )?(.+?)(?:\s{2,}.*)?$", block, re.M)
+                wo = zeiger.group(1).strip() if zeiger else ""
+                if echo_aus is None:
+                    with contextlib.suppress(termios.error):
+                        echo_aus = not termios.tcgetattr(fd)[3] & termios.ECHO
+                if titel == "Shodan" and not eingegeben:
+                    taste, eingegeben = geheim[:9].encode(), 1                 # getippt: Der Bildschirm zeigt jetzt Punkte
+                elif titel == "Shodan":
+                    assert "9 Zeichen" in block, "die Eingabe zeigt nicht an, wie viele Zeichen angekommen sind"
+                    taste, eingegeben = geheim[9:].encode() + b"\r", 2         # der Rest wie eingefügt, in einem Stück
+                elif titel == "Schlüssel" and not eingegeben:
+                    taste = b"\r" if wo == "Shodan" else b"\x1b[A"
+                elif titel == "Schlüssel":
+                    taste = b"\r" if wo == "Weiter" else b"\x1b[A"
+                else:
+                    taste = b"\r"                                             # jede andere Frage: die Vorgabe
+                ab = len(roh)
+                os.write(fd, taste)
+            else:
+                os.kill(pid, 9)
+                raise AssertionError("der Assistent ist nicht zu Ende gekommen. Zuletzt: " + klar(roh)[-300:].strip())
+        finally:
+            _, status = os.waitpid(pid, 0)
+            os.close(fd)
+        text = klar(roh)
+        assert os.waitstatus_to_exitcode(status) == 0, f"Rückgabewert {os.waitstatus_to_exitcode(status)}: {text[-300:].strip()}"
+        assert geheim[:9].encode() not in roh and geheim[9:].encode() not in roh, "der Schlüssel stand auf dem Bildschirm"
+        assert f"neu eingegeben ({len(geheim)} Zeichen)" in text and "neu: Shodan" in text, "die Eingabe ist nicht angekommen"
+        assert "Vorschau: Es wurde nichts verändert" in text
+        assert [s.exists() for s in spuren] == vorher, "die Vorschau hat Dateien angelegt"
+        assert echo_aus is not False, "während einer Frage muss das Echo des Terminals aus sein"
+        assert roh.rfind(b"\x1b[?25h") > roh.rfind(b"\x1b[?25l"), "der Cursor muss am Ende wieder sichtbar sein"
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")

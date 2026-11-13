@@ -5,6 +5,7 @@
     python3 tools/pruefen.py --live     zusätzlich je eingerichteter Quelle eine harmlose Testabfrage und
                                         je Modell (Fable 5.2, Mythos 5.2 wenn freigeschaltet) ein kurzer Testaufruf
     python3 tools/pruefen.py --kurz     nur die Übersicht, ohne Selbsttests
+    python3 tools/pruefen.py --nur-live nur die Testabfragen und Testaufrufe
 
 Unter Windows heisst der Interpreter python statt python3.
 
@@ -15,8 +16,6 @@ dort wie jede Abfrage protokolliert. Sie verbrauchen je Quelle einen Abruf aus e
 """
 from __future__ import annotations
 
-import contextlib
-import io
 import json
 import os
 import shutil
@@ -36,16 +35,33 @@ if __name__ == "__main__":
 
 from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
 from gateway.quellen import QUELLEN  # noqa: E402
-from tools.einrichten import (CLAUDE_MIN, MODELLE, benutzervariable, claude_stand, git_bash, modell_testen,  # noqa: E402
-                              modellzuteilung)
+from tools.einrichten import (CLAUDE_MIN, MODELLE, anmeldung, benutzervariable, claude_stand, git_bash, modell_testen,  # noqa: E402
+                              modellzuteilung, ui)
 
 VENV = plattform.venv_python(PROJEKT)
 noetig_fehlt: list[str] = []
 schritte: list[str] = []
+gemeldet: list[tuple[str, str, str, str]] = []     # alles, was gemeldet wurde: (Abschnitt, gut | aus | fehlt, was, wie)
+still = False                                       # nur sammeln, nichts ausgeben (für die Kurzfassung in der Einrichtung)
+_abschnitt = ""
 
 
-def zeile(zeichen: str, was: str, wie: str = "") -> None:
-    print(f"  {zeichen} {was:<34} {wie}")
+def abschnitt(titel: str) -> None:
+    global _abschnitt
+    _abschnitt = titel.split(" (")[0]
+    if not still:
+        ui.abschnitt(titel)
+
+
+def zeile(zeichen: str, was: str, wie: str = "", satz: bool = False) -> None:
+    """Meldet eine Zeile. Mit satz=True ist 'was' ein ganzer Satz (Name eines Tests) und 'wie' die Erläuterung darunter."""
+    gemeldet.append((_abschnitt, {GUT: "gut", FEHLT: "fehlt"}.get(zeichen, "aus"), was, wie))
+    if still:
+        return
+    if satz:
+        ui.punkt(zeichen, was, wie)
+    else:
+        ui.zeile(zeichen, was, wie, breit=30)
 
 
 def env_lesen() -> dict[str, str]:
@@ -84,7 +100,7 @@ def erreichbar(url: str) -> bool:
 
 
 def umgebung(env: dict[str, str]) -> None:
-    print("\nUmgebung")
+    abschnitt("Umgebung")
     v = sys.version_info
     if v >= (3, 10):
         zeile(GUT, "Python", f"{v.major}.{v.minor}.{v.micro}")
@@ -152,7 +168,7 @@ def umgebung(env: dict[str, str]) -> None:
 
 
 def konfiguration(env: dict[str, str]) -> None:
-    print("\nKonfiguration")
+    abschnitt("Konfiguration")
     if (PROJEKT / ".env").is_file():
         zeile(GUT, ".env", "vorhanden")
     else:
@@ -225,7 +241,7 @@ def modelle(nur_merken: bool) -> dict:
 
 
 def quellen(env: dict[str, str]) -> list:
-    print("\nQuellen")
+    abschnitt("Quellen")
     bereit = []
     for q in QUELLEN:
         if q.name == "ransomware.live":
@@ -243,30 +259,47 @@ def quellen(env: dict[str, str]) -> list:
             zeile(AUS, q.name, f"aus: {q.env} fehlt in .env  →  {q.woher}")
     fehlend = len(QUELLEN) - len(bereit)
     if fehlend:
-        schritte.append(f"Schlüssel für {fehlend} Quelle(n) in .env eintragen (optional, jede Quelle für sich)")
+        schritte.append(f"Schlüssel für {fehlend} Quelle(n) eintragen, wenn ihr sie braucht: {SETUP} und «Einstellungen ändern», "
+                        "oder direkt in .env. Jede Quelle ist für sich optional.")
     return bereit
 
 
-def selbsttests() -> None:
-    print("\nSelbsttests (ohne Netz)")
+def selbsttests() -> tuple[int, int]:
+    """Lässt die Selbsttests laufen. Gibt (bestanden, gesamt) zurück."""
+    abschnitt("Selbsttests (ohne Netz)")
     python = str(VENV) if VENV.is_file() else sys.executable
-    r = subprocess.run([python, str(PROJEKT / "tools" / "selbsttest.py")], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", timeout=600)
-    for z in r.stdout.strip().splitlines():
-        if z.strip():
-            print(f"  {z}")
-    if r.returncode != 0:
+    with ui.arbeit(None if still else "Selbsttests laufen"):
+        r = subprocess.run([python, str(PROJEKT / "tools" / "selbsttest.py")], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=900, stdin=subprocess.DEVNULL)
+    bestanden = gesamt = 0
+    zeilen = r.stdout.splitlines()
+    for nr, z in enumerate(zeilen):
+        for zeichen in (GUT, FEHLT):
+            if z.startswith(zeichen + " "):
+                gesamt += 1
+                bestanden += zeichen == GUT
+                grund = zeilen[nr + 1].strip() if zeichen == FEHLT and nr + 1 < len(zeilen) and zeilen[nr + 1].startswith("    ") else ""
+                zeile(zeichen, z[len(zeichen) + 1:], grund, satz=True)
+    if r.returncode != 0 or not gesamt:
         noetig_fehlt.append("Selbsttests")
-        if r.stderr.strip():
-            print("  " + r.stderr.strip().splitlines()[-1])
+        if not gesamt or bestanden == gesamt:       # abgebrochen, bevor ein Test etwas melden konnte
+            zeile(FEHLT, "Selbsttests", ((r.stderr.strip() or r.stdout.strip()).splitlines() or ["ohne Ergebnis abgebrochen"])[-1])
+    elif not still:
+        ui.text(f"{bestanden} von {gesamt} Selbsttests bestanden.", "matt")
+    return bestanden, gesamt
 
 
 def live_modelle() -> None:
     """Je Modell ein kurzer Testaufruf über Claude Code: Darf dieses Konto das Modell nutzen?"""
-    print("\nLive-Test der Modelle (je ein kurzer Aufruf über Claude Code, ausserhalb des Projekts)")
+    abschnitt("Testaufrufe der Modelle (je ein kurzer Aufruf über Claude Code, ausserhalb des Projekts)")
     z = modelle(nur_merken=True)
+    angemeldet = anmeldung()[0]
+    if not angemeldet:
+        zeile(AUS, "Modelle", "nicht getestet: " + ("Claude Code fehlt" if angemeldet is None else "Claude Code ist nicht angemeldet"))
+        return
     for modell in [MODELLE["fable"]] + ([MODELLE["mythos"]] if z["mythos_frei"] else []):
-        ergebnis, text = modell_testen(modell)
+        with ui.arbeit(f"{modell} wird gefragt"):
+            ergebnis, text = modell_testen(modell)
         if ergebnis == "ok":
             zeile(GUT, modell, "antwortet")
         elif ergebnis == "unbekannt":
@@ -281,7 +314,7 @@ def live_modelle() -> None:
 
 
 def live(bereit: list) -> None:
-    print("\nLive-Test (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
+    abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
     if not VENV.is_file():
         zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
         return
@@ -307,34 +340,79 @@ async def alle():
 asyncio.run(alle())
 '''
     p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", skript, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
-    for z in p.stdout:
+                         stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
+    offen = [eintrag["quelle"] for eintrag in plan]
+    rat = " Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."      # hängt das Gateway an jeden Verbindungsfehler an
+    ohne_verbindung = 0
+    while True:
+        with ui.arbeit(f"{offen[0]} wird abgefragt" if offen else None):     # die Antworten kommen in der Reihenfolge des Plans
+            z = p.stdout.readline()
+        if not z:
+            break
         try:
             e = json.loads(z)
         except json.JSONDecodeError:
             continue
+        if e["quelle"] in offen:
+            offen.remove(e["quelle"])
         if e["ergebnis"] in ("ok", "kein_treffer"):
             zeile(GUT, e["quelle"], f"{e['werkzeug']} antwortet ({e['ergebnis']}, {e['id']})")
         else:
-            zeile(FEHLT, e["quelle"], f"{e['werkzeug']}: {e['fehler']}")
+            fehler = str(e["fehler"])
+            ohne_verbindung += rat in fehler
+            zeile(FEHLT, e["quelle"], f"{e['werkzeug']}: {fehler.replace(rat, '')}")
     p.wait()
     if p.returncode != 0:
-        zeile(FEHLT, "Live-Test", (p.stderr.read().strip().splitlines() or ["abgebrochen"])[-1])
-    print(f"  Protokoll der Testabfragen: {PY} tools/protokoll.py SELBSTTEST")
+        zeile(FEHLT, "Testabfragen", (p.stderr.read().strip().splitlines() or ["abgebrochen"])[-1])
+    if ohne_verbindung:
+        ui.text(f"{ohne_verbindung} Quelle(n) ohne Verbindung:{rat}", "matt")
+    ui.text(f"Protokoll der Testabfragen: {PY} tools/protokoll.py SELBSTTEST", "matt")
+
+
+def kurzfassung(bereit: list, tests: tuple[int, int]) -> list[list[str]]:
+    """Die Prüfung in wenigen Zeilen, für die Einrichtung: Was in Ordnung ist, wird zusammengefasst,
+    jeder Fehler steht einzeln da."""
+    zeilen: list[list[str]] = []
+    for bereich, titel, gut in (("Umgebung", "", ""), ("Konfiguration", "Einstellungen", "Wächter, Protokoll, MCP-Server und Modelle sind eingerichtet")):
+        fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == bereich and art == "fehlt"]
+        zeilen += fehler or ([["gut", titel, gut]] if titel else [])
+    fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == "Selbsttests" and art == "fehlt"]
+    zeilen.append(["fehlt" if fehler else "gut", "Selbsttests", f"{tests[0]} von {tests[1]} bestanden"])
+    zeilen += fehler
+    zeilen.append(["gut" if bereit else "aus", "Quellen", f"{len(bereit)} von {len(QUELLEN)} bereit"])
+    namen = {q.name for q in bereit}
+    ohne = [q.name for q in QUELLEN if q.name not in namen and q.env]
+    if ohne:
+        zeilen.append(["aus", "Ohne Schlüssel", ", ".join(ohne)])
+    if "Web-Check" not in namen:
+        zeilen.append(["aus", "Web-Check", "aus: Die Instanz läuft nicht"])
+    return zeilen
 
 
 def main() -> int:
-    if "-h" in sys.argv or "--help" in sys.argv:
+    global still
+    if "-h" in sys.argv or "--help" in sys.argv or "--hilfe" in sys.argv:
         print(__doc__)
         return 0
-    eingebettet = "--eingebettet" in sys.argv     # Aufruf aus der Einrichtung: Sie hat die Umgebung eben selbst gezeigt
     env = env_lesen()
-    if eingebettet:
-        with contextlib.redirect_stdout(io.StringIO()):
-            umgebung(env)
-    else:
-        print("OSINT-Ermittlungsarbeitsplatz: Prüfung der Einrichtung")
+    if "--eingebettet" in sys.argv:     # Aufruf aus der Einrichtung: Sie zeigt die Kurzfassung und zieht das Fazit selbst
+        still = True
         umgebung(env)
+        konfiguration(env)
+        bereit = quellen(env)
+        tests = selbsttests()
+        print(json.dumps({"osint_pruefung": 1, "zeilen": kurzfassung(bereit, tests), "fehlt": list(dict.fromkeys(noetig_fehlt)),
+                          "bereit": len(bereit), "quellen": len(QUELLEN)}, ensure_ascii=False))
+        return 1 if noetig_fehlt else 0
+    if "--nur-live" in sys.argv:
+        still = True
+        bereit = quellen(env)
+        still = False
+        live(bereit)
+        live_modelle()
+        return 1 if any(art == "fehlt" for bereich, art, _, _ in gemeldet if bereich.startswith("Test")) else 0
+    ui.kopf("OSINT-Ermittlungsarbeitsplatz · Prüfung der Einrichtung")
+    umgebung(env)
     konfiguration(env)
     bereit = quellen(env)
     if "--kurz" not in sys.argv:
@@ -342,21 +420,17 @@ def main() -> int:
     if "--live" in sys.argv:
         live(bereit)
         live_modelle()
-    print()
-    if eingebettet:                     # die Einrichtung zieht das Fazit und nennt die nächsten Schritte selbst
-        if not noetig_fehlt:
-            print(f"Einsatzbereit mit {len(bereit)} von {len(QUELLEN)} Quellen.")
-        return 1 if noetig_fehlt else 0
+    ui.leer()
+    ui.linie()
     if noetig_fehlt:
-        print(f"NICHT einsatzbereit. Es fehlt: {', '.join(dict.fromkeys(noetig_fehlt))}")
+        ui.erledigt("NICHT einsatzbereit.", f"Es fehlt: {', '.join(dict.fromkeys(noetig_fehlt))}", FEHLT, breit=0)
     else:
-        print(f"Einsatzbereit mit {len(bereit)} von {len(QUELLEN)} Quellen.")
-    if schritte:
-        print("Nächste Schritte:")
-        for s in dict.fromkeys(schritte):
-            print(f"  - {s}")
+        ui.erledigt("Einsatzbereit", f"mit {len(bereit)} von {len(QUELLEN)} Quellen", breit=0)
+    ui.liste("Nächste Schritte", list(dict.fromkeys(schritte)), nummeriert=True)
     if not noetig_fehlt:
-        print(f"Loslegen:  {PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Datei>   dann   claude   und   /ermittlung <Fall-ID>")
+        ui.paare("Loslegen", [("Fall anlegen", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>"),
+                              ("Ermitteln", "claude   und dort   /ermittlung <Fall-ID>"),
+                              ("Einstellungen ändern", SETUP)])
     return 1 if noetig_fehlt else 0
 
 

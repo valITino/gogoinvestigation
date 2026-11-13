@@ -55,14 +55,16 @@ jobs:
           }
 
       # Docker bleibt aussen vor: Die Abbilder von Web-Check und Robin sind gross und für die Prüfung unnötig.
+      # Hier gibt es kein Terminal, die Einrichtung fragt also nichts. Den Assistenten selbst prüfen die
+      # Selbsttests, unter Linux und macOS in einem Pseudo-Terminal.
       - name: Einrichtung (Linux, macOS)
         if: runner.os != 'Windows'
-        run: ./setup.sh --ohne-docker
+        run: ./setup.sh --ohne-rueckfragen --ohne-docker
 
       - name: Einrichtung (Windows)
         if: runner.os == 'Windows'
         run: |
-          & .\setup.ps1 --ohne-docker
+          & .\setup.ps1 --ohne-rueckfragen --ohne-docker
           exit $LASTEXITCODE
 
       - name: Mythos freischalten und zurücknehmen (Linux, macOS)
@@ -75,6 +77,16 @@ jobs:
         run: |
           call setup.cmd --ohne-docker --mythos || exit /b 1
           call setup.cmd --ohne-docker --ohne-mythos || exit /b 1
+
+      - name: Ausführliche Prüfung mit allen Selbsttests (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: python3 tools/pruefen.py
+
+      - name: Ausführliche Prüfung mit allen Selbsttests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python tools\pruefen.py
+          exit $LASTEXITCODE
 
       - name: Meldungen der Installationsprogramme (nur bei Fehlern)
         if: failure()
