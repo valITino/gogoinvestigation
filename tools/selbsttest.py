@@ -998,7 +998,19 @@ def _():
     assert {e["art"]: e["betrag"] for e in r["befund"]["verteilung"]} == {e["art"]: e["betrag"] for e in b["verteilung"]}, r["befund"]["verteilung"]
     assert not any(f"/tx/{kw.txid('t0')}/outspends" in a or a.endswith(f"/tx/{kw.txid('t1')}") for a in w.aufrufe), \
         "für die Startadresse dürfen Verbleib und Folgetransaktion nicht noch einmal abgefragt werden"
+    # Viele kleine Eingänge, gemeinsam weitergeleitet: Der Betrag zählt als Ganzes, nicht als 40 Kleinbeträge
+    w = kwelt()
+    for i in range(40):
+        w.btc_zahlung(f"opfer{i}", [("extern", f"opfer{i}", 1_100_000)], [("sammler", 1_000_000)], T0 + i * 60)
+    w.btc_zahlung("abzug", [(f"opfer{i}", 0) for i in range(40)], [("ziel", 25_000_000), ("ziel2", 14_900_000)], T0 + 9000)
+    w.btc_zahlung("weiter", [("abzug", 0)], [("ende", 24_990_000)], T0 + 9600)
+    r = kruf(krypto.krypto_geldfluss, kw.btc("sammler"))
+    enden = {(e["art"], e.get("adresse")): e["betrag"] for e in r["befund"]["enden"]}
+    assert enden.get(("liegt", kw.btc("ende"))) == "0.2499" and enden.get(("liegt", kw.btc("ziel2"))) == "0.149", enden
+    assert not any(e["art"] == "grenze" for e in r["befund"]["enden"]) and r["befund"]["summe_geht_auf"], enden
+    assert sum(1 for a in w.aufrufe if a.endswith(f"/tx/{kw.txid('weiter')}")) == 1 and r["befund"]["abfragen"]["ausgefuehrt"] < 16, w.aufrufe
     # Ohne Empfänger ist bei zwei Ausgängen unklar, welcher Zahlung gefolgt werden soll
+    bitcoin_welt()
     r = kruf(krypto.krypto_geldfluss, kw.txid("t0"))
     assert r["ergebnis"] == "nicht_ausgefuehrt" and kw.btc("opfer-wechsel") in r["fehler"], r
     # Knappes Budget: Die Verfolgung endet geordnet und sagt, wo es weitergeht

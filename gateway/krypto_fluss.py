@@ -178,81 +178,99 @@ async def btc_start(v: Vorgang, g: Graf, *, tx: dict | None, adresse: str | None
 
 
 async def btc_fluss(v: Vorgang, z: Zuordner, g: Graf, posten: list[tuple], grenzen: Grenzen, wissen: dict | None = None) -> None:
-    """Folgt Bitcoin-Ausgängen. posten: [(tiefe, tx, nr, adresse, betrag, zeit)]. wissen: siehe btc_start."""
+    """Folgt Bitcoin-Ausgängen, Ebene um Ebene. posten: [(tiefe, tx, nr, adresse, betrag, zeit)]. wissen: siehe btc_start.
+
+    Verfolgt wird je Zahlungsausgang (Transaktion und Nummer). Was aus mehreren Eingängen in denselben Ausgang
+    fliesst, wird erst zusammengezählt und dann beurteilt: Sonst gälte ein grosser Betrag als viele Kleinbeträge,
+    nur weil er aus vielen einzelnen Eingängen stammt."""
     ausgegeben_in = (wissen or {}).get("ausgegeben_in") or {}
     vollstaendig = (wissen or {}).get("vollstaendig") or set()
     g.start = sum(p[4] for p in posten)
     klein = max(1, int(g.start * grenzen.min_anteil))
     verbleib: dict[str, list[dict]] = {}
-    for p in posten:
-        k = g.station(p[3] or f"{p[1]}:{p[2]}", p[3], 0)
-        k["betrag"] += p[4]
-    schlange = [(*p, p[4]) for p in posten]          # letzter Wert: verfolgter Anteil am Ausgang
-    while schlange:
-        schlange.sort(key=lambda p: (p[0], -p[6]))
-        tiefe, tx, nr, adresse, betrag_ausgang, zeit, anteil = schlange.pop(0)
-        schluessel = adresse or f"{tx}:{nr}"
-        k = g.knoten[schluessel]
-        if v.erschoepft:
-            g.ende(schluessel, "grenze", anteil, "Abfragebudget aufgebraucht", fortsetzen={"tx": tx, "adresse": adresse})
-            continue
-        try:
-            if (tx, nr) in ausgegeben_in:                       # schon bekannt aus den Transaktionen der Startadresse
-                folge, stand = ausgegeben_in[(tx, nr)], {"ausgegeben": True, "tx": ausgegeben_in[(tx, nr)]["tx"]}
-            elif adresse in vollstaendig:
-                g.ende(schluessel, "liegt", anteil, f"unbewegt seit {zeit_iso(zeit) or 'Eingang (noch unbestätigt)'}", seit=zeit)
+    geholt: dict[str, dict | None] = {}
+    ebene: dict[tuple[str, int], dict] = {}
+    for _, tx, nr, adresse, betrag, zeit in posten:
+        g.station(adresse or f"{tx}:{nr}", adresse, 0)["betrag"] += betrag
+        e = ebene.setdefault((tx, nr), {"adresse": adresse, "zeit": zeit, "anteil": 0})
+        e["anteil"] += betrag
+    tiefe = 0
+    while ebene:
+        naechste: dict[tuple[str, int], dict] = {}
+        je_adresse: Counter = Counter()
+        for (tx, nr), e in ebene.items():
+            je_adresse[e["adresse"] or f"{tx}:{nr}"] += e["anteil"]
+        for (tx, nr), e in sorted(ebene.items(), key=lambda x: (-je_adresse[x[1]["adresse"] or f"{x[0][0]}:{x[0][1]}"], -x[1]["anteil"])):
+            adresse, zeit, anteil = e["adresse"], e["zeit"], e["anteil"]
+            schluessel = adresse or f"{tx}:{nr}"
+            k = g.knoten[schluessel]
+            weiter_bei = {"tx": tx, "adresse": adresse}
+            if tiefe > 0 and not adresse:
+                g.ende(schluessel, "unklar", anteil, "Ausgang ohne gewöhnliche Adresse (Sonderform), nicht weiterverfolgt")
                 continue
-            else:
-                if tx not in verbleib:
-                    _, verbleib[tx] = await btc_verbleib(v, tx, schritt=f"Station {k['nr']}: Wurde der Ausgang weitergeleitet?")
-                stand = verbleib[tx][nr] if nr < len(verbleib[tx]) else {"ausgegeben": False}
-                if not stand["ausgegeben"]:
+            if tiefe > grenzen.tiefe:
+                g.ende(schluessel, "grenze", anteil, f"Tiefe von {grenzen.tiefe} Stationen erreicht", fortsetzen=weiter_bei)
+                continue
+            if tiefe > 0 and je_adresse[schluessel] < klein:
+                g.ende(schluessel, "grenze", anteil, f"Teilbetrag unter {grenzen.min_anteil:.0%} des Startbetrags", fortsetzen=weiter_bei)
+                continue
+            if v.erschoepft:
+                g.ende(schluessel, "grenze", anteil, "Abfragebudget aufgebraucht", fortsetzen=weiter_bei)
+                continue
+            try:
+                if (tx, nr) in ausgegeben_in:                       # schon bekannt aus den Transaktionen der Startadresse
+                    folge = ausgegeben_in[(tx, nr)]
+                elif adresse in vollstaendig:
                     g.ende(schluessel, "liegt", anteil, f"unbewegt seit {zeit_iso(zeit) or 'Eingang (noch unbestätigt)'}", seit=zeit)
                     continue
-                _, folge = await btc_tx(v, stand["tx"], schritt=f"Station {k['nr']}: Transaktion, die den Betrag weiterleitet")
-        except Quellfehler as e:
-            g.ende(schluessel, "unklar", anteil, f"Abfrage fehlgeschlagen ({e.antwort.id}): {e.antwort.fehler}")
-            continue
-        if folge is None:
-            g.ende(schluessel, "unklar", anteil, f"Die weiterleitende Transaktion {stand['tx']} ist der Quelle nicht bekannt")
-            continue
-        art, grund = muster(folge)
-        if art:
-            g.ende(schluessel, art, anteil, grund, tx=folge["tx"], zeit=folge.get("zeit"))
-            if art == "sammel":
-                k["rolle"] = "einzahlung" if k["rolle"] != "start" else k["rolle"]
-                k["sammel_tx"] = folge["tx"]
-            continue
-        mit = {e["adresse"] for e in folge["eingaenge"] if e.get("adresse") and not gleich(g.kette, e["adresse"], adresse)}
-        if mit:
-            k.setdefault("mitgenutzt", set()).update(mit)
-        summe_ein = sum(e["betrag"] for e in folge["eingaenge"]) or betrag_ausgang
-        if not folge["bestaetigt"]:
-            _notiz(k, f"Weiterleitung {folge['tx']} ist noch nicht bestätigt")
-        weiter = 0
-        for a in folge["ausgaenge"]:
-            teil = anteil * a["betrag"] // summe_ein
-            if teil <= 0:
+                else:
+                    if tx not in verbleib:
+                        _, verbleib[tx] = await btc_verbleib(v, tx, schritt=f"Station {k['nr']}: Wurde der Ausgang weitergeleitet?")
+                    stand = verbleib[tx][nr] if nr < len(verbleib[tx]) else {"ausgegeben": False}
+                    if not stand["ausgegeben"]:
+                        g.ende(schluessel, "liegt", anteil, f"unbewegt seit {zeit_iso(zeit) or 'Eingang (noch unbestätigt)'}", seit=zeit)
+                        continue
+                    if stand["tx"] not in geholt:
+                        _, geholt[stand["tx"]] = await btc_tx(v, stand["tx"], schritt=f"Station {k['nr']}: Transaktion, die den Betrag weiterleitet")
+                    folge = geholt[stand["tx"]]
+                    if folge is None:
+                        g.ende(schluessel, "unklar", anteil, f"Die weiterleitende Transaktion {stand['tx']} ist der Quelle nicht bekannt")
+                        continue
+            except Quellfehler as fehler:
+                g.ende(schluessel, "unklar", anteil, f"Abfrage fehlgeschlagen ({fehler.antwort.id}): {fehler.antwort.fehler}")
                 continue
-            weiter += teil
-            ziel_s = a.get("adresse") or f"{folge['tx']}:{a['nr']}"
-            neu = ziel_s not in g.knoten
-            if neu and len(g.knoten) >= grenzen.stationen:
-                g.ende(schluessel, "grenze", teil, f"Höchstzahl von {grenzen.stationen} Stationen erreicht",
-                       fortsetzen={"tx": folge["tx"], "adresse": a.get("adresse")})
+            art, grund = muster(folge)
+            if art:
+                g.ende(schluessel, art, anteil, grund, tx=folge["tx"], zeit=folge.get("zeit"))
+                if art == "sammel":
+                    k["rolle"] = "einzahlung" if k["rolle"] != "start" else k["rolle"]
+                    k["sammel_tx"] = folge["tx"]
                 continue
-            ziel = g.station(ziel_s, a.get("adresse"), tiefe + 1)
-            g.fluss(schluessel, ziel_s, teil, folge["tx"], folge.get("zeit"),
-                    passgenau=len(folge["eingaenge"]) == 1 and len([x for x in folge["ausgaenge"] if x["betrag"] > 0]) == 1)
-            if not a.get("adresse"):
-                g.ende(ziel_s, "unklar", teil, "Ausgang ohne gewöhnliche Adresse (Sonderform), nicht weiterverfolgt")
-            elif tiefe + 1 > grenzen.tiefe:
-                g.ende(ziel_s, "grenze", teil, f"Tiefe von {grenzen.tiefe} Stationen erreicht", fortsetzen={"tx": folge["tx"], "adresse": a["adresse"]})
-            elif teil < klein:
-                g.ende(ziel_s, "grenze", teil, f"Teilbetrag unter {grenzen.min_anteil:.0%} des Startbetrags", fortsetzen={"tx": folge["tx"], "adresse": a["adresse"]})
-            else:
-                schlange.append((ziel["tiefe"], folge["tx"], a["nr"], a["adresse"], a["betrag"], folge.get("zeit"), teil))
-        g.ende(None, "gebuehr", anteil - weiter, "anteilige Transaktionsgebühren")
+            mit = {x["adresse"] for x in folge["eingaenge"] if x.get("adresse") and not gleich(g.kette, x["adresse"], adresse)}
+            if mit:
+                k.setdefault("mitgenutzt", set()).update(mit)
+            summe_ein = sum(x["betrag"] for x in folge["eingaenge"]) or anteil
+            if not folge["bestaetigt"]:
+                _notiz(k, f"Weiterleitung {folge['tx']} ist noch nicht bestätigt")
+            einzeln = len(folge["eingaenge"]) == 1 and len([x for x in folge["ausgaenge"] if x["betrag"] > 0]) == 1
+            weiter = 0
+            for a in folge["ausgaenge"]:
+                teil = anteil * a["betrag"] // summe_ein
+                if teil <= 0:
+                    continue
+                weiter += teil
+                ziel_s = a.get("adresse") or f"{folge['tx']}:{a['nr']}"
+                if ziel_s not in g.knoten and len(g.knoten) >= grenzen.stationen:
+                    g.ende(schluessel, "grenze", teil, f"Höchstzahl von {grenzen.stationen} Stationen erreicht",
+                           fortsetzen={"tx": folge["tx"], "adresse": a.get("adresse")})
+                    continue
+                g.station(ziel_s, a.get("adresse"), tiefe + 1)
+                g.fluss(schluessel, ziel_s, teil, folge["tx"], folge.get("zeit"), passgenau=einzeln)
+                n = naechste.setdefault((folge["tx"], a["nr"]), {"adresse": a.get("adresse"), "zeit": folge.get("zeit"), "anteil": 0})
+                n["anteil"] += teil
+            g.ende(None, "gebuehr", anteil - weiter, "anteilige Transaktionsgebühren")
+        ebene = naechste
+        tiefe += 1
     for k in g.knoten.values():
         if isinstance(k.get("mitgenutzt"), set):
             andere = sorted(k.pop("mitgenutzt"))
@@ -398,6 +416,9 @@ async def nacharbeit(v: Vorgang, z: Zuordner, g: Graf, hoechstens: int = 8) -> N
     mutmassliche Einzahlungsadressen. Kostet je Adresse eine oder mehrere Abfragen, deshalb begrenzt."""
     kandidaten = sorted((e for e in g.enden if e["knoten"] and e["art"] in ("sammel", "liegt", "grenze")
                          and g.knoten[e["knoten"]].get("adresse")), key=lambda e: (e["art"] != "sammel", -e["betrag"]))
+    alle = [k["adresse"] for k in g.knoten.values() if k.get("adresse")]
+    if alle:
+        await z.pruefen(g.kette, alle)           # Listen und Sanktionsprüfung für jede Station, in einem Zug
     gefragt: list[str] = []
     for e in kandidaten:
         adresse = g.knoten[e["knoten"]]["adresse"]
@@ -407,9 +428,6 @@ async def nacharbeit(v: Vorgang, z: Zuordner, g: Graf, hoechstens: int = 8) -> N
             break
         gefragt.append(adresse)
         await z.pruefen(g.kette, [adresse], tief=True)
-    alle = [k["adresse"] for k in g.knoten.values() if k.get("adresse")]
-    if alle:
-        await z.pruefen(g.kette, alle)           # Listen und Sanktionsprüfung für jede Station, in einem Zug
     for e in g.enden:
         if not e["knoten"]:
             continue

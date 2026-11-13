@@ -55,8 +55,8 @@ AUSFUEHRLICH = "--ausfuehrlich" in sys.argv
 
 def zeigen(r: dict) -> None:
     if AUSFUEHRLICH:
-        text = json.dumps(r.get("befund", r), ensure_ascii=False, indent=1)
-        print("    " + (text if len(text) < 7000 else text[:7000] + "\n … gekürzt").replace("\n", "\n    "), flush=True)
+        text = json.dumps(r.get("befund", r), ensure_ascii=False)
+        print("    " + (text if len(text) < 9000 else text[:9000] + " … gekürzt"), flush=True)
 
 
 async def pruefung(name: str, aufruf, erwartung) -> dict | None:

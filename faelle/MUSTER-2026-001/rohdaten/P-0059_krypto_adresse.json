@@ -5,13 +5,13 @@
   "kette": "bitcoin"
  },
  "grundlage": [
+  "P-0052",
+  "P-0053",
   "P-0054",
   "P-0055",
   "P-0056",
   "P-0057",
-  "P-0058",
-  "P-0059",
-  "P-0060"
+  "P-0058"
  ],
  "befund": {
   "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
@@ -33,7 +33,7 @@
     "art": "ransomware",
     "name": "MusterLocker",
     "detail": "1 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
-    "beleg": "P-0058"
+    "beleg": "P-0056"
    }
   ],
   "auffaellig": [
@@ -42,21 +42,21 @@
   "quellenstand": {
    "OFAC": {
     "ergebnis": "ok",
-    "beleg": "P-0056",
+    "beleg": "P-0054",
     "adressen_in_liste": 3
    },
    "Ransomwhere": {
     "ergebnis": "ok",
-    "beleg": "P-0058",
+    "beleg": "P-0056",
     "adressen_in_liste": 1
    },
    "TRM Labs": {
     "ergebnis": "ok",
-    "beleg": "P-0059"
+    "beleg": "P-0057"
    },
    "WalletExplorer": {
     "ergebnis": "ok",
-    "beleg": "P-0060"
+    "beleg": "P-0058"
    },
    "Iknaio": {
     "ergebnis": "aus",

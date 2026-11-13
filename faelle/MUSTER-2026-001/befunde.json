@@ -192,7 +192,7 @@
       },
       "belege": [
         "P-0024",
-        "P-0061"
+        "P-0059"
       ]
     },
     {
@@ -210,22 +210,22 @@
       "id": "I-12",
       "typ": "wallet",
       "wert": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
-      "herkunft": "Geldfluss P-0053 (erste Station nach der Zahlungsadresse)",
+      "herkunft": "Geldfluss P-0051 (erste Station nach der Zahlungsadresse)",
       "rolle": "Mutmassliche Einzahlungsadresse bei einer Börse",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0053"
+        "P-0051"
       ]
     },
     {
       "id": "I-13",
       "typ": "wallet",
       "wert": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
-      "herkunft": "Geldfluss P-0053 (zweite Station)",
+      "herkunft": "Geldfluss P-0051 (zweite Station)",
       "rolle": "Adresse, auf der ein Teil des Lösegelds unbewegt liegt",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0053"
+        "P-0051"
       ]
     }
   ],
@@ -425,7 +425,7 @@
         "I-13"
       ],
       "belege": [
-        "P-0053"
+        "P-0051"
       ],
       "gegenpruefung": "eingeschraenkt",
       "gegenpruefung_notiz": "Die einzelnen Zahlungen stehen in den Rohdaten. Dass die Adresse zu einer Börse gehört, ist die Angabe eines einzelnen Dienstes (WalletExplorer) und stützt sich zusätzlich auf das Muster der Sammeltransaktion. Der Name der Börse ist erst mit ihrer Antwort gesichert."
@@ -443,7 +443,7 @@
         "I-07"
       ],
       "belege": [
-        "P-0061"
+        "P-0059"
       ],
       "gegenpruefung": "bestaetigt"
     }
@@ -530,7 +530,7 @@
       "art": "leitet weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0053"
+        "P-0051"
       ]
     },
     {
@@ -539,7 +539,7 @@
       "art": "leitet anteilig weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0053"
+        "P-0051"
       ]
     },
     {
@@ -548,13 +548,13 @@
       "art": "Zahlungsadresse von",
       "sicherheit": "mittel",
       "belege": [
-        "P-0061"
+        "P-0059"
       ]
     }
   ],
   "geldfluesse": [
     {
-      "beleg": "P-0053",
+      "beleg": "P-0051",
       "titel": "Verbleib der Lösegeldzahlung vom 03.10.2026",
       "befunde": [
         "B-11"
@@ -629,7 +629,7 @@
       "zeit": "2026-10-03T21:05:00Z",
       "ereignis": "Das Lösegeld wird in zwei Teilen weitergeleitet, der grössere an eine Börse.",
       "belege": [
-        "P-0053"
+        "P-0051"
       ]
     },
     {

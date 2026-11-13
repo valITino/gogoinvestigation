@@ -25,9 +25,7 @@
   "P-0047",
   "P-0048",
   "P-0049",
-  "P-0050",
-  "P-0051",
-  "P-0052"
+  "P-0050"
  ],
  "befund": {
   "start": {
@@ -258,7 +256,7 @@
   "methode": "Bitcoin: Jeder Zahlungsausgang wird genau einmal ausgegeben. Welche Transaktion ihn ausgibt, ist eine Tatsache der Kette. Legt eine Transaktion mehrere Eingänge zusammen, wird der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt (anteilige Zuordnung). Transaktionen mit dem Muster eines Dienstes oder Mischdienstes beenden die Verfolgung. Grenzen dieses Laufs: 4 Stationen ab Start, Teilbeträge unter 2% des Startbetrags und mehr als 60 Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind Feststellungen, die Zuordnung über mehrere Stationen ist eine Bewertung nach diesem Verfahren.",
   "summe_geht_auf": true,
   "abfragen": {
-   "ausgefuehrt": 11,
+   "ausgefuehrt": 9,
    "aus_fall_cache": 7,
    "budget": 80,
    "budget_aufgebraucht": false
@@ -276,11 +274,11 @@
    },
    "TRM Labs": {
     "ergebnis": "ok",
-    "beleg": "P-0050"
+    "beleg": "P-0046"
    },
    "WalletExplorer": {
     "ergebnis": "ok",
-    "beleg": "P-0049"
+    "beleg": "P-0048"
    },
    "Iknaio": {
     "ergebnis": "aus",
