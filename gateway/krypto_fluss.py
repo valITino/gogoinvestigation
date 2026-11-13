@@ -321,6 +321,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
     rest_guthaben: dict[str, int] = {}         # Guthaben je Adresse, das noch keinem Eingang zugeordnet ist
     abgaenge: dict[str, tuple[dict | None, list[dict], bool]] = {}
     gedrosselt: str | None = None              # Name der Quelle, sobald sie Abfragen mit HTTP 429 abweist
+    sammler: dict[str, tuple[str, str | None]] = {}     # Adressen, die dieser Lauf schon als Sammeladresse oder Programm erkannt hat
     ebene = [{"tiefe": 0, **s} for s in start]
     while ebene:
         tiefe = ebene[0]["tiefe"]
@@ -336,6 +337,10 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
             summe = sum(p["betrag"] for p in eingaenge)
             k = g.knoten[adresse]
             if tiefe > 0 and _etikett_ende(g, z, adresse, summe):
+                continue
+            if adresse in sammler:              # kommt auf einem zweiten Weg noch einmal Geld an: dasselbe Urteil, keine neue Abfrage
+                g.ende(adresse, sammler[adresse][0], summe, "in diesem Lauf bereits als Adresse mit sehr vielen Abgängen erkannt",
+                       name=sammler[adresse][1])
                 continue
             if tiefe > grenzen.tiefe:
                 g.ende(adresse, "grenze", summe, f"Tiefe von {grenzen.tiefe} Stationen erreicht",
@@ -395,9 +400,11 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
             if voll and hier_enden and stand["vertrag"]:
                 g.ende(adresse, "vertrag", summe, f"Programm auf der Kette mit {vielen} seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
                        + (f": {stand['name']}" if stand["name"] else ""), name=stand["name"])
+                sammler[adresse] = ("vertrag", stand["name"])
                 continue
             if voll and hier_enden:
                 g.ende(adresse, "sammel", summe, f"{viele} seit dem Eingang: Sammeladresse, vermutlich ein Dienst")
+                sammler[adresse] = ("sammel", None)
                 continue
             if voll:
                 g.hinweis(f"Die Startadresse hat mehr Abgänge, als ein Lauf liest. Verfolgt werden die ersten {len(liste)}.")

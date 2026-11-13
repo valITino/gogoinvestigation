@@ -1203,12 +1203,15 @@ def _():
 
 @test("Krypto: Ethereum-Fluss liest Seite um Seite, Sammeladresse nach 200 Abgängen, nichts in der gedrosselten Listenform")
 def _():
-    # USDT: Opfer -> Täter -> Einzahlungsadresse -> Sammeladresse einer Börse, die danach 230 Kunden auszahlt
-    def welt() -> kw.Welt:
+    # USDT: Opfer -> Täter -> Einzahlungsadresse -> Sammeladresse einer Börse, die danach 230 Kunden auszahlt.
+    # zwei_wege: Der Täter schickt einen Teil auch direkt an die Sammeladresse
+    def welt(zwei_wege: bool = False) -> kw.Welt:
         w = kwelt()
         w.evm_zahlung("h0", "opfer", "taeter", 5_000 * USDT1, T0, 23_000_000, vertrag=kw.USDT_ETH)
-        w.evm_zahlung("h1", "taeter", "einzahlung", 5_000 * USDT1, T0 + 600, 23_000_050, vertrag=kw.USDT_ETH)
-        w.evm_zahlung("h2", "einzahlung", "heiss", 5_000 * USDT1, T0 + 1200, 23_000_100, vertrag=kw.USDT_ETH)
+        if zwei_wege:
+            w.evm_zahlung("h1a", "taeter", "heiss", 2_000 * USDT1, T0 + 600, 23_000_050, vertrag=kw.USDT_ETH)
+        w.evm_zahlung("h1", "taeter", "einzahlung", (3_000 if zwei_wege else 5_000) * USDT1, T0 + 610, 23_000_051, vertrag=kw.USDT_ETH)
+        w.evm_zahlung("h2", "einzahlung", "heiss", (3_000 if zwei_wege else 5_000) * USDT1, T0 + 1200, 23_000_100, vertrag=kw.USDT_ETH)
         for i in range(230):
             w.evm_zahlung(f"hk{i}", "heiss", f"kunde{i}", (20 + i) * USDT1, T0 + 1300 + i, 23_000_110 + i, vertrag=kw.USDT_ETH)
         w.evm_konto("heiss", usdt=900_000 * USDT1)
@@ -1235,6 +1238,12 @@ def _():
     # Die ältesten Zahlungen: Bei wenigen Einträgen liest das Gateway die ganze Liste, auch dafür ohne die Listenform
     a = kruf(krypto.krypto_transaktionen, kw.evm("taeter"), kette="ethereum", wert="USDT", aelteste_zuerst=True)["befund"]
     assert [z["betrag"] for z in a["zahlungen"]] == ["5000", "5000"] and not any(x.endswith("blockscout.com/api") for x in w.aufrufe), a["zahlungen"]
+    # Geld erreicht die Sammeladresse auf zwei verschieden langen Wegen: beim zweiten Mal dasselbe Urteil, ohne neue Abfrage
+    w = welt(zwei_wege=True)
+    b = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("h0"), kette="ethereum")["befund"]
+    assert {e["art"]: e["betrag"] for e in b["verteilung"]} == {"sammel": "5000"}, b["verteilung"]
+    stand = [e for e in kprotokoll().values() if e.get("ziel") == kw.evm("heiss") and "Konto oder Programm" in e.get("zweck", "")]
+    assert len(stand) == 1 and len({e["grund"] for e in b["enden"]}) == 2, f"die Sammeladresse wird einmal angesehen, nicht je Weg: {b['enden']}"
     # Antwortet die REST-Liste für eine grosse Adresse nicht, fragt das Gateway einmal gezielt in der Listenform nach
     w = welt()
     w.gestoert.add(f"/addresses/{kw.evm('heiss')}/token-transfers")

@@ -682,10 +682,12 @@ zuletzt am 13.11.2026, ohne Schlüssel und mit Adressen, die seit Jahren öffent
   2009 samt Gegenprüfung bei Blockstream, und ein Geldfluss ab der WannaCry-Adresse. Er führte über mehrere
   Stationen zu Adressen, die WalletExplorer zwei Börsen zuordnet.
 - Ethereum über Blockscout: eine Transaktion mit einer Zahlung von 1 Mio. USDC, eine sanktionierte Adresse (von
-  OFAC, TRM Labs und Blockscout übereinstimmend gemeldet, Erstfinanzierung von einer Börse), der Geldfluss der
-  USDC-Zahlung, eine Börsen-Adresse. Dazu Optimism.
-- TRON über TronGrid: Adresse, Eingänge in USDT, eine Transaktion ohne Angabe der Kette, deren Geldfluss, und
-  die Sperrliste von Tether.
+  OFAC, TRM Labs und Blockscout übereinstimmend gemeldet, Erstfinanzierung von einer Börse), ihre Abgänge in
+  USDC, eine Börsen-Adresse. Der Geldfluss der USDC-Zahlung endete bei einem Programm mit über 200 Abgängen. Ein
+  Geldfluss in ETH ab der sanktionierten Adresse führte über mehrere Stationen zu einer Adresse, die Blockscout
+  als Tornado Cash führt: Ende «Mischdienst laut Etikett». Dazu Optimism.
+- TRON über TronGrid: Adresse, Eingänge in USDT, eine Transaktion ohne Angabe der Kette, deren Geldfluss, ein
+  Geldfluss in TRX ab einer Adresse mit 170 Abgängen, und die Sperrliste von Tether.
 - Sanktionsliste von OFAC (1064 Krypto-Adressen erkannt, samt Fortsetzungsdatei), TRM Labs, Ransomwhere,
   WalletExplorer.
 - Kurse von DefiLlama und Referenzkurse der EZB, auch für einen Samstag.
@@ -693,7 +695,13 @@ zuletzt am 13.11.2026, ohne Schlüssel und mit Adressen, die seit Jahren öffent
   Dezimalstellen stimmen mit DefiLlama überein.
 
 Dieser Lauf wiederholt sich jede Woche und bei Änderungen am Gateway. Ändert ein Dienst seine Schnittstelle,
-fällt es dort auf und nicht erst in einem Fall.
+fällt es dort auf und nicht erst in einem Fall. Hinterlegt ihr `BLOCKSCOUT_API_KEY` oder `TRONGRID_API_KEY` als
+Secrets des Repositorys, nimmt der Lauf den Zugang mit Schlüssel.
+
+Diese Läufe haben Fehler gezeigt, die an der erfundenen Kette nicht auffielen. Sie sind behoben und seither als
+Selbsttest abgesichert: Blockscout vergibt Namen auch an sanktionierte Adressen und an Adressen von Tätern (sie
+galten als «Dienst»), TRM Labs weist Anfragen über 1 KB ab, Blockscout drosselt die Listenform von Etherscan
+nach zehn Abfragen, und seine REST-Liste antwortet bei sehr grossen Adressen nicht.
 
 **Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
 
