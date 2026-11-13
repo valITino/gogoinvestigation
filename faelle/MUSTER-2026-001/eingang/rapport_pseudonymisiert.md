@@ -12,8 +12,10 @@
 5. Laut Kopfzeilen wurde die E-Mail vom Host 203.0.113.7 eingeliefert.
 6. Am 01.10.2026 ging bei der [ORG_01] ein Erpresserschreiben ein, unterzeichnet mit «MusterLocker». Es
    verweist auf die Adresse o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion
+7. Das Schreiben verlangt 0.5 Bitcoin an die Adresse 17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L. Die [ORG_01] hat den Betrag am 03.10.2026
+   über ihre Handelsplattform bezahlt. Transaktions-ID laut Auszug: ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f
 
 ## Auftrag
 
-Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen und
-prüfen, ob ein Bezug zur genannten Gruppe besteht.
+Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen, prüfen,
+ob ein Bezug zur genannten Gruppe besteht, und den Verbleib der Lösegeldzahlung klären.

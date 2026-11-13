@@ -1,0 +1,39 @@
+# Prüft die Blockchain-Werkzeuge gegen die echten Dienste (mempool.space, Blockscout, TronGrid, OFAC, TRM Labs,
+# Ransomwhere, WalletExplorer, DefiLlama, EZB), ohne Schlüssel und mit öffentlich bekannten Testadressen.
+# Die Selbsttests in «Prüfung» laufen ohne Netz. Dieser Lauf zeigt, ob ein Dienst seine Schnittstelle geändert hat.
+# Bei Änderungen am Code darf er scheitern, ohne etwas zu blockieren: Er hängt von fremden Diensten ab.
+# Der wöchentliche Lauf scheitert sichtbar, damit eine geänderte Schnittstelle auffällt, bevor ein Fall daran hängt.
+name: Blockchain-Quellen live
+
+on:
+  pull_request:
+    paths: ["gateway/**", "tools/krypto_live.py", ".github/workflows/blockchain-live.yml"]
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blockchain-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    name: Werkzeuge gegen die echten Dienste
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pakete des Gateways
+        run: python3 -m pip install --quiet -r requirements.txt
+
+      - name: Prüfung gegen die echten Dienste
+        run: python3 tools/krypto_live.py --ausfuehrlich

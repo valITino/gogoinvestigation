@@ -9,6 +9,11 @@ Jede externe Abfrage läuft durch ``abfrage()``. Die Funktion
 5. schreibt einen hash-verketteten Protokolleintrag.
 
 API-Schlüssel erscheinen weder im Protokoll noch in den Rohdaten.
+
+Werkzeuge, die mehrere Abfragen zu einem Ergebnis verrechnen (Geldfluss, Zuordnung von
+Krypto-Adressen), laufen über ``Vorgang``: Jede einzelne Abfrage geht durch ``abfrage()``,
+das errechnete Ergebnis kommt als eigener Eintrag der Art «auswertung» dazu und nennt die
+Abfragen, auf denen es beruht.
 """
 from __future__ import annotations
 
@@ -95,7 +100,13 @@ INTERVALL = {
     "VirusTotal": float(einstellung("VT_INTERVALL", "15.5")),  # öffentlicher Schlüssel: 4/min
     "4chan": 1.1,
     "Wayback Machine": 1.0,
+    "TronGrid": 0.12 if einstellung("TRONGRID_API_KEY") else 0.55,   # ohne Schlüssel drosselt TronGrid früh
+    "Etherscan": 0.4,
+    "WalletExplorer": 0.6,
+    "Chainabuse": 1.0,
 }
+# Wartezeit vor dem zweiten Versuch eines Vorgangs. Austauschbar, damit Tests nicht warten.
+schlaf: Callable[[float], Any] = asyncio.sleep
 _letzte: dict[str, float] = {}
 _quellensperren: dict[str, asyncio.Lock] = {}
 _schreibsperre = threading.Lock()
@@ -177,6 +188,7 @@ class Antwort:
     rohdaten: str | None = None
     aus_cache: str | None = None
     fehler: str | None = None
+    quelle: str | None = None
 
     def als_dict(self, befund: Any = None, **zusatz: Any) -> dict:
         d: dict[str, Any] = {"protokoll_id": self.id, "ergebnis": self.ergebnis, "status": self.status}
@@ -240,10 +252,14 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
                   form: dict | None = None, geheim: tuple[str, ...] = (), art: str = "passiv",
                   freigabe: str | None = None, cache_h: float = 24.0,
                   endung: str = "json", kein_treffer: tuple[int, ...] = (404,),
-                  zeitlimit: float = 45.0, hilfe: str = "") -> Antwort:
+                  zeitlimit: float = 45.0, hilfe: str = "",
+                  deutung: Callable[[int, Any, str | None], tuple[str, str | None] | None] | None = None) -> Antwort:
     """Führt eine protokollierte Abfrage aus. ``art``: passiv | aktiv.
 
     ``hilfe`` ist ein Hinweis, der bei Verbindungsfehlern an die Meldung angehängt wird.
+    ``deutung`` liest den Inhalt der Antwort, wo der HTTP-Status allein nichts sagt (manche Dienste
+    melden Fehler oder «unbekannt» mit Status 200). Sie bekommt (status, daten, text) und gibt
+    (ergebnis, fehlertext) zurück oder None, wenn es beim Urteil nach Status bleibt.
     """
     akte = fall_laden(fall_id)
     zweck = " ".join((zweck or "").split())
@@ -279,7 +295,7 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
         daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
         return Antwort(e["id"], alt["status"], treffer["ergebnis"], daten, text,
                        f"faelle/{akte.id}/{alt['rohdaten']}" if alt.get("rohdaten") else None,
-                       treffer["id"])
+                       treffer["id"], None, quelle)
 
     await _takt(quelle)
     kopfzeilen = {"User-Agent": einstellung("OSINT_USER_AGENT", "osint-gateway/1.0"),
@@ -314,15 +330,19 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
         ergebnis = "ok"
     else:
         ergebnis, fehler = "fehler", _http_fehler(quelle, status)
+    daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
+    if deutung and status:
+        urteil = deutung(status, daten, text)
+        if urteil:
+            ergebnis, fehler = urteil[0], (urteil[1] if urteil[0] == "fehler" else None)
     antwort = {"status": status, "bytes": len(inhalt),
                "sha256": hashlib.sha256(inhalt).hexdigest() if inhalt else None,
                "rohdaten": None, "dauer_ms": dauer, "aus_cache": None}
     e = protokollieren(akte, {**basis, "antwort": antwort, "ergebnis": ergebnis, "fehler": fehler,
                               "schluessel": key}, inhalt if inhalt else None, endung)
-    daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
     roh = e["antwort"]["rohdaten"]
     return Antwort(e["id"], status, ergebnis, daten, text,
-                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler)
+                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler, quelle)
 
 
 def _http_fehler(quelle: str, status: int) -> str:
@@ -335,6 +355,94 @@ def _http_fehler(quelle: str, status: int) -> str:
     if status >= 500:
         return f"{quelle}: Störung beim Anbieter (HTTP {status}). Später erneut versuchen."
     return f"{quelle}: unerwartete Antwort (HTTP {status}). Details in den Rohdaten."
+
+
+# --------------------------------------------------------------------------- Vorgang aus mehreren Abfragen
+
+class Vorgang:
+    """Ein Werkzeugaufruf, der mehrere Abfragen bündelt und mit einer Auswertung abschliesst.
+
+    ``hole()`` führt eine Abfrage aus und merkt sich ihren Beleg. ``abschluss()`` legt das errechnete
+    Ergebnis als Rohdatei ab und schreibt einen Eintrag der Art «auswertung», der unter ``grundlage``
+    alle Abfragen nennt, auf denen das Ergebnis beruht. So bleibt nachvollziehbar, was eine Quelle
+    gesagt hat und was das Gateway daraus gerechnet hat.
+    """
+
+    def __init__(self, fall_id: str, zweck: str, werkzeug: str, *, abruf: str, budget: int | None = None) -> None:
+        self.akte = fall_laden(fall_id)
+        self.zweck = " ".join((zweck or "").split())
+        if len(self.zweck) < 12:
+            raise Abbruch("Zweck fehlt oder ist zu knapp. Bitte in einem Satz begründen, "
+                          "warum die Abfrage nötig ist und woher der Indikator stammt.")
+        self.fall, self.werkzeug, self.abruf, self.budget = fall_id, werkzeug, abruf, budget
+        self.belege: list[str] = []
+        self.ausgefuehrt = 0          # Abfragen, die wirklich an eine Quelle gingen
+        self.aus_cache = 0
+        self.fehlschlaege: list[dict] = []
+        self.genutzt: set[str] = set()        # Quellen, die in diesem Vorgang verwertbar geantwortet haben
+        self._start = stoppuhr()
+
+    @property
+    def erschoepft(self) -> bool:
+        return self.budget is not None and self.ausgefuehrt >= self.budget
+
+    async def hole(self, quelle: str, ziel: str, ziel_typ: str, url: str, *, schritt: str = "",
+                   nochmal: bool = True, **angaben: Any) -> Antwort:
+        """Eine Abfrage dieses Vorgangs. ``schritt`` sagt im Protokoll, wozu sie innerhalb des Vorgangs dient.
+        Bei Überlast oder Störung der Quelle folgt nach einer Pause genau ein zweiter Versuch."""
+        zweck = f"{self.zweck} · {schritt}" if schritt else self.zweck
+        a = await abfrage(self.fall, zweck, werkzeug=self.abruf, quelle=quelle, ziel=ziel, ziel_typ=ziel_typ,
+                          url=url, **angaben)
+        self._merken(a, quelle, ziel)
+        if nochmal and a.ergebnis == "fehler" and a.status in (0, 429, 500, 502, 503, 504):
+            await schlaf(6.0 if a.status == 429 else 2.0)
+            a = await abfrage(self.fall, zweck + " (zweiter Versuch)", werkzeug=self.abruf, quelle=quelle, ziel=ziel,
+                              ziel_typ=ziel_typ, url=url, **angaben)
+            self._merken(a, quelle, ziel)
+        return a
+
+    def _merken(self, a: Antwort, quelle: str, ziel: str) -> None:
+        self.belege.append(a.id)
+        if a.aus_cache:
+            self.aus_cache += 1
+        else:
+            self.ausgefuehrt += 1
+        if a.ergebnis == "fehler":
+            self.fehlschlaege.append({"beleg": a.id, "quelle": quelle, "ziel": ziel, "fehler": a.fehler})
+        else:
+            self.genutzt.add(quelle)
+
+    def fehlschlag(self, a: Antwort, **zusatz: Any) -> dict:
+        """Ergebnis des Werkzeugs, wenn schon die tragende Abfrage nichts brachte."""
+        return a.als_dict(**{"belege": list(self.belege), **zusatz})
+
+    def abschluss(self, ziel: str, ziel_typ: str, befund: Any, *, quellen: list[str] | set[str],
+                  parameter: dict | None = None, details: Any = None, ergebnis: str = "ok", **zusatz: Any) -> dict:
+        """Schreibt die Auswertung ins Protokoll und gibt das Ergebnis des Werkzeugs zurück.
+
+        ``quellen`` nennt die Quellen, die die Tatsachen der Auswertung geliefert haben. Daran misst der
+        Rapport, ob eine Aussage auf einer oder auf mehreren Quellen steht. ``details`` kommt nur in die
+        Rohdatei (zum Beispiel der vollständige Graf für das Diagramm), nicht ins Ergebnis für den Agenten.
+        """
+        grundlage = list(dict.fromkeys(self.belege))
+        roh = {"werkzeug": self.werkzeug, "parameter": parameter or {}, "grundlage": grundlage, "befund": befund}
+        if details is not None:
+            roh["details"] = details
+        inhalt = json.dumps(roh, ensure_ascii=False, indent=1).encode("utf-8")
+        e = protokollieren(self.akte, {
+            "werkzeug": self.werkzeug, "quelle": "Gateway", "art": "auswertung", "freigabe": None,
+            "ziel": ziel, "ziel_typ": ziel_typ, "zweck": self.zweck, "anfrage": None,
+            "grundlage": grundlage, "quellen": sorted(set(quellen)),
+            "antwort": {"status": None, "bytes": len(inhalt), "sha256": hashlib.sha256(inhalt).hexdigest(),
+                        "rohdaten": None, "dauer_ms": int((stoppuhr() - self._start) * 1000), "aus_cache": None},
+            "ergebnis": ergebnis, "fehler": None, "schluessel": None}, inhalt, "json")
+        d: dict[str, Any] = {"protokoll_id": e["id"], "ergebnis": ergebnis,
+                             "rohdaten": f"faelle/{self.akte.id}/{e['antwort']['rohdaten']}",
+                             "belege": grundlage, "befund": befund}
+        if self.fehlschlaege:
+            d["fehlgeschlagen"] = self.fehlschlaege[:12]
+        d.update(zusatz)
+        return d
 
 
 # --------------------------------------------------------------------------- Werkzeug-Register

@@ -6,7 +6,8 @@
 Der Musterfall zeigt, was am Ende einer Ermittlung in der Fallakte liegt, und dient zugleich als
 Durchlauftest: Er ruft dieselben Gateway-Werkzeuge auf wie eine echte Ermittlung. Nur die
 Antworten der Quellen sind vorgefertigt. Alle Daten sind erfunden (Dokumentations-IP-Bereiche
-nach RFC 5737, Domains unter .example).
+nach RFC 5737, Domains unter .example). Die Bitcoin-Adressen und Transaktionen stammen aus einer erfundenen
+Kette (tools/_kryptowelt.py): Sie haben gültige Prüfsummen, gehören aber niemandem.
 """
 from __future__ import annotations
 
@@ -34,17 +35,21 @@ os.environ.setdefault("OSINT_PROJEKT", str(PROJEKT))
 for _name in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "SPUR_TOKEN", "ABUSEIPDB_API_KEY", "URLQUERY_API_KEY",
               "RANSOMWARE_LIVE_API_KEY"):
     os.environ[_name] = "MUSTER-SCHLUESSEL-0000"
-os.environ.pop("OSINT_PROXY", None)
+for _name in ("OSINT_PROXY", "ETHERSCAN_API_KEY", "TRONSCAN_API_KEY", "TRONGRID_API_KEY", "CHAINABUSE_API_KEY", "IKNAIO_API_KEY",
+              "KRYPTO_BITCOIN_API"):
+    os.environ.pop(_name, None)         # der Musterfall läuft ohne die Zusatzschlüssel der Blockchain-Analyse
 os.environ["OSINT_ZEITZONE"] = "Europe/Zurich"     # der Musterfall soll auf jedem Rechner identisch ausfallen
 
 try:
     import httpx
-    from gateway import kern, quellen_infrastruktur as infra, quellen_szene as szene, quellen_web as web
+    from gateway import kern, quellen_infrastruktur as infra, quellen_krypto as krypto, quellen_szene as szene, quellen_web as web
+    from tools import _kryptowelt as kw
 except ModuleNotFoundError as e:
     sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst {plattform.SETUP} ausführen.")
 
 from gateway.akte import FAELLE, SITZUNGEN  # noqa: E402
 from tools import fall as fallwerkzeug, protokoll, rapport  # noqa: E402
+from tools._html import zahl_ch  # noqa: E402
 
 FALL = "MUSTER-2026-001"
 SITZUNG = "muster-sitzung-0001"
@@ -54,6 +59,35 @@ IP_SERVER, IP_LOGIN = "203.0.113.7", "198.51.100.23"
 DATEI = hashlib.sha256(b"MUSTER-Schadsoftware, erfunden").hexdigest()
 ONION = base64.b32encode(hashlib.sha256(b"musterlocker").digest() + b"\x00\x00\x03").decode().lower()[:56] + ".onion"
 GRUPPE = "musterlocker"
+
+# Lösegeld in einer erfundenen Bitcoin-Kette: Zahlung der Geschädigten, Weiterleitung in zwei Teilen, der grössere an
+# eine Börse, vom kleineren bleibt die Hälfte liegen, die andere geht durch einen Mischdienst.
+LOESEGELD, ZAHLUNG = kw.btc("musterlocker-loesegeld"), kw.txid("zahlung")
+EINZAHLUNG, LIEGT = kw.btc("einzahlung-boerse"), kw.btc("zwischenlager")
+
+
+def _zeitpunkt(text: str) -> int:
+    return int(datetime.strptime(text, "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc).timestamp())
+
+
+def kette() -> kw.Welt:
+    w = kw.Welt()
+    w.kurse["coingecko:bitcoin"] = 98_400.0
+    w.btc_zahlung("zahlung", [("extern", "handelsplattform-geschaedigte", 60_000_000)],
+                  [("musterlocker-loesegeld", 50_000_000), ("handelsplattform-wechsel", 9_990_000)], _zeitpunkt("2026-10-03 13:42"))
+    w.btc_zahlung("aufteilung", [("zahlung", 0)], [("einzahlung-boerse", 30_000_000), ("durchgang", 19_950_000)], _zeitpunkt("2026-10-03 21:05"))
+    w.btc_zahlung("sammlung", [("aufteilung", 0)] + [("extern", f"kunde-{i}", 4_000_000 + 250_000 * i) for i in range(11)],
+                  [("boerse-sammeladresse", 87_700_000)], _zeitpunkt("2026-10-04 02:30"))
+    w.btc_zahlung("zusammenlegung", [("aufteilung", 1), ("extern", "fremdes-guthaben", 30_000_000)],
+                  [("zwischenlager", 25_000_000), ("vor-mischdienst", 24_900_000)], _zeitpunkt("2026-10-04 09:17"))
+    w.btc_zahlung("mischung", [("zusammenlegung", 1)] + [("extern", f"teilnehmer-{i}", 10_000_000) for i in range(5)],
+                  [(f"mischausgang-{i}", 10_000_000) for i in range(7)] + [("mischrest", 4_800_000)], _zeitpunkt("2026-10-05 18:44"))
+    w.walletexplorer[EINZAHLUNG] = "Beispielboerse.example"
+    w.ransomwhere[LOESEGELD] = "MusterLocker"
+    return w
+
+
+KETTE = kette()
 
 EINGANG = f"""# Polizeirapport (pseudonymisierte Fassung) – MUSTER, frei erfunden
 
@@ -69,11 +103,13 @@ EINGANG = f"""# Polizeirapport (pseudonymisierte Fassung) – MUSTER, frei erfun
 5. Laut Kopfzeilen wurde die E-Mail vom Host 203.0.113.7 eingeliefert.
 6. Am 01.10.2026 ging bei der [ORG_01] ein Erpresserschreiben ein, unterzeichnet mit «MusterLocker». Es
    verweist auf die Adresse {ONION}
+7. Das Schreiben verlangt 0.5 Bitcoin an die Adresse {LOESEGELD}. Die [ORG_01] hat den Betrag am 03.10.2026
+   über ihre Handelsplattform bezahlt. Transaktions-ID laut Auszug: {ZAHLUNG}
 
 ## Auftrag
 
-Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen und
-prüfen, ob ein Bezug zur genannten Gruppe besteht.
+Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen, prüfen,
+ob ein Bezug zur genannten Gruppe besteht, und den Verbleib der Lösegeldzahlung klären.
 """
 
 # --------------------------------------------------------------------------- vorgefertigte Antworten
@@ -193,6 +229,10 @@ def _json(status: int, inhalt: object) -> httpx.Response:
                           headers={"content-type": "application/json"})
 
 
+KETTENDIENSTE = ("mempool.space", "blockstream.info", "www.walletexplorer.com", "sanctionslistservice.ofac.treas.gov", "api.ransomwhe.re",
+                 "api.trmlabs.com", "coins.llama.fi", "data-api.ecb.europa.eu")
+
+
 def antworten(anfrage: httpx.Request) -> httpx.Response:
     host, pfad = anfrage.url.host, anfrage.url.path
     if host == "api.abuseipdb.com" and pfad.endswith("/check"):
@@ -210,6 +250,8 @@ def antworten(anfrage: httpx.Request) -> httpx.Response:
         return _json(429, {"errors": [{"detail": "Daily rate limit of 100 requests exceeded for this endpoint.", "status": 429}]})
     if host == "www.virustotal.com" and pfad.startswith("/api/v3/urls/"):
         return _json(404, {"error": {"code": "NotFoundError", "message": "URL not found"}})
+    if host in KETTENDIENSTE:
+        return KETTE.antwort(anfrage)
     inhalt = ANTWORTEN.get((host, pfad))
     if inhalt is None:
         return _json(404, {"fehler": "im Musterfall nicht vorgesehen", "host": host, "pfad": pfad})
@@ -240,22 +282,25 @@ def hook(ereignis: dict, zeit: str) -> None:
         raise RuntimeError(f"Sitzungs-Hook fehlgeschlagen: {r.stderr}")
 
 
-async def ermitteln(uhr: Uhr) -> dict[str, str]:
-    """Führt die Abfragen des Musterfalls aus und gibt die Protokoll-IDs je Schritt zurück."""
+async def ermitteln(uhr: Uhr) -> tuple[dict[str, str], dict[str, dict]]:
+    """Führt die Abfragen des Musterfalls aus. Rückgabe: Protokoll-IDs je Schritt und die Ergebnisse der
+    Blockchain-Werkzeuge, aus denen die Befunde ihre Zahlen nehmen."""
     ids: dict[str, str] = {}
+    ergebnisse: dict[str, dict] = {}
 
     async def schritt(name: str, agent: str, fn, sekunden: int = 7, **argumente) -> dict:
         zeit = uhr.weiter(sekunden)
         ergebnis = await fn(FALL, **argumente)
         ids[name] = ergebnis["protokoll_id"]
+        ergebnisse[name] = ergebnis
         hook({"hook_event_name": "PostToolUse", "tool_name": f"mcp__osint__{fn.__name__}", "agent_type": agent,
               "agent_id": f"agent-{agent}", "tool_use_id": f"toolu_muster_{len(ids):03d}",
               "tool_input": {"fall": FALL, **argumente}, "duration_ms": 400 + 37 * len(ids),
               "tool_response": [{"type": "text", "text": json.dumps(ergebnis, ensure_ascii=False)}]}, zeit)
         return ergebnis
 
-    A, M, D = "infrastruktur-analyst", "malware-url-analyst", "darkweb-analyst"
-    for agent in (A, M, D):
+    A, M, D, B = "infrastruktur-analyst", "malware-url-analyst", "darkweb-analyst", "blockchain-analyst"
+    for agent in (A, M, D, B):
         hook({"hook_event_name": "SubagentStart", "agent_type": agent, "agent_id": f"agent-{agent}"}, uhr.weiter(2))
 
     await schritt("shodan_server", A, infra.shodan_host, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: Dienste und Betreiber klären")
@@ -288,12 +333,28 @@ async def ermitteln(uhr: Uhr) -> dict[str, str]:
     await schritt("telegram", D, szene.telegram_kanal, kanal="breachdetect", stichwort="kundenportal",
                   zweck="Breach-Feed nach Hinweisen auf die Phishing-Domain durchsehen")
 
-    for agent in (A, M, D):
+    await schritt("k_pruefen", B, krypto.krypto_adresse_pruefen, wert=LOESEGELD,
+                  zweck="Zahlungsadresse aus Rapport Ziff. 7: Schreibweise und Prüfsumme prüfen, bevor sie abgefragt wird")
+    await schritt("k_zahlung", B, krypto.krypto_transaktion, tx=ZAHLUNG, gegenpruefen=True, sekunden=9,
+                  zweck="Lösegeldzahlung aus Rapport Ziff. 7: Ist sie so in der Blockchain verzeichnet, bei zwei Quellen?")
+    await schritt("k_fluss", B, krypto.krypto_geldfluss, start=ZAHLUNG, adresse=LOESEGELD, sekunden=14,
+                  zweck="Lösegeldzahlung aus Rapport Ziff. 7: Wohin ging der Betrag nach dem Eingang bei den Erpressern?")
+    await schritt("k_adresse", B, krypto.krypto_adresse, adresse=LOESEGELD, sekunden=11,
+                  zweck="Zahlungsadresse aus Rapport Ziff. 7: weitere Eingänge und bekannte Einordnung")
+
+    for agent in (A, M, D, B):
         hook({"hook_event_name": "SubagentStop", "agent_type": agent, "agent_id": f"agent-{agent}"}, uhr.weiter(3))
-    return ids
+    return ids, ergebnisse
 
 
-def befunde(p: dict[str, str], stand: str) -> dict:
+def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
+    # Zahlen zur Lösegeldzahlung kommen aus den Ergebnissen der Werkzeuge, nicht aus diesem Skript
+    zahlung, fluss, adresse = k["k_zahlung"]["befund"], k["k_fluss"]["befund"], k["k_adresse"]["befund"]
+    anteil = {e["art"]: e for e in fluss["verteilung"]}
+    boerse = next(e for e in fluss["enden"] if e["art"] == "dienst")
+    start = fluss["start"]
+    chf = lambda wert: "CHF " + zahl_ch(wert["chf"])      # noqa: E731
+    tag = lambda iso: rapport.zeit_zeigen(iso)             # noqa: E731
     return {
         "fall_id": FALL, "stand": stand,
         "zusammenfassung": [
@@ -302,12 +363,18 @@ def befunde(p: dict[str, str], stand: str) -> dict:
             "Phishing-E-Mail ein und ist das Ziel der angehängten Schadsoftware.",
             "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb "
             "nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte "
-            "Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt."],
+            "Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt.",
+            f"Die Lösegeldzahlung über {start['betrag']} BTC ({chf(start['gegenwert'])} zum Kurs am Tag der Zahlung) ist in der Blockchain "
+            f"verzeichnet. Rund {anteil['dienst']['anteil']:.0f} % davon gingen noch am selben Tag an eine Adresse, die einer Börse "
+            f"zugeordnet wird. Die Börse kann sagen, welchem Kunden diese Einzahlung gutgeschrieben wurde. Rund "
+            f"{anteil['liegt']['anteil']:.0f} % liegen unbewegt auf einer weiteren Adresse, der Rest ging durch einen Mischdienst."],
         "kernaussagen": [
             {"text": "Phishing-Domain, Mailversand und Schadsoftware laufen auf demselben Server zusammen.", "sicherheit": "hoch", "befunde": ["B-01", "B-05", "B-06"]},
             {"text": "Die Domain wurde eigens für die Tat eingerichtet.", "sicherheit": "hoch", "befunde": ["B-02"]},
             {"text": "Die Anmelde-IP ist ein VPN-Ausgang und identifiziert keine Person.", "sicherheit": "mittel", "befunde": ["B-04"]},
-            {"text": "Ob Phishing und Erpressung vom selben Täter stammen, ist offen.", "sicherheit": "tief", "befunde": ["B-08"]}],
+            {"text": "Ob Phishing und Erpressung vom selben Täter stammen, ist offen.", "sicherheit": "tief", "befunde": ["B-08"]},
+            {"text": f"Rund {anteil['dienst']['anteil']:.0f} % des Lösegelds landeten bei einer Börse. Dort ist ein Editionsbegehren möglich.",
+             "sicherheit": "mittel", "befunde": ["B-11"]}],
         "indikatoren": [
             {"id": "I-01", "typ": "domain", "wert": DOMAIN, "herkunft": "Rapport Ziff. 2", "rolle": "Phishing-Domain", "bewertung": "boesartig",
              "kennzahlen": {"vt_boesartig": 14, "vt_gesamt": 93}, "belege": [p["vt_domain"], p["uq_suche"], p["wayback"]]},
@@ -327,7 +394,17 @@ def befunde(p: dict[str, str], stand: str) -> dict:
             {"id": "I-08", "typ": "onion", "wert": ONION, "herkunft": "Rapport Ziff. 6", "rolle": "Im Erpresserschreiben genannte Adresse", "bewertung": "verdaechtig",
              "belege": [p["rl_gruppe"], p["onion_liste"]]},
             {"id": "I-09", "typ": "domain", "wert": DOMAIN2, "herkunft": f"Pivot aus {p['vt_aufloesungen']} (frühere Namensauflösungen von I-03)",
-             "rolle": "Weitere Domain auf demselben Server", "bewertung": "verdaechtig", "belege": [p["vt_aufloesungen"]]}],
+             "rolle": "Weitere Domain auf demselben Server", "bewertung": "verdaechtig", "belege": [p["vt_aufloesungen"]]},
+            {"id": "I-10", "typ": "wallet", "wert": LOESEGELD, "herkunft": "Rapport Ziff. 7", "rolle": "Zahlungsadresse aus dem Erpresserschreiben (Bitcoin)",
+             "bewertung": "boesartig", "kennzahlen": {"erhalten": f"{adresse['erhalten']} BTC", "guthaben": f"{adresse['guthaben']['betrag']} BTC",
+                                                      "transaktionen": adresse["transaktionen"]},
+             "belege": [p["k_pruefen"], p["k_adresse"]]},
+            {"id": "I-11", "typ": "transaktion", "wert": ZAHLUNG, "herkunft": "Rapport Ziff. 7", "rolle": "Lösegeldzahlung der [ORG_01] (Bitcoin)",
+             "bewertung": "unauffaellig", "belege": [p["k_zahlung"]]},
+            {"id": "I-12", "typ": "wallet", "wert": EINZAHLUNG, "herkunft": f"Geldfluss {p['k_fluss']} (erste Station nach der Zahlungsadresse)",
+             "rolle": "Mutmassliche Einzahlungsadresse bei einer Börse", "bewertung": "verdaechtig", "belege": [p["k_fluss"]]},
+            {"id": "I-13", "typ": "wallet", "wert": LIEGT, "herkunft": f"Geldfluss {p['k_fluss']} (zweite Station)",
+             "rolle": "Adresse, auf der ein Teil des Lösegelds unbewegt liegt", "bewertung": "verdaechtig", "belege": [p["k_fluss"]]}],
         "befunde": [
             {"id": "B-01", "titel": "Die Phishing-Domain zeigt auf den Server 203.0.113.7", "art": "feststellung", "sicherheit": "hoch", "quellenbewertung": "B1",
              "text": f"Der DNS-Eintrag der Domain {DOMAIN} verweist auf {IP_SERVER}. Der Server meldet unter dieser Adresse den Hostnamen "
@@ -399,7 +476,44 @@ def befunde(p: dict[str, str], stand: str) -> dict:
                      f"{IP_SERVER}, eine Woche vor der Registrierung der Phishing-Domain.",
              "erlaeuterung": "Die Täter haben auf demselben Server vermutlich schon vorher eine ähnliche Falle betrieben. Das kann auf weitere "
                              "Geschädigte hinweisen und ist ein zusätzlicher Ansatzpunkt beim Hosting-Anbieter.",
-             "indikatoren": ["I-09", "I-03"], "belege": [p["vt_aufloesungen"]], "gegenpruefung": "bestaetigt"}],
+             "indikatoren": ["I-09", "I-03"], "belege": [p["vt_aufloesungen"]], "gegenpruefung": "bestaetigt"},
+            {"id": "B-10", "titel": f"Die Lösegeldzahlung über {start['betrag']} BTC ist in der Blockchain verzeichnet", "art": "feststellung",
+             "sicherheit": "hoch", "quellenbewertung": "A1",
+             "text": f"Die Transaktion aus Rapport Ziff. 7 wurde am {tag(zahlung['zeit'])} in Block {zahlung['block']} bestätigt. Sie überträgt "
+                     f"{start['betrag']} BTC an die im Erpresserschreiben genannte Adresse. Der Gegenwert am Tag der Zahlung betrug "
+                     f"{chf(start['gegenwert'])} (Kurs laut DefiLlama, umgerechnet zum Referenzkurs der Europäischen Zentralbank). "
+                     f"mempool.space und {zahlung['gegenpruefung']['quelle']} zeigen Block, Zeit, Absender, Empfänger und Beträge übereinstimmend.",
+             "erlaeuterung": "Eine Blockchain ist ein öffentliches Kassenbuch: Jede Zahlung steht für immer darin, aber ohne Namen. Die Zahlung "
+                             "der [ORG_01] steht dort genau so, wie der Auszug der Handelsplattform sie nennt. Zwei unabhängige Auskunftsdienste "
+                             "zeigen denselben Eintrag. Damit steht fest, wann, wie viel und an welche Adresse gezahlt wurde.",
+             "indikatoren": ["I-11", "I-10"], "belege": [p["k_zahlung"]], "gegenpruefung": "bestaetigt"},
+            {"id": "B-11", "titel": f"Rund {anteil['dienst']['anteil']:.0f} % des Lösegelds gingen an eine Adresse, die einer Börse zugeordnet wird",
+             "art": "bewertung", "sicherheit": "mittel", "quellenbewertung": "B3",
+             "text": f"Die Zahlungsadresse leitete den Betrag am {tag(fluss['fluesse'][0]['zeit'])} in einer Transaktion an zwei Adressen weiter. "
+                     f"{boerse['betrag']} BTC ({anteil['dienst']['anteil']} %, {chf(anteil['dienst']['gegenwert'])}) gingen an {EINZAHLUNG}. Von dort "
+                     f"wurden sie in einer Sammeltransaktion mit Guthaben von elf weiteren Adressen zusammengelegt, wie es Börsen mit den "
+                     f"Einzahlungen ihrer Kunden tun. WalletExplorer ordnet die Adresse dem Dienst «{boerse['name']}» zu. "
+                     f"{anteil['liegt']['betrag']} BTC ({anteil['liegt']['anteil']} %) liegen unbewegt auf {LIEGT}, "
+                     f"{anteil['mischer']['betrag']} BTC ({anteil['mischer']['anteil']} %) gingen in eine Transaktion mit dem Muster eines "
+                     "Mischdienstes. Wo eine Transaktion mehrere Eingänge zusammenlegt, ist der verfolgte Betrag im Verhältnis der "
+                     "Ausgänge aufgeteilt (anteilige Zuordnung).",
+             "erlaeuterung": "Das Lösegeld blieb nicht bei den Erpressern liegen. Der grössere Teil wurde an eine Adresse überwiesen, die sich wie "
+                             "das Einzahlungskonto eines Kunden bei einer Börse verhält. Eine Börse kennt ihre Kunden, so wie eine Bank ihre "
+                             "Kontoinhaber kennt. Sie kann auf ein Editionsbegehren hin sagen, wem diese Einzahlung gutgeschrieben wurde. Das ist "
+                             "der direkteste Weg vom Geld zu einer Person.",
+             "indikatoren": ["I-10", "I-12", "I-13"], "belege": [p["k_fluss"]], "gegenpruefung": "eingeschraenkt",
+             "gegenpruefung_notiz": "Die einzelnen Zahlungen stehen in den Rohdaten. Dass die Adresse zu einer Börse gehört, ist die Angabe eines "
+                                    "einzelnen Dienstes (WalletExplorer) und stützt sich zusätzlich auf das Muster der Sammeltransaktion. "
+                                    "Der Name der Börse ist erst mit ihrer Antwort gesichert."},
+            {"id": "B-12", "titel": "Die Zahlungsadresse ist als Lösegeld-Adresse von MusterLocker verzeichnet", "art": "feststellung",
+             "sicherheit": "mittel", "quellenbewertung": "C3",
+             "text": f"Der Datensatz Ransomwhere führt die Adresse {LOESEGELD} unter der Familie «{adresse['etiketten'][0]['name']}». Auf den "
+                     f"Sanktionslisten (OFAC, TRM Labs) steht sie nicht. Die Adresse hat bisher {adresse['zahlungseingaenge']} Eingang über "
+                     f"{adresse['erhalten']} BTC erhalten und nichts mehr als Guthaben ({adresse['guthaben']['betrag']} BTC).",
+             "erlaeuterung": "Freiwillige sammeln Adressen, an die Opfer von Erpressungssoftware gezahlt haben. Die Adresse aus dem "
+                             "Erpresserschreiben steht in dieser Sammlung unter demselben Gruppennamen. Das stützt den Bezug zur Gruppe, "
+                             "beweist ihn aber nicht: Die Einträge stammen von Dritten und sind ungeprüft.",
+             "indikatoren": ["I-10", "I-07"], "belege": [p["k_adresse"]], "gegenpruefung": "bestaetigt"}],
         "beziehungen": [
             {"von": "I-01", "nach": "I-03", "art": "zeigt auf", "sicherheit": "hoch", "belege": [p["vt_domain"], p["shodan_server"]]},
             {"von": "I-02", "nach": "I-01", "art": "liegt auf", "sicherheit": "hoch", "belege": [p["uq_bericht"]]},
@@ -408,7 +522,15 @@ def befunde(p: dict[str, str], stand: str) -> dict:
             {"von": "I-09", "nach": "I-03", "art": "zeigte auf", "sicherheit": "mittel", "belege": [p["vt_aufloesungen"]]},
             {"von": "I-04", "nach": "I-02", "art": "Anmeldung nach Abgriff", "sicherheit": "mittel", "quelle": "Rapport Ziff. 3"},
             {"von": "I-08", "nach": "I-07", "art": "Leak-Seite von", "sicherheit": "mittel", "belege": [p["rl_gruppe"]]},
-            {"von": "I-07", "nach": "I-03", "art": "Betreiber?", "sicherheit": "tief"}],
+            {"von": "I-07", "nach": "I-03", "art": "Betreiber?", "sicherheit": "tief"},
+            {"von": "I-11", "nach": "I-10", "art": "zahlt an", "sicherheit": "hoch", "belege": [p["k_zahlung"]]},
+            {"von": "I-10", "nach": "I-12", "art": "leitet weiter an", "sicherheit": "mittel", "belege": [p["k_fluss"]]},
+            {"von": "I-10", "nach": "I-13", "art": "leitet anteilig weiter an", "sicherheit": "mittel", "belege": [p["k_fluss"]]},
+            {"von": "I-10", "nach": "I-07", "art": "Zahlungsadresse von", "sicherheit": "mittel", "belege": [p["k_adresse"]]}],
+        "geldfluesse": [
+            {"beleg": p["k_fluss"], "titel": f"Verbleib der Lösegeldzahlung vom {tag(zahlung['zeit'])[:10]}", "befunde": ["B-11"],
+             "text": "Das Bild folgt dem bezahlten Betrag von der Adresse der Erpresser bis dorthin, wo sich die Spur mit offenen Quellen "
+                     "nicht weiter verfolgen lässt."}],
         "zeitachse": [
             {"zeit": "2026-09-19T15:22:00Z", "ereignis": f"{DOMAIN2} zeigt auf den Server {IP_SERVER}.", "belege": [p["vt_aufloesungen"]]},
             {"zeit": "2026-09-26T07:41:00Z", "ereignis": f"Registrierung der Domain {DOMAIN}.", "belege": [p["vt_domain"]]},
@@ -419,6 +541,8 @@ def befunde(p: dict[str, str], stand: str) -> dict:
             {"zeit": "2026-09-30T06:18:00Z", "ereignis": "Sandbox-Bericht von urlquery stuft die Seite als Phishing ein.", "belege": [p["uq_bericht"]]},
             {"zeit": "2026-10-01", "ereignis": "Erpresserschreiben im Namen von «MusterLocker» trifft ein.", "quelle": "Rapport Ziff. 6"},
             {"zeit": "2026-10-02", "ereignis": "[PERSON_01] meldet den Vorfall.", "quelle": "Rapport Ziff. 1"},
+            {"zeit": zahlung["zeit"], "ereignis": f"Die [ORG_01] zahlt {start['betrag']} BTC an die Adresse aus dem Erpresserschreiben.", "belege": [p["k_zahlung"]]},
+            {"zeit": fluss["fluesse"][0]["zeit"], "ereignis": "Das Lösegeld wird in zwei Teilen weitergeleitet, der grössere an eine Börse.", "belege": [p["k_fluss"]]},
             {"zeit": "2026-10-05T04:11:00Z", "ereignis": "Jüngste Missbrauchsmeldung zum Server bei AbuseIPDB (Phishing).", "belege": [p["abuse_server"]]}],
         "luecken": [
             "Wer den Server gemietet hat, ist aus offenen Quellen nicht ersichtlich. Das weiss nur der Hosting-Anbieter.",
@@ -427,10 +551,18 @@ def befunde(p: dict[str, str], stand: str) -> dict:
             f"Die Einzelmeldungen von AbuseIPDB waren wegen des Tageskontingents nicht abrufbar ({p['abuse_meldungen']}). Die Zeitachse stützt sich auf die Kurzübersicht.",
             "Die Schaddatei wurde nicht selbst untersucht. Die Einordnung beruht auf den Angaben von VirusTotal.",
             f"Ob die [ORG_01] auf der Leak-Seite genannt ist, liess sich nicht prüfen, weil ihr Name pseudonymisiert ist. Die Opferliste der Gruppe liegt in den Rohdaten ({p['rl_opfer']}) und ist im Haus mit dem Klarnamen abzugleichen.",
-            "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt)."],
+            "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt).",
+            "Wem die Einzahlungsadresse bei der Börse gehört, steht nicht in der Blockchain. Das weiss nur die Börse.",
+            f"{anteil['mischer']['betrag']} BTC gingen durch eine Transaktion mit dem Muster eines Mischdienstes. Dahinter ist die Zuordnung mit "
+            "offenen Quellen nicht belastbar.",
+            "Ob weitere Geschädigte an dieselbe Adresse gezahlt haben, ist nicht ersichtlich: Sie hat bisher nur diesen einen Eingang."],
         "empfehlungen": [
             {"text": "Editionsbegehren an die Beispiel Hosting AG zu Kundendaten, Zahlungsmitteln und Zugriffsprotokollen des Servers 203.0.113.7, über den Rechtshilfeweg.", "prioritaet": "hoch"},
             {"text": f"Registrar um Sperrung von {DOMAIN} und {DOMAIN2} ersuchen und Registrierungsdaten sichern.", "prioritaet": "hoch"},
+            {"text": f"Editionsbegehren an die Börse «{boerse['name']}»: Welchem Kundenkonto wurde die Einzahlung von {boerse['betrag']} BTC auf "
+                     f"{EINZAHLUNG} gutgeschrieben (Sammeltransaktion {boerse['tx']})? Kundendaten, Anmeldeprotokolle und Auszahlungen sichern lassen.",
+             "prioritaet": "hoch"},
+            {"text": f"Die Adresse {LIEGT} beobachten. Bewegt sich das dort liegende Guthaben, die Verfolgung fortsetzen.", "prioritaet": "mittel"},
             {"text": "Zugangsdaten des Kundenportals zurücksetzen und die Anmeldungen seit dem 29.09.2026 auswerten. Rechner von [PERSON_02] forensisch sichern, falls der Anhang geöffnet wurde.", "prioritaet": "hoch"},
             {"text": f"Abklären, ob zu {DOMAIN2} weitere Anzeigen vorliegen.", "prioritaet": "mittel"},
             {"text": "Freigabe für aktive Massnahmen und Dark-Web-Recherche prüfen, um den Stand der Phishing-Seite und der Leak-Seite zu dokumentieren.", "prioritaet": "mittel"},
@@ -438,13 +570,21 @@ def befunde(p: dict[str, str], stand: str) -> dict:
         "glossar": [
             {"begriff": "AS / ASN", "erklaerung": "Autonomes System: das Netz eines Anbieters. Die Nummer zeigt, wem ein Adressbereich gehört."},
             {"begriff": "Abuse-Score", "erklaerung": "Kennzahl von AbuseIPDB von 0 bis 100. Je höher, desto häufiger und aktueller wurde eine IP-Adresse als missbräuchlich gemeldet."},
+            {"begriff": "Anteilige Zuordnung", "erklaerung": "Verfahren beim Verfolgen von Bitcoin: Legt eine Transaktion mehrere Beträge zusammen, wird der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt."},
+            {"begriff": "Bitcoin-Adresse (Wallet)", "erklaerung": "Kontonummer in der Blockchain. Sie nennt keinen Inhaber. Wer den zugehörigen geheimen Schlüssel hat, verfügt über das Guthaben."},
+            {"begriff": "Blockchain", "erklaerung": "Öffentliches, unveränderliches Kassenbuch einer Kryptowährung. Jede Zahlung ist für alle einsehbar, aber ohne Namen."},
+            {"begriff": "Börse (Handelsplattform)", "erklaerung": "Unternehmen, bei dem Kunden Kryptowährungen kaufen, verkaufen und verwahren. Es kennt seine Kunden und führt für jeden eigene Einzahlungsadressen."},
+            {"begriff": "Editionsbegehren", "erklaerung": "Aufforderung einer Behörde an ein Unternehmen, bestimmte Unterlagen oder Daten herauszugeben."},
             {"begriff": "Hash (SHA-256)", "erklaerung": "Digitaler Fingerabdruck einer Datei. Gleicher Hash bedeutet gleiche Datei, unabhängig vom Dateinamen."},
             {"begriff": "Infostealer", "erklaerung": "Schadsoftware, die gespeicherte Passwörter, Sitzungsdaten und Ähnliches vom Rechner sammelt und an die Täter schickt."},
+            {"begriff": "Mischdienst", "erklaerung": "Dienst oder Verfahren, bei dem viele Beteiligte gleich hohe Beträge zusammenlegen und neu verteilen, damit sich nicht mehr sagen lässt, welches Geld von wem kam."},
             {"begriff": "Leak-Seite", "erklaerung": "Website einer Erpressergruppe, auf der sie Opfer nennt und gestohlene Daten veröffentlicht, um Druck aufzubauen."},
             {"begriff": "Onion-Adresse", "erklaerung": "Adresse einer Website im Tor-Netz. Betreiber und Standort des Servers sind dabei verschleiert."},
             {"begriff": "Phishing", "erklaerung": "Täuschung mit nachgebauten Websites oder E-Mails, um Zugangsdaten zu erbeuten."},
             {"begriff": "Sandbox", "erklaerung": "Abgeschottete Umgebung, in der eine verdächtige Seite oder Datei gefahrlos geöffnet und beobachtet wird."},
+            {"begriff": "Sammeltransaktion", "erklaerung": "Zahlung, mit der ein Dienst die Einzahlungen vieler Kunden auf eine eigene Adresse zusammenzieht."},
             {"begriff": "TLS-Zertifikat", "erklaerung": "Digitaler Ausweis einer Website für verschlüsselte Verbindungen. Er nennt, für welchen Namen er ausgestellt wurde."},
+            {"begriff": "Transaktions-ID", "erklaerung": "Eindeutige Kennung einer Zahlung in der Blockchain, vergleichbar mit einer Buchungsnummer."},
             {"begriff": "VPN", "erklaerung": "Dienst, der den Datenverkehr über eigene Server umleitet. Nach aussen ist nur die Adresse des Dienstes sichtbar."}]}
 
 
@@ -460,8 +600,8 @@ def main() -> int:
         (pfad / name).mkdir()
     fallwerkzeug.schreiben(pfad / "fall.json", {
         "fall_id": FALL, "muster": True, "titel": "Phishing gegen Kundenportal mit anschliessender Erpressung (Musterfall)",
-        "auftrag": "Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen und prüfen, "
-                   "ob ein Bezug zur im Erpresserschreiben genannten Gruppe besteht.",
+        "auftrag": "Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen, prüfen, "
+                   "ob ein Bezug zur im Erpresserschreiben genannten Gruppe besteht, und den Verbleib der Lösegeldzahlung klären.",
         "sachbearbeiter": "MUS", "klassifizierung": "MUSTER", "eroeffnet": "2026-11-12T08:55:00+01:00",
         "freigaben": {n: {"erteilt": False, "durch": "", "am": "", "vermerk": ""} for n in ("aktiv", "darkweb", "personenbezug")}})
     fallwerkzeug.jetzt = lambda: "2026-11-12T08:56:00+01:00"
@@ -481,10 +621,10 @@ def main() -> int:
         return stand[0]
     kern.stoppuhr = stoppuhr
     hook({"hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {FALL}"}, uhr.weiter(5))
-    ids = asyncio.run(ermitteln(uhr))
+    ids, ergebnisse = asyncio.run(ermitteln(uhr))
 
     # 3. Befunde schreiben, Rapport und Protokoll erzeugen
-    plattform.text_schreiben(pfad / "befunde.json", json.dumps(befunde(ids, uhr.weiter(240)), ensure_ascii=False, indent=2) + "\n")
+    plattform.text_schreiben(pfad / "befunde.json", json.dumps(befunde(ids, ergebnisse, uhr.weiter(240)), ensure_ascii=False, indent=2) + "\n")
     hook({"hook_event_name": "PostToolUse", "tool_name": "Write", "agent_type": "rapportfuehrer", "agent_id": "agent-rapportfuehrer",
           "tool_use_id": "toolu_muster_900", "tool_input": {"file_path": f"faelle/{FALL}/befunde.json", "content": "…"},
           "tool_response": {"type": "create"}, "duration_ms": 12}, uhr.weiter(1))

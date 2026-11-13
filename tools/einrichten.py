@@ -647,7 +647,7 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
 
 # Modelle je Phase. Die Zuteilung steht fest in den Dateien des Projekts:
 #
-#   /ermittlung und die vier Analysten verlangen   claude-mythos-5-2    (model: im Kopf von Skill und Agenten)
+#   /ermittlung und die fünf Analysten verlangen   claude-mythos-5-2    (model: im Kopf von Skill und Agenten)
 #   gegenpruefer, rapportfuehrer, /abschlussrapport, /protokoll verlangen   claude-fable-5-2
 #
 # Ob Mythos tatsächlich läuft, entscheidet die Liste availableModels in den Einstellungen von Claude Code.
@@ -1101,7 +1101,9 @@ class Assistent:
         if self.b["env"].get(q.env):
             return "eingetragen", "gut"
         # Das Gateway nimmt einen Schlüssel auch aus der Umgebung, und die gilt dort vor .env
-        return ("in der Umgebung gesetzt", "gut") if os.environ.get(q.env, "").strip() else ("fehlt", "matt")
+        if os.environ.get(q.env, "").strip():
+            return "in der Umgebung gesetzt", "gut"
+        return ("fehlt, läuft gedrosselt auch ohne", "matt") if q.auch_ohne else ("fehlt", "matt")
 
     def antwort(self, thema: str) -> str:
         """Die Antwort auf ein Thema in einer Zeile, für die Übersicht."""

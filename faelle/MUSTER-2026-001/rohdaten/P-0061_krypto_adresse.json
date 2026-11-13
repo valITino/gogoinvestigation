@@ -1,0 +1,67 @@
+{
+ "werkzeug": "krypto_adresse",
+ "parameter": {
+  "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "kette": "bitcoin"
+ },
+ "grundlage": [
+  "P-0054",
+  "P-0055",
+  "P-0056",
+  "P-0057",
+  "P-0058",
+  "P-0059",
+  "P-0060"
+ ],
+ "befund": {
+  "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "kette": "bitcoin",
+  "guthaben": {
+   "betrag": "0",
+   "einheit": "BTC"
+  },
+  "erhalten": "0.5",
+  "ausgegeben": "0.5",
+  "transaktionen": 2,
+  "zahlungseingaenge": 1,
+  "davon_ausgegeben": 1,
+  "letzte_bewegung": "2026-10-03T21:05:00Z",
+  "erste_bewegung": "2026-10-03T13:42:00Z",
+  "etiketten": [
+   {
+    "quelle": "Ransomwhere",
+    "art": "ransomware",
+    "name": "MusterLocker",
+    "detail": "1 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
+    "beleg": "P-0058"
+   }
+  ],
+  "auffaellig": [
+   "ransomware"
+  ],
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0056",
+    "adressen_in_liste": 3
+   },
+   "Ransomwhere": {
+    "ergebnis": "ok",
+    "beleg": "P-0058",
+    "adressen_in_liste": 1
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0059"
+   },
+   "WalletExplorer": {
+    "ergebnis": "ok",
+    "beleg": "P-0060"
+   },
+   "Iknaio": {
+    "ergebnis": "aus",
+    "hinweis": "IKNAIO_API_KEY fehlt."
+   }
+  }
+ }
+}

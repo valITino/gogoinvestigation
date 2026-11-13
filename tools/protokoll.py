@@ -135,18 +135,23 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         h.append("<div class='banner'>✕ Die Integritätsprüfung hat Abweichungen ergeben:<ul>"
                  + "".join(f"<li>{esc(f)}</li>" for f in stand["fehler"] + sitzungsmeldungen) + "</ul></div>")
 
-    zaehler = Counter(e.get("ergebnis") for e in abfragen)
-    cache = sum(1 for e in abfragen if (e.get("antwort") or {}).get("aus_cache"))
-    aktiv = sum(1 for e in abfragen if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt")
+    auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
+    echte = [e for e in abfragen if e.get("art") != "auswertung"]           # Abfragen bei Quellen
+    teil_von = {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []}
+    zaehler = Counter(e.get("ergebnis") for e in echte)
+    cache = sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache"))
+    aktiv = sum(1 for e in echte if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt")
     h.append("<div class='kacheln'>")
-    h.append(kachel(len(abfragen), "Abfragen", f"{cache} davon aus dem Fall-Cache"))
+    h.append(kachel(len(echte), "Abfragen", f"{cache} davon aus dem Fall-Cache"))
     h.append(kachel(zaehler["ok"], "mit Treffer"))
     h.append(kachel(zaehler["kein_treffer"], "ohne Treffer"))
     h.append(kachel(zaehler["fehler"], "fehlgeschlagen"))
     h.append(kachel(zaehler["abgelehnt"], "abgelehnt", "Freigabe fehlte"))
     h.append(kachel(aktiv, "aktive Massnahmen", "Ziel wurde kontaktiert"))
+    if auswertungen:
+        h.append(kachel(len(auswertungen), "Auswertungen", "aus mehreren Abfragen errechnet"))
     h.append("</div>")
-    je_quelle = Counter(e.get("quelle") for e in abfragen)
+    je_quelle = Counter(e.get("quelle") for e in echte)
     if je_quelle:
         h.append("<figure>" + balken([{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in je_quelle.most_common()],
                                      beschriftung="Abfragen je Quelle") +
@@ -169,7 +174,10 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     h.append("<h2>2 Abfragen bei externen Quellen</h2>"
              "<p class='klein'>Jede Zeile ist eine Abfrage des OSINT-Gateways. «Passiv» heisst: Es wurde die Datenbank eines "
              "Dritten befragt, das Ziel selbst wurde nicht kontaktiert. «Aktiv» heisst: Das Ziel wurde aufgerufen. "
-             "Schlüssel und Zugangsdaten sind in den Adressen unkenntlich gemacht.</p>")
+             "Schlüssel und Zugangsdaten sind in den Adressen unkenntlich gemacht."
+             + (" «Auswertung» heisst: Das Gateway hat aus mehreren Abfragen ein Ergebnis errechnet, zum Beispiel einen Geldfluss. "
+                "Der Eintrag nennt die Abfragen, auf denen es beruht, und das Ergebnis liegt wie eine Rohantwort in der Fallakte."
+                if auswertungen else "") + "</p>")
     if abfragen:
         h.append("<div class='tabelle-breit'><table class='eintraege'>" + KOPFZEILE)
         for e in abfragen:
@@ -177,9 +185,19 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
             anfrage = e.get("anfrage") or {}
             text, farbe = ERGEBNIS.get(e.get("ergebnis"), ("?", "var(--neutral)"))
             akteur = akteure.get(e["id"]) or {}
-            technik = [esc(f"{anfrage.get('methode', '')} {anfrage.get('url', '')}")]
-            if antwort:
-                technik[0] += esc(f" → HTTP {antwort.get('status')}, {groesse(antwort.get('bytes'))}, {antwort.get('dauer_ms')} ms")
+            if e.get("art") == "auswertung":
+                grundlage = e.get("grundlage") or []
+                verweise = " ".join(f"<a href='#{esc(p_)}'>{esc(p_)}</a>" for p_ in grundlage[:60])
+                technik = [f"Auswertung des Gateways, {groesse(antwort.get('bytes'))}, {antwort.get('dauer_ms')} ms"
+                           + (f". Tatsachen aus: {esc(', '.join(e.get('quellen') or []))}" if e.get("quellen") else ""),
+                           (f"Beruht auf {len(grundlage)} Abfrage(n): {verweise}" + (f" und {len(grundlage) - 60} weiteren" if len(grundlage) > 60 else ""))
+                           if grundlage else "Ohne Abfrage nach aussen"]
+            else:
+                technik = [esc(f"{anfrage.get('methode', '')} {anfrage.get('url', '')}")]
+                if antwort:
+                    technik[0] += esc(f" → HTTP {antwort.get('status')}, {groesse(antwort.get('bytes'))}, {antwort.get('dauer_ms')} ms")
+                if e["id"] in teil_von:
+                    technik.append(f"Teil der Auswertung <a href='#{esc(teil_von[e['id']])}'>{esc(teil_von[e['id']])}</a>")
             if antwort.get("rohdaten"):
                 technik.append(f"Rohdaten: <a href='../{esc(antwort['rohdaten'])}'>{esc(antwort['rohdaten'])}</a>"
                                f" · SHA-256: {esc(antwort.get('sha256') or '')}")
@@ -187,7 +205,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                 technik.append(f"Aus dem Fall-Cache, ursprüngliche Abfrage: <a href='#{esc(antwort['aus_cache'])}'>{esc(antwort['aus_cache'])}</a>")
             if e.get("fehler"):
                 technik.append(f"Meldung: {esc(e['fehler'])}")
-            art = "aktiv" if e.get("art") == "aktiv" else "passiv"
+            art = {"aktiv": "aktiv", "auswertung": "Auswertung"}.get(e.get("art"), "passiv")
             marken = f"<span class='marke'>{art}</span>" + (" <span class='marke'>über Proxy</span>" if anfrage.get("proxy") else "")
             h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span><br>{marken}",
                              f"<span class='mono'>{esc(e.get('ziel', ''))}</span><br>{esc(e.get('zweck', ''))}",
@@ -278,6 +296,10 @@ def main(argv: list[str]) -> int:
     abfragen = jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")
     sitzung, sitzungsmeldungen = sitzungen_laden(fall_id)
     akteure = {z["protokoll_id"]: z for z in sitzung if z.get("protokoll_id") and z.get("fall") == fall_id}
+    for e in abfragen:          # die Abfragen hinter einer Auswertung hat derselbe Agent ausgelöst wie die Auswertung
+        if e.get("art") == "auswertung" and e["id"] in akteure:
+            for pid in e.get("grundlage") or []:
+                akteure.setdefault(pid, akteure[e["id"]])
 
     extern = jsonl_lesen(pfad / "protokoll" / "extern.jsonl")
 
@@ -289,21 +311,22 @@ def main(argv: list[str]) -> int:
         w = csv.writer(f, delimiter=";")
         w.writerow(["nr", "zeit_utc", "zeit_lokal", "quelle", "werkzeug", "art", "freigabe", "ziel", "ziel_typ", "zweck",
                     "methode", "url", "ueber_proxy", "http_status", "ergebnis", "meldung", "bytes", "sha256", "rohdaten",
-                    "dauer_ms", "aus_cache", "durch", "sitzung", "kettenwert"])
+                    "dauer_ms", "aus_cache", "durch", "sitzung", "kettenwert", "grundlage"])
         for e in abfragen:
             a, q, wer = e.get("antwort") or {}, e.get("anfrage") or {}, akteure.get(e["id"]) or {}
             w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
                         e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), e.get("zweck"), q.get("methode"), q.get("url"),
                         "ja" if q.get("proxy") else "nein", a.get("status", ""), e.get("ergebnis"), e.get("fehler") or "",
                         a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", a.get("dauer_ms", ""),
-                        a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette")])
+                        a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette"),
+                        " ".join(e.get("grundlage") or [])])
         for e in extern:
             a = e.get("antwort") or {}
             w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
                         e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), "", "", "", "", "", e.get("ergebnis"), "",
                         a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
-                        e.get("sitzung") or "", e.get("kette")])
-    print(f"Protokoll erzeugt: faelle/{fall_id}/rapport/Ermittlungsprotokoll.html ({len(abfragen)} Abfragen)")
+                        e.get("sitzung") or "", e.get("kette"), ""])
+    print(f"Protokoll erzeugt: faelle/{fall_id}/rapport/Ermittlungsprotokoll.html ({len(abfragen)} Einträge)")
     print(f"Maschinenlesbar:   faelle/{fall_id}/rapport/Ermittlungsprotokoll.csv")
     if stand["ok"] and not sitzungsmeldungen:
         print("Integrität:        unverändert. " + (f"Letzter Kettenwert {stand['letzter_hash']}" if stand["letzter_hash"]

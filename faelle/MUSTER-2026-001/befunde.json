@@ -1,9 +1,10 @@
 {
   "fall_id": "MUSTER-2026-001",
-  "stand": "2026-11-12T08:09:01Z",
+  "stand": "2026-11-12T08:09:47Z",
   "zusammenfassung": [
     "Die Phishing-Seite, über die am 29.09.2026 Zugangsdaten der [ORG_01] abgegriffen wurden, lag auf einem gemieteten Server in den Niederlanden. Die Domain wurde drei Tage vor der Tat registriert. Derselbe Server lieferte die Phishing-E-Mail ein und ist das Ziel der angehängten Schadsoftware.",
-    "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt."
+    "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt.",
+    "Die Lösegeldzahlung über 0.5 BTC (CHF 42'581.19 zum Kurs am Tag der Zahlung) ist in der Blockchain verzeichnet. Rund 60 % davon gingen noch am selben Tag an eine Adresse, die einer Börse zugeordnet wird. Die Börse kann sagen, welchem Kunden diese Einzahlung gutgeschrieben wurde. Rund 20 % liegen unbewegt auf einer weiteren Adresse, der Rest ging durch einen Mischdienst."
   ],
   "kernaussagen": [
     {
@@ -34,6 +35,13 @@
       "sicherheit": "tief",
       "befunde": [
         "B-08"
+      ]
+    },
+    {
+      "text": "Rund 60 % des Lösegelds landeten bei einer Börse. Dort ist ein Editionsbegehren möglich.",
+      "sicherheit": "mittel",
+      "befunde": [
+        "B-11"
       ]
     }
   ],
@@ -168,6 +176,56 @@
       "bewertung": "verdaechtig",
       "belege": [
         "P-0009"
+      ]
+    },
+    {
+      "id": "I-10",
+      "typ": "wallet",
+      "wert": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+      "herkunft": "Rapport Ziff. 7",
+      "rolle": "Zahlungsadresse aus dem Erpresserschreiben (Bitcoin)",
+      "bewertung": "boesartig",
+      "kennzahlen": {
+        "erhalten": "0.5 BTC",
+        "guthaben": "0 BTC",
+        "transaktionen": 2
+      },
+      "belege": [
+        "P-0024",
+        "P-0061"
+      ]
+    },
+    {
+      "id": "I-11",
+      "typ": "transaktion",
+      "wert": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+      "herkunft": "Rapport Ziff. 7",
+      "rolle": "Lösegeldzahlung der [ORG_01] (Bitcoin)",
+      "bewertung": "unauffaellig",
+      "belege": [
+        "P-0034"
+      ]
+    },
+    {
+      "id": "I-12",
+      "typ": "wallet",
+      "wert": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
+      "herkunft": "Geldfluss P-0053 (erste Station nach der Zahlungsadresse)",
+      "rolle": "Mutmassliche Einzahlungsadresse bei einer Börse",
+      "bewertung": "verdaechtig",
+      "belege": [
+        "P-0053"
+      ]
+    },
+    {
+      "id": "I-13",
+      "typ": "wallet",
+      "wert": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
+      "herkunft": "Geldfluss P-0053 (zweite Station)",
+      "rolle": "Adresse, auf der ein Teil des Lösegelds unbewegt liegt",
+      "bewertung": "verdaechtig",
+      "belege": [
+        "P-0053"
       ]
     }
   ],
@@ -335,6 +393,59 @@
         "P-0009"
       ],
       "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-10",
+      "titel": "Die Lösegeldzahlung über 0.5 BTC ist in der Blockchain verzeichnet",
+      "art": "feststellung",
+      "sicherheit": "hoch",
+      "quellenbewertung": "A1",
+      "text": "Die Transaktion aus Rapport Ziff. 7 wurde am 03.10.2026, 15:42 in Block 860000 bestätigt. Sie überträgt 0.5 BTC an die im Erpresserschreiben genannte Adresse. Der Gegenwert am Tag der Zahlung betrug CHF 42'581.19 (Kurs laut DefiLlama, umgerechnet zum Referenzkurs der Europäischen Zentralbank). mempool.space und Blockstream zeigen Block, Zeit, Absender, Empfänger und Beträge übereinstimmend.",
+      "erlaeuterung": "Eine Blockchain ist ein öffentliches Kassenbuch: Jede Zahlung steht für immer darin, aber ohne Namen. Die Zahlung der [ORG_01] steht dort genau so, wie der Auszug der Handelsplattform sie nennt. Zwei unabhängige Auskunftsdienste zeigen denselben Eintrag. Damit steht fest, wann, wie viel und an welche Adresse gezahlt wurde.",
+      "indikatoren": [
+        "I-11",
+        "I-10"
+      ],
+      "belege": [
+        "P-0034"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-11",
+      "titel": "Rund 60 % des Lösegelds gingen an eine Adresse, die einer Börse zugeordnet wird",
+      "art": "bewertung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B3",
+      "text": "Die Zahlungsadresse leitete den Betrag am 03.10.2026, 23:05 in einer Transaktion an zwei Adressen weiter. 0.3 BTC (60.0 %, CHF 25'548.71) gingen an 1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg. Von dort wurden sie in einer Sammeltransaktion mit Guthaben von elf weiteren Adressen zusammengelegt, wie es Börsen mit den Einzahlungen ihrer Kunden tun. WalletExplorer ordnet die Adresse dem Dienst «Beispielboerse.example» zu. 0.09984984 BTC (20.0 %) liegen unbewegt auf 19uHVM1eMUHnmbudt5213JVgjZTVd5xHd, 0.09945045 BTC (19.9 %) gingen in eine Transaktion mit dem Muster eines Mischdienstes. Wo eine Transaktion mehrere Eingänge zusammenlegt, ist der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt (anteilige Zuordnung).",
+      "erlaeuterung": "Das Lösegeld blieb nicht bei den Erpressern liegen. Der grössere Teil wurde an eine Adresse überwiesen, die sich wie das Einzahlungskonto eines Kunden bei einer Börse verhält. Eine Börse kennt ihre Kunden, so wie eine Bank ihre Kontoinhaber kennt. Sie kann auf ein Editionsbegehren hin sagen, wem diese Einzahlung gutgeschrieben wurde. Das ist der direkteste Weg vom Geld zu einer Person.",
+      "indikatoren": [
+        "I-10",
+        "I-12",
+        "I-13"
+      ],
+      "belege": [
+        "P-0053"
+      ],
+      "gegenpruefung": "eingeschraenkt",
+      "gegenpruefung_notiz": "Die einzelnen Zahlungen stehen in den Rohdaten. Dass die Adresse zu einer Börse gehört, ist die Angabe eines einzelnen Dienstes (WalletExplorer) und stützt sich zusätzlich auf das Muster der Sammeltransaktion. Der Name der Börse ist erst mit ihrer Antwort gesichert."
+    },
+    {
+      "id": "B-12",
+      "titel": "Die Zahlungsadresse ist als Lösegeld-Adresse von MusterLocker verzeichnet",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "C3",
+      "text": "Der Datensatz Ransomwhere führt die Adresse 17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L unter der Familie «MusterLocker». Auf den Sanktionslisten (OFAC, TRM Labs) steht sie nicht. Die Adresse hat bisher 1 Eingang über 0.5 BTC erhalten und nichts mehr als Guthaben (0 BTC).",
+      "erlaeuterung": "Freiwillige sammeln Adressen, an die Opfer von Erpressungssoftware gezahlt haben. Die Adresse aus dem Erpresserschreiben steht in dieser Sammlung unter demselben Gruppennamen. Das stützt den Bezug zur Gruppe, beweist ihn aber nicht: Die Einträge stammen von Dritten und sind ungeprüft.",
+      "indikatoren": [
+        "I-10",
+        "I-07"
+      ],
+      "belege": [
+        "P-0061"
+      ],
+      "gegenpruefung": "bestaetigt"
     }
   ],
   "beziehungen": [
@@ -403,6 +514,52 @@
       "nach": "I-03",
       "art": "Betreiber?",
       "sicherheit": "tief"
+    },
+    {
+      "von": "I-11",
+      "nach": "I-10",
+      "art": "zahlt an",
+      "sicherheit": "hoch",
+      "belege": [
+        "P-0034"
+      ]
+    },
+    {
+      "von": "I-10",
+      "nach": "I-12",
+      "art": "leitet weiter an",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0053"
+      ]
+    },
+    {
+      "von": "I-10",
+      "nach": "I-13",
+      "art": "leitet anteilig weiter an",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0053"
+      ]
+    },
+    {
+      "von": "I-10",
+      "nach": "I-07",
+      "art": "Zahlungsadresse von",
+      "sicherheit": "mittel",
+      "belege": [
+        "P-0061"
+      ]
+    }
+  ],
+  "geldfluesse": [
+    {
+      "beleg": "P-0053",
+      "titel": "Verbleib der Lösegeldzahlung vom 03.10.2026",
+      "befunde": [
+        "B-11"
+      ],
+      "text": "Das Bild folgt dem bezahlten Betrag von der Adresse der Erpresser bis dorthin, wo sich die Spur mit offenen Quellen nicht weiter verfolgen lässt."
     }
   ],
   "zeitachse": [
@@ -462,6 +619,20 @@
       "quelle": "Rapport Ziff. 1"
     },
     {
+      "zeit": "2026-10-03T13:42:00Z",
+      "ereignis": "Die [ORG_01] zahlt 0.5 BTC an die Adresse aus dem Erpresserschreiben.",
+      "belege": [
+        "P-0034"
+      ]
+    },
+    {
+      "zeit": "2026-10-03T21:05:00Z",
+      "ereignis": "Das Lösegeld wird in zwei Teilen weitergeleitet, der grössere an eine Börse.",
+      "belege": [
+        "P-0053"
+      ]
+    },
+    {
       "zeit": "2026-10-05T04:11:00Z",
       "ereignis": "Jüngste Missbrauchsmeldung zum Server bei AbuseIPDB (Phishing).",
       "belege": [
@@ -476,7 +647,10 @@
     "Die Einzelmeldungen von AbuseIPDB waren wegen des Tageskontingents nicht abrufbar (P-0008). Die Zeitachse stützt sich auf die Kurzübersicht.",
     "Die Schaddatei wurde nicht selbst untersucht. Die Einordnung beruht auf den Angaben von VirusTotal.",
     "Ob die [ORG_01] auf der Leak-Seite genannt ist, liess sich nicht prüfen, weil ihr Name pseudonymisiert ist. Die Opferliste der Gruppe liegt in den Rohdaten (P-0021) und ist im Haus mit dem Klarnamen abzugleichen.",
-    "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt)."
+    "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt).",
+    "Wem die Einzahlungsadresse bei der Börse gehört, steht nicht in der Blockchain. Das weiss nur die Börse.",
+    "0.09945045 BTC gingen durch eine Transaktion mit dem Muster eines Mischdienstes. Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar.",
+    "Ob weitere Geschädigte an dieselbe Adresse gezahlt haben, ist nicht ersichtlich: Sie hat bisher nur diesen einen Eingang."
   ],
   "empfehlungen": [
     {
@@ -486,6 +660,14 @@
     {
       "text": "Registrar um Sperrung von kundenportal-sicher.example und rechnung-portal.example ersuchen und Registrierungsdaten sichern.",
       "prioritaet": "hoch"
+    },
+    {
+      "text": "Editionsbegehren an die Börse «Beispielboerse.example»: Welchem Kundenkonto wurde die Einzahlung von 0.3 BTC auf 1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg gutgeschrieben (Sammeltransaktion 7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81)? Kundendaten, Anmeldeprotokolle und Auszahlungen sichern lassen.",
+      "prioritaet": "hoch"
+    },
+    {
+      "text": "Die Adresse 19uHVM1eMUHnmbudt5213JVgjZTVd5xHd beobachten. Bewegt sich das dort liegende Guthaben, die Verfolgung fortsetzen.",
+      "prioritaet": "mittel"
     },
     {
       "text": "Zugangsdaten des Kundenportals zurücksetzen und die Anmeldungen seit dem 29.09.2026 auswerten. Rechner von [PERSON_02] forensisch sichern, falls der Anhang geöffnet wurde.",
@@ -514,12 +696,36 @@
       "erklaerung": "Kennzahl von AbuseIPDB von 0 bis 100. Je höher, desto häufiger und aktueller wurde eine IP-Adresse als missbräuchlich gemeldet."
     },
     {
+      "begriff": "Anteilige Zuordnung",
+      "erklaerung": "Verfahren beim Verfolgen von Bitcoin: Legt eine Transaktion mehrere Beträge zusammen, wird der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt."
+    },
+    {
+      "begriff": "Bitcoin-Adresse (Wallet)",
+      "erklaerung": "Kontonummer in der Blockchain. Sie nennt keinen Inhaber. Wer den zugehörigen geheimen Schlüssel hat, verfügt über das Guthaben."
+    },
+    {
+      "begriff": "Blockchain",
+      "erklaerung": "Öffentliches, unveränderliches Kassenbuch einer Kryptowährung. Jede Zahlung ist für alle einsehbar, aber ohne Namen."
+    },
+    {
+      "begriff": "Börse (Handelsplattform)",
+      "erklaerung": "Unternehmen, bei dem Kunden Kryptowährungen kaufen, verkaufen und verwahren. Es kennt seine Kunden und führt für jeden eigene Einzahlungsadressen."
+    },
+    {
+      "begriff": "Editionsbegehren",
+      "erklaerung": "Aufforderung einer Behörde an ein Unternehmen, bestimmte Unterlagen oder Daten herauszugeben."
+    },
+    {
       "begriff": "Hash (SHA-256)",
       "erklaerung": "Digitaler Fingerabdruck einer Datei. Gleicher Hash bedeutet gleiche Datei, unabhängig vom Dateinamen."
     },
     {
       "begriff": "Infostealer",
       "erklaerung": "Schadsoftware, die gespeicherte Passwörter, Sitzungsdaten und Ähnliches vom Rechner sammelt und an die Täter schickt."
+    },
+    {
+      "begriff": "Mischdienst",
+      "erklaerung": "Dienst oder Verfahren, bei dem viele Beteiligte gleich hohe Beträge zusammenlegen und neu verteilen, damit sich nicht mehr sagen lässt, welches Geld von wem kam."
     },
     {
       "begriff": "Leak-Seite",
@@ -538,8 +744,16 @@
       "erklaerung": "Abgeschottete Umgebung, in der eine verdächtige Seite oder Datei gefahrlos geöffnet und beobachtet wird."
     },
     {
+      "begriff": "Sammeltransaktion",
+      "erklaerung": "Zahlung, mit der ein Dienst die Einzahlungen vieler Kunden auf eine eigene Adresse zusammenzieht."
+    },
+    {
       "begriff": "TLS-Zertifikat",
       "erklaerung": "Digitaler Ausweis einer Website für verschlüsselte Verbindungen. Er nennt, für welchen Namen er ausgestellt wurde."
+    },
+    {
+      "begriff": "Transaktions-ID",
+      "erklaerung": "Eindeutige Kennung einer Zahlung in der Blockchain, vergleichbar mit einer Buchungsnummer."
     },
     {
       "begriff": "VPN",

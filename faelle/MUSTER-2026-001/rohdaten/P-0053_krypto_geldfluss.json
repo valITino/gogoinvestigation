@@ -1,0 +1,529 @@
+{
+ "werkzeug": "krypto_geldfluss",
+ "parameter": {
+  "start": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+  "kette": "bitcoin",
+  "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "wert": null,
+  "tiefe": 4,
+  "min_anteil_prozent": 2.0,
+  "max_abfragen": 80
+ },
+ "grundlage": [
+  "P-0035",
+  "P-0036",
+  "P-0037",
+  "P-0038",
+  "P-0039",
+  "P-0040",
+  "P-0041",
+  "P-0042",
+  "P-0043",
+  "P-0044",
+  "P-0045",
+  "P-0046",
+  "P-0047",
+  "P-0048",
+  "P-0049",
+  "P-0050",
+  "P-0051",
+  "P-0052"
+ ],
+ "befund": {
+  "start": {
+   "art": "zahlung",
+   "tx": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+   "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+   "zeit": "2026-10-03T13:42:00Z",
+   "betrag": "0.5",
+   "einheit": "BTC",
+   "gegenwert": {
+    "chf": "42581.19",
+    "eur": "45241.38",
+    "usd": "49200.00"
+   },
+   "kurs": {
+    "chf": "85162.37",
+    "eur": "90482.76",
+    "usd": "98400.00",
+    "stand": "2026-10-03T13:43:00Z",
+    "wechselkurs_vom": "2026-10-03",
+    "quellen": [
+     "DefiLlama",
+     "EZB"
+    ]
+   },
+   "gegenwert_hinweis": "Gegenwerte zum Kurs am Tag der Startzahlung."
+  },
+  "kette": "bitcoin",
+  "wert": {
+   "symbol": "BTC",
+   "kette": "bitcoin"
+  },
+  "startbetrag": "0.5",
+  "einheit": "BTC",
+  "verteilung": [
+   {
+    "art": "dienst",
+    "bezeichnung": "Bei einem Dienst angekommen",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "gegenwert": {
+     "chf": "25548.71",
+     "eur": "27144.83",
+     "usd": "29520.00"
+    }
+   },
+   {
+    "art": "liegt",
+    "bezeichnung": "Liegt unbewegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "gegenwert": {
+     "chf": "8503.45",
+     "eur": "9034.69",
+     "usd": "9825.22"
+    }
+   },
+   {
+    "art": "mischer",
+    "bezeichnung": "Durch Mischdienst",
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "gegenwert": {
+     "chf": "8469.44",
+     "eur": "8998.55",
+     "usd": "9785.92"
+    }
+   },
+   {
+    "art": "gebuehr",
+    "bezeichnung": "Transaktionsgebühren",
+    "betrag": "0.00069971",
+    "anteil": 0.1,
+    "gegenwert": {
+     "chf": "59.59",
+     "eur": "63.31",
+     "usd": "68.85"
+    }
+   }
+  ],
+  "stationen": [
+   {
+    "nr": 1,
+    "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+    "tiefe": 0,
+    "art": "start",
+    "betrag": "0.5",
+    "anteil": 100.0,
+    "etiketten": [
+     "MusterLocker (Ransomwhere)"
+    ],
+    "auffaellig": [
+     "ransomware"
+    ]
+   },
+   {
+    "nr": 2,
+    "adresse": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
+    "tiefe": 1,
+    "art": "dienst",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "etiketten": [
+     "Beispielboerse.example (WalletExplorer)"
+    ],
+    "name": "Beispielboerse.example",
+    "hinweise": [
+     "mutmasslich die Einzahlungsadresse eines Kundenkontos bei einem Dienst"
+    ]
+   },
+   {
+    "nr": 3,
+    "adresse": "1MMRuoCyBiwi8NWvDkkxA6DwRzcWaVxjUf",
+    "tiefe": 1,
+    "art": "station",
+    "betrag": "0.1995",
+    "anteil": 39.9,
+    "hinweise": [
+     "zusammen mit 1 weiteren Adresse(n) ausgegeben: Hinweis auf dieselbe Brieftasche"
+    ],
+    "mitgenutzt": [
+     "1GWNeDiHvwTc6qVa3rmVPDuK3HgFFzLAaK"
+    ]
+   },
+   {
+    "nr": 4,
+    "adresse": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
+    "tiefe": 2,
+    "art": "liegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0
+   },
+   {
+    "nr": 5,
+    "adresse": "1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec",
+    "tiefe": 2,
+    "art": "mischer",
+    "betrag": "0.09945045",
+    "anteil": 19.9
+   }
+  ],
+  "fluesse": [
+   {
+    "von": 1,
+    "nach": 2,
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "tx": [
+     "e3a37bb9e8892ddc53bdf3698679c713438baaa8cc9bb17def721c5df600ddf4"
+    ],
+    "zeit": "2026-10-03T21:05:00Z"
+   },
+   {
+    "von": 1,
+    "nach": 3,
+    "betrag": "0.1995",
+    "anteil": 39.9,
+    "tx": [
+     "e3a37bb9e8892ddc53bdf3698679c713438baaa8cc9bb17def721c5df600ddf4"
+    ],
+    "zeit": "2026-10-03T21:05:00Z"
+   },
+   {
+    "von": 3,
+    "nach": 4,
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "tx": [
+     "0526c76a9a0ad56e7c31b1e6172429a8916c3ffec58f4077883f7f4cf32d286b"
+    ],
+    "zeit": "2026-10-04T09:17:00Z"
+   },
+   {
+    "von": 3,
+    "nach": 5,
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "tx": [
+     "0526c76a9a0ad56e7c31b1e6172429a8916c3ffec58f4077883f7f4cf32d286b"
+    ],
+    "zeit": "2026-10-04T09:17:00Z"
+   }
+  ],
+  "enden": [
+   {
+    "art": "dienst",
+    "bezeichnung": "Bei einem Dienst angekommen",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "station": 2,
+    "adresse": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
+    "name": "Beispielboerse.example",
+    "grund": "legt Guthaben von 12 Adressen zusammen: Muster eines Dienstes, der Einzahlungen einsammelt. Die Adresse gehört laut Etikett zu Beispielboerse.example",
+    "tx": "7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81"
+   },
+   {
+    "art": "liegt",
+    "bezeichnung": "Liegt unbewegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "station": 4,
+    "adresse": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
+    "grund": "unbewegt seit 2026-10-04T09:17:00Z"
+   },
+   {
+    "art": "mischer",
+    "bezeichnung": "Durch Mischdienst",
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "station": 5,
+    "adresse": "1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec",
+    "grund": "7 Ausgänge über denselben Betrag bei 6 Eingängen: Muster eines Mischdienstes (CoinJoin)",
+    "tx": "21287b56c1e64530fd67e88367ec86c34ee91724d9b528180ccad95b9abe8fc9"
+   },
+   {
+    "art": "gebuehr",
+    "bezeichnung": "Transaktionsgebühren",
+    "betrag": "0.00069971",
+    "anteil": 0.1,
+    "grund": "anteilige Transaktionsgebühren"
+   }
+  ],
+  "ansatzpunkte": [
+   "Editionsbegehren an Beispielboerse.example: Welchem Kundenkonto ist die Einzahlungsadresse 1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg zugeordnet? Eingang 0.3 BTC, weitergeleitet mit Transaktion 7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81.",
+   "Auf 19uHVM1eMUHnmbudt5213JVgjZTVd5xHd liegen 0.09984984 BTC unbewegt. Adresse beobachten und die Verfolgung fortsetzen, sobald sich der Betrag bewegt.",
+   "0.09945045 BTC gingen ab 1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec durch eine Transaktion mit dem Muster eines Mischdienstes (21287b56c1e64530fd67e88367ec86c34ee91724d9b528180ccad95b9abe8fc9). Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar."
+  ],
+  "methode": "Bitcoin: Jeder Zahlungsausgang wird genau einmal ausgegeben. Welche Transaktion ihn ausgibt, ist eine Tatsache der Kette. Legt eine Transaktion mehrere Eingänge zusammen, wird der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt (anteilige Zuordnung). Transaktionen mit dem Muster eines Dienstes oder Mischdienstes beenden die Verfolgung. Grenzen dieses Laufs: 4 Stationen ab Start, Teilbeträge unter 2% des Startbetrags und mehr als 60 Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind Feststellungen, die Zuordnung über mehrere Stationen ist eine Bewertung nach diesem Verfahren.",
+  "summe_geht_auf": true,
+  "abfragen": {
+   "ausgefuehrt": 11,
+   "aus_fall_cache": 7,
+   "budget": 80,
+   "budget_aufgebraucht": false
+  },
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0043",
+    "adressen_in_liste": 3
+   },
+   "Ransomwhere": {
+    "ergebnis": "ok",
+    "beleg": "P-0045",
+    "adressen_in_liste": 1
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0050"
+   },
+   "WalletExplorer": {
+    "ergebnis": "ok",
+    "beleg": "P-0049"
+   },
+   "Iknaio": {
+    "ergebnis": "aus",
+    "hinweis": "IKNAIO_API_KEY fehlt."
+   }
+  }
+ },
+ "details": {
+  "stationen": [
+   {
+    "nr": 1,
+    "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+    "tiefe": 0,
+    "art": "start",
+    "betrag": "0.5",
+    "anteil": 100.0,
+    "etiketten": [
+     "MusterLocker (Ransomwhere)"
+    ],
+    "auffaellig": [
+     "ransomware"
+    ]
+   },
+   {
+    "nr": 2,
+    "adresse": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
+    "tiefe": 1,
+    "art": "dienst",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "etiketten": [
+     "Beispielboerse.example (WalletExplorer)"
+    ],
+    "name": "Beispielboerse.example",
+    "hinweise": [
+     "mutmasslich die Einzahlungsadresse eines Kundenkontos bei einem Dienst"
+    ]
+   },
+   {
+    "nr": 3,
+    "adresse": "1MMRuoCyBiwi8NWvDkkxA6DwRzcWaVxjUf",
+    "tiefe": 1,
+    "art": "station",
+    "betrag": "0.1995",
+    "anteil": 39.9,
+    "hinweise": [
+     "zusammen mit 1 weiteren Adresse(n) ausgegeben: Hinweis auf dieselbe Brieftasche"
+    ],
+    "mitgenutzt": [
+     "1GWNeDiHvwTc6qVa3rmVPDuK3HgFFzLAaK"
+    ]
+   },
+   {
+    "nr": 4,
+    "adresse": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
+    "tiefe": 2,
+    "art": "liegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0
+   },
+   {
+    "nr": 5,
+    "adresse": "1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec",
+    "tiefe": 2,
+    "art": "mischer",
+    "betrag": "0.09945045",
+    "anteil": 19.9
+   }
+  ],
+  "fluesse": [
+   {
+    "von": 1,
+    "nach": 2,
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "tx": [
+     "e3a37bb9e8892ddc53bdf3698679c713438baaa8cc9bb17def721c5df600ddf4"
+    ],
+    "zeit": "2026-10-03T21:05:00Z"
+   },
+   {
+    "von": 1,
+    "nach": 3,
+    "betrag": "0.1995",
+    "anteil": 39.9,
+    "tx": [
+     "e3a37bb9e8892ddc53bdf3698679c713438baaa8cc9bb17def721c5df600ddf4"
+    ],
+    "zeit": "2026-10-03T21:05:00Z"
+   },
+   {
+    "von": 3,
+    "nach": 4,
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "tx": [
+     "0526c76a9a0ad56e7c31b1e6172429a8916c3ffec58f4077883f7f4cf32d286b"
+    ],
+    "zeit": "2026-10-04T09:17:00Z"
+   },
+   {
+    "von": 3,
+    "nach": 5,
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "tx": [
+     "0526c76a9a0ad56e7c31b1e6172429a8916c3ffec58f4077883f7f4cf32d286b"
+    ],
+    "zeit": "2026-10-04T09:17:00Z"
+   }
+  ],
+  "enden": [
+   {
+    "art": "dienst",
+    "bezeichnung": "Bei einem Dienst angekommen",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "station": 2,
+    "adresse": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
+    "name": "Beispielboerse.example",
+    "grund": "legt Guthaben von 12 Adressen zusammen: Muster eines Dienstes, der Einzahlungen einsammelt. Die Adresse gehört laut Etikett zu Beispielboerse.example",
+    "tx": "7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81"
+   },
+   {
+    "art": "liegt",
+    "bezeichnung": "Liegt unbewegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "station": 4,
+    "adresse": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
+    "grund": "unbewegt seit 2026-10-04T09:17:00Z"
+   },
+   {
+    "art": "mischer",
+    "bezeichnung": "Durch Mischdienst",
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "station": 5,
+    "adresse": "1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec",
+    "grund": "7 Ausgänge über denselben Betrag bei 6 Eingängen: Muster eines Mischdienstes (CoinJoin)",
+    "tx": "21287b56c1e64530fd67e88367ec86c34ee91724d9b528180ccad95b9abe8fc9"
+   },
+   {
+    "art": "gebuehr",
+    "bezeichnung": "Transaktionsgebühren",
+    "betrag": "0.00069971",
+    "anteil": 0.1,
+    "grund": "anteilige Transaktionsgebühren"
+   }
+  ],
+  "verteilung": [
+   {
+    "art": "dienst",
+    "bezeichnung": "Bei einem Dienst angekommen",
+    "betrag": "0.3",
+    "anteil": 60.0,
+    "gegenwert": {
+     "chf": "25548.71",
+     "eur": "27144.83",
+     "usd": "29520.00"
+    }
+   },
+   {
+    "art": "liegt",
+    "bezeichnung": "Liegt unbewegt",
+    "betrag": "0.09984984",
+    "anteil": 20.0,
+    "gegenwert": {
+     "chf": "8503.45",
+     "eur": "9034.69",
+     "usd": "9825.22"
+    }
+   },
+   {
+    "art": "mischer",
+    "bezeichnung": "Durch Mischdienst",
+    "betrag": "0.09945045",
+    "anteil": 19.9,
+    "gegenwert": {
+     "chf": "8469.44",
+     "eur": "8998.55",
+     "usd": "9785.92"
+    }
+   },
+   {
+    "art": "gebuehr",
+    "bezeichnung": "Transaktionsgebühren",
+    "betrag": "0.00069971",
+    "anteil": 0.1,
+    "gegenwert": {
+     "chf": "59.59",
+     "eur": "63.31",
+     "usd": "68.85"
+    }
+   }
+  ],
+  "erklaerung": {
+   "dienst": "Börse oder Zahlungsdienst. Der Dienst weiss, welchem Kunden die Einzahlung gutgeschrieben wurde.",
+   "sammel": "Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt.",
+   "liegt": "Der Betrag wurde seit dem Eingang nicht weitergeleitet.",
+   "mischer": "Transaktion mit dem Muster eines Mischdienstes: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht.",
+   "vertrag": "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht.",
+   "grenze": "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag oder Abfragebudget.",
+   "gebuehr": "Anteil, der als Gebühr an die Betreiber des Netzes ging.",
+   "unklar": "Kein passender Abgang gefunden oder Abfrage fehlgeschlagen."
+  },
+  "start": {
+   "art": "zahlung",
+   "tx": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+   "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+   "zeit": "2026-10-03T13:42:00Z",
+   "betrag": "0.5",
+   "einheit": "BTC",
+   "gegenwert": {
+    "chf": "42581.19",
+    "eur": "45241.38",
+    "usd": "49200.00"
+   },
+   "kurs": {
+    "chf": "85162.37",
+    "eur": "90482.76",
+    "usd": "98400.00",
+    "stand": "2026-10-03T13:43:00Z",
+    "wechselkurs_vom": "2026-10-03",
+    "quellen": [
+     "DefiLlama",
+     "EZB"
+    ]
+   },
+   "gegenwert_hinweis": "Gegenwerte zum Kurs am Tag der Startzahlung."
+  },
+  "kette": "bitcoin",
+  "kette_anzeige": "Bitcoin",
+  "wert": {
+   "symbol": "BTC",
+   "kette": "bitcoin"
+  },
+  "startbetrag": "0.5",
+  "methode": "Bitcoin: Jeder Zahlungsausgang wird genau einmal ausgegeben. Welche Transaktion ihn ausgibt, ist eine Tatsache der Kette. Legt eine Transaktion mehrere Eingänge zusammen, wird der verfolgte Betrag im Verhältnis der Ausgänge aufgeteilt (anteilige Zuordnung). Transaktionen mit dem Muster eines Dienstes oder Mischdienstes beenden die Verfolgung. Grenzen dieses Laufs: 4 Stationen ab Start, Teilbeträge unter 2% des Startbetrags und mehr als 60 Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind Feststellungen, die Zuordnung über mehrere Stationen ist eine Bewertung nach diesem Verfahren.",
+  "ansatzpunkte": [
+   "Editionsbegehren an Beispielboerse.example: Welchem Kundenkonto ist die Einzahlungsadresse 1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg zugeordnet? Eingang 0.3 BTC, weitergeleitet mit Transaktion 7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81.",
+   "Auf 19uHVM1eMUHnmbudt5213JVgjZTVd5xHd liegen 0.09984984 BTC unbewegt. Adresse beobachten und die Verfolgung fortsetzen, sobald sich der Betrag bewegt.",
+   "0.09945045 BTC gingen ab 1KQzBH9xoXpfYF9kF84TH5iwTVA2dUm5Ec durch eine Transaktion mit dem Muster eines Mischdienstes (21287b56c1e64530fd67e88367ec86c34ee91724d9b528180ccad95b9abe8fc9). Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar."
+  ]
+ }
+}
