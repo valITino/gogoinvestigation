@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "model": "claude-fable-5-2",
+  "env": {
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "0"
+  },
   "permissions": {
     "allow": [
       "mcp__osint__fall_status",
@@ -28,7 +31,15 @@
       "Bash(python3 tools/rapport.py *)",
       "Bash(python3 tools/protokoll.py *)",
       "Bash(python3 tools/audit_pruefen.py *)",
-      "Bash(python3 tools/pruefen.py)"
+      "Bash(python3 tools/pruefen.py)",
+      "Bash(python tools/fall.py neu *)",
+      "Bash(python tools/fall.py aufnehmen *)",
+      "Bash(python tools/fall.py status *)",
+      "Bash(python tools/fall.py liste)",
+      "Bash(python tools/rapport.py *)",
+      "Bash(python tools/protokoll.py *)",
+      "Bash(python tools/audit_pruefen.py *)",
+      "Bash(python tools/pruefen.py)"
     ],
     "ask": [
       "mcp__osint__urlquery_einreichen",
@@ -45,40 +56,97 @@
       "Edit(./gateway/**)",
       "Edit(./tools/**)",
       "Edit(./protokoll/**)",
+      "Edit(./.github/**)",
       "Edit(./.mcp.json)",
       "Edit(./CLAUDE.md)",
+      "Edit(./setup.sh)",
+      "Edit(./setup.ps1)",
+      "Edit(./setup.cmd)",
+      "Edit(./requirements.txt)",
       "Edit(./faelle/*/fall.json)",
       "Edit(./faelle/*/protokoll/**)",
       "Edit(./faelle/*/rohdaten/**)",
       "Edit(./faelle/*/eingang/**)",
       "Bash(python3 tools/fall.py freigabe *)",
+      "Bash(python tools/fall.py freigabe *)",
       "Bash(curl *)",
-      "Bash(wget *)"
+      "Bash(wget *)",
+      "PowerShell(Invoke-WebRequest *)",
+      "PowerShell(Invoke-RestMethod *)",
+      "PowerShell(iwr *)",
+      "PowerShell(irm *)",
+      "PowerShell(curl *)",
+      "PowerShell(wget *)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Bash|Edit|Write|NotebookEdit|mcp__robin__.*",
+        "matcher": "Read|Grep|Bash|PowerShell|Monitor|Edit|Write|NotebookEdit|mcp__robin__.*",
         "hooks": [
-          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/waechter.py\"", "timeout": 20 }
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" waechter",
+            "timeout": 20,
+            "onFailure": "block"
+          }
         ]
       }
     ],
     "PostToolUse": [
-      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
     ],
     "PostToolUseFailure": [
-      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
     ],
     "SubagentStart": [
-      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
     ],
     "SubagentStop": [
-      { "hooks": [ { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protokoll_hook.py\"", "timeout": 20 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }

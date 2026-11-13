@@ -25,6 +25,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
+
 from gateway.akte import PROJEKT, fall_pfad  # noqa: E402
 
 PLATZHALTER = re.compile(r"\[[A-ZÄÖÜ]{2,20}_\d{1,3}\]")

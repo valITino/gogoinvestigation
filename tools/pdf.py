@@ -25,19 +25,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
+
 from gateway.akte import fall_pfad  # noqa: E402
 
 DOKUMENTE = ("Abschlussrapport", "Ermittlungsprotokoll")
-KANDIDATEN = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser",
+KANDIDATEN = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser",
+              "msedge", "chrome",
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
               "/Applications/Chromium.app/Contents/MacOS/Chromium",
               "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-              "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")
+              "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"]
+if plattform.WINDOWS:   # Edge gehört zu Windows, Chrome und Brave liegen an festen Orten
+    KANDIDATEN += [str(Path(os.environ[ort]) / programm)
+                   for programm in (r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe",
+                                    r"BraveSoftware\Brave-Browser\Application\brave.exe", r"Chromium\Application\chrome.exe")
+                   for ort in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA") if os.environ.get(ort)]
 
 
 def browser_finden() -> str | None:
     gewuenscht = os.environ.get("OSINT_BROWSER", "").strip()
-    for kandidat in ([gewuenscht] if gewuenscht else []) + list(KANDIDATEN):
+    for kandidat in ([gewuenscht] if gewuenscht else []) + KANDIDATEN:
         pfad = shutil.which(kandidat) or (kandidat if Path(kandidat).is_file() else None)
         if pfad:
             return pfad
@@ -55,7 +66,7 @@ def umwandeln(browser: str, quelle: Path, ziel: Path) -> str | None:
         if hasattr(os, "geteuid") and os.geteuid() == 0:
             befehl.insert(1, "--no-sandbox")       # Chromium startet als root nur so
         try:
-            r = subprocess.run(befehl, capture_output=True, text=True, timeout=120)
+            r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         except subprocess.TimeoutExpired:
             return "Der Browser hat nach 120 Sekunden nicht geantwortet."
         except OSError as e:
@@ -79,7 +90,7 @@ def main(argv: list[str]) -> int:
         nach = Path(argv[i + 1]).expanduser()
         argv = argv[:i] + argv[i + 2:]
     if len(argv) != 1:
-        print("FEHLER: Genau eine Fall-ID angeben. Hilfe: python3 tools/pdf.py --help", file=sys.stderr)
+        print(f"FEHLER: Genau eine Fall-ID angeben. Hilfe: {plattform.PY} tools/pdf.py --help", file=sys.stderr)
         return 2
     try:
         rapport = fall_pfad(argv[0]) / "rapport"
@@ -89,7 +100,7 @@ def main(argv: list[str]) -> int:
     vorhanden = [n for n in DOKUMENTE if (rapport / f"{n}.html").is_file()]
     if not vorhanden:
         print(f"FEHLER: In {rapport} liegt weder Abschlussrapport.html noch Ermittlungsprotokoll.html.\n"
-              f"        Zuerst erzeugen: python3 tools/rapport.py {argv[0]}  und  python3 tools/protokoll.py {argv[0]}", file=sys.stderr)
+              f"        Zuerst erzeugen: {plattform.PY} tools/rapport.py {argv[0]}  und  {plattform.PY} tools/protokoll.py {argv[0]}", file=sys.stderr)
         return 2
     browser = browser_finden()
     if not browser:

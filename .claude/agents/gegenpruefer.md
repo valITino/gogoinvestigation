@@ -2,7 +2,7 @@
 name: gegenpruefer
 description: Unabhängige Gegenprüfung der Befunde eines Falls vor dem Abschlussrapport. Vollzieht jede Aussage in befunde.json anhand der Rohdaten nach und urteilt bestätigt, eingeschränkt oder widerlegt. Einsetzen, nachdem befunde.json geschrieben ist. Der Auftrag enthält nur die Fall-ID.
 tools: Read, Grep, Glob
-model: inherit
+model: claude-fable-5-2
 skills:
   - ermittlungsstandard
 ---

@@ -17,6 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
+
 from gateway.akte import kette_pruefen  # noqa: E402
 
 

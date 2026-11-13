@@ -37,7 +37,7 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - Sich irgendwo anmelden, Formulare absenden, mit Tätern oder Verkäufern interagieren, etwas kaufen.
 - Geleakte Datensätze herunterladen oder durchsuchen. Dass ein Leak existiert, ist die Feststellung.
 - Eine Onion-Seite öffnen, ohne sie vorher mit `onion_sperrliste` geprüft zu haben. Steht sie auf der Liste: nicht öffnen, melden.
-- `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks oder Einstellungen verändern. Das ist technisch gesperrt, und ein Umweg wird nicht gesucht.
+- `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das ist technisch gesperrt, und ein Umweg wird nicht gesucht.
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
 
 ## Aufbau
@@ -62,6 +62,10 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 Das Team (Subagenten unter `.claude/agents/`): `infrastruktur-analyst`, `malware-url-analyst`, `darkweb-analyst`,
 `socmint-analyst`, `gegenpruefer`, `rapportfuehrer`. Der gemeinsame Massstab steht im Skill `ermittlungsstandard`.
 
+Modelle: Die Ermittlung (Hauptsitzung und die vier Analysten) läuft auf dem Modell der Sitzung, der Abschluss
+(`gegenpruefer`, `rapportfuehrer`) fest auf Claude Fable 5.2. Das legen die Agenten-Definitionen fest. Beim Start
+eines Subagenten wird deshalb kein Modell angegeben.
+
 ## Befehle
 
 ```
@@ -69,6 +73,10 @@ python3 tools/fall.py neu <Fall-ID> --titel "…" --rapport <Datei>   Fall anleg
 python3 tools/fall.py status <Fall-ID>                              Stand und Freigaben
 python3 tools/rapport.py <Fall-ID> [--nur-pruefen|--entwurf]        Befunde prüfen, Rapport erzeugen
 python3 tools/protokoll.py <Fall-ID>                                Ermittlungsprotokoll erzeugen
+python3 tools/pdf.py <Fall-ID>                                      Rapport und Protokoll als PDF (A4)
 python3 tools/audit_pruefen.py <Fall-ID>                            Protokollkette prüfen
 python3 tools/pruefen.py                                            Einrichtung prüfen
 ```
+
+Unter Windows heisst der Interpreter `python` statt `python3`. Die Einrichtung selbst (`./setup.sh`, unter Windows
+`.\setup.cmd`) führt nur der Sachbearbeiter am Terminal aus.

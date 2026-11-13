@@ -14,6 +14,12 @@ Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexte
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.
 
+Zwei Modelle teilen sich die Arbeit. Die Ermittlung (du und die vier Analysten) läuft auf dem Modell der Sitzung,
+der Abschluss (`gegenpruefer`, `rapportfuehrer`) fest auf Claude Fable 5.2. Das steht in den Agenten-Definitionen.
+**Gib beim Start eines Subagenten kein Modell an**, sonst übersteuerst du diese Zuteilung.
+
+Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten gelten sonst unverändert.
+
 ## Phase 0: Fall bereitstellen
 
 1. Fehlt die Fall-ID, frage danach und halte an.

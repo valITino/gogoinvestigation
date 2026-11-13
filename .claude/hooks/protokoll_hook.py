@@ -21,14 +21,13 @@ from pathlib import Path
 PROJEKT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parents[2])
 sys.path.insert(0, str(PROJEKT))
 
-try:
-    import fcntl
-except ImportError:  # Windows ohne fcntl: ohne Dateisperre
-    fcntl = None
-
+from gateway import plattform  # noqa: E402
 from gateway.akte import FAELLE, SITZUNGEN, jsonl_lesen, kette, ursprung_extern  # noqa: E402
 
-FALL_IM_PFAD = re.compile(r"faelle/([A-Za-z0-9][A-Za-z0-9._-]{2,63})/")
+plattform.utf8()
+
+# Unter Windows stehen Pfade mit \ in den Ereignisdaten, im JSON-Text verdoppelt. Beides wird wie / gelesen.
+FALL_IM_PFAD = re.compile(r"faelle(?:/|\\{1,2})([A-Za-z0-9][A-Za-z0-9._-]{2,63})(?:/|\\)", re.I)
 FALL_IM_BEFEHL = re.compile(r"/ermittlung\s+([A-Za-z0-9][A-Za-z0-9._-]{2,63})")
 PROTOKOLL_ID = re.compile(r'protokoll_id\\*"\s*:\s*\\*"(P-\d{4,})')
 LANG = 400
@@ -77,9 +76,7 @@ def extern_sichern(fall: str, werkzeug: str, eingabe: object, antwort_text: str,
     datei.parent.mkdir(parents=True, exist_ok=True)
     _, server, name = (werkzeug.split("__", 2) + ["", ""])[:3]
     inhalt = antwort_text.encode("utf-8")
-    with open(datei.with_suffix(".lock"), "w") as sperre:
-        if fcntl:
-            fcntl.flock(sperre, fcntl.LOCK_EX)
+    with plattform.dateisperre(datei):
         bisher = jsonl_lesen(datei)
         nr = bisher[-1]["nr"] + 1 if bisher else 1
         kennung = f"X-{nr:04d}"
@@ -99,15 +96,14 @@ def extern_sichern(fall: str, werkzeug: str, eingabe: object, antwort_text: str,
              "sitzung": sitzungseintrag.get("sitzung"),
              "vorher": bisher[-1]["kette"] if bisher else ursprung_extern(fall)}
         e["kette"] = kette(e["vorher"], e)
-        with open(datei, "a", encoding="utf-8") as f:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        plattform.zeile_anhaengen(datei, json.dumps(e, ensure_ascii=False))
     return kennung
 
 
 def main() -> int:
     try:
         ereignis = json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return 0
     sitzung = re.sub(r"[^A-Za-z0-9_-]", "_", str(ereignis.get("session_id") or "unbekannt"))[:80]
     art = ereignis.get("hook_event_name") or "unbekannt"
@@ -120,7 +116,7 @@ def main() -> int:
     fall = fall_erkennen(ereignis, eingabe_text + (ereignis.get("prompt") or ""))
     merker = SITZUNGEN / f"{sitzung}.fall"
     if fall:
-        merker.write_text(fall, encoding="utf-8")       # der Wächter liest daraus den aktiven Fall
+        plattform.text_schreiben(merker, fall)          # der Wächter liest daraus den aktiven Fall
     elif merker.is_file():
         fall = merker.read_text(encoding="utf-8").strip() or None
 
@@ -128,8 +124,12 @@ def main() -> int:
     jetzt = datetime.now(timezone.utc)
     if os.environ.get("OSINT_TESTZEIT"):        # nur für tools/musterfall.py: gestellte Uhr
         jetzt = datetime.strptime(os.environ["OSINT_TESTZEIT"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    try:
+        zone = plattform.zeitzone()      # dieselbe Zeitzone wie im Abfrageprotokoll des Gateways
+    except plattform.Zeitzonenfehler:
+        zone = None                      # Systempython unter Windows ohne Zeitzonendaten: Ortszeit des Rechners
     eintrag: dict = {"zeit_utc": jetzt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                     "zeit_lokal": jetzt.astimezone().isoformat(timespec="seconds"),
+                     "zeit_lokal": jetzt.astimezone(zone).isoformat(timespec="seconds"),
                      "ereignis": art, "sitzung": sitzung, "fall": fall,
                      "agent": ereignis.get("agent_type") or "hauptsitzung",
                      "agent_id": ereignis.get("agent_id")}
@@ -158,22 +158,18 @@ def main() -> int:
                     ordner = SITZUNGEN / sitzung
                     ordner.mkdir(exist_ok=True)
                     name = re.sub(r"[^A-Za-z0-9_-]", "_", str(ereignis.get("tool_use_id") or jetzt.timestamp()))
-                    (ordner / f"{name}.json").write_text(antwort_text, encoding="utf-8")
+                    plattform.text_schreiben(ordner / f"{name}.json", antwort_text)
                     eintrag["antwort_datei"] = f"protokoll/sitzungen/{sitzung}/{name}.json"
 
     datei = SITZUNGEN / f"{sitzung}.jsonl"
-    with open(datei.with_suffix(".lock"), "w") as sperre:
-        if fcntl:
-            fcntl.flock(sperre, fcntl.LOCK_EX)
+    with plattform.dateisperre(datei):
         bisher = jsonl_lesen(datei)
         eintrag["nr"] = bisher[-1]["nr"] + 1 if bisher else 1
         eintrag["vorher"] = bisher[-1]["kette"] if bisher else hashlib.sha256(f"sitzung|{sitzung}".encode()).hexdigest()
         eintrag["kette"] = kette(eintrag["vorher"], eintrag)
-        with open(datei, "a", encoding="utf-8") as f:
-            f.write(json.dumps(eintrag, ensure_ascii=False) + "\n")
+        plattform.zeile_anhaengen(datei, json.dumps(eintrag, ensure_ascii=False))
     if hinweis:   # teilt dem Agenten die Belegnummer mit
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": hinweis}},
-                         ensure_ascii=False))
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": hinweis}}))
     return 0
 
 

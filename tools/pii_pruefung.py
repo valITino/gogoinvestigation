@@ -15,12 +15,18 @@ Rückgabewert: 0 sauber, 1 Sperrfunde, 2 Datei nicht lesbar.
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
 
 PLATZHALTER = re.compile(r"\[([A-ZÄÖÜ]{2,20})_(\d{1,3})\]")
 KANTONE = "AG|AI|AR|BE|BL|BS|FR|GE|GL|GR|JU|LU|NE|NW|OW|SG|SH|SO|SZ|TG|TI|UR|VD|VS|ZG|ZH"
@@ -107,10 +113,13 @@ def text_lesen(datei: Path) -> str:
             text = text.replace(kurz, zeichen)
         return text
     if endung == ".pdf":
-        if not shutil.which("pdftotext"):
-            raise NichtLesbar(f"{datei.name}: Für PDF fehlt 'pdftotext' (Paket poppler-utils). "
-                              "Entweder installieren oder das Dokument als .txt/.md/.docx exportieren.")
-        r = subprocess.run(["pdftotext", "-layout", str(datei), "-"], capture_output=True, timeout=120)
+        pdftotext = plattform.programm("pdftotext")
+        if not pdftotext:
+            woher = ("winget install oschwartz10612.Poppler, danach ein neues Terminal" if plattform.WINDOWS
+                     else "Paket poppler-utils, unter macOS 'brew install poppler'")
+            raise NichtLesbar(f"{datei.name}: Für PDF fehlt 'pdftotext' ({woher}). {plattform.SETUP} holt es nach. "
+                              "Oder das Dokument als .txt/.md/.docx exportieren.")
+        r = subprocess.run([pdftotext, "-layout", "-enc", "UTF-8", str(datei), "-"], capture_output=True, timeout=120)
         if r.returncode != 0:
             raise NichtLesbar(f"{datei.name}: pdftotext meldet einen Fehler: {r.stderr.decode('utf-8', 'replace')[:200]}")
         text = r.stdout.decode("utf-8", "replace")

@@ -27,14 +27,21 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
 
 from gateway.akte import FREIGABE_TEXT, FREIGABEN, belege_lesen, fall_daten, fall_pfad, freigabe_erteilt, kette_pruefen  # noqa: E402
 from tools._html import STATUS, TYPEN, balken, esc, graf, graf_legende, kachel, kuerzen, seite  # noqa: E402
 
-ZONE = ZoneInfo(os.environ.get("OSINT_ZEITZONE", "Europe/Zurich"))
+try:
+    ZONE = plattform.zeitzone()
+except plattform.Zeitzonenfehler as e:
+    sys.exit(f"FEHLER: {e}")
 
 
 def erstellt() -> datetime:
@@ -497,9 +504,9 @@ def main(argv: list[str]) -> int:
         fall["_eingang"] = json.loads(register.read_text(encoding="utf-8")).get("dateien", {})
     ziel = pfad / "rapport"
     ziel.mkdir(exist_ok=True)
-    (ziel / "Abschlussrapport.html").write_text(
-        bauen(fall_id, fall, b, eintraege, kettenstand, maengel, hinweise, entwurf and bool(maengel or hinweise)),
-        encoding="utf-8")
+    plattform.text_schreiben(
+        ziel / "Abschlussrapport.html",
+        bauen(fall_id, fall, b, eintraege, kettenstand, maengel, hinweise, entwurf and bool(maengel or hinweise)))
     with open(ziel / "indikatoren.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["id", "typ", "wert", "bewertung", "rolle", "herkunft", "belege"])
@@ -510,7 +517,7 @@ def main(argv: list[str]) -> int:
           + (" (ENTWURF)" if entwurf and maengel else ""))
     print(f"Indikatorliste:  faelle/{fall_id}/rapport/indikatoren.csv")
     if not (ziel / "Ermittlungsprotokoll.html").is_file():
-        print(f"Noch offen:      python3 tools/protokoll.py {fall_id}")
+        print(f"Noch offen:      {plattform.PY} tools/protokoll.py {fall_id}")
     return 0
 
 

@@ -24,14 +24,21 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
 
 from gateway.akte import SITZUNGEN, fall_daten, fall_pfad, jsonl_lesen, kette, kette_pruefen  # noqa: E402
 from tools._html import balken, esc, kachel, kuerzen, seite  # noqa: E402
 
-ZONE = ZoneInfo(os.environ.get("OSINT_ZEITZONE", "Europe/Zurich"))
+try:
+    ZONE = plattform.zeitzone()
+except plattform.Zeitzonenfehler as e:
+    sys.exit(f"FEHLER: {e}")
 
 
 def erstellt() -> datetime:
@@ -264,8 +271,8 @@ def main(argv: list[str]) -> int:
 
     ziel = pfad / "rapport"
     ziel.mkdir(exist_ok=True)
-    (ziel / "Ermittlungsprotokoll.html").write_text(
-        bauen(fall_id, fall, abfragen, sitzung, stand, sitzungsmeldungen, akteure, extern), encoding="utf-8")
+    plattform.text_schreiben(ziel / "Ermittlungsprotokoll.html",
+                             bauen(fall_id, fall, abfragen, sitzung, stand, sitzungsmeldungen, akteure, extern))
     with open(ziel / "Ermittlungsprotokoll.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["nr", "zeit_utc", "zeit_lokal", "quelle", "werkzeug", "art", "freigabe", "ziel", "ziel_typ", "zweck",

@@ -2,7 +2,7 @@
 name: rapportfuehrer
 description: Verdichtet die Befundmeldungen des Ermittler-Teams zu befunde.json, arbeitet die Urteile der Gegenprüfung ein und erzeugt Abschlussrapport und Ermittlungsprotokoll. Einsetzen, wenn die Analysten fertig sind, und erneut nach der Gegenprüfung.
 tools: Read, Grep, Glob, Write, Edit, Bash
-model: inherit
+model: claude-fable-5-2
 skills:
   - ermittlungsstandard
   - abschlussrapport

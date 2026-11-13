@@ -22,21 +22,16 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Annotated, Any, Callable
 from urllib.parse import urlencode, urlsplit
-from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import Field
 
-try:  # Dateisperre; unter Windows ohne fcntl läuft das Gateway ohne Sperre
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
-
+from . import plattform
 from .akte import (FAELLE, FALL_RE, FREIGABEN, PROJEKT, freigabe_erteilt, kanonisch, kette,  # noqa: F401
                    protokoll_lesen, ursprung)
 
@@ -86,8 +81,8 @@ def schluessel(name: str, quelle: str) -> str:
     return wert
 
 
-def zeitzone() -> ZoneInfo:
-    return ZoneInfo(einstellung("OSINT_ZEITZONE", "Europe/Zurich"))
+def zeitzone() -> tzinfo:
+    return plattform.zeitzone(einstellung("OSINT_ZEITZONE", "Europe/Zurich"))
 
 
 # Uhr und Transport sind austauschbar, damit Musterfall und Tests ohne Netz laufen.
@@ -150,9 +145,7 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
                    endung: str = "json") -> dict:
     """Hängt einen Eintrag an. Vergibt Nummer, legt Rohdaten ab, verkettet."""
     akte.protokoll.parent.mkdir(parents=True, exist_ok=True)
-    with _schreibsperre, open(akte.protokoll.with_suffix(".lock"), "w") as sperre:
-        if fcntl:
-            fcntl.flock(sperre, fcntl.LOCK_EX)
+    with _schreibsperre, plattform.dateisperre(akte.protokoll):
         bisher = protokoll_lesen(akte.protokoll)
         nr = bisher[-1]["nr"] + 1 if bisher else 1
         vorher = bisher[-1]["kette"] if bisher else ursprung(akte.id)
@@ -168,10 +161,7 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
             eintrag["antwort"]["rohdaten"] = f"rohdaten/{datei.name}"
         eintrag["vorher"] = vorher
         eintrag["kette"] = kette(vorher, eintrag)
-        with open(akte.protokoll, "a", encoding="utf-8") as f:
-            f.write(json.dumps(eintrag, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        plattform.zeile_anhaengen(akte.protokoll, json.dumps(eintrag, ensure_ascii=False))
     return eintrag
 
 

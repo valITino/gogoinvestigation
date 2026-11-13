@@ -22,6 +22,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from gateway import plattform  # noqa: E402
+
+if __name__ == "__main__":
+    plattform.start()
+
 from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
                           jsonl_lesen, sha256_datei)
 from tools.pii_pruefung import NichtLesbar, bericht, pruefen, text_lesen  # noqa: E402
@@ -38,14 +43,16 @@ def jetzt() -> str:
 
 
 def schreiben(datei: Path, daten: dict) -> None:
-    datei.write_text(json.dumps(daten, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    plattform.text_schreiben(datei, json.dumps(daten, ensure_ascii=False, indent=2) + "\n")
 
 
 def am_terminal_bestaetigen(frage: str, erwartet: str) -> None:
     """Verlangt eine Eingabe am Terminal. Ohne Terminal (Agent, Skript) wird abgelehnt."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise Fehler("Diese Entscheidung trifft ein Mensch am Terminal. Ohne Terminal wird sie nicht angenommen.\n"
-                     "Bitte den Befehl selbst in einer Shell ausführen.")
+                     "Bitte den Befehl selbst in einer Shell ausführen."
+                     + ("\nUnter Windows in PowerShell oder der Eingabeaufforderung, nicht im Fenster von Git Bash."
+                        if plattform.WINDOWS else ""))
     antwort = input(f"{frage}\nZur Bestätigung '{erwartet}' eingeben: ").strip()
     if antwort != erwartet:
         raise Fehler("Nicht bestätigt. Es wurde nichts geändert.")
@@ -90,7 +97,7 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
         lesefassung = ziel
         if quelle.suffix.lower() in (".docx", ".pdf"):
             lesefassung = eingang / f"{quelle.name}.txt"
-            lesefassung.write_text(text, encoding="utf-8")
+            plattform.text_schreiben(lesefassung, text)
         for datei in {ziel, lesefassung}:
             register["dateien"][datei.name] = {
                 "sha256": sha256_datei(datei), "geprueft": jetzt(), "ergebnis": ergebnis,
@@ -104,7 +111,7 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
 def cmd_neu(a: argparse.Namespace) -> int:
     pfad = fall_pfad(a.fall)
     if (pfad / "fall.json").exists():
-        raise Fehler(f"Fall '{a.fall}' gibt es schon. Weitere Dokumente: python3 tools/fall.py aufnehmen {a.fall} DATEI")
+        raise Fehler(f"Fall '{a.fall}' gibt es schon. Weitere Dokumente: {plattform.PY} tools/fall.py aufnehmen {a.fall} DATEI")
     for name in UNTERORDNER:
         (pfad / name).mkdir(parents=True, exist_ok=True)
     schreiben(pfad / "fall.json", {
@@ -115,13 +122,13 @@ def cmd_neu(a: argparse.Namespace) -> int:
     ok = aufnehmen(a.fall, a.rapport or [], None, None) if a.rapport else True
     if not ok:
         print("Der Fall ist angelegt, aber mindestens ein Dokument wurde nicht aufgenommen.\n"
-              f"Nach dem Nachpseudonymisieren: python3 tools/fall.py aufnehmen {a.fall} <Datei>")
+              f"Nach dem Nachpseudonymisieren: {plattform.PY} tools/fall.py aufnehmen {a.fall} <Datei>")
         return 1
     if not a.rapport:
-        print(f"Noch kein Dokument im Fall. Aufnehmen: python3 tools/fall.py aufnehmen {a.fall} <Datei>")
+        print(f"Noch kein Dokument im Fall. Aufnehmen: {plattform.PY} tools/fall.py aufnehmen {a.fall} <Datei>")
     print("Nächster Schritt: 'claude' im Projektordner starten und eingeben:\n"
           f"    /ermittlung {a.fall}\n"
-          "Freigaben (aktiv, darkweb, personenbezug) sind aus. Erteilen: python3 tools/fall.py freigabe …")
+          f"Freigaben (aktiv, darkweb, personenbezug) sind aus. Erteilen: {plattform.PY} tools/fall.py freigabe …")
     return 0
 
 
@@ -174,7 +181,7 @@ def cmd_status(a: argparse.Namespace) -> int:
 def cmd_liste(_: argparse.Namespace) -> int:
     faelle = sorted(p.parent.name for p in FAELLE.glob("*/fall.json"))
     if not faelle:
-        print("Noch keine Fälle. Anlegen: python3 tools/fall.py neu <Fall-ID> --titel \"…\" --rapport DATEI")
+        print(f"Noch keine Fälle. Anlegen: {plattform.PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport DATEI")
     for f in faelle:
         print(_zeile(f))
     return 0

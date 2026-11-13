@@ -1,0 +1,13 @@
+# Zeilenenden festlegen. Ohne das verwandelt Git unter Windows \n in \r\n:
+# setup.sh startet dann in WSL nicht mehr, und die Hashes des Musterfalls stimmen nicht.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# Fallakten und Musterdokumente bleiben Byte für Byte, wie sie sind. Ihre Hashes stehen im Protokoll.
+faelle/** -text
+muster/** -text
+*.pdf binary
+*.png binary
