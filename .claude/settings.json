@@ -26,6 +26,7 @@
       "mcp__osint__telegram_*",
       "mcp__osint__chan_*",
       "mcp__osint__mastodon_*",
+      "mcp__osint__krypto_*",
       "mcp__robin__*",
       "Bash(python3 tools/fall.py neu *)",
       "Bash(python3 tools/fall.py aufnehmen *)",

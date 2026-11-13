@@ -13,10 +13,12 @@ esc = html.escape
 # Farbrollen. Hell und dunkel sind je eigens gewählt, im Druck gilt immer hell.
 _HELL = """--flaeche:#fcfcfb;--seite:#f9f9f7;--tinte:#0b0b0b;--tinte-2:#52514e;--gedaempft:#898781;
 --raster:#e1e0d9;--achse:#c3c2b7;--rand:rgba(11,11,11,.10);--serie:#2a78d6;--serie-hell:#cde2fb;
---gut:#0ca30c;--warnung:#fab219;--kritisch:#d03b3b;--neutral:#898781;--marke:#fff4cc;"""
+--gut:#0ca30c;--warnung:#fab219;--kritisch:#d03b3b;--neutral:#898781;--marke:#fff4cc;
+--kat-1:#2a78d6;--kat-2:#eb6834;--kat-3:#1baf7a;"""
 _DUNKEL = """--flaeche:#1a1a19;--seite:#0d0d0d;--tinte:#f0efec;--tinte-2:#c3c2b7;--gedaempft:#898781;
 --raster:#2c2c2a;--achse:#383835;--rand:rgba(255,255,255,.10);--serie:#3987e5;--serie-hell:#0d366b;
---gut:#0ca30c;--warnung:#fab219;--kritisch:#d03b3b;--neutral:#898781;--marke:#3a3214;"""
+--gut:#0ca30c;--warnung:#fab219;--kritisch:#d03b3b;--neutral:#898781;--marke:#3a3214;
+--kat-1:#3987e5;--kat-2:#d95926;--kat-3:#199e70;"""
 
 STIL = f"""
 :root{{color-scheme:light dark;{_HELL}}}
@@ -38,7 +40,7 @@ code,.mono{{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
 .klein{{font-size:13px;color:var(--tinte-2)}}
 .banner{{background:var(--marke);border:1px solid var(--rand);border-radius:6px;padding:10px 14px;margin:0 0 20px;font-weight:600}}
 .kopf{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:2px 24px;margin:16px 0 8px;
-  padding:14px 16px;border:1px solid var(--rand);border-radius:8px}}
+  padding:14px 16px;border:1px solid var(--rand);border-radius:8px;break-inside:avoid}}
 .kopf div{{padding:3px 0}} .kopf b{{display:block;font-size:12px;font-weight:600;color:var(--tinte-2)}}
 .kacheln{{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px;margin:14px 0}}
 .kachel{{border:1px solid var(--rand);border-radius:8px;padding:12px 14px}}
@@ -151,8 +153,8 @@ STATUS = {  # Bewertung -> (Bezeichnung, Farbe, Zeichen im Knoten, Zeichenfarbe)
 TYPEN = {  # Indikatortyp -> (Kurzbezeichnung, Form)
     "ip": ("IP", "kreis"), "domain": ("Domain", "quadrat"), "url": ("URL", "raute"),
     "hash": ("Datei", "sechseck"), "gruppe": ("Gruppe", "dreieck"), "onion": ("Onion", "fuenfeck"),
-    "konto": ("Konto", "fuenfeck"), "email": ("E-Mail", "fuenfeck"), "wallet": ("Wallet", "fuenfeck"),
-    "sonstiges": ("Sonstiges", "fuenfeck"),
+    "konto": ("Konto", "fuenfeck"), "email": ("E-Mail", "fuenfeck"), "wallet": ("Wallet", "sechseck"),
+    "transaktion": ("Zahlung", "raute"), "sonstiges": ("Sonstiges", "fuenfeck"),
 }
 
 
@@ -334,3 +336,157 @@ def graf_legende(knoten: list[dict], kanten: list[dict]) -> str:
         teile.append('<span>- - -  unsichere Verbindung (Sicherheit tief)</span>')
     teile.append("</div>")
     return "".join(teile)
+
+
+# --------------------------------------------------------------------------- Geldfluss
+
+# Wie eine Station oder ein Ende im Geldfluss gezeichnet wird: Klasse -> (Bezeichnung, Farbe).
+# Drei Farbtöne plus Grau. Mehr trägt ein Bild nicht, in dem jede Farbe neben jeder stehen kann.
+FLUSS_KLASSEN = {
+    "start": ("Start", "var(--tinte)"),
+    "station": ("Durchgangsstation", "var(--neutral)"),
+    "ansatz": ("Bei einem Dienst: Ansatzpunkt", "var(--kat-1)"),
+    "liegt": ("Liegt unbewegt", "var(--kat-3)"),
+    "ende": ("Spur endet (Mischdienst, Programm, unklar)", "var(--kat-2)"),
+    "offen": ("Nicht weiterverfolgt, Gebühren", "var(--achse)"),
+}
+_FLUSS_ART = {"start": "start", "station": "station", "einzahlung": "ansatz", "dienst": "ansatz", "sammel": "ansatz",
+              "liegt": "liegt", "mischer": "ende", "vertrag": "ende", "unklar": "ende", "grenze": "offen", "gebuehr": "offen"}
+_FLUSS_WORT = {"start": "Start", "station": "Durchgang", "einzahlung": "Einzahlungsadresse", "dienst": "Dienst",
+               "sammel": "Sammeladresse", "liegt": "liegt unbewegt", "mischer": "Mischdienst", "vertrag": "Programm",
+               "unklar": "Verbleib unklar", "grenze": "nicht weiterverfolgt", "gebuehr": "Gebühren"}
+
+
+def zahl_ch(wert: object, stellen: int | None = None) -> str:
+    """Zahl in Schweizer Schreibweise: Hochkomma als Tausendertrenner, Punkt vor den Nachkommastellen."""
+    text = str(wert)
+    try:
+        if stellen is not None:
+            text = f"{float(text):.{stellen}f}"
+        ganz, _, nach = text.partition(".")
+        vz = "-" if ganz.startswith("-") else ""
+        return vz + f"{int(ganz.lstrip('-') or 0):,}".replace(",", "'") + (f".{nach}" if nach else "")
+    except ValueError:
+        return text
+
+
+def kurz_adresse(adresse: str, vorn: int = 6, hinten: int = 4) -> str:
+    a = str(adresse)
+    return a if len(a) <= vorn + hinten + 1 else f"{a[:vorn]}…{a[-hinten:]}"
+
+
+def verteilung(d: dict, breite: int = 760) -> str:
+    """Ein Balken für den ganzen Startbetrag, geteilt nach dem Verbleib. Darunter die Legende mit Anteil und Betrag."""
+    teile: dict[str, float] = {}
+    betraege: dict[str, float] = {}
+    for e in d.get("verteilung") or []:
+        klasse = _FLUSS_ART.get(e.get("art"), "offen")
+        teile[klasse] = teile.get(klasse, 0.0) + float(e.get("anteil") or 0)
+        try:
+            betraege[klasse] = betraege.get(klasse, 0.0) + float(e.get("betrag") or 0)
+        except ValueError:
+            pass
+    reihenfolge = [k for k in ("ansatz", "liegt", "ende", "offen") if teile.get(k, 0) > 0]
+    if not reihenfolge:
+        return ""
+    gesamt = sum(teile[k] for k in reihenfolge) or 1
+    hoehe, y, luecke = 22, 4, 2
+    lauf = breite - luecke * (len(reihenfolge) - 1)
+    einheit = (d.get("wert") or {}).get("symbol") or ""
+    svg = [f'<svg viewBox="0 0 {breite} {hoehe + 8}" role="img" aria-label="Verbleib des Startbetrags">']
+    x = 0.0
+    for k in reihenfolge:
+        w = max(2.0, teile[k] / gesamt * lauf)
+        name, farbe = FLUSS_KLASSEN[k]
+        svg.append(f'<g><title>{esc(name)}: {teile[k]:.1f} %</title><rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{hoehe}" rx="3" fill="{farbe}"/></g>')
+        x += w + luecke
+    svg.append("</svg>")
+    legende = ['<div class="legende">']
+    for k in reihenfolge:
+        name, farbe = FLUSS_KLASSEN[k]
+        legende.append(f'<span><span class="punkt" style="background:{farbe}"></span>{esc(name)}: <b>{teile[k]:.1f} %</b> '
+                       f'({esc(zahl_ch(f"{betraege.get(k, 0):.8f}".rstrip("0").rstrip(".")))} {esc(einheit)})</span>')
+    legende.append("</div>")
+    return "".join(svg) + "".join(legende)
+
+
+def geldfluss(d: dict, hoechstens: int = 26) -> str:
+    """Flussbild von links nach rechts: Spalten sind die Stationen ab Start, die Breite der Bänder entspricht
+    dem Betrag. d: Einzelheiten aus der Auswertung von krypto_geldfluss (stationen, fluesse, wert)."""
+    alle = d.get("stationen") or []
+    if not alle:
+        return ""
+    gezeigt = sorted(alle, key=lambda s: (s["art"] != "start", -float(s.get("anteil") or 0)))[:hoechstens]
+    sichtbar = {s["nr"] for s in gezeigt}
+    spalten: dict[int, list[dict]] = {}
+    for s in sorted(gezeigt, key=lambda s: (s["tiefe"], -float(s.get("anteil") or 0))):
+        spalten.setdefault(s["tiefe"], []).append(s)
+    tiefen = sorted(spalten)
+    n = len(tiefen)
+    eng = n > 5
+    spaltenbreite = 150 if eng else (900 - 24) / max(n, 1) if n >= 4 else 250
+    breite = max(900, int(24 + spaltenbreite * n))
+    balken_b, kopf, mass = 12, 26, 2.4                      # mass: Pixel je Prozent des Startbetrags
+    zeilen_h = 46
+    pos: dict[int, dict] = {}
+    hoehe = 0.0
+    for i, t in enumerate(tiefen):
+        y = float(kopf)
+        for s in spalten[t]:
+            h = max(4.0, float(s.get("anteil") or 0) * mass)
+            pos[s["nr"]] = {"x": 12 + i * spaltenbreite, "y": y, "h": h, "aus": 0.0, "ein": 0.0, "s": s}
+            y += max(h, zeilen_h) + 12
+        hoehe = max(hoehe, y)
+    einheit = (d.get("wert") or {}).get("symbol") or ""
+    svg = [f'<svg viewBox="0 0 {breite} {hoehe + 6:.0f}" role="img" aria-label="Geldfluss vom Start zu den Enden">']
+    for i, t in enumerate(tiefen):
+        text = "Start" if t == 0 else f"{t}. Station"
+        svg.append(f'<text x="{12 + i * spaltenbreite:.0f}" y="14" font-size="11.5" class="leise">{text}</text>')
+    kanten = sorted((f for f in d.get("fluesse") or [] if f["von"] in sichtbar and f["nach"] in sichtbar),
+                    key=lambda f: (pos[f["von"]]["y"], pos[f["nach"]]["y"]))
+    for f in kanten:
+        a, b = pos[f["von"]], pos[f["nach"]]
+        dicke = max(1.5, float(f.get("anteil") or 0) * mass)
+        dicke_a, dicke_b = min(dicke, a["h"] - a["aus"]) or dicke, min(dicke, b["h"] - b["ein"]) or dicke
+        x1, x2 = a["x"] + balken_b, b["x"]
+        y1, y2 = a["y"] + a["aus"], b["y"] + b["ein"]
+        a["aus"] += dicke_a
+        b["ein"] += dicke_b
+        if x2 <= x1:        # Rückfluss an eine frühere Station: als dünne Linie über dem Bild
+            svg.append(f'<path d="M{x1},{y1:.1f} C{x1 + 40},{y1 - 30:.1f} {x2 - 40},{y2 - 30:.1f} {x2},{y2:.1f}" fill="none" '
+                       f'stroke="var(--gedaempft)" stroke-width="1.5" stroke-dasharray="4 3"/>')
+            continue
+        m = (x1 + x2) / 2
+        titel = f'Station {f["von"]} → {f["nach"]}: {zahl_ch(f["betrag"])} {einheit} ({f.get("anteil")} %)' + (f', Transaktion {f["tx"][0]}' if f.get("tx") else "")
+        svg.append(f'<g><title>{esc(titel)}</title><path d="M{x1},{y1:.1f} C{m:.1f},{y1:.1f} {m:.1f},{y2:.1f} {x2},{y2:.1f} '
+                   f'L{x2},{y2 + dicke_b:.1f} C{m:.1f},{y2 + dicke_b:.1f} {m:.1f},{y1 + dicke_a:.1f} {x1},{y1 + dicke_a:.1f} Z" '
+                   f'fill="var(--tinte)" fill-opacity="0.13"/></g>')
+    textbreite = spaltenbreite - balken_b - 22
+    for nr, p_ in pos.items():
+        s = p_["s"]
+        klasse = _FLUSS_ART.get(s["art"], "station")
+        name, farbe = FLUSS_KLASSEN[klasse]
+        zeile1 = f'{s["nr"]} · {kurz_adresse(s["adresse"], 5 if eng else 6)}'
+        zeile2 = kuerzen(s.get("name") or _FLUSS_WORT.get(s["art"], s["art"]), max(10, int(textbreite / 6.1)))
+        zeile3 = f'{zahl_ch(s["betrag"])} {einheit}' if len(str(s["betrag"])) <= 14 else f'{s.get("anteil")} %'
+        marke_ = " ⚑" if s.get("auffaellig") else ""
+        titel = (f'Station {s["nr"]}: {s["adresse"]} · {_FLUSS_WORT.get(s["art"], s["art"])}'
+                 + (f' · {s["name"]}' if s.get("name") else "") + f' · {zahl_ch(s["betrag"])} {einheit} ({s.get("anteil")} %)'
+                 + (" · " + ", ".join(s["etiketten"]) if s.get("etiketten") else ""))
+        tx = p_["x"] + balken_b + 7
+        hof = 'stroke="var(--flaeche)" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round"'      # Schrift bleibt über den Bändern lesbar
+        svg.append(f'<g><title>{esc(titel)}</title>'
+                   f'<rect x="{p_["x"]:.1f}" y="{p_["y"]:.1f}" width="{balken_b}" height="{p_["h"]:.1f}" rx="2" fill="{farbe}"/>'
+                   f'<text x="{tx:.1f}" y="{p_["y"] + 11:.1f}" font-size="12" font-weight="600" {hof}>{esc(zeile1)}{marke_}</text>'
+                   f'<text x="{tx:.1f}" y="{p_["y"] + 25:.1f}" font-size="11.5" class="zweit" {hof}>{esc(zeile2)}</text>'
+                   f'<text x="{tx:.1f}" y="{p_["y"] + 39:.1f}" font-size="11.5" class="zweit" {hof}>{esc(zeile3)}</text></g>')
+    svg.append("</svg>")
+    klassen = [k for k in FLUSS_KLASSEN if any(_FLUSS_ART.get(s["art"], "station") == k for s in gezeigt)]
+    legende = ['<div class="legende">'] + [f'<span><span class="punkt" style="background:{FLUSS_KLASSEN[k][1]}"></span>{esc(FLUSS_KLASSEN[k][0])}</span>'
+                                           for k in klassen]
+    if any(s.get("auffaellig") for s in gezeigt):
+        legende.append("<span>⚑ auffällig laut Etikett (Sanktion, Lösegeld, gesperrt, gemeldet)</span>")
+    if len(alle) > len(gezeigt):
+        legende.append(f"<span>{len(alle) - len(gezeigt)} kleinere Stationen stehen nur in der Tabelle</span>")
+    legende.append("</div>")
+    return "".join(svg) + "".join(legende)

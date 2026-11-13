@@ -27,6 +27,11 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
 
 Reicht die Kurzfassung im Ergebnis nicht, liest du die Rohdatei (`rohdaten` im Ergebnis) mit Read.
 
+Die Werkzeuge `krypto_…` bündeln mehrere Abfragen zu einem Ergebnis. Ihre `protokoll_id` belegt die Auswertung,
+unter `belege` stehen die einzelnen Abfragen dahinter, jede mit eigener Nummer. Für eine einzelne Tatsache
+(eine Zahlung, ein Listeneintrag) kannst du die Abfrage selbst zitieren, für das Gesamtbild die Auswertung.
+`quellenstand` sagt je Quelle, ob sie geprüft werden konnte.
+
 Belegnummern: Abfragen des Gateways tragen `P-0001` und folgende (Feld `protokoll_id`). Antworten anderer
 Werkzeuge wie Robin sichert der Sitzungs-Hook, sie tragen `X-0001` und folgende. Die Nummer wird dir nach dem
 Aufruf mitgeteilt. Beide Arten sind gleichwertige Belege.
@@ -58,6 +63,11 @@ ihre Beobachtung, nicht über die Wirklichkeit.
 
 Widersprechen sich Quellen, nennst du beide Aussagen und stufst herab. Du entscheidest den Widerspruch nicht nach Gefühl.
 
+Bei Zahlungen in Kryptowährungen: Eine bestätigte Transaktion ist eine Tatsache der Kette. `hoch` ist sie, wenn zwei
+unabhängige Explorer dasselbe zeigen (`krypto_transaktion` mit `gegenpruefen`). Kurse und Etiketten bestätigen
+keine Zahlung. Was `krypto_geldfluss` über mehrere Stationen zuordnet, ist eine Bewertung nach einem genannten
+Verfahren und höchstens `mittel`.
+
 ## Quellenbewertung
 
 Zweistellig, wie im Nachrichtendienst üblich. Buchstabe: Zuverlässigkeit der Quelle. Ziffer: Glaubhaftigkeit der Information.
@@ -82,6 +92,11 @@ Richtwerte für die Quellen dieses Arbeitsplatzes. Im Einzelfall begründet abwe
 | urlquery | B | Sandbox-Beobachtung zu einem Zeitpunkt. Seiten liefern je nach Besucher anderes aus. |
 | ransomware.live | C | Gibt wieder, was Tätergruppen behaupten. Opferlisten sind Täterangaben. |
 | Telegram, 4chan, Mastodon, Onion-Seiten | E–F | Anonyme Angaben. Belegen, dass etwas gesagt wurde, nicht dass es stimmt. |
+| Blockchain-Explorer (mempool.space, Blockstream, Blockscout, Etherscan, TronGrid) | A–B | Geben die öffentliche Kette wieder. Unbestätigte Transaktionen können noch verfallen. Guthaben gelten für den Abfragezeitpunkt. |
+| OFAC | A | Amtliche Sanktionsliste. Sagt, dass eine Adresse gelistet ist, nicht wer sie heute nutzt. |
+| TRM Labs, Blockscout-Etiketten, WalletExplorer, Tronscan, Iknaio | B–C | Zuordnungen Dritter nach eigenen Verfahren, teils alt. Ein Etikett zeigt, wen man fragen kann. |
+| Ransomwhere, Chainabuse | C–D | Meldungen von Freiwilligen und Geschädigten, ungeprüft. |
+| DefiLlama, EZB | B, A | Kurse. Ein Gegenwert ist eine Bewertung zum Tageskurs. |
 
 ## Zeitangaben
 
@@ -94,6 +109,9 @@ kennzeichnest sie mit `Z` (2026-09-28T10:15:00Z). Die Umrechnung in Ortszeit mac
 - Hosting-IPs wechseln den Kunden. Was heute dort läuft, lief vor einem Monat vielleicht nicht.
 - Ein Benutzername auf zwei Plattformen ist ein Hinweis auf dieselbe Person, kein Nachweis.
 - Dass ein Indikator bei einer Quelle fehlt, heisst nur, dass diese Quelle ihn nicht kennt.
+- Eine Wallet-Adresse gehört niemandem erkennbar. Den Inhaber kennt nur ein Dienst, bei dem er Kunde ist.
+  Wer eine Adresse kontrolliert, kann zudem wechseln (Verkauf, Weitergabe des Schlüssels).
+- Über Sammeladressen von Börsen, Mischdienste und Tauschprogramme hinweg lässt sich Geld nicht belastbar zuordnen.
 
 ## Befundmeldung
 
@@ -114,6 +132,9 @@ Hypothesen
 
 Kennzahlen (für die Diagramme)
 - <Indikator>: abuse_score=87, vt_boesartig=9, vt_gesamt=93, offene_ports=[22,443]
+
+Geldflüsse (für das Flussbild, nur Blockchain-Analyst)
+- P-0042: <was verfolgt wurde, Startbetrag, Verteilung in einem Satz>
 
 Beziehungen
 - <Indikator A> —<Art>→ <Indikator B>. Belege: P-0011. Sicherheit: hoch.

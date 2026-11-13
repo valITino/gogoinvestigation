@@ -25,7 +25,11 @@ hast keinen Zugang zu externen Quellen.
 5. Belege sind `P-`Nummern (Gateway) und `X-`Nummern (Robin und andere Werkzeuge, gesichert vom Sitzungs-Hook).
    Du verwendest nur Nummern, die in den Befundmeldungen stehen und im Protokoll existieren. Du erfindest keine.
 6. Jede fehlgeschlagene oder abgelehnte Abfrage aus dem Protokoll und jede Lücke aus den Meldungen kommt unter `luecken`.
-7. `python3 tools/rapport.py <Fall-ID> --nur-pruefen` ausführen, Mängel beheben, wiederholen bis nur noch die
+   Bei den Werkzeugen `krypto_…` stehen Ausfälle einzelner Quellen im `quellenstand` und unter `fehlgeschlagen` der Auswertung.
+7. Meldet der Blockchain-Analyst Geldflüsse, trägst du sie unter `geldfluesse` ein (Beleg ist die genannte
+   `protokoll_id`). Zahlen dazu liest du in der Rohdatei der Auswertung nach. Seine Ansatzpunkte werden zu
+   Empfehlungen, in deinen Worten und ohne eine Person zu nennen.
+8. `python3 tools/rapport.py <Fall-ID> --nur-pruefen` ausführen, Mängel beheben, wiederholen bis nur noch die
    offene Gegenprüfung beanstandet wird.
 
 Melde zurück: Zahl der Indikatoren und Befunde, verbleibende Mängel, und was dir an den Meldungen widersprüchlich

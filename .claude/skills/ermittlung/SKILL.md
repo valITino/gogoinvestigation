@@ -15,7 +15,7 @@ Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexte
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.
 
-Zwei Modelle teilen sich die Arbeit, und die Zuteilung steht fest in den Dateien: Dieser Skill und die vier
+Zwei Modelle teilen sich die Arbeit, und die Zuteilung steht fest in den Dateien: Dieser Skill und die fünf
 Analysten verlangen Claude Mythos 5.2, der Abschluss (`gegenpruefer`, `rapportfuehrer`) Claude Fable 5.2.
 Claude Code schaltet nur dann auf Mythos, wenn es an diesem Arbeitsplatz freigeschaltet ist. Sonst läuft alles auf
 dem Modell der Sitzung. Du musst nichts umstellen und nichts prüfen.
@@ -58,6 +58,11 @@ Zuteilung:
 | `malware-url-analyst` | URLs, Hashes, Domains (Inhalt, Verhalten, Alter, Archivstände) | URLs, Hashes oder Domains vorhanden |
 | `darkweb-analyst` | Gruppen, Onion-Adressen, Leak-Bezug, Breach-Feed | Erpressung, Leak oder Gruppenname im Fall |
 | `socmint-analyst` | Konten, Kanäle, Stichworte in Foren | Konten oder Forenbezug im Fall |
+| `blockchain-analyst` | Wallet-Adressen, Transaktions-IDs (Stand, Einordnung, Geldfluss, Ansatzpunkte) | Zahlungen in Kryptowährungen im Fall: Anlagebetrug, Lösegeld |
+
+Nenne dem `blockchain-analyst` zu jeder Adresse und Transaktion, was das Dokument dazu sagt: Kette oder Währung
+(Bitcoin, USDT auf TRON, Ethereum …), Betrag, Datum, und ob es die Zahlung eines Geschädigten oder eine Adresse
+der Täterseite ist. Ohne diese Angaben kann er die richtige Zahlung nicht von Wechselgeld unterscheiden.
 
 Zeige dem Sachbearbeiter den Plan in höchstens zehn Zeilen und fahre fort.
 
@@ -84,6 +89,11 @@ Sichte die Pivot-Vorschläge. Ein Pivot wird verfolgt, wenn die Verbindung zum F
 eine Frage aus dem Auftrag beantworten kann. Trage angenommene Pivots mit neuer ID und `herkunft: "Pivot aus P-…"`
 in `indikatoren.json` ein und starte eine zweite Runde bei den zuständigen Analysten (`…-runde2.md`).
 Höchstens zwei Runden. Was danach offen ist, kommt unter Lücken oder Empfehlungen.
+
+Stationen aus einem Geldfluss, die der `blockchain-analyst` unter «Neue Indikatoren» meldet (Einzahlungsadresse,
+Sammeladresse), trägst du ebenfalls ein, mit `herkunft: "Geldfluss P-…"`. Sie brauchen keine zweite Runde: Der
+Geldfluss hat sie bereits eingeordnet. Die Verfolgung selbst zählt als ein Schritt, auch wenn sie über mehrere
+Stationen führt. Ihre Grenzen (Tiefe, Abfragebudget) setzt das Werkzeug.
 
 ## Phase 5: Aktive Massnahmen
 

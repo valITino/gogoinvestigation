@@ -60,7 +60,8 @@ Nach technischen Indikatoren wird gesucht. Sind sie ersetzt, gibt es nichts zu e
 | IP-Adressen, Domains, URLs der Täterseite | Kern jeder Abfrage |
 | Datei-Hashes, Dateinamen von Schadsoftware | Abfrage bei VirusTotal |
 | E-Mail-Adressen der Täterseite (Absender der Phishing-Mail, Kontakt im Erpresserschreiben) | Domain und Adresse sind Indikatoren |
-| Onion-Adressen, Wallet-Adressen | Abgleich mit Gruppen und Leak-Seiten |
+| Onion-Adressen | Abgleich mit Gruppen und Leak-Seiten |
+| Wallet-Adressen und Transaktions-IDs von Zahlungen in Kryptowährungen, mit Währung, Betrag und Datum | Ohne sie lässt sich kein Geldfluss verfolgen. Das gilt auch für die Zahlung der geschädigten Person: Ihre Transaktions-ID bleibt stehen, ihr Name und ihr Kundenkonto bei der Börse nicht. |
 | Namen von Tätergruppen, Malware-Familien, Kampagnen | Abfrage bei ransomware.live |
 | Benutzernamen und Kanäle der Täterseite | nur mit Freigabe `personenbezug` abfragbar |
 | Datum und Uhrzeit von Ereignissen | Zeitachse |
@@ -110,7 +111,8 @@ NICHT ERSETZEN, zeichengenau übernehmen:
 - IP-Adressen, Domains und URLs, die der Täterseite zugeschrieben werden
 - Datei-Hashes und Dateinamen verdächtiger Dateien
 - E-Mail-Adressen, von denen Phishing, Betrug oder Erpressung ausging
-- Onion-Adressen, Wallet-Adressen
+- Onion-Adressen
+- Wallet-Adressen und Transaktions-IDs von Zahlungen in Kryptowährungen, samt Währung, Betrag und Datum
 - Namen von Tätergruppen, Schadsoftware, Kampagnen
 - Benutzernamen und Kanäle, über die Täter auftraten
 - Datum und Uhrzeit von Ereignissen

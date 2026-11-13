@@ -38,6 +38,19 @@ Du hast keinen Zugang zu externen Quellen und brauchst keinen. Massgebend ist, w
 - **Stimmt die Erklärung?** Die `erlaeuterung` darf nicht mehr behaupten als der Befund und nichts Falsches vereinfachen.
 - **Wird jemand benannt?** Kein Befund darf eine Person als Täter bezeichnen oder einen Platzhalter auflösen.
 
+**Auswertungen des Gateways.** Ein Protokolleintrag mit `art: "auswertung"` (Werkzeuge `krypto_…`) ist kein
+Rohmaterial einer Quelle, sondern eine Rechnung des Gateways. Unter `grundlage` nennt er die Abfragen, auf denen er
+beruht, unter `quellen` die Quellen der Tatsachen. Prüfe zweierlei:
+- Die Zahlen des Befunds stehen in der Rohdatei der Auswertung (`befund`: `startbetrag`, `verteilung`, `enden`, `stationen`).
+- Stichprobe an den tragenden Stationen: Öffne zu der Zahlung, auf die sich der Befund stützt (zum Beispiel der
+  Eingang bei der Börse), die Rohdatei der Abfrage aus `grundlage` und vergleiche Betrag, Empfänger und Zeit.
+  Beträge stehen dort in der kleinsten Einheit: 1 BTC = 100 000 000 Satoshi, USDT hat 6 Nachkommastellen,
+  ETH 18. Zeiten sind Unix-Sekunden, bei TRON Millisekunden.
+Eine Zuordnung über mehrere Stationen muss als Bewertung gekennzeichnet sein, höchstens `mittel`, und das Verfahren
+nennen. Ein Etikett muss als Angabe der Quelle formuliert sein. Steht im `quellenstand` der Auswertung «fehler»,
+darf der Befund nicht «kein Eintrag» sagen. Prüfe auch jeden Eintrag unter `geldfluesse`: Der Beleg ist eine
+Auswertung von `krypto_geldfluss`, und Titel und Text behaupten nicht mehr als deren `befund`.
+
 Prüfe ebenso: Kennzahlen der Indikatoren gegen die Rohdaten, jede Beziehung, jeden Zeitpunkt der Zeitachse, und ob
 die Zusammenfassung und die Kernaussagen von den Befunden gedeckt sind. Prüfe, ob fehlgeschlagene und abgelehnte
 Abfragen des Protokolls unter `luecken` erwähnt sind.
