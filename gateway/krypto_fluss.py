@@ -39,7 +39,7 @@ from typing import Any
 
 from .kern import Abbruch, Vorgang
 from .krypto_ketten import (SEITE, Kette, Quellfehler, Wert, btc_tx, btc_txs, btc_verbleib, dezimal, evm_adresse,
-                            gleich, konto_zahlungen, nach, tron_konto, zeit_iso, _evm_liste, _zahl)
+                            evm_token_stand, gleich, konto_zahlungen, nach, tron_konto, zeit_iso)
 from .krypto_zuordnung import Zuordner, dienst, kurz, mischer
 
 ENDEN = {  # Art -> (Bezeichnung, Erklärung für Leser ohne Vorwissen)
@@ -306,9 +306,7 @@ async def _konto_stand(v: Vorgang, kette: Kette, wert: Wert, adresse: str, nr: i
     _, info = await evm_adresse(v, kette, adresse, schritt=schritt, zaehler=False)
     guthaben = info["guthaben"]
     if wert.vertrag is not None:
-        _, stand = await _evm_liste(v, kette, "account", "tokenbalance", adresse, "wallet", f"Station {nr}: Guthaben {wert.symbol}",
-                                    contractaddress=wert.vertrag, address=adresse, tag="latest")
-        guthaben = _zahl(stand)
+        guthaben = await evm_token_stand(v, kette, adresse, wert, f"Station {nr}: Guthaben {wert.symbol}")
     return {"vertrag": info["vertrag"], "name": info["name"], "guthaben": guthaben, "etiketten": info["etiketten"], "aktiviert": True}
 
 
@@ -393,11 +391,12 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
             # Bei der eigenen Währung zählt die Liste auch Aufrufe ohne Betrag mit. Der Text sagt, was gezählt wurde
             viele, vielen = ((f"über {SEITE} Abgänge", f"über {SEITE} Abgängen") if wert.vertrag is not None
                              else (f"über {SEITE} ausgehende Transaktionen", f"über {SEITE} ausgehenden Transaktionen"))
-            if voll and tiefe > 0 and stand["vertrag"]:
+            hier_enden = tiefe > 0 or not alles_ab_start      # bei «alles ab der Startadresse» geht es mit dem gelesenen Teil weiter
+            if voll and hier_enden and stand["vertrag"]:
                 g.ende(adresse, "vertrag", summe, f"Programm auf der Kette mit {vielen} seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
                        + (f": {stand['name']}" if stand["name"] else ""), name=stand["name"])
                 continue
-            if voll and tiefe > 0:
+            if voll and hier_enden:
                 g.ende(adresse, "sammel", summe, f"{viele} seit dem Eingang: Sammeladresse, vermutlich ein Dienst")
                 continue
             if voll:

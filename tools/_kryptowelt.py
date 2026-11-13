@@ -273,6 +273,8 @@ class Welt:
                 n = sum(1 for t in self.evm_tx if adresse.lower() in (t["von"].lower(), t["an"].lower()))
                 m = sum(1 for t in self.evm_token if adresse.lower() in (t["von"].lower(), t["an"].lower()))
                 return _json({"transactions_count": str(n), "token_transfers_count": str(m), "gas_usage_count": "21000", "validations_count": "0"})
+            if teile[5] in ("transactions", "token-transfers"):
+                return self._v2_liste(adresse.lower(), teile[5] == "token-transfers", frage)
             if teile[5] == "token-balances":
                 return _json([{"value": str(k["usdt"]), "token_id": None, "token_instance": None,
                                "token": {"address_hash": USDT_ETH, "symbol": "USDT", "decimals": "6", "name": "Tether", "type": "ERC-20"}}] if k["usdt"] else [])
@@ -330,6 +332,35 @@ class Welt:
                  "value": str(t["betrag"]), "contractAddress": t["vertrag"].lower(), "tokenDecimal": "6", "tokenName": "Tether", "tokenSymbol": "USDT",
                  "transactionIndex": str(t["pos"]), "input": "0xa9059cbb", "methodId": "", "functionName": "", "confirmations": "100"} for t in zeilen]})
         return _json({"message": "Unknown module", "result": None, "status": "0"}, 400)
+
+    def _v2_liste(self, adresse: str, token: bool, frage: dict) -> httpx.Response:
+        """Zahlungen einer Adresse in der REST-Form von Blockscout: jüngste zuerst, 50 je Seite, Marke für die nächste Seite."""
+        if token:
+            zeilen = [t for t in self.evm_token if adresse in (t["von"].lower(), t["an"].lower())]
+            if frage.get("token"):
+                zeilen = [t for t in zeilen if t["vertrag"].lower() == frage["token"][0].lower()]
+        else:               # gewöhnliche Transaktionen: Token-Zahlungen stehen beim Absender als Aufruf des Token-Vertrags da, Wert 0
+            zeilen = [t for t in self.evm_tx if adresse in (t["von"].lower(), t["an"].lower())] \
+                + [{**t, "an": t["vertrag"], "betrag": 0} for t in self.evm_token if t["von"].lower() == adresse]
+        if frage.get("filter") == ["from"]:
+            zeilen = [t for t in zeilen if t["von"].lower() == adresse]
+        if frage.get("filter") == ["to"]:
+            zeilen = [t for t in zeilen if t["an"].lower() == adresse]
+        zeilen.sort(key=lambda t: (t["block"], t["pos"]), reverse=True)
+        ab = int(frage.get("items_count", ["0"])[0])
+        seite = zeilen[ab:ab + 50]
+        zeit = lambda t: datetime.fromtimestamp(t["zeit"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000000Z")  # noqa: E731
+        if token:
+            daten = [{"block_number": t["block"], "log_index": t["pos"] * 3 + 1, "timestamp": zeit(t), "method": "transfer",
+                      "from": self._adresse_v2(t["von"]), "to": self._adresse_v2(t["an"]), "transaction_hash": t["hash"], "type": "token_transfer",
+                      "token": {"address_hash": t["vertrag"], "symbol": "USDT", "decimals": "6", "name": "Tether", "type": "ERC-20"},
+                      "total": {"decimals": "6", "value": str(t["betrag"])}} for t in seite]
+        else:
+            daten = [{"hash": t["hash"], "block_number": t["block"], "position": t["pos"], "timestamp": zeit(t), "status": "ok", "result": "success",
+                      "from": self._adresse_v2(t["von"]), "to": self._adresse_v2(t["an"]), "value": str(t["betrag"]), "created_contract": None,
+                      "fee": {"type": "actual", "value": "441000000000000"}, "token_transfers": None, "confirmations": 12345} for t in seite]
+        weiter = {"block_number": seite[-1]["block"], "index": seite[-1]["pos"], "items_count": ab + 50} if len(zeilen) > ab + 50 else None
+        return _json({"items": daten, "next_page_params": weiter})
 
     # ----- Zuordnung und Kurse
 

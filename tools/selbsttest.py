@@ -1201,6 +1201,35 @@ def _():
     assert sum(1 for a in w.aufrufe if a == "POST api.trmlabs.com/public/v1/sanctions/screening") == 3, w.aufrufe
 
 
+@test("Krypto: Ethereum-Fluss liest Seite um Seite, Sammeladresse nach 200 Abgängen, nichts in der gedrosselten Listenform")
+def _():
+    # USDT: Opfer -> Täter -> Einzahlungsadresse -> Sammeladresse einer Börse, die danach 230 Kunden auszahlt
+    w = kwelt()
+    w.evm_zahlung("h0", "opfer", "taeter", 5_000 * USDT1, T0, 23_000_000, vertrag=kw.USDT_ETH)
+    w.evm_zahlung("h1", "taeter", "einzahlung", 5_000 * USDT1, T0 + 600, 23_000_050, vertrag=kw.USDT_ETH)
+    w.evm_zahlung("h2", "einzahlung", "heiss", 5_000 * USDT1, T0 + 1200, 23_000_100, vertrag=kw.USDT_ETH)
+    for i in range(230):
+        w.evm_zahlung(f"hk{i}", "heiss", f"kunde{i}", (20 + i) * USDT1, T0 + 1300 + i, 23_000_110 + i, vertrag=kw.USDT_ETH)
+    w.evm_konto("heiss", usdt=900_000 * USDT1)
+    r = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("h0"), kette="ethereum")
+    b = r["befund"]
+    assert {e["art"]: e["betrag"] for e in b["verteilung"]} == {"sammel": "5000"} and b["summe_geht_auf"], b["verteilung"]
+    rollen = {s_["adresse"]: s_["art"] for s_ in b["stationen"]}
+    assert rollen[kw.evm("einzahlung")] == "einzahlung" and rollen[kw.evm("heiss")] == "sammel", rollen
+    seiten = [a for a in w.aufrufe if a.endswith(f"/addresses/{kw.evm('heiss')}/token-transfers")]
+    assert len(seiten) == 4, f"vier Seiten zu 50 Zahlungen, dann steht fest: über 200 Abgänge seit dem Eingang ({len(seiten)})"
+    assert not any(a.endswith("blockscout.com/api") for a in w.aufrufe), \
+        "ein Geldfluss ab einer Zahlung kommt ohne die Listenform aus, die Blockscout ohne Schlüssel drosselt"
+    # Der Empfänger der Startzahlung ist selbst eine Sammeladresse: Dort endet die Verfolgung, statt 200 fremden Auszahlungen zu folgen
+    w.evm_zahlung("h9", "opfer2", "heiss", 700 * USDT1, T0 + 1250, 23_000_105, vertrag=kw.USDT_ETH)
+    b = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("h9"), kette="ethereum")["befund"]
+    assert {e["art"]: e["betrag"] for e in b["verteilung"]} == {"sammel": "700"} and len(b["stationen"]) == 1, b["verteilung"]
+    assert any("Sammeladresse eines Dienstes" in a for a in b["ansatzpunkte"]), b["ansatzpunkte"]
+    # Die jüngsten Zahlungen einer Adresse: eine Seite, jüngste zuerst
+    t = kruf(krypto.krypto_transaktionen, kw.evm("heiss"), kette="ethereum", wert="USDT", richtung="aus", limit=5)["befund"]
+    assert [z["betrag"] for z in t["zahlungen"]] == ["249", "248", "247", "246", "245"], t["zahlungen"]
+
+
 @test("Krypto: Drosselt die Quelle, endet der Lauf mit Fortsetzungsstelle. Blockscout mit Schlüssel, Schlüssel nie im Protokoll")
 def _():
     # 10 ETH, weiter an zwei Adressen. Bei der grösseren winkt Blockscout ab (HTTP 429, «drei Sekunden warten»)

@@ -430,14 +430,16 @@ async def _evm_liste(v: Vorgang, kette: Kette, modul: str, aktion: str, ziel: st
 
 
 async def _evm_v2(v: Vorgang, kette: Kette, pfad: str, ziel: str, ziel_typ: str, schritt: str,
-                  cache_h: float = 1.0) -> Antwort | None:
+                  cache_h: float = 1.0, params: dict | None = None) -> Antwort | None:
     """Abfrage der Blockscout-Schnittstelle v2. None, wenn für die Kette kein Blockscout eingerichtet ist
     oder Blockscout in diesem Vorgang schon ausgefallen ist."""
     bs = [a for a in evm_anbieter(kette) if a["art"] == "blockscout"]
     if not bs or bs[0]["quelle"] in _gesperrt(v):
         return None
     hat_ersatz = len(evm_anbieter(kette)) > 1
-    zugang = {"params": {"apikey": bs[0]["apikey"]}, "geheim": ("apikey",)} if bs[0].get("apikey") else {}
+    zugang: dict[str, Any] = {"params": dict(params)} if params else {}
+    if bs[0].get("apikey"):
+        zugang = {"params": {**(params or {}), "apikey": bs[0]["apikey"]}, "geheim": ("apikey",)}
     a = await v.hole(bs[0]["quelle"], ziel, ziel_typ, bs[0]["basis"] + "/api/v2" + pfad, schritt=schritt,
                      cache_h=cache_h, deutung=_v2_deutung, nochmal=not hat_ersatz, **zugang)
     if a.ergebnis == "fehler" and hat_ersatz:
@@ -516,6 +518,22 @@ async def evm_token_guthaben(v: Vorgang, kette: Kette, adresse: str) -> tuple[li
     return belege, liste
 
 
+async def evm_token_stand(v: Vorgang, kette: Kette, adresse: str, wert: Wert, schritt: str) -> int:
+    """Aktuelles Guthaben einer Adresse in einem bestimmten Token."""
+    a = await _evm_v2(v, kette, f"/addresses/{adresse}/token-balances", adresse, "wallet", schritt)
+    if a is not None:
+        if a.ergebnis == "fehler":
+            raise Quellfehler(a, "Token-Guthaben")
+        for e in a.daten if isinstance(a.daten, list) else []:
+            t = (e.get("token") or {}) if isinstance(e, dict) else {}
+            if str(t.get("address_hash") or t.get("address") or "").lower() == str(wert.vertrag).lower():
+                return _zahl(e.get("value"))
+        return 0
+    _, stand = await _evm_liste(v, kette, "account", "tokenbalance", adresse, "wallet", schritt,
+                                contractaddress=wert.vertrag, address=adresse, tag="latest")
+    return _zahl(stand)
+
+
 def _evm_zahlung(kette: Kette, e: dict, w: Wert | None) -> dict | None:
     """Eine Zeile aus txlist oder tokentx als Zahlung. None, wenn die Zeile keine Wertbewegung ist."""
     von, an = adresse_normal(kette, e.get("from") or ""), adresse_normal(kette, e.get("to") or "")
@@ -540,7 +558,17 @@ async def evm_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
                         alle_token: bool = False, schritt: str = "Zahlungen der Adresse") -> tuple[Antwort, list[dict], bool]:
     """Zahlungen einer Adresse in einem Wert. ``wert`` None oder eigene Währung: gewöhnliche Transaktionen.
     ``alle_token``: Zahlungen aller Token. Rückgabe: (Antwort, Zahlungen, voll). ``voll`` heisst, die Seite war
-    ausgeschöpft und es gibt vermutlich weitere."""
+    ausgeschöpft und es gibt vermutlich weitere.
+
+    Zwei Wege. Blockscout liefert über seine REST-Schnittstelle jüngste zuerst, 50 je Seite: Das genügt für alles
+    ab einem Block und für die jüngsten Zahlungen. Nur für die ältesten Zahlungen einer Adresse (aufsteigend von
+    Anfang an) und bei Etherscan läuft die Abfrage in der Listenform von Etherscan. Diese drosselt Blockscout ohne
+    Schlüssel stark (gesehen: zehn Abfragen, dann rund 40 Minuten Pause)."""
+    if (ab_block or not aufsteigend) and seite == 1 and _v2_moeglich(v, kette):
+        ergebnis = await _v2_zahlungen(v, kette, adresse, wert, richtung, ab_block=ab_block, aufsteigend=aufsteigend,
+                                       anzahl=anzahl, alle_token=alle_token, schritt=schritt)
+        if ergebnis is not None:
+            return ergebnis
     params: dict[str, Any] = {"address": adresse, "page": seite, "offset": anzahl, "sort": "asc" if aufsteigend else "desc"}
     if ab_block:
         params["startblock"] = ab_block
@@ -566,6 +594,85 @@ async def evm_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
             continue
         zahlungen.append(z)
     return a, zahlungen, len(zeilen) >= anzahl
+
+
+V2_SEITE = 50          # so viele Einträge liefert die REST-Schnittstelle von Blockscout je Abruf
+
+
+def _v2_moeglich(v: Vorgang, kette: Kette) -> bool:
+    bs = [a for a in evm_anbieter(kette) if a["art"] == "blockscout"]
+    return bool(bs) and bs[0]["quelle"] not in _gesperrt(v)
+
+
+def _v2_zeile(kette: Kette, d: dict, token_zeile: bool) -> dict | None:
+    """Ein Eintrag aus /addresses/{a}/transactions oder /token-transfers als Zahlung."""
+    a_von = adresse_normal(kette, (d.get("from") or {}).get("hash") or "")
+    a_an = adresse_normal(kette, (d.get("to") or d.get("created_contract") or {}).get("hash") or "")
+    block = d.get("block_number") if d.get("block_number") is not None else d.get("block")
+    if not a_von or not a_an or not isinstance(block, int):          # ohne Block: noch nicht bestätigt
+        return None
+    zeit = _zeit_aus_iso(d.get("timestamp"))
+    if not token_zeile:
+        return {"tx": d.get("hash"), "zeit": zeit, "block": block, "pos": d.get("position"), "von": a_von, "an": a_an,
+                "betrag": _zahl(d.get("value")), "wert": coin(kette), "ok": d.get("status") == "ok"}
+    tk, summe = d.get("token") or {}, d.get("total") or {}
+    vertrag = tk.get("address_hash") or tk.get("address") or ""
+    if tk.get("type") not in (None, "ERC-20") or "value" not in summe or not adresse_normal(kette, vertrag):
+        return None
+    stellen = tk.get("decimals") if tk.get("decimals") not in (None, "") else summe.get("decimals")
+    w = token(kette, vertrag, tk.get("symbol") or "", _zahl(stellen) if stellen not in (None, "") else None)
+    return {"tx": d.get("transaction_hash") or d.get("tx_hash"), "zeit": zeit, "block": block, "pos": None, "log": d.get("log_index"),
+            "von": a_von, "an": a_an, "betrag": _zahl(summe.get("value")), "wert": w, "ok": True}
+
+
+async def _v2_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | None, richtung: str, *, ab_block: int, aufsteigend: bool,
+                        anzahl: int, alle_token: bool, schritt: str) -> tuple[Antwort, list[dict], bool] | None:
+    """Zahlungen einer Adresse über die REST-Schnittstelle von Blockscout. Sie liefert jüngste zuerst. Gelesen wird
+    Seite um Seite, bis der gesuchte Block unterschritten ist, die Liste endet oder ``anzahl`` Einträge beisammen
+    sind. None, wenn Blockscout ausfällt und ein anderer Anbieter übernehmen soll."""
+    ist_token = alle_token or (wert is not None and wert.vertrag is not None)
+    pfad = f"/addresses/{adresse}/{'token-transfers' if ist_token else 'transactions'}"
+    fest: dict[str, Any] = {}
+    if richtung in ("aus", "ein"):
+        fest["filter"] = "from" if richtung == "aus" else "to"
+    if ist_token:
+        fest["type"] = "ERC-20"
+        if wert is not None and wert.vertrag and not alle_token:
+            fest["token"] = wert.vertrag
+    zeilen: list[dict] = []
+    marke: dict | None = None
+    antwort: Antwort | None = None
+    weitere, erreicht, seiten = True, False, 0
+    while weitere and not erreicht and len(zeilen) < anzahl:
+        seiten += 1
+        a = await _evm_v2(v, kette, pfad, adresse, "wallet", schritt if seiten == 1 else f"{schritt} (Seite {seiten})",
+                          params={**fest, **(marke or {})})
+        if a is None:
+            return None
+        antwort = a
+        if a.ergebnis == "kein_treffer":             # Blockscout kennt die Adresse nicht: keine Zahlungen
+            break
+        if a.ergebnis != "ok" or not isinstance(a.daten, dict) or not isinstance(a.daten.get("items"), list):
+            raise Quellfehler(a, "Zahlungen")
+        for d in a.daten["items"]:
+            z = _v2_zeile(kette, d, ist_token) if isinstance(d, dict) else None
+            if z is None:
+                continue
+            if ab_block and z["block"] < ab_block:
+                erreicht = True
+                continue
+            if richtung == "aus" and not gleich(kette, z["von"], adresse) or richtung == "ein" and not gleich(kette, z["an"], adresse):
+                continue
+            zeilen.append(z)
+        marke = a.daten.get("next_page_params") if isinstance(a.daten.get("next_page_params"), dict) else None
+        weitere = bool(marke) and bool(a.daten["items"])
+    assert antwort is not None
+    voll = weitere and not erreicht          # es gibt weitere Einträge im gesuchten Bereich, die nicht gelesen wurden
+    zeilen.sort(key=lambda z: (z["block"], z.get("log") or z["pos"] or 0), reverse=not aufsteigend)
+    if len(zeilen) > anzahl:
+        # zu viele: Bei «ab einem Block» zählen die ältesten (nächst am Eingang), sonst die jüngsten
+        zeilen, voll = zeilen[:anzahl], True
+    return antwort, zeilen, voll
 
 
 def _v2_tx(kette: Kette, d: dict) -> dict:
@@ -878,7 +985,9 @@ async def konto_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert, ri
     gefunden: list[dict] = []
     beleg, mehr, seiten = "", True, 0
     marke: str | None = None
-    hoechstens = 1 if wert.vertrag is not None else 3
+    # Über die REST-Schnittstelle von Blockscout deckt ein Aufruf schon alle Seiten ab
+    rest = kette.familie != "tron" and bool((ab or {}).get("block")) and _v2_moeglich(v, kette)
+    hoechstens = 1 if wert.vertrag is not None or rest else 3
     while mehr and seiten < hoechstens and len(gefunden) < anzahl:
         seiten += 1
         text = schritt if seiten == 1 else f"{schritt} (Seite {seiten})"
@@ -903,5 +1012,8 @@ def nach(z: dict, ab: dict | None) -> bool:
     if z.get("block") and ab.get("block"):
         if z["block"] != ab["block"]:
             return z["block"] > ab["block"]
-        return (z.get("pos") or 0) >= (ab.get("pos") or 0)
+        for feld in ("log", "pos"):              # Stelle im Block: Nummer des Ereignisses oder der Transaktion
+            if z.get(feld) is not None and ab.get(feld) is not None:
+                return z[feld] >= ab[feld]
+        return True                              # selber Block, Reihenfolge nicht vergleichbar: als Weiterleitung gewertet
     return (z.get("zeit_ms") or (z.get("zeit") or 0) * 1000) >= (ab.get("zeit_ms") or (ab.get("zeit") or 0) * 1000)
