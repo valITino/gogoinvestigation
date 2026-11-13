@@ -5,7 +5,8 @@
     python3 tools/pdf.py <Fall-ID> --nach ORDNER   schreibt in einen anderen Ordner
 
 Braucht einen installierten Browser der Chromium-Familie (Chrome, Chromium, Edge, Brave). Er läuft
-unsichtbar und ohne Netzzugriff auf fremde Seiten: Die Dokumente sind in sich geschlossen.
+unsichtbar mit einem leeren Wegwerf-Profil und wird so gestartet, dass er nur die lokale Datei druckt
+und keine Hintergrunddienste (Updates, Konto, Übersetzer) kontaktiert. Die Dokumente sind in sich geschlossen.
 Anderer Browser oder anderer Pfad: Umgebungsvariable OSINT_BROWSER setzen.
 
 Ohne solchen Browser: die HTML-Datei in einem beliebigen Browser öffnen und als PDF drucken.
@@ -47,6 +48,9 @@ def umwandeln(browser: str, quelle: Path, ziel: Path) -> str | None:
     """Gibt None zurück, wenn das PDF erzeugt wurde, sonst die Fehlermeldung."""
     with tempfile.TemporaryDirectory(prefix="osint-pdf-") as profil:     # eigenes, leeres Browserprofil
         befehl = [browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--disable-extensions",
+                  # Der Browser soll nur die lokale Datei drucken und sich nirgends melden (Updates, Konto, Übersetzer).
+                  "--disable-background-networking", "--disable-component-update", "--disable-sync",
+                  "--disable-default-apps", "--no-first-run", "--disable-features=Translate,OptimizationHints,MediaRouter",
                   f"--user-data-dir={profil}", f"--print-to-pdf={ziel}", quelle.resolve().as_uri()]
         if hasattr(os, "geteuid") and os.geteuid() == 0:
             befehl.insert(1, "--no-sandbox")       # Chromium startet als root nur so
