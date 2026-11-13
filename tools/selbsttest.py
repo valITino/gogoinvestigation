@@ -846,6 +846,37 @@ if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
         assert roh.rfind(b"\x1b[?25h") > roh.rfind(b"\x1b[?25l"), "der Cursor muss am Ende wieder sichtbar sein"
 
 
+if WINDOWS:         # unter Windows gibt es kein Pseudo-Terminal: Der Assistent läuft in einer eigenen, unsichtbaren Konsole
+    @test("Assistent in der echten Windows-Konsole: Pfeiltasten, verdeckte Eingabe, Vorschau verändert nichts")
+    def _():
+        from tools import _konsolentest
+        ergebnis = PROJEKT / "konsolentest.json"
+        umgebung = {k: v for k, v in os.environ.items() if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("CI", "NO_COLOR", "TERM")}
+        spuren = [PROJEKT / ".env", PROJEKT / ".venv", PROJEKT / ".claude" / "settings.local.json"]
+        vorher = [s.exists() for s in spuren]
+        start = subprocess.STARTUPINFO()
+        start.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        start.wShowWindow = 0           # SW_HIDE: Die Konsole gibt es, aber niemand sieht ein Fenster aufblitzen
+        try:
+            subprocess.run([sys.executable, str(PROJEKT / "tools" / "_konsolentest.py"), str(PROJEKT), str(ergebnis)],
+                           creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=start, env=umgebung, timeout=300)
+            assert ergebnis.is_file(), "der Lauf in der Konsole hat kein Ergebnis hinterlassen"
+            daten = json.loads(lesen(ergebnis))
+        finally:
+            ergebnis.unlink(missing_ok=True)
+        bild = "\n".join(daten["bildschirm"])
+        hergang = f"Schritte: {daten['schritte']}. Bildschirm zuletzt: {bild[-400:].strip()!r}"
+        assert not daten["fehler"], f"{daten['fehler']}. {hergang}"
+        assert daten["code"] == 0, f"Rückgabewert {daten['code']}. {hergang}"
+        assert not daten["geheim_gesehen"], "der Schlüssel stand auf dem Bildschirm"
+        assert "\x1b" not in bild and "[2K" not in bild and "[?25" not in bild, f"Steuerzeichen stehen als Text auf dem Bildschirm. {hergang}"
+        assert f"neu eingegeben ({len(_konsolentest.GEHEIM)} Zeichen)" in "\n".join(str(s) for s in daten["bloecke"]), \
+            f"die Eingabe ist nicht angekommen. {hergang}"
+        assert "neu: Shodan" in bild and "Vorschau: Es wurde nichts verändert" in bild, hergang
+        assert any(t == "Schlüssel" and wo == "Weiter" for t, wo in daten["schritte"]), f"die Pfeiltasten sind nicht angekommen. {hergang}"
+        assert [s.exists() for s in spuren] == vorher, "die Vorschau hat Dateien angelegt"
+
+
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")
 def _():
     bekannt = {f"mcp__osint__{w}" for w in alle_werkzeuge() | {"fall_status"}} | {f"mcp__robin__{w}" for w in ROBIN_WERKZEUGE}
