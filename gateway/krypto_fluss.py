@@ -380,7 +380,7 @@ async def konto_fluss(v: Vorgang, z: Zuordner, g: Graf, start: list[dict], grenz
                     abgaenge[adresse] = (erster, liste, voll)
             except Quellfehler as e:
                 weiter = {"adresse": adresse, "tx": (eingaenge[0]["ab"] or {}).get("tx")}
-                if e.antwort.status == 429:
+                if e.antwort.status == 429 and not e.nur_hier:
                     gedrosselt = e.antwort.quelle or "Die Quelle"
                     g.ende(adresse, "grenze", summe, f"{gedrosselt} drosselt die Abfragen (HTTP 429)", fortsetzen=weiter)
                     g.hinweis(f"{e.antwort.fehler} Beleg {e.antwort.id}. Die betroffenen Stationen stehen unter «Nicht weiterverfolgt».")

@@ -33,6 +33,8 @@ TRANSFER = "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"   
 class Quellfehler(Exception):
     """Eine Abfrage, auf die es ankam, ist fehlgeschlagen. Trägt die Antwort samt Beleg."""
 
+    nur_hier = False      # True: Der Fehler betrifft nur diese eine Abfrage, nicht die Quelle im Ganzen
+
     def __init__(self, antwort: Antwort, was: str = "") -> None:
         super().__init__(antwort.fehler or was)
         self.antwort, self.was = antwort, was
@@ -430,7 +432,7 @@ async def _evm_liste(v: Vorgang, kette: Kette, modul: str, aktion: str, ziel: st
 
 
 async def _evm_v2(v: Vorgang, kette: Kette, pfad: str, ziel: str, ziel_typ: str, schritt: str,
-                  cache_h: float = 1.0, params: dict | None = None) -> Antwort | None:
+                  cache_h: float = 1.0, params: dict | None = None, geduld: bool = True) -> Antwort | None:
     """Abfrage der Blockscout-Schnittstelle v2. None, wenn für die Kette kein Blockscout eingerichtet ist
     oder Blockscout in diesem Vorgang schon ausgefallen ist."""
     bs = [a for a in evm_anbieter(kette) if a["art"] == "blockscout"]
@@ -440,8 +442,10 @@ async def _evm_v2(v: Vorgang, kette: Kette, pfad: str, ziel: str, ziel_typ: str,
     zugang: dict[str, Any] = {"params": dict(params)} if params else {}
     if bs[0].get("apikey"):
         zugang = {"params": {**(params or {}), "apikey": bs[0]["apikey"]}, "geheim": ("apikey",)}
+    if not geduld:               # für Abfragen, die einen zweiten Weg haben: kurz warten, nicht wiederholen
+        zugang["zeitlimit"] = 25.0
     a = await v.hole(bs[0]["quelle"], ziel, ziel_typ, bs[0]["basis"] + "/api/v2" + pfad, schritt=schritt,
-                     cache_h=cache_h, deutung=_v2_deutung, nochmal=not hat_ersatz, **zugang)
+                     cache_h=cache_h, deutung=_v2_deutung, nochmal=geduld and not hat_ersatz, **zugang)
     if a.ergebnis == "fehler" and hat_ersatz:
         _gesperrt(v).add(bs[0]["quelle"])
         return None
@@ -561,14 +565,34 @@ async def evm_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
     ausgeschöpft und es gibt vermutlich weitere.
 
     Zwei Wege. Blockscout liefert über seine REST-Schnittstelle jüngste zuerst, 50 je Seite: Das genügt für alles
-    ab einem Block und für die jüngsten Zahlungen. Nur für die ältesten Zahlungen einer Adresse (aufsteigend von
-    Anfang an) und bei Etherscan läuft die Abfrage in der Listenform von Etherscan. Diese drosselt Blockscout ohne
-    Schlüssel stark (gesehen: zehn Abfragen, dann rund 40 Minuten Pause)."""
-    if (ab_block or not aufsteigend) and seite == 1 and _v2_moeglich(v, kette):
-        ergebnis = await _v2_zahlungen(v, kette, adresse, wert, richtung, ab_block=ab_block, aufsteigend=aufsteigend,
-                                       anzahl=anzahl, alle_token=alle_token, schritt=schritt)
+    ab einem Block, für die jüngsten Zahlungen und für Adressen mit höchstens 200 Einträgen, deren ganze Liste
+    gelesen wird. Nur für die ältesten Zahlungen einer Adresse mit mehr Einträgen und bei Etherscan läuft die
+    Abfrage in der Listenform von Etherscan. Diese drosselt Blockscout ohne Schlüssel stark (gesehen: zehn
+    Abfragen, dann rund 40 Minuten Pause)."""
+    ersatzweise = False
+    if seite == 1 and _v2_moeglich(v, kette):
+        try:
+            ergebnis = await _v2_zahlungen(v, kette, adresse, wert, richtung, ab_block=ab_block, aufsteigend=aufsteigend,
+                                           anzahl=anzahl, alle_token=alle_token, schritt=schritt)
+        except Quellfehler as fehler:
+            if fehler.antwort.status in (401, 402, 403, 429):       # liegt am Zugang, die Listenform träfe dasselbe
+                raise
+            # Zeitüberschreitung oder Störung: Bei Adressen mit sehr vielen Zahlungen (Börse, Tauschprogramm) kommt das vor.
+            # Die Listenform fragt gezielt ab einem Block und antwortet dort eher.
+            ergebnis, ersatzweise = None, True
         if ergebnis is not None:
             return ergebnis
+    try:
+        return await _liste_zahlungen(v, kette, adresse, wert, richtung, ab_block=ab_block, aufsteigend=aufsteigend, seite=seite,
+                                      anzahl=anzahl, alle_token=alle_token, schritt=schritt + (" (Listenform)" if ersatzweise else ""))
+    except Quellfehler as fehler:
+        fehler.nur_hier = ersatzweise        # der Ersatzweg ist eigens gedrosselt: Sein Ausfall sagt nichts über die nächste Station
+        raise
+
+
+async def _liste_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | None, richtung: str, *, ab_block: int, aufsteigend: bool,
+                           seite: int, anzahl: int, alle_token: bool, schritt: str) -> tuple[Antwort, list[dict], bool]:
+    """Zahlungen einer Adresse in der Listenform von Etherscan (txlist, tokentx), die auch Blockscout versteht."""
     params: dict[str, Any] = {"address": adresse, "page": seite, "offset": anzahl, "sort": "asc" if aufsteigend else "desc"}
     if ab_block:
         params["startblock"] = ab_block
@@ -594,9 +618,6 @@ async def evm_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
             continue
         zahlungen.append(z)
     return a, zahlungen, len(zeilen) >= anzahl
-
-
-V2_SEITE = 50          # so viele Einträge liefert die REST-Schnittstelle von Blockscout je Abruf
 
 
 def _v2_moeglich(v: Vorgang, kette: Kette) -> bool:
@@ -629,7 +650,11 @@ async def _v2_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
                         anzahl: int, alle_token: bool, schritt: str) -> tuple[Antwort, list[dict], bool] | None:
     """Zahlungen einer Adresse über die REST-Schnittstelle von Blockscout. Sie liefert jüngste zuerst. Gelesen wird
     Seite um Seite, bis der gesuchte Block unterschritten ist, die Liste endet oder ``anzahl`` Einträge beisammen
-    sind. None, wenn Blockscout ausfällt und ein anderer Anbieter übernehmen soll."""
+    sind. Sind die ältesten Zahlungen gefragt (aufsteigend, ohne Block), wird die ganze Liste gelesen, höchstens
+    ``SEITE`` Einträge. None, wenn dieser Weg die Frage nicht beantworten kann: Blockscout fällt aus, oder die
+    Adresse hat für «älteste zuerst» zu viele Einträge. Dann übernimmt die Listenform."""
+    von_anfang = aufsteigend and not ab_block
+    lesen = max(anzahl, SEITE) if von_anfang else anzahl
     ist_token = alle_token or (wert is not None and wert.vertrag is not None)
     pfad = f"/addresses/{adresse}/{'token-transfers' if ist_token else 'transactions'}"
     fest: dict[str, Any] = {}
@@ -643,10 +668,10 @@ async def _v2_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
     marke: dict | None = None
     antwort: Antwort | None = None
     weitere, erreicht, seiten = True, False, 0
-    while weitere and not erreicht and len(zeilen) < anzahl:
+    while weitere and not erreicht and len(zeilen) < lesen:
         seiten += 1
         a = await _evm_v2(v, kette, pfad, adresse, "wallet", schritt if seiten == 1 else f"{schritt} (Seite {seiten})",
-                          params={**fest, **(marke or {})})
+                          params={**fest, **(marke or {})}, geduld=False)
         if a is None:
             return None
         antwort = a
@@ -667,6 +692,8 @@ async def _v2_zahlungen(v: Vorgang, kette: Kette, adresse: str, wert: Wert | Non
         marke = a.daten.get("next_page_params") if isinstance(a.daten.get("next_page_params"), dict) else None
         weitere = bool(marke) and bool(a.daten["items"])
     assert antwort is not None
+    if von_anfang and weitere:               # die ältesten Einträge liegen hinter dem Gelesenen
+        return None
     voll = weitere and not erreicht          # es gibt weitere Einträge im gesuchten Bereich, die nicht gelesen wurden
     zeilen.sort(key=lambda z: (z["block"], z.get("log") or z["pos"] or 0), reverse=not aufsteigend)
     if len(zeilen) > anzahl:

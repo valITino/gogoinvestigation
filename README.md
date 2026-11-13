@@ -455,7 +455,7 @@ einem solchen Dienst ankommt, und nennt, was die fallführende Stelle dort verla
 | Kette | Ohne Schlüssel | Mit Schlüssel |
 |---|---|---|
 | Bitcoin | mempool.space, bei Störung Blockstream. Zuordnung über OFAC, TRM Labs, Ransomwhere, WalletExplorer. | Iknaio: Etiketten und Cluster |
-| Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken. Gedrosselt: Ein Geldfluss über viele Stationen bricht ohne Schlüssel ab und nennt, wo er sich fortsetzen lässt. | Blockscout: ohne Drossel. Etherscan: Gegenprüfung von Transaktionen |
+| Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken. Einzelne Abfragen sind ohne Schlüssel gedrosselt, siehe Grenzen. | Blockscout: Tageskontingent statt Drossel. Etherscan: Gegenprüfung von Transaktionen |
 | Polygon, Arbitrum, Gnosis, Base | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Blockscout: alle vier. Etherscan (Base nur mit bezahltem Abo) |
 | BNB Smart Chain | nicht abfragbar | Etherscan mit bezahltem Abo |
 | TRON | TronGrid: TRX, USDT, USDC und jeder andere Token, Sperrliste von Tether. Gedrosselt. | TronGrid: ohne Drossel. Tronscan: Namen von Börsen und Diensten |
@@ -507,15 +507,20 @@ Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der 
 - Auf Ethereum fehlen in den Listen Eingänge, die ein Programm ausgelöst hat (interne Transaktionen).
 - Bei ETH und TRX stehen Zahlungen in der Liste einer Adresse zwischen Aufrufen von Programmen, die keinen Betrag
   bewegen. Auf TRON ist jede USDT-Zahlung ein solcher Aufruf. Das Werkzeug liest deshalb je Station bis zu 600
-  Einträge. Hat eine Adresse seit dem Eingang mehr, endet die Verfolgung dort als Sammelbewegung.
+  Einträge auf TRON und 200 auf der Ethereum-Familie. Hat eine Adresse seit dem Eingang mehr, endet die
+  Verfolgung dort als Sammelbewegung.
 - Zahlt eine Station Kleinbeträge (unter 2 % des Startbetrags) an viele Adressen, stehen die zwölf grössten
   Empfänger einzeln im Ergebnis und der Rest als Summe. Sonst verbrauchte eine Adresse, die an Hunderte zahlt,
   alle 60 Stationen eines Laufs.
-- Blockscout drosselt Abfragen ohne Schlüssel (HTTP 429), in der Prüfung schon nach wenigen Dutzend Abfragen eines
-  Laufs. Das Werkzeug wartet einmal, so lange die Quelle es verlangt, und hört dann auf zu fragen: Die offenen
-  Stationen stehen unter «Nicht weiterverfolgt», jede mit der Stelle, an der es weitergeht. Für Fälle auf
-  Ethereum lohnt sich deshalb der kostenlose `BLOCKSCOUT_API_KEY`. Das freie Kontingent (100'000 Credits am Tag,
-  20 bis 30 je Abfrage) reicht für mehrere tausend Abfragen.
+- Blockscout drosselt ohne Schlüssel die Abfragen in der Listenform von Etherscan stark. In der Prüfung liess der
+  Dienst zehn davon zu, dann wies er rund 40 Minuten lang ab (HTTP 429). Das Werkzeug liest Zahlungen deshalb über
+  die REST-Schnittstelle des Dienstes, die nicht so eng begrenzt ist. Die Listenform braucht es noch in zwei
+  Fällen: für die ältesten Zahlungen einer Adresse mit über 200 Einträgen (Erstfinanzierung, Start ab einer
+  Adresse), und als zweiten Versuch, wenn die REST-Schnittstelle bei einer sehr grossen Adresse nicht antwortet.
+  Weist eine Quelle ab, wartet das Werkzeug einmal, so lange sie es verlangt, und fragt dann nicht weiter: Die
+  offenen Stationen stehen unter «Nicht weiterverfolgt», jede mit der Stelle, an der es weitergeht. Mit dem
+  kostenlosen `BLOCKSCOUT_API_KEY` gilt laut Anbieter ein Tageskontingent statt der Drossel (100'000 Credits,
+  20 bis 30 je Abfrage, also mehrere tausend Abfragen).
 - TRM Labs erlaubt ohne Schlüssel 100 Anfragen am Tag je Internetanschluss. Ein Geldfluss auf Bitcoin braucht
   davon in der Regel eine, auf Ethereum und TRON eine je Stufe, bei vielen Stationen mehr. Ist das Kontingent
   erschöpft, steht TRM im Ergebnis als «nicht geprüft». Die Sanktionsliste von OFAC lädt das Gateway selbst, sie

@@ -1149,7 +1149,7 @@ def _():
     w = kwelt()
     w.evm_zahlung("e0", "opfer", "taeter", 5 * ETH1, T0, 20_000_000)
     w.evm_konto("taeter", wei=5 * ETH1)
-    w.gestoert.add("action=txlist")
+    w.gestoert.update({f"/addresses/{kw.evm('taeter')}/transactions", "action=txlist"})      # beide Wege zur Liste
     r = kruf(krypto.krypto_adresse, kw.evm("taeter"))
     assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "5", r
     assert any(h.startswith("Erste Transaktionen nicht abrufbar (P-") for h in r["befund"]["hinweise"]), r["befund"]["hinweise"]
@@ -1204,13 +1204,17 @@ def _():
 @test("Krypto: Ethereum-Fluss liest Seite um Seite, Sammeladresse nach 200 Abgängen, nichts in der gedrosselten Listenform")
 def _():
     # USDT: Opfer -> Täter -> Einzahlungsadresse -> Sammeladresse einer Börse, die danach 230 Kunden auszahlt
-    w = kwelt()
-    w.evm_zahlung("h0", "opfer", "taeter", 5_000 * USDT1, T0, 23_000_000, vertrag=kw.USDT_ETH)
-    w.evm_zahlung("h1", "taeter", "einzahlung", 5_000 * USDT1, T0 + 600, 23_000_050, vertrag=kw.USDT_ETH)
-    w.evm_zahlung("h2", "einzahlung", "heiss", 5_000 * USDT1, T0 + 1200, 23_000_100, vertrag=kw.USDT_ETH)
-    for i in range(230):
-        w.evm_zahlung(f"hk{i}", "heiss", f"kunde{i}", (20 + i) * USDT1, T0 + 1300 + i, 23_000_110 + i, vertrag=kw.USDT_ETH)
-    w.evm_konto("heiss", usdt=900_000 * USDT1)
+    def welt() -> kw.Welt:
+        w = kwelt()
+        w.evm_zahlung("h0", "opfer", "taeter", 5_000 * USDT1, T0, 23_000_000, vertrag=kw.USDT_ETH)
+        w.evm_zahlung("h1", "taeter", "einzahlung", 5_000 * USDT1, T0 + 600, 23_000_050, vertrag=kw.USDT_ETH)
+        w.evm_zahlung("h2", "einzahlung", "heiss", 5_000 * USDT1, T0 + 1200, 23_000_100, vertrag=kw.USDT_ETH)
+        for i in range(230):
+            w.evm_zahlung(f"hk{i}", "heiss", f"kunde{i}", (20 + i) * USDT1, T0 + 1300 + i, 23_000_110 + i, vertrag=kw.USDT_ETH)
+        w.evm_konto("heiss", usdt=900_000 * USDT1)
+        return w
+
+    w = welt()
     r = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("h0"), kette="ethereum")
     b = r["befund"]
     assert {e["art"]: e["betrag"] for e in b["verteilung"]} == {"sammel": "5000"} and b["summe_geht_auf"], b["verteilung"]
@@ -1228,6 +1232,16 @@ def _():
     # Die jüngsten Zahlungen einer Adresse: eine Seite, jüngste zuerst
     t = kruf(krypto.krypto_transaktionen, kw.evm("heiss"), kette="ethereum", wert="USDT", richtung="aus", limit=5)["befund"]
     assert [z["betrag"] for z in t["zahlungen"]] == ["249", "248", "247", "246", "245"], t["zahlungen"]
+    # Die ältesten Zahlungen: Bei wenigen Einträgen liest das Gateway die ganze Liste, auch dafür ohne die Listenform
+    a = kruf(krypto.krypto_transaktionen, kw.evm("taeter"), kette="ethereum", wert="USDT", aelteste_zuerst=True)["befund"]
+    assert [z["betrag"] for z in a["zahlungen"]] == ["5000", "5000"] and not any(x.endswith("blockscout.com/api") for x in w.aufrufe), a["zahlungen"]
+    # Antwortet die REST-Liste für eine grosse Adresse nicht, fragt das Gateway einmal gezielt in der Listenform nach
+    w = welt()
+    w.gestoert.add(f"/addresses/{kw.evm('heiss')}/token-transfers")
+    b = kruf(krypto.krypto_geldfluss, "0x" + kw.txid("h0"), kette="ethereum")["befund"]
+    assert {e["art"]: e["betrag"] for e in b["verteilung"]} == {"sammel": "5000"}, b["verteilung"]
+    assert sum(1 for x in w.aufrufe if x.endswith(f"/addresses/{kw.evm('heiss')}/token-transfers")) == 1 \
+        and sum(1 for x in w.aufrufe if x.endswith("blockscout.com/api")) == 1, "ein Versuch über REST, dann einer in der Listenform"
 
 
 @test("Krypto: Drosselt die Quelle, endet der Lauf mit Fortsetzungsstelle. Blockscout mit Schlüssel, Schlüssel nie im Protokoll")

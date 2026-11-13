@@ -169,11 +169,22 @@ async def alle() -> None:
     def adresse_eth(b: dict, r: dict) -> str:
         quellen = {e["quelle"] for e in b["etiketten"] if e["art"] == "sanktion"}
         assert {"OFAC", "TRM Labs", "Blockscout"} <= quellen, f"Sanktion nicht von allen drei Quellen gemeldet: {quellen}"
-        assert b["art"] == "Konto" and b.get("erste_bewegung", "").startswith("2022-03-23"), b.get("erste_bewegung")
+        # Die ältesten Transaktionen einer Adresse mit über 200 Einträgen gibt es nur in der Listenform, die Blockscout ohne
+        # Schlüssel drosselt. Ist sie gerade gesperrt, nennt das Werkzeug die Lücke. Das ist dann das erwartete Verhalten.
+        gedrosselt = [h for h in b.get("hinweise", []) if h.startswith("Erste Transaktionen nicht abrufbar") and "429" in h]
+        assert b["art"] == "Konto" and (gedrosselt or b.get("erste_bewegung", "").startswith("2022-03-23")), (b.get("erste_bewegung"), b.get("hinweise"))
+        if gedrosselt:
+            return f"sanktioniert laut {', '.join(sorted(quellen))}; {b.get('transaktionen')} Transaktionen; Listenform gedrosselt, Lücke genannt: {gedrosselt[0][:110]}"
         return (f"sanktioniert laut {', '.join(sorted(quellen))}; {b.get('transaktionen')} Transaktionen; "
                 f"Erstfinanzierung von {b.get('erstfinanzierung', {}).get('von')} {b.get('erstfinanzierung', {}).get('etiketten', '')}")
     await pruefung("Ethereum: Adresse mit Sanktions-Etiketten aus drei Quellen, Erstfinanzierung",
                    k.krypto_adresse(FALL, ZWECK, RONIN), adresse_eth)
+    def liste_eth(b: dict, r: dict) -> str:
+        treffer = [z for z in b["zahlungen"] if z["tx"] == RONIN_USDC]
+        assert treffer and treffer[0]["betrag"] == "1000000" and treffer[0]["richtung"] == "aus" and "token_unbestaetigt" not in treffer[0], b["zahlungen"][:3]
+        return f"{len(b['zahlungen'])} Abgänge in USDC über die REST-Schnittstelle, darunter die Zahlung über 1 Mio."
+    await pruefung("Ethereum: Abgänge in USDC (Blockscout, REST)",
+                   k.krypto_transaktionen(FALL, ZWECK, RONIN, kette="ethereum", wert="USDC", richtung="aus", limit=20), liste_eth)
     await pruefung("Ethereum: Geldfluss einer USDC-Zahlung",
                    k.krypto_geldfluss(FALL, ZWECK, RONIN_USDC, kette="ethereum", wert="USDC", tiefe=3, max_abfragen=60), fluss)
 
