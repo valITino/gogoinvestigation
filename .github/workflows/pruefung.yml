@@ -76,6 +76,17 @@ jobs:
           call setup.cmd --ohne-docker --ermittlungsmodell mythos || exit /b 1
           call setup.cmd --ohne-docker --ermittlungsmodell fable || exit /b 1
 
+      - name: Meldungen der Installationsprogramme (nur bei Fehlern)
+        if: failure()
+        shell: bash
+        run: |
+          for ordner in "${TMPDIR:-/tmp}/osint-setup" "${RUNNER_TEMP}/osint-setup" "${TEMP:-/tmp}/osint-setup" "${LOCALAPPDATA:-/nonexistent}/Temp/osint-setup"; do
+            [ -d "$ordner" ] || continue
+            for datei in "$ordner"/*.log; do
+              echo "::group::$datei"; tail -n 60 "$datei"; echo "::endgroup::"
+            done
+          done
+
       - name: Musterfall fällt auf diesem System byte-gleich aus
         shell: bash
         run: |

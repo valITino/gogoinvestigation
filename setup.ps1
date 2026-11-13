@@ -36,18 +36,19 @@ function Get-PythonVersion([string]$Pfad) {
 }
 
 function Find-Python {
+    # Reihenfolge: das python aus dem PATH (das benutzt ihr auch sonst), dann der Python-Starter py.
     $kandidaten = @()
+    foreach ($name in @('python.exe', 'python3.exe')) {
+        foreach ($befehl in @(Get-Command $name -All -ErrorAction SilentlyContinue)) {
+            if ($befehl.Path) { $kandidaten += $befehl.Path }
+        }
+    }
     $starter = Get-Command 'py.exe' -ErrorAction SilentlyContinue
     if ($starter) {
         try {
             $exe = & $starter.Path -3 -c "import sys; print(sys.executable)" 2>$null
             if ($LASTEXITCODE -eq 0 -and $exe) { $kandidaten += "$exe".Trim() }
         } catch { }
-    }
-    foreach ($name in @('python.exe', 'python3.exe')) {
-        foreach ($befehl in @(Get-Command $name -All -ErrorAction SilentlyContinue)) {
-            if ($befehl.Path) { $kandidaten += $befehl.Path }
-        }
     }
     # Frisch installiert steht Python noch nicht im PATH dieses Fensters: an den üblichen Orten nachsehen.
     $muster = @()

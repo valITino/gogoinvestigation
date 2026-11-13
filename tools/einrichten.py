@@ -81,6 +81,7 @@ class Stand:
         self.neu: list[str] = []            # installiert oder angelegt
         self.offen: list[str] = []          # das muss der Mensch noch tun
         self.noetig: list[str] = []         # fehlt und verhindert den Betrieb
+        self.neues_terminal: list[str] = []     # was erst in einem neuen Terminal gilt
         self.apt_aktuell = False
         self.sudo_gemeldet = False
 
@@ -226,9 +227,12 @@ def claude_stand() -> tuple[str | None, tuple[int, ...] | None, str]:
 def claude_installieren() -> str | None:
     """Installiert Claude Code mit dem Installer des Herstellers. Gibt None zurück oder die Fehlermeldung."""
     if WINDOWS:
+        # Ohne PSModulePath: Aus PowerShell 7 heraus erbt Windows PowerShell 5.1 sonst dessen Module und
+        # kann die eigenen Befehle nicht mehr laden. Der Installer bräche dann ab.
+        umgebung = {k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"}
         code, text = lauf(["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
                            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
-                           "irm https://claude.ai/install.ps1 | iex"], 900, "claude.log")
+                           "irm https://claude.ai/install.ps1 | iex"], 900, "claude.log", umgebung)
     else:
         LOGS.mkdir(parents=True, exist_ok=True)
         skript = LOGS / "claude-install.sh"
@@ -350,8 +354,8 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
             stand.neu.append("Claude Code")
         if not shutil.which("claude"):
             ordner = Path(pfad).parent
-            stand.offen.append(f"Neues Terminal öffnen, damit 'claude' gefunden wird (liegt in {ordner}). "
-                               + ("" if WINDOWS else f'Falls nicht: export PATH="{ordner}:$PATH" in ~/.bashrc oder ~/.zshrc.'))
+            stand.neues_terminal.append(f"der Befehl 'claude' (liegt in {ordner}"
+                                        + (")" if WINDOWS else f'. Falls er dann noch fehlt: export PATH="{ordner}:$PATH" in ~/.bashrc oder ~/.zshrc)'))
     else:
         if not darf:
             zeile(FEHLT, "Claude Code", "nicht installiert")
@@ -658,7 +662,7 @@ def gateway_python() -> None:
     else:
         zeile(GUT, "Python fürs Gateway", f"OSINT_PYTHON zeigt auf {soll}")
     if os.environ.get("OSINT_PYTHON") != soll:
-        stand.offen.append("Ein neues Terminal öffnen, bevor ihr 'claude' startet. Erst dort gilt die neue Variable OSINT_PYTHON.")
+        stand.neues_terminal.append("die Variable OSINT_PYTHON, über die Claude Code das Gateway startet")
 
 
 def claude_code(a: argparse.Namespace, robin: bool) -> None:
@@ -717,6 +721,9 @@ def pruefung() -> int:
 
 
 def abschluss(code: int) -> int:
+    if stand.neues_terminal:
+        stand.offen.insert(0, "Ein neues Terminal öffnen, bevor ihr 'claude' startet. Erst dort gilt: "
+                           + " und ".join(stand.neues_terminal) + ".")
     if stand.neu:
         print("\n" + fett("Neu eingerichtet"))
         for was in stand.neu:
