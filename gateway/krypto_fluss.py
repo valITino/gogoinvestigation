@@ -530,8 +530,43 @@ def methode(g: Graf, grenzen: Grenzen) -> str:
             "die Zuordnung über mehrere Stationen ist eine Bewertung nach diesem Verfahren.")
 
 
+def einordnen(g: Graf) -> None:
+    """Setzt die Tiefe jeder Station auf den längsten Weg vom Start. So stehen im Flussbild Absender links von
+    Empfängern, auch wenn Geld eine Station auf zwei verschieden langen Wegen erreicht. Fliesst Geld im Kreis
+    zurück, zählt für die Stationen im Kreis der Weg, auf dem sie zuerst erreicht wurden."""
+    nachfolger: dict[str, list[str]] = {}
+    offen = {s: 0 for s in g.knoten}
+    for von, an in g.kanten:
+        if von != an:
+            nachfolger.setdefault(von, []).append(an)
+            offen[an] += 1
+    tiefe = {s: (0 if k["rolle"] == "start" else k["tiefe"]) for s, k in g.knoten.items()}
+    bereit = [s for s, n in offen.items() if n == 0]
+    fertig: set[str] = set()
+    while bereit:
+        s = bereit.pop()
+        fertig.add(s)
+        for n in nachfolger.get(s, []):
+            tiefe[n] = max(tiefe[n], tiefe[s] + 1)
+            offen[n] -= 1
+            if offen[n] == 0:
+                bereit.append(n)
+    rand = sorted((s for s in g.knoten if s not in fertig), key=lambda s: tiefe[s])      # Stationen in oder hinter einem Kreis
+    while rand:
+        s = rand.pop(0)
+        fertig.add(s)
+        for n in nachfolger.get(s, []):
+            if n not in fertig and tiefe[n] <= tiefe[s]:
+                tiefe[n] = tiefe[s] + 1
+        rand.sort(key=lambda x: tiefe[x])
+    for s, k in g.knoten.items():
+        if k["rolle"] != "start":
+            k["tiefe"] = tiefe[s]
+
+
 def ergebnis(g: Graf, z: Zuordner, grenzen: Grenzen) -> tuple[dict, dict]:
     """Baut aus dem Grafen das Ergebnis für den Agenten und die Einzelheiten für das Diagramm im Rapport."""
+    einordnen(g)
     stationen = []
     for k in sorted(g.knoten.values(), key=lambda k: k["nr"]):
         marken = z.bekannt(g.kette, k["adresse"]) if k.get("adresse") else []

@@ -3,8 +3,9 @@
 Für jede Quelle: was abgefragt wird, was der Anbieter dabei erfährt, und worauf sich die Einbindung stützt.
 Die Liste, aus der Gateway, Einrichtung und Selbsttest lesen, ist `gateway/quellen.py`.
 
-**Zur Verlässlichkeit dieser Angaben.** Beim Bau standen weder Schlüssel noch Netzzugang zu den Diensten zur
-Verfügung. Keine Quelle wurde live abgefragt. Die Spalte «Stützt sich auf» sagt, woher die Endpunkte stammen.
+**Zur Verlässlichkeit dieser Angaben.** Beim Bau standen keine Schlüssel zur Verfügung. Die Quellen im Abschnitt
+«Über das Gateway» wurden nie live abgefragt. Die Blockchain-Quellen ohne Schlüssel sind gegen die echten Dienste
+geprüft, siehe [Blockchain](#blockchain). Die Spalte «Stützt sich auf» sagt, woher die Endpunkte stammen.
 `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle. Schlägt eine fehl, steht die Antwort des
 Anbieters in `faelle/SELBSTTEST/rohdaten/`, und der Endpunkt lässt sich in der genannten Datei anpassen.
 
@@ -35,6 +36,48 @@ Anbieters in `faelle/SELBSTTEST/rohdaten/`, und der Endpunkt lässt sich in der 
 | Mastodon | `mastodon_instanz` | `GET {instanz}/api/v2/instance`, sonst `/api/v1/instance` | Quellcode von Masto, Mastodon-API |
 | | `mastodon_konto` | `GET {instanz}/api/v2/search?type=accounts` oder `/api/v1/accounts/lookup` | Quellcode von Masto, Mastodon-API |
 
+## Blockchain
+
+Die Werkzeuge `krypto_…` fragen je nach Kette verschiedene Dienste. Im Abfrageprotokoll steht der Dienst, der
+tatsächlich gefragt wurde, als Werkzeug der einzelnen Abfrage `krypto_abruf`, und darüber die Auswertung des
+aufgerufenen Werkzeugs. «Live geprüft» heisst: Am 13.11.2026 in GitHub Actions gegen den echten Dienst gelaufen,
+wiederholbar mit `python3 tools/krypto_live.py`.
+
+| Dienst | Wofür | Abfrage | Stützt sich auf |
+|---|---|---|---|
+| mempool.space, Ausweichquelle Blockstream | Bitcoin: Adresse, Transaktionen, Verbleib der Ausgänge | `GET {mempool.space,blockstream.info}/api/address/{a}`, `/address/{a}/txs`, `/tx/{id}`, `/tx/{id}/outspends` | live geprüft |
+| Blockscout | Ethereum, Optimism: Adresse, Zähler, Token-Guthaben, Transaktion | `GET eth.blockscout.com/api/v2/addresses/{a}`, `/counters`, `/token-balances`, `/api/v2/transactions/{id}` | live geprüft |
+| | Listen von Zahlungen, Guthaben eines Tokens | `GET …/api?module=account&action={txlist,tokentx,tokenbalance}` | live geprüft |
+| | Etiketten | `GET metadata.services.blockscout.com/api/v1/metadata?addresses=…&chainId=…` | live geprüft (Ethereum) |
+| | Polygon, Arbitrum, Gnosis, Base | dieselben Pfade auf `{kette}.blockscout.com` | Aus dem Rechenzentrum der Prüfung mit HTTP 403 abgewiesen. Nicht geprüft. |
+| Etherscan | Ketten der Ethereum-Familie, Gegenprüfung | `GET api.etherscan.io/v2/api?chainid=…&module=…&action=…`, dazu `module=proxy` für Transaktion, Quittung und Blockzeit | Dokumentation des Anbieters. Ohne Schlüssel gesehen: nur die Fehlermeldungen. |
+| TronGrid | TRON: Konto, Zahlungen in TRX und Token | `GET api.trongrid.io/v1/accounts/{a}`, `/transactions`, `/transactions/trc20` | live geprüft (ohne Schlüssel) |
+| | Transaktion, Leseaufrufe an Verträge (Sperrliste von Tether, Kürzel und Dezimalstellen fremder Token) | `POST /wallet/gettransactionbyid`, `/wallet/gettransactioninfobyid`, `/wallet/triggerconstantcontract` | live geprüft |
+| OFAC | Sanktionsliste SDN mit Krypto-Adressen | `GET sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV` und `SDN_COMMENTS.CSV`, Ausweichadresse `www.treasury.gov/ofac/downloads/` | live geprüft |
+| TRM Labs | Sanktionsprüfung | `POST api.trmlabs.com/public/v1/sanctions/screening` | live geprüft |
+| Ransomwhere | bekannte Lösegeld-Adressen (Bitcoin) | `GET api.ransomwhe.re/export` | live geprüft |
+| WalletExplorer | Bitcoin: Zuordnung zu benannten Diensten | `GET www.walletexplorer.com/api/1/address-lookup` | live geprüft |
+| Tronscan | TRON: Etiketten, Risikohinweise | `GET apilist.tronscanapi.com/api/accountv2`, `/api/security/account/data`, Kopfzeile `TRON-PRO-API-KEY` | Dokumentation des Anbieters. Nicht geprüft. |
+| Chainabuse | Betrugsmeldungen | `GET api.chainabuse.com/v0/reports?address=`, Basic-Anmeldung mit dem Schlüssel | Dokumentation des Anbieters. Nicht geprüft. |
+| Iknaio | GraphSense: Etiketten, Cluster | `GET api.ikna.io/{btc,eth,trx}/addresses/{a}/tag_summary`, `/entity`, Kopfzeile `Authorization` | Dokumentation von GraphSense. Nicht geprüft. |
+| DefiLlama | Kurs in US-Dollar, aktuell und am Stichtag | `GET coins.llama.fi/prices/{current,historical/{zeit}}/{kennung}` | live geprüft |
+| Europäische Zentralbank | Referenzkurse USD und CHF je EUR | `GET data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A` | live geprüft |
+
+**Was die Werkzeuge daraus rechnen.** `gateway/krypto_fluss.py` beschreibt die Verfahren am Kopf der Datei: bei
+Bitcoin je Zahlungsausgang mit anteiliger Zuordnung, bei Konto-Ketten in der zeitlichen Reihenfolge der Abgänge.
+Die Schwellen der Mustererkennung stehen dort als Konstanten (`SAMMEL_EINGAENGE`, `SAMMEL_AUSGAENGE`,
+`MISCH_GLEICHE`, in `krypto_ketten.py` `SEITE`).
+
+**Bekannte Token.** Ein Token wird am Vertrag erkannt, nie am Namen: Jeder kann einen Token «USDT» nennen. Die
+eingebaute Liste (`_BEKANNT` in `gateway/krypto_ketten.py`) führt USDT, USDC, DAI und WETH auf sieben Ketten. Jeder
+Eintrag ist gegen DefiLlama geprüft (Kürzel, Dezimalstellen). Andere Token werden mit den Angaben der Quelle
+geführt und als unbestätigt gekennzeichnet.
+
+**Sanktionsliste.** Die SDN-Liste wird je Fall höchstens einmal in 24 Stunden geladen und liegt als Rohdatei in
+der Fallakte (rund 6 MB). Lange Bemerkungen setzt OFAC in einer zweiten Datei fort, mitten im Wort. Das Gateway
+fügt beide zusammen, bevor es Adressen sucht. Findet es in der Liste keine einzige Krypto-Adresse, wertet es das
+als Störung und meldet «nicht geprüft», nicht «kein Eintrag».
+
 ## Was der Anbieter erfährt
 
 Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spur.
@@ -52,6 +95,16 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | `telegram_kanalinfo`, `_entitaet`, `_suche` | RapidAPI und den Betreiber der jeweiligen API: Schlüssel, Adresse, Kanal- oder Benutzername | nichts Bekanntes. Wie der Betreiber die Daten beschafft, ist nicht dokumentiert. |
 | `mastodon_*` | die abgefragte Instanz: eure Adresse, den Suchbegriff | Betreibt das Ziel die Instanz selbst, sieht es die Abfrage. |
 | Robin | Tor-Ausgangsknoten sehen nichts Zuordenbares. Die Onion-Suchmaschinen sehen den Suchbegriff. | Aufruf über Tor |
+| Block-Explorer (mempool.space, Blockstream, Blockscout, Etherscan, TronGrid) | eure Adresse, bei Etherscan und TronGrid den Schlüssel, und jede abgefragte Wallet-Adresse und Transaktion. Bei einem Geldfluss also die ganze Kette der Stationen. | nichts. Eine Blockchain lässt sich lesen, ohne dass der Inhaber einer Adresse es merkt. |
+| WalletExplorer, Tronscan, Chainabuse, Iknaio, Blockscout-Etiketten | eure Adresse, die abgefragten Wallet-Adressen | nichts |
+| TRM Labs | eure Adresse und alle Wallet-Adressen eines Laufs in einer Sammelabfrage | nichts |
+| OFAC, Ransomwhere | dass jemand die Liste lädt. **Nicht** die geprüfte Adresse, der Vergleich läuft lokal. | nichts |
+| DefiLlama, EZB | eure Adresse, Währung und Stichtag. **Nicht** den Betrag und keine Wallet-Adresse. | nichts |
+
+Wer einem Explorer nicht zeigen will, welche Adressen in einem Verfahren stehen, betreibt ihn selbst:
+`KRYPTO_BITCOIN_API` nimmt die Adresse einer eigenen Esplora-Schnittstelle (mempool oder electrs),
+`KRYPTO_ETHEREUM_API` und die Entsprechungen je Kette die einer eigenen Blockscout-Instanz, `KRYPTO_TRON_API` die
+einer Schnittstelle nach Art von TronGrid.
 
 Mit `OSINT_PROXY` in `.env` laufen alle Abfragen des Gateways über einen Proxy. Das Protokoll vermerkt je
 Abfrage, ob ein Proxy verwendet wurde. Web-Check auf dem eigenen Rechner wird immer direkt angesprochen. Für

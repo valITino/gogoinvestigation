@@ -40,7 +40,7 @@ code,.mono{{font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
 .klein{{font-size:13px;color:var(--tinte-2)}}
 .banner{{background:var(--marke);border:1px solid var(--rand);border-radius:6px;padding:10px 14px;margin:0 0 20px;font-weight:600}}
 .kopf{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:2px 24px;margin:16px 0 8px;
-  padding:14px 16px;border:1px solid var(--rand);border-radius:8px}}
+  padding:14px 16px;border:1px solid var(--rand);border-radius:8px;break-inside:avoid}}
 .kopf div{{padding:3px 0}} .kopf b{{display:block;font-size:12px;font-weight:600;color:var(--tinte-2)}}
 .kacheln{{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:12px;margin:14px 0}}
 .kachel{{border:1px solid var(--rand);border-radius:8px;padding:12px 14px}}
