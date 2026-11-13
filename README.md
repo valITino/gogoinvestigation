@@ -687,7 +687,7 @@ zuletzt am 13.11.2026, ohne Schlüssel und mit Adressen, die seit Jahren öffent
   Geldfluss in ETH ab der sanktionierten Adresse führte über mehrere Stationen zu einer Adresse, die Blockscout
   als Tornado Cash führt: Ende «Mischdienst laut Etikett». Dazu Optimism.
 - TRON über TronGrid: Adresse, Eingänge in USDT, eine Transaktion ohne Angabe der Kette, deren Geldfluss, ein
-  Geldfluss in TRX ab einer Adresse mit 170 Abgängen, und die Sperrliste von Tether.
+  Geldfluss in TRX ab einer Adresse mit mehreren hundert ausgehenden Transaktionen, und die Sperrliste von Tether.
 - Sanktionsliste von OFAC (1064 Krypto-Adressen erkannt, samt Fortsetzungsdatei), TRM Labs, Ransomwhere,
   WalletExplorer.
 - Kurse von DefiLlama und Referenzkurse der EZB, auch für einen Samstag.
