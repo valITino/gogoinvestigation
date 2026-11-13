@@ -1,0 +1,91 @@
+# Prüft bei jeder Änderung, dass sich der Arbeitsplatz auf Linux, macOS und Windows einrichten lässt
+# und dass die Schutzmechanismen dort greifen. Braucht weder Schlüssel noch ein Claude-Konto.
+name: Prüfung
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruefung-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  einrichtung:
+    name: Einrichtung (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux", os: ubuntu-latest }
+          - { name: "macOS", os: macos-latest }
+          - { name: "Windows, PowerShell 5.1", os: windows-latest, shell: powershell }
+          - { name: "Windows, PowerShell 7", os: windows-latest, shell: pwsh }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Skripte statisch prüfen (Linux)
+        if: runner.os == 'Linux'
+        run: shellcheck --severity=warning setup.sh .claude/hooks/start.sh
+
+      - name: Skript statisch prüfen (Windows)
+        if: runner.os == 'Windows'
+        shell: ${{ matrix.shell }}
+        run: |
+          $fehler = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path .\setup.ps1), [ref]$null, [ref]$fehler)
+          if ($fehler) { $fehler | ForEach-Object { Write-Host $_ }; exit 1 }
+          if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
+            $funde = @(Invoke-ScriptAnalyzer -Path .\setup.ps1 -Severity Error)
+            $funde | Format-Table -AutoSize | Out-String | Write-Host
+            if ($funde.Count -gt 0) { exit 1 }
+          }
+
+      # Docker bleibt aussen vor: Die Abbilder von Web-Check und Robin sind gross und für die Prüfung unnötig.
+      - name: Einrichtung (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: ./setup.sh --ohne-docker
+
+      - name: Einrichtung (Windows)
+        if: runner.os == 'Windows'
+        shell: ${{ matrix.shell }}
+        run: |
+          & .\setup.ps1 --ohne-docker
+          exit $LASTEXITCODE
+
+      - name: Erneuter Lauf mit Modellwechsel (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: ./setup.sh --ohne-docker --ermittlungsmodell mythos && ./setup.sh --ohne-docker --ermittlungsmodell fable
+
+      - name: Erneuter Lauf mit Modellwechsel über setup.cmd (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call setup.cmd --ohne-docker --ermittlungsmodell mythos || exit /b 1
+          call setup.cmd --ohne-docker --ermittlungsmodell fable || exit /b 1
+
+      - name: Musterfall fällt auf diesem System byte-gleich aus
+        shell: bash
+        run: |
+          git status --porcelain --untracked-files=no
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Claude Code nimmt die Einstellungen an
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          claude --version
+          ausgabe="$(timeout 180 claude doctor 2>&1 || true)"
+          if printf '%s\n' "$ausgabe" | grep -i -A6 "invalid settings"; then exit 1; fi
+          echo "Keine ungültigen Einstellungen gemeldet."
