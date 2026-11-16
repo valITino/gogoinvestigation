@@ -269,4 +269,10 @@ def einordnen(e: dict, stand_der_datei: str = "") -> dict:
         teile.append(f"Herkunft der Angabe: {VERTRAUEN.get(e['vertrauen'], e['vertrauen'])}")
     teile.append(f"Datei {e.get('pack')}" + (f" (Stand {stand_der_datei})" if stand_der_datei else ""))
     return {"art": art, "dienst": not missbrauch and kategorie in DIENST, "mischer": not missbrauch and kategorie in MISCHER,
-            "betreiber": e.get("akteur") or "" if not missbrauch and kategorie in DIENST else "", "detail": ", ".join(teile)}
+            "betreiber": _akteur(e.get("akteur") or "") if not missbrauch and kategorie in DIENST else "", "detail": ", ".join(teile)}
+
+
+def _akteur(kennung: str) -> str:
+    """Die Liste führt Akteure unter einer kleingeschriebenen Kennung («binance», «huobi»). Als Name im Rapport steht sie mit
+    grossem Anfangsbuchstaben. Mehr wird nicht geraten: Wie sich ein Dienst selbst schreibt, sagt eine Abfragequelle."""
+    return kennung.capitalize() if kennung.islower() else kennung
