@@ -11,3 +11,4 @@ faelle/** -text
 muster/** -text
 *.pdf binary
 *.png binary
+*.gz binary
