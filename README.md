@@ -5,6 +5,11 @@ Ermittler-Team aus KI-Agenten fragt Clearweb- und Dark-Web-Quellen ab, verfolgt 
 verknüpft die Ergebnisse und prüft sich gegenseitig. Heraus kommen ein verständlicher Abschlussrapport mit Diagrammen und ein lückenloses Protokoll
 darüber, wann was wo und wozu abgefragt wurde.
 
+> [!WARNING]
+> **Aufbauphase.** Das Projekt wird gerade mit Claude Code weitergebaut. Der Schreibschutz für Gateway, Tools,
+> Hooks, Einstellungen und Einrichtung ist dafür ausgeschaltet. Bitte in diesem Zustand keine echten Fälle
+> bearbeiten. Was weiter gilt und wie der volle Schutz zurückkommt: [Schutzmechanismen](#schutzmechanismen).
+
 > *English summary:* A Claude Code workspace for CTI and law-enforcement OSINT. One MCP gateway wraps Shodan,
 > VirusTotal, Spur, AbuseIPDB, urlquery, Wayback Machine, Web-Check, ransomware.live, Telegram, 4chan and
 > Mastodon, traces cryptocurrency payments on Bitcoin, Ethereum and TRON (multi-hop money flow, sanctions and
@@ -162,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 38 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 39 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -596,6 +601,16 @@ Täter benennen.
 
 Was ihr wissen müsst:
 
+- **Der Schalter `AUFBAUPHASE`.** Er steht in `.claude/hooks/waechter.py` und ist für die Weiterentwicklung mit
+  Claude Code gedacht. Ist er ein, dürfen Sitzungen Gateway, Tools, Hooks, Einstellungen, Einrichtung, CI und
+  Doku ändern und die Einrichtung ausführen, und der Filter des Wächters für Netzbefehle ruht (`curl` und `wget`
+  bleiben über die Berechtigungen gesperrt). Unverändert gilt: Eingang nur nach PII-Prüfung, Dark Web nur mit
+  Freigabe, Fallakten schreibgeschützt, keine Selbstfreigabe, `.env` gesperrt. Weil dann auch der Wächter
+  selbst änderbar ist, schützen diese Sperren vor Versehen, nicht vor Manipulation: keine echten Fälle, solange
+  der Schalter ein ist. `python3 tools/pruefen.py` zeigt den Zustand unter «Konfiguration», und
+  `OSINT_WAECHTER=voll` in der Umgebung erzwingt den vollen Schutz. Zum Beenden `AUFBAUPHASE = False` setzen,
+  die zehn Verbote für die Grundlagen in `.claude/settings.json` zurückholen und die Hinweise in `README.md` und
+  `CLAUDE.md` entfernen. Der Selbsttest schlägt an, bis alles zusammenpasst.
 - **Die PII-Prüfung erkennt keine Namen.** Sie ist ein Sicherheitsnetz für Muster, kein Ersatz für die Pseudonymisierung.
 - **`@datei` im Prompt umgeht den Wächter.** Claude Code fügt so erwähnte Dateien ohne Werkzeugaufruf ein.
   Dokumente deshalb nie mit `@` anhängen, sondern über `/ermittlung` oder `fall.py` aufnehmen.
@@ -650,7 +665,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 38 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 39 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
