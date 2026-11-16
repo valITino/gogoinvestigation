@@ -68,10 +68,11 @@ try:
                          quellen_krypto as krypto, quellen_szene as szene, quellen_urlscan as us, quellen_web as web)
     from gateway.akte import belege_lesen, jsonl_lesen, kette, kette_pruefen
     from gateway.quellen import ROBIN_WERKZEUGE, alle_werkzeuge
-    from tools import (_kryptowelt as kw, _vorlagen as vorlagen, beleg, einrichten, fall as fallwerkzeug, protokoll as protokollwerkzeug,
-                       rapport)
+    from tools import (_kryptowelt as kw, _pseudo as ps, _vorlagen as vorlagen, beleg, einrichten, fall as fallwerkzeug,
+                       protokoll as protokollwerkzeug, pseudo_messen as messen_ps, pseudo_pruefsatz as pruefsatz,
+                       pseudonymisieren as werkzeug_ps, rapport, vornamen as vornamen_ps)
     from tools._oberflaeche import Abbruch, Oberflaeche
-    from tools.pii_pruefung import pruefen as pii_pruefen
+    from tools.pii_pruefung import MUSTER as pii_muster, pruefen as pii_pruefen
 except ModuleNotFoundError as e:
     print(f"{plattform.FEHLT} Python-Paket '{e.name}' fehlt. Bitte {plattform.SETUP} ausführen.")
     sys.exit(1)
@@ -2556,6 +2557,428 @@ def _():
     regeln = lesen(REPO / ".gitattributes")
     for muster in ("*.sh", "*.ps1", "faelle/**"):
         assert muster in regeln, f".gitattributes: Regel für {muster} fehlt"
+
+
+# --------------------------------------------------------------------------- Lokale Pseudonymisierung (tools/pseudonymisieren.py)
+
+PS_KOPF = ("Rapport-Nr.: R-2026-000001\nSachbearbeiter: Wm Peter Beispiel\n\nName: Muster\nVorname: Hans\nGeburtsdatum: 01.02.1980\n"
+           "Adresse: Dorfstrasse 12\n         8000 Zürich\nTelefon: 070 123 45 67\nE-Mail: hans.muster@post.example\n"
+           "AHV-Nr.: 756.1234.5678.97\nIBAN: CH93 0076 2011 6238 5295 7\nGeschädigte Firma: Muster Treuhand AG\n\n")
+
+
+def ps_lauf(text: str, **angaben):
+    erk = ps.erkennen(text, **angaben)
+    return erk, ps.anwenden(erk, angaben.get("entscheide"))
+
+
+@test("Pseudonymisierung, Schicht 0: technische Indikatoren bleiben zeichengenau stehen, auch wenn ein Name darin vorkommt")
+def _():
+    technik = ["203.0.113.45", "2001:db8::17", "https://login.boese.example/muster/konto?id=7", "hxxps://boese[.]example/auth",
+               "portal.boese.example.org", "a1" * 32, "0x" + "ab" * 20, "bc1q" + "q" * 38, "T" + "A" * 33, "k" * 56 + ".onion",
+               "Rechnung_Muster.pdf.exe", "kunde[at]boese[.]example", "9f" * 16]
+    text = PS_KOPF + "Sachverhalt\n" + "\n".join(f"{i + 1}. Festgestellt wurde {t} am 14.03.2026 um 09:14 Uhr." for i, t in enumerate(technik)) \
+        + "\nDer Absender war support@boese.example. Der Kontakt lief bei Muster.In der Folge zahlte Hans Muster CHF 12'500.00.\n"
+    erk, erg = ps_lauf(text)
+    for t in technik:
+        assert t in erg.text, f"technischer Indikator verändert: {t}"
+    assert erg.text.count("14.03.2026") == len(technik) and "09:14 Uhr" in erg.text and "12'500.00" in erg.text, "Zeit oder Betrag verändert"
+    assert "Muster.In" not in erg.text and "Hans Muster" not in erg.text, "ein fehlendes Leerzeichen hat den Namen als Domain geschützt"
+    geschuetzt = [f for f in erk.funde if f.frage == "geschuetzt"]
+    assert geschuetzt and not any(f.sicher for f in geschuetzt), "Name in URL oder Dateiname muss vorgelegt, nicht ersetzt werden"
+    # E-Mail-Adresse: Das Werkzeug kennt die Seite nicht und fragt
+    post = [f for f in erk.funde if f.frage == "seite"]
+    assert len(post) == 1 and erk.wortlaut(post[0]) == "support@boese.example", [erk.wortlaut(f) for f in post]
+    assert "support@boese.example" not in erg.text and erg.klaerung, "ohne Antwort wird ersetzt und unter «Zur Klärung» genannt"
+    ent = ps.Entscheide(seite={post[0].angabe: "taeter"})
+    bleibt = ps.anwenden(ps.erkennen(text, entscheide=ent), ent)
+    assert "support@boese.example" in bleibt.text and not bleibt.klaerung, "die Adresse der Täterseite muss stehen bleiben"
+    assert "hans.muster@post.example" not in bleibt.text, "die Adresse der Geschädigten muss ersetzt sein"
+    # Ein schon pseudonymisiertes Dokument bleibt, wie es ist, und neue Nummern beginnen dahinter
+    _, zweit = ps_lauf("[PERSON_04] meldete sich. Name: Muster\nVorname: Hans\n")
+    assert "[PERSON_04] meldete" in zweit.text and "[PERSON_05]" in zweit.text, zweit.text
+
+
+@test("Pseudonymisierung, Schicht 1: Feldmarken auf derselben Zeile, auf der nächsten, in Tabellen, mit und ohne Doppelpunkt")
+def _():
+    lagen = {
+        "Doppelpunkt": "Name: Muster\nVorname: Hans\nGeburtsdatum: 01.02.1980\n",
+        "ohne Doppelpunkt": "Name                Muster\nVorname             Hans\nGeb.-Datum          01.02.1980\n",
+        "ein Leerzeichen": "Name Muster\nVorname Hans\nGeburtsdatum 01.02.1980\n",
+        "nächste Zeile": "Name\nMuster\nVorname\nHans\nGeburtsdatum:\n01.02.1980\n",
+        "Tabelle": "| Name | Muster |\n| Vorname | Hans |\n| Geburtsdatum | 01.02.1980 |\n",
+        "Tabulator": "Name:\tMuster\nVorname:\tHans\nGeburtsdatum\t01.02.1980\n",
+        "Spaltenkopf": "| Name | Vorname | Geburtsdatum |\n|---|---|---|\n| Muster | Hans | 01.02.1980 |\n| Beispiel | Anna | 03.04.1975 |\n",
+        "mehrere Felder": "Name: Muster    Vorname: Hans    Geburtsdatum: 01.02.1980\n",
+        "zusammengesetzt": "Name/Vorname: Muster / Hans\nGeb.: 01.02.1980\n",
+        "mit Komma": "Name, Vorname: Muster, Hans\nGeboren am: 01.02.1980\n",
+        "Grossbuchstaben": "Geschädigter: MUSTER Hans, geb. 01.02.1980, von Zürich\n",
+        "französisch": "Nom: Muster\nPrénom: Hans\nDate de naissance: 01.02.1980\n",
+    }
+    for name, kopf in lagen.items():
+        erk, erg = ps_lauf(kopf + "\nSachverhalt\nHans Muster erstattete Anzeige.\n")
+        personen = {a.wert for a in erk.angaben.values() if a.typ == "PERSON"}
+        assert "Hans Muster" in personen, f"{name}: Person nicht geerntet, gefunden {personen}"
+        assert not re.search(r"Muster|Hans|01\.02\.1980", erg.text), f"{name}: stehen geblieben in\n{erg.text}"
+        assert len(re.findall(r"\[PERSON_01\]", erg.text)) >= 2, f"{name}: Feld und Fliesstext müssen denselben Platzhalter tragen\n{erg.text}"
+    erk, erg = ps_lauf(lagen["Spaltenkopf"])
+    assert {"Hans Muster", "Anna Beispiel"} <= {a.wert for a in erk.angaben.values()} and "[PERSON_02]" in erg.text, erg.text
+    # Die Adresse läuft auf der nächsten Zeile weiter und bleibt eine Angabe
+    erk, erg = ps_lauf("Adresse: Dorfstrasse 12\n         8000 Zürich\nWohnhaft in 8000 Zürich, an der Dorfstr. 12.\n")
+    adressen = [a.wert for a in erk.angaben.values() if a.typ == "ADRESSE"]
+    assert adressen == ["Dorfstrasse 12, 8000 Zürich"] and erg.text.endswith("[ADRESSE_01]\nWohnhaft in [ADRESSE_01].\n"), (adressen, erg.text)
+    # Was wie eine Marke beginnt, aber keine ist, wird nicht geerntet
+    for satz in ("Name ist der Polizei nicht bekannt.", "Name: unbekannt", "Adresse unbekannt, Telefon folgt.",
+                 "12. Sitz der Firma: Dorfstrasse 12, 8000 Zürich."):
+        erk, erg = ps_lauf(satz + "\n")
+        assert not [a for a in erk.angaben.values() if a.typ in ("PERSON", "ORG")], f"«{satz}» wurde als Feld gelesen: {list(erk.angaben)}"
+    assert "[ADRESSE_01]" in erg.text and "Sitz der Firma:" in erg.text, erg.text
+    erk, _ = ps_lauf("Geschädigte: Muster Treuhand AG\n")
+    assert [a.typ for a in erk.angaben.values()] == ["ORG"], "eine Firma hinter einer Personenmarke ist eine Organisation"
+
+
+@test("Pseudonymisierung: Eine andere Feldmarken-Liste ersetzt die Datei, ohne dass Code ändert")
+def _():
+    eigene = PROJEKT / "eigene_feldmarken.txt"
+    eigene.write_text("# Liste des Hauses\nBetroffene/r ; PERSON ; nachname-vorname\nGeb-Dat ; GEBDAT\nNatel-Nr ; TEL\nHalter ; PERSON ; name\n",
+                      encoding="utf-8")
+    marken = ps.feldmarken_lesen(eigene)
+    text = "Betroffene/r: Muster Hans\nGeb-Dat: 01.02.1980\nNatel-Nr: 070 123 45 67\n\nMuster zahlte am 14.03.2026.\n"
+    erk, erg = ps_lauf(text, marken=marken)
+    assert not re.search(r"Muster|Hans|1980|070", erg.text) and "14.03.2026" in erg.text, erg.text
+    _, ohne = ps_lauf(text)
+    assert "Muster Hans" in ohne.text, "mit der mitgelieferten Liste darf diese Marke nichts ernten"
+    assert "Betroffene/r" in pruefsatz.rapport(1, marken).text + pruefsatz.rapport(2, marken).text, "der Prüfsatz muss die Marken der Liste tragen"
+    for inhalt, erwartet in (("Name ; PERSON\nGeburt ; DATUM\n", "Zeile 2"), ("Name ; PERSON ; strasse\n", "Zeile 1"), ("# nur Kommentar\n", "keine Feldmarke")):
+        eigene.write_text(inhalt, encoding="utf-8")
+        try:
+            ps.feldmarken_lesen(eigene)
+            raise AssertionError(f"fehlerhafte Liste angenommen: {inhalt!r}")
+        except ValueError as e:
+            assert erwartet in str(e), e
+    eigene.unlink()
+    assert len(ps.feldmarken_lesen().liste) > 50 and "VORLÄUFIG" in lesen(PROJEKT / "tools" / "feldmarken.txt"), "die mitgelieferte Liste nennt sich vorläufig"
+
+
+@test("Pseudonymisierung, Schicht 2: Fortpflanzung in allen Schreibweisen, gleiche Angabe, gleicher Platzhalter")
+def _():
+    kopf = PS_KOPF + "Name: Müller-Meier\nVorname: Jürg Peter\n\n"
+    formen = ["Hans Muster", "MUSTER Hans", "Muster, Hans", "Muster Hans", "H. Muster", "Herr Muster", "Musters Konto", "Hans\n   Muster",
+              "Mus-\n   ter", "hans muster", "HANS MUSTER", "Jürg Peter Müller-Meier", "Juerg Mueller-Meier", "Jurg Muller Meier",
+              "J. P. Müller-Meier", "J.P. Müller-Meier", "Müller-Meier Jürg", "Mül-\nler-Meier"]
+    text = kopf + "Sachverhalt\n" + "\n".join(f"{i + 1}. Laut {f} stimmt das." for i, f in enumerate(formen)) + "\n"
+    erk, erg = ps_lauf(text)
+    rest = erg.text.split("Sachverhalt")[1]
+    assert not re.search(r"muster|hans|m[uü]e?ller|meier|j[uü]e?rg", rest, re.I), f"Schreibweise stehen geblieben:\n{rest}"
+    assert set(re.findall(r"\[PERSON_\d+\]", rest)) == {"[PERSON_02]", "[PERSON_03]"}, rest
+    # Nummern und Adressen in anderer Schreibung
+    andere = {"TEL": ["+41 70 123 45 67", "0041 70 123 45 67", "070/123 45 67", "0701234567", "+41 (0)70 123 45 67"],
+              "GEBDAT": ["1.2.1980", "1. Februar 1980", "1980-02-01", "01.02.80"], "KONTO": ["CH9300762011623852957"],
+              "AHV": ["7561234567897", "756 1234 5678 97"], "ADRESSE": ["Dorfstr. 12", "8000 Zürich", "Dorfstrasse 12, 8000 Zürich"],
+              "ORG": ["Muster Treuhand", "MUSTER TREUHAND AG"], "EMAIL": ["Hans.Muster@post.example"]}
+    for typ, schreibungen in andere.items():
+        for s in schreibungen:
+            _, erg = ps_lauf(PS_KOPF + f"Im Formular steht {s} als Angabe.\n")
+            zeile = erg.text.splitlines()[-1]
+            assert zeile == f"Im Formular steht [{typ}_01] als Angabe.", f"{typ} «{s}»: {zeile}"
+    # Dieselbe Familie, eine andere Person: nicht still dem Ersten zuschlagen, sondern vorlegen
+    erk, erg = ps_lauf(PS_KOPF + "Frau Anna Muster war dabei. Kollegin Koch kam mit Muster.\n")
+    assert "Anna Muster" in erg.text and "mit [PERSON_02]." in erg.text, erg.text
+    assert any(f.wert == "Anna Muster" and not f.sicher for f in erk.funde), "die zweite Person muss als Kandidat erscheinen"
+    # Kurze und gewöhnliche Wörter pflanzen sich nicht von selbst fort
+    erk, erg = ps_lauf("Name/Vorname: Le Coultre, Anna\nKürzel: mot\n\nLe 14 mars, le mot de passe a été changé par Le Coultre.\n")
+    assert erg.text.count("Le 14 mars, le mot de passe") == 1 and erg.text.rstrip().endswith("par [PERSON_01]."), erg.text
+
+
+@test("Pseudonymisierung, Schicht 3: Muster mit Prüfsumme aus der PII-Prüfung, das Stichwort bleibt, das Ereignis auch")
+def _():
+    assert ps.MUSTER is pii_muster, "Schicht 3 muss die Muster der PII-Prüfung wiederverwenden, keine eigenen"
+    text = ("AHV 756.1234.5678.97, IBAN CH93 0076 2011 6238 5295 7, falsche IBAN CH00 ABCD EFGH IJKL MNOP Q, Tel. 070 123 45 67, "
+            "geb. 01.02.1980, Fahrzeug ZH 123 456, Karte 5500 0000 0000 0004, wohnhaft Dorfstrasse 12, 8000 Zürich. "
+            "Ereignis am 14.03.2026 um 09:14 Uhr, Zeitstempel 20260928101500.\n")
+    erk, erg = ps_lauf(text)
+    erwartet = ("AHV [AHV_01], IBAN [KONTO_01], falsche IBAN CH00 ABCD EFGH IJKL MNOP Q, Tel. [TEL_01], geb. [GEBDAT_01], "
+                "Fahrzeug [KFZ_01], Karte [KONTO_02], wohnhaft [ADRESSE_01]. Ereignis am 14.03.2026 um 09:14 Uhr, Zeitstempel 20260928101500.\n")
+    assert erg.text == erwartet, erg.text
+    assert all(f.schicht == 3 and f.sicher for f in erk.funde), [(f.schicht, erk.wortlaut(f)) for f in erk.funde]
+    assert dict(erg.zuordnung)["[ADRESSE_01]"] == "Dorfstrasse 12, 8000 Zürich" and dict(erg.zuordnung)["[GEBDAT_01]"] == "01.02.1980"
+    funde, platzhalter = pii_pruefen(erg.text)
+    assert not [f for f in funde if f.stufe == "sperre"] and platzhalter["KONTO"] == 2, "das Ergebnis muss die PII-Prüfung bestehen"
+    # Die PII-Prüfung selbst erkennt jetzt auch Nummern ohne Trennzeichen und mit Schrägstrich
+    for nummer in ("0701234567", "070/123 45 67", "044/555 01 42"):
+        assert [f for f in pii_pruefen(f"Erreichbar unter {nummer}.")[0] if f.art == "Telefonnummer"], f"nicht erkannt: {nummer}"
+    harmlos = "Hash 0123456789abcdef0123456789abcdef, Version 10.0703.1, Betrag 0701234567.50, Kennung A-0701234567"
+    assert not [f for f in pii_pruefen(harmlos)[0] if f.stufe == "sperre"], [(f.art, f.maske) for f in pii_pruefen(harmlos)[0]]
+
+
+@test("Pseudonymisierung, Schicht 4 und 5: Namensliste wird ersetzt, Kandidaten werden vorgelegt und nie von selbst ersetzt")
+def _():
+    text = ("Herr Keller rief an. Frau Dr. Anna Beispiel bestätigte es. Mme Favre et M. Rochat étaient présents. Sig.ra Bernasconi "
+            "war dabei. Peter Huber zahlte. Die Huber Elektro AG lieferte, ebenso die Garage Rossi. ZBINDEN Gieri unterschrieb. "
+            "Herr Staatsanwalt entscheidet. Kellers Angaben stimmen. Der Zeuge Xyzabc Fremdling half. Der Wohnort ist 5000 Aarau AG.\n")
+    erk, erg = ps_lauf(text)
+    vorgelegt = {f.wert for f in erk.funde}
+    for name in ("Keller", "Anna Beispiel", "Favre", "Rochat", "Bernasconi", "Peter Huber", "Huber Elektro AG", "Garage Rossi", "ZBINDEN Gieri"):
+        assert name in vorgelegt, f"«{name}» nicht vorgelegt: {sorted(vorgelegt)}"
+    assert not {"Staatsanwalt", "Aarau AG", "Xyzabc Fremdling"} & vorgelegt, sorted(vorgelegt)
+    assert erg.text == text and not erg.zuordnung and erg.offen == len(erk.funde), "ohne Bestätigung darf Schicht 5 nichts ersetzen"
+    v = ps.Vorgang(text)
+    n = v.bestaetigen(next(f for f in v.kandidaten() if f.wert == "Keller"))
+    neu = v.ergebnis().text
+    assert n == 2 and "Herr [PERSON_01] rief" in neu and "[PERSON_01] Angaben" in neu and "Anna Beispiel" in neu, neu
+    v.bestaetigen(next(f for f in v.kandidaten() if f.wert == "Huber Elektro AG"))
+    v.verwerfen(next(f for f in v.kandidaten() if f.wert == "Favre"))
+    neu = v.ergebnis().text
+    assert "Die [ORG_01] lieferte" in neu and "Mme Favre" in neu and "Peter Huber zahlte" in neu, neu
+    # Schicht 4: Was der Sachbearbeiter als Namensliste mitgibt, wird ohne Rückfrage ersetzt
+    v = ps.Vorgang(text, namensliste=["Xyzabc Fremdling", ("ORG", "Garage Rossi")])
+    neu = v.ergebnis().text
+    assert "Der Zeuge [PERSON_01] half" in neu and "die [ORG_01]." in neu, neu
+    assert all(f.quelle == 4 for f in v.erk.funde if f.sicher), "die Herkunft «Namensliste» muss am Fund stehen"
+    # Ein weiterer Erkenner (später etwa ein lokales Sprachmodell) hängt sich über dieselbe Schnittstelle an und legt nur vor
+    erk, erg = ps_lauf(text, erkenner=[lambda t: [(t.index("Xyzabc"), t.index("Fremdling") + 9, "PERSON", "Sprachmodell")]])
+    zusatz = [f for f in erk.funde if f.schicht == 7]
+    assert len(zusatz) == 1 and not zusatz[0].sicher and "Xyzabc Fremdling" in erg.text, "ein weiterer Erkenner darf nur vorlegen"
+    assert len(ps.vornamen_lesen()) > 500 and "VORLÄUFIG" in lesen(PROJEKT / "tools" / "vornamen.txt")
+
+
+@test("Pseudonymisierung, Schicht 6 und Zuordnung: Entscheide gelten, die Tabelle wird über mehrere Dokumente fortgeschrieben")
+def _():
+    v1 = ps.Vorgang(PS_KOPF + "Hans Muster zahlte an support@boese.example. Frau Erika Neuhaus half.\n")
+    assert [a.wert for a in v1.fragen()] == ["support@boese.example"], "die Seite einer fremden E-Mail-Adresse muss erfragt werden"
+    v1.seite(v1.fragen()[0].schluessel, "taeter")
+    v1.bestaetigen(next(f for f in v1.kandidaten() if f.wert == "Erika Neuhaus"))
+    e1 = v1.ergebnis()
+    assert "support@boese.example" in e1.text and "Frau [PERSON_03] half" in e1.text and not e1.klaerung, e1.text
+    tabelle = PROJEKT / "zuordnung_test.csv"
+    ps.zuordnung_schreiben(tabelle, e1.zuordnung + [("[FIRMA_07]", "fremder Eintrag; mit Strichpunkt")])
+    zeilen = lesen(tabelle).splitlines()
+    assert zeilen[0] == "[PERSON_01];Peter Beispiel" and zeilen[1] == "[PERSON_02];Hans Muster", zeilen[:3]
+    assert all(re.match(r"\[[A-ZÄÖÜ]{2,20}_\d{1,3}\];", z) for z in zeilen), "Format von tools/reidentifizieren.py: [TYP_01];Klartext"
+    if not WINDOWS:
+        assert tabelle.stat().st_mode & 0o077 == 0, "die Zuordnungstabelle darf nur ihr Besitzer lesen"
+    bestehend = ps.zuordnung_lesen(tabelle)
+    assert bestehend[-1] == ("[FIRMA_07]", "fremder Eintrag; mit Strichpunkt")
+    # Nachtrag: dieselben Personen stehen nur noch im Fliesstext
+    v2 = ps.Vorgang("Nachtrag vom 20.03.2026\nHerr Muster meldete sich erneut, zusammen mit Frau Carla Zweit. H. Muster ist unter 0701234567 "
+                    "erreichbar. Neuhaus bestätigte das. P. Beispiel rapportiert.\n", zuordnung=bestehend)
+    v2.bestaetigen(next(f for f in v2.kandidaten() if f.wert == "Carla Zweit"))
+    e2 = v2.ergebnis()
+    assert e2.text == ("Nachtrag vom 20.03.2026\nHerr [PERSON_02] meldete sich erneut, zusammen mit Frau [PERSON_04]. [PERSON_02] ist unter "
+                       "[TEL_01] erreichbar. [PERSON_03] bestätigte das. [PERSON_01] rapportiert.\n"), e2.text
+    assert e2.zuordnung[:len(bestehend)] == bestehend and e2.neu == [("[PERSON_04]", "Carla Zweit")], e2.neu
+    # Typ ändern, einzelne Fundstelle verwerfen, eine ganze Angabe verwerfen, Fehlendes ergänzen
+    v3 = ps.Vorgang(PS_KOPF + "Muster zahlte. Später zahlte Muster erneut an die Bank Beispielhaft.\n")
+    letzte = [f for f in v3.erk.funde if v3.erk.wortlaut(f) == "Muster"][-1]
+    v3.verwerfen(letzte)
+    assert v3.aufnehmen("Bank Beispielhaft", "ORG") == 1
+    v3.typ_aendern(next(k for k, a in v3.erk.angaben.items() if a.wert == "Peter Beispiel"), "ORG")
+    v3.angabe_entscheiden(next(k for k, a in v3.erk.angaben.items() if a.typ == "GEBDAT"), False)
+    e3 = v3.ergebnis()
+    assert "zahlte Muster erneut an die [ORG_03]" in e3.text and "Sachbearbeiter: Wm [ORG_01]" in e3.text and "01.02.1980" in e3.text, e3.text
+    try:
+        v3.aufnehmen("x", "UNSINN")
+        raise AssertionError("unbekannter Typ angenommen")
+    except ValueError:
+        pass
+    assert json.dumps(v3.als_dict(), ensure_ascii=False) and {"funde", "fragen", "geschuetzt", "typen"} <= set(v3.als_dict()), "Stand als Daten für die Oberfläche"
+    # Domain und IP-Adresse bleiben geschützt, bis der Mensch sie ausdrücklich den Geschädigten zuschreibt
+    v4 = ps.Vorgang("Der Server 203.0.113.45 und https://portal.muster-treuhand.example/login gehören der Geschädigten, 198.51.100.7 nicht.\n")
+    assert v4.ergebnis().text == v4.text and not v4.ergebnis().zuordnung, "ohne Entscheid bleibt Infrastruktur stehen"
+    assert v4.aufnehmen("muster-treuhand.example", "DOMAIN") == 1 and v4.aufnehmen("203.0.113.45", "IP") == 1
+    assert v4.ergebnis().text == "Der Server [IP_01] und https://[DOMAIN_01]/login gehören der Geschädigten, 198.51.100.7 nicht.\n", v4.ergebnis().text
+    tabelle.unlink()
+
+
+@test("Pseudonymisierung am Terminal: Der Dialog führt durch vier Schritte, ohne Terminal und aus Claude Code heraus läuft nichts")
+def _():
+    text = PS_KOPF + "Hans Muster zahlte an support@boese.example. Frau Erika Neuhaus half. Herr Keller auch.\n"
+    # Falsche Taste, Täterseite, Kandidat annehmen, Kandidat ablehnen, eine Angabe annehmen, eine einzeln durchgehen (zweite
+    # Fundstelle stehen lassen), den Rest annehmen, zuletzt den abgelehnten Namen doch noch von Hand ergänzen
+    antworten = iter(["x", "t", "j", "n", "", "e", "", "n", "", "a", "Keller", "", ""])
+    bildschirm: list[str] = []
+    v = ps.Vorgang(text)
+    ergebnis = werkzeug_ps.Dialog(v, lesen=lambda frage: next(antworten), zeigen=bildschirm.append).alles()
+    gezeigt = "\n".join(bildschirm)
+    for stueck in ("Schritt 1 von 4", "Schritt 2 von 4", "Schritt 3 von 4", "Schritt 4 von 4", "⟦Erika Neuhaus⟧", "Bitte eine der Tasten"):
+        assert stueck in gezeigt, f"fehlt auf dem Bildschirm: {stueck}"
+    assert not list(antworten), "der Dialog hat nicht alle Fragen gestellt"
+    assert "Frau [PERSON_03] half. Herr [PERSON_04] auch." in ergebnis.text and "support@boese.example" in ergebnis.text, ergebnis.text
+    assert "Sachbearbeiter: Wm [PERSON_01]" in ergebnis.text and "Name: [PERSON_02]\nVorname: Hans\n" in ergebnis.text, ergebnis.text
+    try:
+        werkzeug_ps.Dialog(ps.Vorgang(text), lesen=lambda frage: "q", zeigen=lambda s: None).alles()
+        raise AssertionError("«q» muss abbrechen")
+    except werkzeug_ps.Abbruch:
+        pass
+    assert werkzeug_ps.innerhalb(PROJEKT / "faelle" / "x.txt") and not werkzeug_ps.innerhalb(PROJEKT.parent / "anderswo" / "x.txt")
+    skript = str(PROJEKT / "tools" / "pseudonymisieren.py")
+    sauber = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+    r = subprocess.run([sys.executable, skript, "x.txt", "--zuordnung", "z.csv", "--ausgabe", "aus"], capture_output=True, text=True,
+                       encoding="utf-8", stdin=subprocess.DEVNULL, env=sauber)
+    assert r.returncode == 2 and "Terminal" in r.stderr, r.stderr
+    r = subprocess.run([sys.executable, skript, "x.txt", "--zuordnung", "z.csv", "--ausgabe", "aus"], capture_output=True, text=True,
+                       encoding="utf-8", stdin=subprocess.DEVNULL, env={**sauber, "CLAUDECODE": "1"})
+    assert r.returncode == 2 and "Claude Code" in r.stderr, r.stderr
+
+
+if not WINDOWS:     # ein Pseudo-Terminal gibt es nur unter Linux und macOS
+    @test("Pseudonymisierung im echten Terminal: Dokument rein, Dokument und Zuordnungstabelle raus, PII-Prüfung am Schluss")
+    def _():
+        import pty
+        import select
+        import time
+        ablage = Path(tempfile.mkdtemp(prefix="osint-klartext-"))
+        try:
+            (ablage / "rapport.txt").write_text(PS_KOPF + "Hans Muster zahlte an support@boese.example. Frau Erika Neuhaus half.\n", encoding="utf-8")
+            (ablage / "namen.txt").write_text("# Namensliste\nORG;Bank Beispielhaft\n", encoding="utf-8")
+            umgebung = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE") or k == "CLAUDE_PROJECT_DIR"}
+            umgebung.update({"TERM": "dumb", "COLUMNS": "200", "NO_COLOR": "1"})
+            befehl = [sys.executable, str(PROJEKT / "tools" / "pseudonymisieren.py"), str(ablage / "rapport.txt"),
+                      "--zuordnung", str(ablage / "zuordnung.csv"), "--ausgabe", str(ablage / "aus"), "--namen", str(ablage / "namen.txt")]
+            vorher = sorted(p.name for p in PROJEKT.iterdir())
+            pid, fd = pty.fork()
+            if pid == 0:
+                try:
+                    os.execve(sys.executable, befehl, umgebung)
+                finally:
+                    os._exit(127)
+            roh, ab, schluss = b"", 0, time.time() + 90
+            while time.time() < schluss:
+                bereit, _, _ = select.select([fd], [], [], 0.4)
+                if bereit:
+                    try:
+                        stueck = os.read(fd, 65536)
+                    except OSError:         # Linux meldet so, dass das Programm sein Terminal geschlossen hat
+                        break
+                    if not stueck:
+                        break
+                    roh += stueck
+                    continue
+                neu = roh[ab:].decode("utf-8", "replace").replace("\r", "")
+                if not neu.rstrip(" ").endswith(":"):
+                    continue
+                frage = neu.rstrip(" ").splitlines()[-1]
+                taste = "t" if "Täterseite" in frage else "j" if "[j/n/t/k/r]" in frage else "a" if "[Enter/e/n/t/a]" in frage else ""
+                ab = len(roh)
+                os.write(fd, (taste + "\n").encode())
+            else:
+                os.kill(pid, 9)
+            _, status = os.waitpid(pid, 0)
+            bild = roh.decode("utf-8", "replace")
+            assert os.waitstatus_to_exitcode(status) == 0, f"Rückgabewert {os.waitstatus_to_exitcode(status)}:\n{bild[-1500:]}"
+            ergebnis = lesen(ablage / "aus" / "rapport_pseudonymisiert.txt")
+            assert "Sachbearbeiter: Wm [PERSON_01]" in ergebnis and "support@boese.example" in ergebnis and "Frau [PERSON_03] half" in ergebnis, ergebnis
+            assert not re.search(r"Muster|Hans|Neuhaus|1980|Dorfstrasse", ergebnis), ergebnis
+            tabelle = lesen(ablage / "zuordnung.csv")
+            assert "[PERSON_02];Hans Muster" in tabelle and (ablage / "zuordnung.csv").stat().st_mode & 0o077 == 0, tabelle
+            assert "PII-Prüfung: rapport_pseudonymisiert.txt" in bild and "Sperrfund(e)" not in bild, bild[-1200:]
+            assert sorted(p.name for p in PROJEKT.iterdir()) == vorher, "im Projektordner darf nichts entstehen"
+        finally:
+            plattform.baum_loeschen(ablage)
+
+
+@test("Pseudonymisierung arbeitet ohne Netz und nur mit der Standardbibliothek")
+def _():
+    import ast
+    eigene = {"gateway", "tools", "__future__"}
+    for name in ("_pseudo.py", "pseudonymisieren.py", "pseudo_pruefsatz.py", "pseudo_messen.py", "vornamen.py", "pii_pruefung.py"):
+        baum = ast.parse(lesen(PROJEKT / "tools" / name))
+        module = {n.names[0].name.split(".")[0] for n in ast.walk(baum) if isinstance(n, ast.Import)} \
+            | {(n.module or "").split(".")[0] for n in ast.walk(baum) if isinstance(n, ast.ImportFrom)}
+        fremd = module - eigene - set(sys.stdlib_module_names)
+        assert not fremd, f"{name} braucht ein Zusatzpaket: {fremd}"
+        netz = module & {"socket", "urllib", "http", "ssl", "ftplib", "smtplib", "asyncio", "httpx", "requests"}
+        assert netz <= ({"socket"} if name == "pseudonymisieren.py" else set()), f"{name} bindet ein Netzmodul ein: {netz}"
+    probe = ("import sys, importlib; sys.path.insert(0, sys.argv[1]); w = importlib.import_module('tools.pseudonymisieren'); "
+             "w.ohne_netz(); import socket; socket.create_connection(('192.0.2.1', 9))")
+    r = subprocess.run([sys.executable, "-c", probe, str(PROJEKT)], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode != 0 and "ohne Netz" in r.stderr, r.stderr[-300:]
+
+
+@test("Wächter: Pseudonymisieren und Zurückführen bleiben dem Sachbearbeiter, in jeder Phase und in jeder Shell")
+def _():
+    befehle = ("python3 tools/pseudonymisieren.py /sicher/rapport.docx --zuordnung /sicher/z.csv --ausgabe /sicher/aus",
+               "python tools\\pseudonymisieren.py C:\\sicher\\rapport.docx --zuordnung C:\\sicher\\z.csv --ausgabe C:\\sicher\\aus",
+               "script -qc 'python3 tools/pseudonymisieren.py x --zuordnung z --ausgabe a' /dev/null",
+               "python3 -c 'import tools.pseudonymisieren as w; w.main()'",
+               "python3 tools/reidentifizieren.py 2026-0412 --zuordnung /sicher/z.csv --ausgabe /sicher/ablage/")
+    for befehl in befehle:
+        for shell_name in ("Bash", "PowerShell"):
+            assert abgelehnt(waechter(shell_name, command=befehl)), f"{shell_name} nicht verhindert: {befehl}"
+            _, aufbau = hook("waechter.py", {"hook_event_name": "PreToolUse", "tool_name": shell_name, "tool_input": {"command": befehl}},
+                             env={"OSINT_WAECHTER": ""})
+            assert abgelehnt(aufbau), f"in der Aufbauphase nicht verhindert: {befehl}"
+    for befehl in ("python3 tools/pseudo_messen.py", "python3 tools/pseudo_pruefsatz.py --zeigen 3", "python3 tools/pii_pruefung.py x.txt"):
+        assert not abgelehnt(waechter("Bash", command=befehl)), f"muss ausführbar sein: {befehl}"
+    verbote = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]["deny"]
+    for py in ("python3", "python"):
+        for name in ("pseudonymisieren", "reidentifizieren"):
+            assert f"Bash({py} tools/{name}.py *)" in verbote, f"Verbot für {py} tools/{name}.py fehlt in settings.json"
+    assert "pseudonymisieren.py" in lesen(REPO / "CLAUDE.md"), "CLAUDE.md nennt das Verbot nicht"
+
+
+@test("Prüfsatz: über 200 synthetische Rapporte, immer gleich, jede Feldmarke kommt vor, nichts darin kann echt sein")
+def _():
+    marken = ps.feldmarken_lesen()
+    satz = pruefsatz.pruefsatz(pruefsatz.ANZAHL, marken)
+    assert len(satz) >= 200 and satz[16].text == pruefsatz.rapport(17, marken).text, "der Prüfsatz muss aus der Nummer entstehen, immer gleich"
+    alles = "\n".join(d.text for d in satz)
+    fehlend = [m.marke for m in marken.liste if not re.search(r"(?m)^[| ]*" + re.escape(m.marke) + r"(?:[ \t]*[:|]|[ \t]{2,}|\t|[ \t]*$| )", alles)]
+    assert not fehlend, f"Feldmarken ohne Vorkommen im Prüfsatz: {fehlend}"
+    formen = {g.form for d in satz for g in d.gold}
+    assert {"voll", "gross", "komma", "initial", "genitiv", "umbruch", "trennung", "klein", "umlaut", "anrede", "feld"} <= formen, formen
+    for d in satz[:60]:
+        for g in d.gold:
+            assert 0 <= g.start < g.ende <= len(d.text) and g.typ in ps.TYPEN
+            assert not any(a < g.ende and g.start < e for a, e, _ in d.technik), f"#{d.nr}: Lösung und technischer Indikator überschneiden sich"
+        assert {g.wer for g in d.gold} - d.in_feld(), f"#{d.nr}: es fehlen Angaben, die nur im Fliesstext stehen"
+    for nummer in set(re.findall(r"(?<!\d)756[.\s]?\d{4}[.\s]?\d{4}[.\s]?\d{2}(?!\d)", alles)):
+        z = re.sub(r"\D", "", nummer)
+        summe = sum(int(c) * (3 if i % 2 else 1) for i, c in enumerate(z[:12]))
+        assert (10 - summe % 10) % 10 != int(z[12]), f"AHV-Nummer mit gültiger Prüfziffer im Prüfsatz: {nummer}"
+    assert set(re.findall(r"CH\d{2} ?(\d{4}) ?(\d)", alles)) == {("0000", "0")}, "IBAN im Prüfsatz tragen die Banknummer 00000"
+    domains = {m.rsplit("@", 1)[1].lower() for m in re.findall(r"[\w.+-]+@[\w.-]+\.\w+", alles)}
+    assert all(d.endswith((".example", "example.com", "example.org", "example.net")) for d in domains), domains
+    for d in satz:
+        for g in d.gold:
+            if g.typ == "TEL":
+                nummer = ps.tel_schluessel(d.text[g.start:g.ende])
+                assert nummer[:3] in ("070", "072", "073") or nummer[3:8] == "55501", f"Telefonnummer, die vergeben sein könnte: #{d.nr}"
+
+
+@test("Messung am Prüfsatz: kein technischer Indikator verändert, Felder fast vollständig, Fliesstext braucht den Menschen")
+def _():
+    m = messen_ps.messen(45, mit_gegenprobe=False)
+    assert m["technik"] > 200 and m["technik_veraendert"] == 0 == m["technik_veraendert_ende"], "ein technischer Indikator wurde verändert"
+    feld, text = m["tabelle"]["feld:alle"], m["tabelle"]["text:PERSON"]
+    assert feld["n"] > 1000 and feld["nach 1"] > feld["nach 2"] >= feld["nach 3"], feld
+    assert feld["nach 3"] <= 0.01 * feld["n"], f"Angaben aus Feldern rutschen zu oft durch: {feld}"
+    assert text["nach 3"] > 0.9 * text["n"], f"Drittpersonen findet keine Schicht von selbst. Die Messung muss das zeigen: {text}"
+    assert text["mit 5"] < 0.3 * text["n"] and text["mit 4"] <= 0.02 * text["n"], text
+    assert m["falsch"].get("PERSON", 0) <= 0.002 * m["ersetzt"] and m["richtig"] > 0.6 * m["vorgelegt"], (m["falsch"], m["richtig"], m["vorgelegt"])
+    tabelle = messen_ps.tabellen(m)
+    assert "nach 3 (ohne Zutun)" in tabelle and "Fehlalarm" in tabelle
+    readme = lesen(REPO / "README.md")
+    assert messen_ps.ANFANG in readme and messen_ps.ENDE in readme, "im README fehlt die Tabelle der Messung"
+
+
+@test("Vornamenliste lässt sich aus einer Tabelle bauen, die schon auf dem Rechner liegt, mit Quelle und Bedingung im Kopf")
+def _():
+    import zipfile as zf
+    csv_datei, xlsx, ziel = PROJEKT / "vor.csv", PROJEKT / "vor.xlsx", PROJEKT / "vornamen_test.txt"
+    csv_datei.write_text("Vorname;1950;1951\nHANS;120;80\nZoé;15;12\nSelten;1;0\nTotal;999;999\n", encoding="utf-8")
+    blatt = ('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+             '<row><c t="s"><v>0</v></c><c><v>44</v></c></row><row><c t="inlineStr"><is><t>Anna-Maria</t></is></c><c><v>30</v></c></row>'
+             '</sheetData></worksheet>')
+    with zf.ZipFile(xlsx, "w") as z:
+        z.writestr("xl/sharedStrings.xml", '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>Jürg</t></si></sst>')
+        z.writestr("xl/worksheets/sheet1.xml", blatt)
+    n = vornamen_ps.bauen([csv_datei, xlsx], 20, "2025", vornamen_ps.QUELLE, vornamen_ps.BEDINGUNG, ziel)
+    gebaut = ps.vornamen_lesen(ziel)
+    assert n == 4 and gebaut == {"hans", "zoe", "juerg", "anna maria"}, gebaut
+    kopf = lesen(ziel)
+    assert "Bundesamt für Statistik" in kopf and "Ausgabe 2025" in kopf and "OPEN-BY" in kopf and "Kopie vom" in kopf, kopf[:400]
+    for datei in (csv_datei, xlsx, ziel):
+        datei.unlink()
 
 
 # --------------------------------------------------------------------------- Ausgabe

@@ -14,6 +14,7 @@ mit Adressen aus den Dokumentationsnetzen (203.0.113.0/24, 198.51.100.0/24, 192.
 python3 tools/selbsttest.py     # alle Selbsttests, ohne Netz
 python3 tools/pruefen.py        # Einrichtung und Konfiguration
 python3 tools/musterfall.py     # danach muss «git status» sauber sein
+python3 tools/pseudo_messen.py --pruefen   # nur nach Änderungen an der lokalen Pseudonymisierung oder ihren Listen
 ```
 
 Die CI baut den Musterfall auf drei Systemen und vergleicht ihn Byte für Byte. Ändert er sich gewollt, gehören

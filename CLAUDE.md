@@ -40,6 +40,7 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - Geleakte Datensätze herunterladen oder durchsuchen. Dass ein Leak existiert, ist die Feststellung.
 - Eine Onion-Seite öffnen, ohne sie vorher mit `onion_sperrliste` geprüft zu haben. Steht sie auf der Liste: nicht öffnen, melden.
 - `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das ist technisch gesperrt, und ein Umweg wird nicht gesucht.
+- `tools/pseudonymisieren.py` oder `tools/reidentifizieren.py` ausführen, ein Klartext-Dokument oder eine Zuordnungstabelle lesen. Beides gehört dem Sachbearbeiter, an einem eigenen Terminal ausserhalb von Claude Code.
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
 
 ## Aufbauphase

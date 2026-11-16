@@ -64,7 +64,8 @@ MUSTER = [
     ("IBAN", "sperre", re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b"), _iban_gueltig),
     ("Telefonnummer", "sperre", re.compile(
         r"(?<![\w.:/])(?:\+|00)\d{2}[\s.]?(?:\(0\))?[\s.]?\d{2}(?:[\s.]?\d{2,3}){3}(?!\d)"
-        r"|(?<![\w.:/-])0\d{2}[\s.]\d{3}[\s.]\d{2}[\s.]\d{2}(?!\d)"), None),
+        r"|(?<![\w.:/-])0\d{2}[\s./]\d{3}[\s.]\d{2}[\s.]\d{2}(?!\d)"       # 079 123 45 67, 079/123 45 67
+        r"|(?<![\w.:/+-])0[1-9]\d{8}(?![\w-]|\.\d)"), None),                    # 0791234567, ohne Trennzeichen
     ("Geburtsdatum", "sperre", re.compile(
         r"(?i)(?:\bgeb\.?|\bgeboren(?:\s+am)?|\bgeburtsdatum:?|\bjg\.?|\*)\s*\d{1,2}\.\s?\d{1,2}\.\s?(?:19|20)\d{2}\b"), None),
     ("Kontrollschild", "sperre", re.compile(rf"\b(?:{KANTONE})[ ·-]?\d{{3,6}}\b"), None),

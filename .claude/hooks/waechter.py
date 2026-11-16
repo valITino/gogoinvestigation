@@ -154,6 +154,11 @@ def shell(befehl: str) -> None:
         # Die Berechtigungen sperren .env nur für das Lesewerkzeug. Ein Befehl in der Shell käme sonst daran vorbei.
         ablehnen("Die Schlüsseldatei .env wird von Agenten weder gelesen noch verändert. Welche Schlüssel gesetzt sind, "
                  f"zeigt {plattform.PY} tools/pruefen.py (nur die Namen).")
+    if re.search(r"pseudonymisieren|reidentifizieren", b, re.I):
+        # Beide Werkzeuge arbeiten mit Klartext und der Zuordnungstabelle. Was sie zeigen und schreiben, darf kein Agent sehen.
+        ablehnen("Pseudonymisieren und Zurückführen macht der Sachbearbeiter selbst, an einem eigenen Terminal ausserhalb von "
+                 "Claude Code (tools/pseudonymisieren.py, tools/reidentifizieren.py). Ein Agent führt sie nicht aus und liest "
+                 "weder Klartext-Dokumente noch die Zuordnungstabelle.")
     if re.search(r"beleg\.py\s+erfassen", b, re.I):
         ablehnen("Einen Beleg von Hand erfasst nur der Sachbearbeiter am Terminal (tools/beleg.py). Ein Agent schreibt sich "
                  "keinen Beleg selbst. Fehlt eine Abklärung, steht sie im Rapport als «nicht geprüft».")

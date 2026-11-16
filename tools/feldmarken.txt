@@ -1,0 +1,168 @@
+# Feldmarken für tools/pseudonymisieren.py
+#
+# VORLÄUFIG. Diese Liste enthält übliche Marken aus Formularen und Rapportköpfen. Sie ist nicht die Liste
+# eurer Rapporte. Die Messwerte im README gelten für genau diese Datei. Wer die Liste ersetzt, misst neu:
+#     python3 tools/pseudo_messen.py
+#
+# Eine Zeile je Marke:   Marke ; Typ ; Teil
+#
+#   Marke   So, wie sie im Dokument steht. Gross/klein, ein Doppelpunkt am Ende, ein Punkt bei Abkürzungen und
+#           Leerzeichen um «/» und «,» spielen keine Rolle. «Name/Vorname» ist eine eigene Marke.
+#   Typ     PERSON, ORG, ADRESSE, TEL, EMAIL, GEBDAT, AHV, KONTO, KFZ, AUSWEIS, DOMAIN, IP
+#   Teil    nur bei PERSON und ADRESSE, sonst leer:
+#             PERSON   name               voller Name, Reihenfolge offen («Hans Muster» oder «Muster Hans»)
+#                      nachname, vorname  je ein eigenes Feld. Stehen sie nahe beieinander, ergeben sie eine Person.
+#                      nachname-vorname   beides in einem Feld, Nachname zuerst («Muster Hans», «Muster / Hans»)
+#                      vorname-nachname   beides in einem Feld, Vorname zuerst
+#                      kuerzel            Kürzel einer Person («mus»)
+#             ADRESSE  adresse            ganze Adresse («Dorfstrasse 12, 8000 Zürich»)
+#                      strasse, ort       je ein eigenes Feld («Dorfstrasse 12» und «8000 Zürich»)
+#
+# Der Wert hinter einer Marke wird gelesen, wenn er auf derselben Zeile steht (mit oder ohne Doppelpunkt), auf der
+# nächsten Zeile oder in der nächsten Tabellenzelle. Steht in einer Tabelle die Marke im Spaltenkopf, gilt sie für
+# die Zeilen darunter. DOMAIN und IP nur für Marken eintragen, hinter denen die Infrastruktur der Geschädigten
+# steht: Was dahinter steht, wird ersetzt und lässt sich danach nicht mehr abfragen.
+
+# --- Personen
+Name                        ; PERSON  ; nachname
+Nachname                    ; PERSON  ; nachname
+Familienname                ; PERSON  ; nachname
+Vorname                     ; PERSON  ; vorname
+Vornamen                    ; PERSON  ; vorname
+Name/Vorname                ; PERSON  ; nachname-vorname
+Name, Vorname               ; PERSON  ; nachname-vorname
+Name und Vorname            ; PERSON  ; nachname-vorname
+Vorname/Name                ; PERSON  ; vorname-nachname
+Vorname Name                ; PERSON  ; vorname-nachname
+Ledigname                   ; PERSON  ; nachname
+Geburtsname                 ; PERSON  ; nachname
+Geschädigter                ; PERSON  ; name
+Geschädigte                 ; PERSON  ; name
+Geschädigte Person          ; PERSON  ; name
+Anzeigeerstatter            ; PERSON  ; name
+Anzeigeerstatterin          ; PERSON  ; name
+Anzeiger                    ; PERSON  ; name
+Anzeigerin                  ; PERSON  ; name
+Auskunftsperson             ; PERSON  ; name
+Zeuge                       ; PERSON  ; name
+Zeugin                      ; PERSON  ; name
+Kontaktperson               ; PERSON  ; name
+Ansprechperson              ; PERSON  ; name
+Gesetzlicher Vertreter      ; PERSON  ; name
+Vertreten durch             ; PERSON  ; name
+Sachbearbeiter              ; PERSON  ; name
+Sachbearbeiterin            ; PERSON  ; name
+Sachbearbeiter/in           ; PERSON  ; name
+Rapportierender             ; PERSON  ; name
+Rapportierende              ; PERSON  ; name
+Verfasser                   ; PERSON  ; name
+Verfasserin                 ; PERSON  ; name
+Visum                       ; PERSON  ; name
+Unterschrift                ; PERSON  ; name
+Kürzel                      ; PERSON  ; kuerzel
+Nom                         ; PERSON  ; nachname
+Prénom                      ; PERSON  ; vorname
+Nom/Prénom                  ; PERSON  ; nachname-vorname
+Nom et prénom               ; PERSON  ; nachname-vorname
+Cognome                     ; PERSON  ; nachname
+Nome                        ; PERSON  ; vorname
+Cognome/Nome                ; PERSON  ; nachname-vorname
+Cognome e nome              ; PERSON  ; nachname-vorname
+
+# --- Organisationen auf der Seite der Geschädigten und Zeugen
+Firma                       ; ORG
+Firmenname                  ; ORG
+Geschädigte Firma           ; ORG
+Geschädigte Organisation    ; ORG
+Arbeitgeber                 ; ORG
+Arbeitgeberin               ; ORG
+Organisation                ; ORG
+Raison sociale              ; ORG
+Entreprise                  ; ORG
+Ditta                       ; ORG
+
+# --- Adressen
+Adresse                     ; ADRESSE ; adresse
+Wohnadresse                 ; ADRESSE ; adresse
+Wohnhaft                    ; ADRESSE ; adresse
+Wohnort                     ; ADRESSE ; ort
+Anschrift                   ; ADRESSE ; adresse
+Geschäftsadresse            ; ADRESSE ; adresse
+Domizil                     ; ADRESSE ; adresse
+Sitz                        ; ADRESSE ; adresse
+Strasse                     ; ADRESSE ; strasse
+Strasse/Nr.                 ; ADRESSE ; strasse
+Strasse, Nr.                ; ADRESSE ; strasse
+PLZ/Ort                     ; ADRESSE ; ort
+PLZ, Ort                    ; ADRESSE ; ort
+PLZ Ort                     ; ADRESSE ; ort
+Adresse privée              ; ADRESSE ; adresse
+Domicile                    ; ADRESSE ; adresse
+Rue                         ; ADRESSE ; strasse
+NPA/Localité                ; ADRESSE ; ort
+Indirizzo                   ; ADRESSE ; adresse
+Domicilio                   ; ADRESSE ; adresse
+NPA/Località                ; ADRESSE ; ort
+
+# --- Erreichbarkeit
+Telefon                     ; TEL
+Tel.                        ; TEL
+Telefon privat              ; TEL
+Telefon Geschäft            ; TEL
+Tel. P                      ; TEL
+Tel. G                      ; TEL
+Mobile                      ; TEL
+Mobiltelefon                ; TEL
+Natel                       ; TEL
+Handy                       ; TEL
+Téléphone                   ; TEL
+Tél.                        ; TEL
+Telefono                    ; TEL
+E-Mail                      ; EMAIL
+Email                       ; EMAIL
+E-Mail-Adresse              ; EMAIL
+Courriel                    ; EMAIL
+
+# --- Angaben zur Person
+Geburtsdatum                ; GEBDAT
+Geb.-Datum                  ; GEBDAT
+Geb. Datum                  ; GEBDAT
+Geboren am                  ; GEBDAT
+Geboren                     ; GEBDAT
+Geb.                        ; GEBDAT
+Date de naissance           ; GEBDAT
+Né le                       ; GEBDAT
+Née le                      ; GEBDAT
+Data di nascita             ; GEBDAT
+AHV-Nr.                     ; AHV
+AHV-Nummer                  ; AHV
+AHVN13                      ; AHV
+Sozialversicherungsnummer   ; AHV
+No AVS                      ; AHV
+N. AVS                      ; AHV
+
+# --- Bank, Fahrzeug, Ausweis
+IBAN                        ; KONTO
+Konto                       ; KONTO
+Konto-Nr.                   ; KONTO
+Kontonummer                 ; KONTO
+Bankverbindung              ; KONTO
+Kontoverbindung             ; KONTO
+Kontrollschild              ; KFZ
+Kontrollschilder            ; KFZ
+Kennzeichen                 ; KFZ
+Plaque                      ; KFZ
+Targa                       ; KFZ
+Ausweis-Nr.                 ; AUSWEIS
+Ausweisnummer               ; AUSWEIS
+Pass-Nr.                    ; AUSWEIS
+Passnummer                  ; AUSWEIS
+ID-Nr.                      ; AUSWEIS
+Identitätskarte             ; AUSWEIS
+Führerausweis-Nr.           ; AUSWEIS
+Ausländerausweis-Nr.        ; AUSWEIS
+ZEMIS-Nr.                   ; AUSWEIS
+Kundennummer                ; AUSWEIS
+Kunden-Nr.                  ; AUSWEIS
+Versichertennummer          ; AUSWEIS
+Policen-Nr.                 ; AUSWEIS

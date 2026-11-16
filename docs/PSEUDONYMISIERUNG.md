@@ -24,6 +24,9 @@ Klartext ──(eigenes LLM, im Haus)──► pseudonymisiert + Zuordnungstabel
 
 Claude Code sieht zu keinem Zeitpunkt die Zuordnungstabelle oder den zurückgeführten Rapport.
 
+Fällt das LLM im Haus aus, übernimmt `tools/pseudonymisieren.py` den ersten Schritt: auf demselben Rechner, ohne
+Sprachmodell und ohne Netz. Siehe [Rückfall ohne LLM](#rückfall-ohne-llm-toolspseudonymisierenpy).
+
 ## Platzhalter
 
 Form: eckige Klammern, Typ in Grossbuchstaben, Unterstrich, laufende Nummer. `[PERSON_01]`
@@ -140,6 +143,169 @@ AUSGABE:
 Die Zuordnung speichert ihr als CSV-Datei **ausserhalb des Projektordners**, das Dokument als `.txt`, `.md`
 oder `.docx`.
 
+## Rückfall ohne LLM: tools/pseudonymisieren.py
+
+**Stand: nicht abgeschlossen.** Feldmarken und Vornamenliste sind vorläufig (siehe unten). Die Messwerte im
+[README](../README.md#pseudonymisieren-ohne-llm-der-rückfall) gelten für diese vorläufigen Listen und für erfundene
+Rapporte.
+
+### Wofür
+
+Für den Tag, an dem das LLM im Haus nicht läuft. Das Werkzeug ersetzt Personendaten durch dieselben Platzhalter
+wie oben und schreibt dieselbe Zuordnungstabelle. Es rechnet nur auf dem eigenen Rechner: Standardbibliothek von
+Python, kein Download, kein Sprachmodell, keine Netzverbindung (es sperrt sich das Netz beim Start selbst). Es
+schlägt vor, ein Mensch entscheidet.
+
+### Aufruf
+
+```bash
+python3 tools/pseudonymisieren.py /sicher/rapport.docx \
+    --zuordnung /sicher/2026-0412_zuordnung.csv \
+    --ausgabe   /sicher/pseudonymisiert/ \
+    --namen     /sicher/2026-0412_namen.txt        # wahlweise
+```
+
+| Angabe | Bedeutung |
+|---|---|
+| Dokument | `.txt`, `.md`, `.docx` oder `.pdf` mit Text. Ausserhalb des Projektordners. |
+| `--zuordnung` | Zuordnungstabelle des Falls. Fehlt sie, wird sie angelegt. Gibt es sie, wird sie fortgeschrieben. |
+| `--ausgabe` | Ordner für das Ergebnis `<Name>_pseudonymisiert.txt`. Ausserhalb des Projektordners. |
+| `--namen` | Namensliste zum Fall: eine Angabe je Zeile, `Hans Muster` oder `ORG;Muster AG`. Was darin steht, wird ohne Rückfrage ersetzt. |
+| `--feldmarken` | Eine andere Feldmarken-Liste als `tools/feldmarken.txt`. |
+
+Das Werkzeug läuft nur an einem Terminal. Aus Claude Code heraus startet es nicht, auch nicht über `!`: Was es
+auf den Bildschirm schreibt, ist Klartext und stünde sonst im Gespräch. Der Wächter sperrt den Aufruf für
+Agenten, in jeder Phase.
+
+### Ablauf am Bildschirm
+
+Das Werkzeug liest das Dokument, zeigt eine Übersicht und führt durch vier Schritte. Jede Fundstelle erscheint mit
+ihrer Zeile und dem Text davor und danach.
+
+1. **E-Mail-Adressen.** Die Adresse der Täterseite ist ein Indikator und bleibt stehen. Die Adresse der
+   Geschädigten wird ersetzt. Das Werkzeug kann die Seite nicht kennen und fragt, ausser die Adresse steht hinter
+   einer Feldmarke oder trägt den Namen einer bekannten Person. Entschärft geschriebene Adressen
+   (`name[at]beispiel[.]ch`) gelten als Indikator.
+2. **Kandidaten.** Mögliche Namen und Firmen im Fliesstext. `[j]` ersetzen, `[n]` stehen lassen, `[t]` mit anderem
+   Typ ersetzen, `[k]` den Wortlaut korrigieren (aus «Keller» wird «Anna Keller»). Was du annimmst, sucht das
+   Werkzeug sofort im ganzen Dokument.
+3. **Sichere Funde.** Jede Angabe mit ihren Fundstellen: alle ersetzen, einzeln durchgehen, stehen lassen oder
+   den Typ ändern. Passt ein Nachname auf zwei Personen, steht «ACHTUNG: passt auf mehrere Personen» dabei.
+4. **Ergänzen.** Was fehlt, gibst du ein: einen Namen, eine Firma, eine Nummer. Das Werkzeug sucht die Angabe in
+   allen Schreibweisen.
+
+Erst danach wird geschrieben. `[q]` bricht jederzeit ab, ohne etwas zu schreiben. Am Schluss läuft die PII-Prüfung
+über das Ergebnis und zeigt ihre Funde maskiert. **Lies das Ergebnis, bevor du es aufnimmst.** Die Aufnahme in
+einen Fall prüft noch einmal (`tools/fall.py`), sie bleibt die letzte Schranke.
+
+### Die Schichten
+
+| Schicht | Was sie tut |
+|---|---|
+| 0 Schutz | Markiert, was stehen bleiben muss (Tabelle «Bleibt stehen» oben): IP-Adressen, Domains, URLs, Hashes, Wallet-Adressen, Transaktions-IDs, Onion-Adressen, Dateinamen, auch entschärft geschrieben (`hxxp`, `[.]`). Keine spätere Schicht ersetzt diese Stellen. Kommt ein bekannter Name darin vor (`…/hans.muster/…`, `Rechnung_Muster.pdf`), legt das Werkzeug die Stelle vor, statt sie zu ersetzen. |
+| 1 Feldmarken | Liest den Wert hinter jeder Marke aus `tools/feldmarken.txt`. |
+| 2 Fortpflanzung | Sucht jede bekannte Angabe im ganzen Dokument: Gross- und Kleinschreibung, «Muster, Hans», «Muster Hans», «H. Muster», Genitiv, Zeilenumbruch, Silbentrennung am Zeilenende, «Mueller» und «Muller» für «Müller», Telefonnummern mit `+41`, `0041`, Schrägstrich oder ohne Trennzeichen, Daten als `1.2.1980`, `1. Februar 1980` oder `1980-02-01`, IBAN mit und ohne Leerzeichen, «Dorfstr. 12» für «Dorfstrasse 12». |
+| 3 Muster | Die Muster der PII-Prüfung (`tools/pii_pruefung.py`), dieselben, nicht nachgebaut. Beim Geburtsdatum bleibt das Stichwort stehen («geb. [GEBDAT_01]»), bei der Strassenadresse gehört der Ort mit Postleitzahl dazu. Das Datum eines Ereignisses ist kein Geburtsdatum und bleibt. |
+| 4 Namensliste | Was mit `--namen` mitgegeben wird. |
+| 5 Kandidaten | Wörter nach «Herr», «Frau», «Hr.», «Fr.», «Dr.», «Familie», «Monsieur», «Madame», «M.», «Mme», «Signor», «Signora», «Sig.», «Sig.ra» und nach Dienstgraden; ein Vorname aus `tools/vornamen.txt` mit einem Namen danach; ein Wort in Grossbuchstaben mit einem Namen danach; eine Initiale mit einem Namen danach; Wörter vor einer Rechtsform («AG», «GmbH», «SA», «Sàrl», «Sagl») oder nach «Firma», «Garage», «Bäckerei». Diese Schicht ersetzt nie selbst. |
+| 6 Bestätigung | Der Dialog oben. |
+
+### Die Feldmarken
+
+`tools/feldmarken.txt` ist eine Textdatei, eine Zeile je Marke: `Marke ; Typ ; Teil`. Der Kopf der Datei erklärt
+die Spalten. **Die mitgelieferte Liste ist vorläufig**: übliche Marken aus Formularen, deutsch, französisch und
+italienisch. Sie ist nicht die Liste eurer Rapporte. Eure Liste ersetzt die Datei, am Code ändert sich nichts.
+Danach neu messen:
+
+```bash
+python3 tools/pseudo_messen.py            # Tabellen ansehen
+python3 tools/pseudo_messen.py --readme   # Tabellen ins README schreiben
+```
+
+Der Prüfsatz baut seine Rapporte aus genau den Marken der Datei. Mit einer neuen Liste entstehen also neue
+Rapporte, und die Messung gilt für die neue Liste.
+
+Gelesen wird der Wert auf derselben Zeile («Name: Muster», «Name    Muster», «Name Muster»), auf der nächsten
+Zeile, in der nächsten Tabellenzelle und unter einem Spaltenkopf. «Name» und «Vorname» nahe beieinander ergeben
+eine Person, «Strasse» und «PLZ/Ort» eine Adresse. Steht hinter einer Marke nichts Brauchbares («Name: unbekannt»),
+wird nichts geerntet. Ein Wort mit Doppelpunkt mitten in einem Satz («… Sitz der Firma: …») ist keine Marke.
+
+### Mehrere Dokumente eines Falls
+
+Gleiche Angabe, gleicher Platzhalter. Mit `--zuordnung` auf die Tabelle des Falls erkennt das Werkzeug im Nachtrag,
+wer im Rapport schon vorkam, auch wenn die Person dort nur noch als «Herr Muster» im Fliesstext steht. Neue
+Angaben bekommen die nächste freie Nummer. Bestehende Zeilen der Tabelle bleiben, wie sie sind, auch Zeilen mit
+Platzhaltern, die das Werkzeug nicht kennt.
+
+### Die Vornamenliste
+
+`tools/vornamen.txt` dient nur Schicht 5. **Sie ist vorläufig**: rund 800 häufige Vornamen, von Hand
+zusammengestellt, aus keiner fremden Datei. Vorgesehen ist die Vornamenstatistik des Bundesamtes für Statistik
+(BFS), «Vornamen der Bevölkerung nach Jahrgang, Schweiz und Sprachgebiete», BFS-Nummer su-d-01.04.00.11.
+
+- Nutzungsbedingung laut Seite des Datensatzes, gesehen am 16.11.2026: «OPEN-BY: Freie Nutzung. Quellenangabe ist
+  Pflicht.»
+- Die allgemeine Seite «Nutzungsbedingungen» des BFS nennt daneben eine Bewilligung für die Weitergabe von Daten
+  zu Erwerbszwecken. Ob das eine Liste von Vornamen in einem Repository betrifft, entscheidet der Eigentümer des
+  Repositorys, bevor die Liste des BFS darin abgelegt wird.
+- Die Datei liess sich aus der Entwicklungsumgebung nicht abrufen (die Berechtigungsprüfung hat den Abruf
+  abgelehnt). Wer die beiden Tabellen (Männer, Frauen) von Hand heruntergeladen hat:
+  `python3 tools/vornamen.py bauen maenner.xlsx frauen.xlsx --stand 2025`. Das Werkzeug schreibt Quelle, Ausgabe,
+  Datum der Kopie und Nutzungsbedingung in den Kopf der Liste. Es ist an erfundenen Tabellen geprüft, nicht an
+  der Datei des BFS.
+
+### Messwerte
+
+Die Tabellen stehen im [README](../README.md#pseudonymisieren-ohne-llm-der-rückfall) und werden vom Messwerkzeug
+geschrieben. In Worten:
+
+- Angaben, die in einem Feld stehen, werden an allen ihren Stellen fast vollständig ersetzt, ohne Zutun des
+  Menschen. Voraussetzung ist, dass die Marke in der Liste steht.
+- Angaben, die nur im Fliesstext stehen (Drittpersonen, weitere Firmen), ersetzt keine Schicht von selbst.
+  Schicht 5 legt den grössten Teil vor. Was auch dann stehen bleibt: Namen ohne Anrede, deren Vorname nicht in
+  der Liste steht, Firmen ohne Rechtsform, Ausweisnummern ohne Feld.
+- Kein technischer Indikator wird verändert.
+- Die Messung läuft an erfundenen Rapporten, die derselbe Verfasser geschrieben hat wie die Erkennung. Sie zeigt,
+  ob die Schichten tun, was sie sollen. Wie eure Rapporte aussehen, zeigt sie nicht.
+
+### Grenzen
+
+- **Kein Werkzeug findet alles.** Das Ergebnis wird gelesen, bevor es aufgenommen wird.
+- **Scans ohne Text gehen nicht.** Ein gescanntes PDF braucht zuerst eine Texterkennung im Haus.
+- **Die Gestaltung geht verloren.** Aus `.docx` und `.pdf` entsteht eine Textdatei. Tabellen werden zu Zeilen mit
+  Tabulatoren.
+- **Namen ohne jeden Hinweis** (keine Anrede, kein Feld, Vorname nicht in der Liste) sieht das Werkzeug nicht.
+  Dafür sind die Namensliste und Schritt 4 da.
+- **Firmen ohne Rechtsform** («Velo Meier») sieht es nur nach einem Gewerbewort aus einer kurzen Liste.
+- **Der blosse Wohnort** ohne Postleitzahl bleibt stehen, ebenso Heimatort, Beruf, Nationalität und Alter. Wo das
+  jemanden erkennbar macht, in Schritt 4 ergänzen.
+- **«Herr Muster» und «Frau Muster»** kann es nicht auseinanderhalten. Bei zwei Personen mit demselben Nachnamen
+  meldet es die Stelle als mehrdeutig und nimmt den ersten.
+- **Doppelte Vornamen und Doppelnamen ohne Bindestrich** («Maria Grazia Schmid») lassen sich nicht sicher trennen.
+  Das Werkzeug nimmt dann jede Trennung an und ersetzt lieber einen Namensteil zu viel.
+- **Die Seite einer E-Mail-Adresse, Domain oder IP-Adresse** kennt es nicht. Domains und IP-Adressen bleiben
+  stehen. Gehören sie den Geschädigten, in Schritt 4 als «Domain der Geschädigten» oder «IP-Adresse der
+  Geschädigten» ergänzen.
+- **Kontrollschilder** erkennt das Muster auch in «ZH 2024» (Kanton und Jahr). In Schritt 3 verwerfen. Die
+  PII-Prüfung sperrt an derselben Stelle, dort mit Begründung übersteuern.
+- **Rechtschreibfehler im Namen** («Mustre») findet es nicht.
+
+### Zwei Wege, die verworfen sind
+
+- **Claude liest den Klartext und pseudonymisiert ihn selbst.** Dann sind die Personendaten an Anthropic
+  übermittelt, bevor der erste Platzhalter steht. Genau das soll die Pseudonymisierung verhindern.
+- **Ein Inkognito-Chat.** Er ändert, was aufbewahrt wird, nicht, dass der Text das Haus verlässt und dort
+  verarbeitet wird.
+
+### Ein lokales Sprachmodell als spätere Schicht
+
+Für Namen ohne jeden Hinweis ist ein Modell, das auf dem eigenen Rechner läuft (GLiNER, Flair), die naheliegende
+Ergänzung. Es ist nicht eingebaut: Es bräuchte ein Zusatzpaket und ein heruntergeladenes Modell, beides sind
+Entscheide des Hauses. Die Schnittstelle steht bereit. `erkennen(text, erkenner=[funktion])` in `tools/_pseudo.py`
+nimmt eine Funktion, die einen Text liest und Kandidaten liefert: `(Beginn, Ende, Typ, Grund)`. Sie erscheinen
+in Schritt 2 neben den Kandidaten von Schicht 5 und werden wie diese nie ohne Bestätigung ersetzt. Geschützte
+Stellen und schon gefundene Angaben kann ein solcher Erkenner nicht überschreiben.
+
 ## Das Sicherheitsnetz: PII-Prüfung
 
 Kein Modell pseudonymisiert fehlerfrei. Deshalb durchläuft jedes Dokument bei der Aufnahme eine Musterprüfung:
@@ -153,6 +319,9 @@ python3 tools/fall.py neu 2026-0412 --rapport rapport_pseudonymisiert.docx
 | AHV-Nummer, IBAN (mit Prüfziffer), Telefonnummer, Geburtsdatum mit Stichwort, Kontrollschild, Kreditkartennummer | Sperre | Dokument wird nicht aufgenommen |
 | E-Mail-Adresse, Strassenadresse | Hinweis | Aufnahme, mit Meldung. Adressen der Täterseite dürfen bleiben. |
 | Keine Platzhalter im Dokument | Hinweis | Vermutlich nicht pseudonymisiert |
+
+Telefonnummern erkennt die Prüfung in den Schreibungen `079 123 45 67`, `+41 79 123 45 67`, `0041 79 …`,
+`079/123 45 67` und ohne Trennzeichen (`0791234567`).
 
 Die Ausgabe zeigt Fundstellen maskiert (`07••••••••7`, Zeile 14), nie den Wert.
 

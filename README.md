@@ -31,6 +31,7 @@ darüber, wann was wo und wozu abgefragt wurde.
 - [Einrichten](#einrichten)
 - [Schlüssel](#schlüssel)
 - [Eine Ermittlung durchführen](#eine-ermittlung-durchführen)
+- [Pseudonymisieren ohne LLM: der Rückfall](#pseudonymisieren-ohne-llm-der-rückfall)
 - [Das Ermittler-Team](#das-ermittler-team)
 - [Blockchain-Analyse](#blockchain-analyse)
 - [Quellen](#quellen)
@@ -300,7 +301,8 @@ Schlüssel als `***`.
 `[PERSON_01]`, `[ORG_01]`, `[ADRESSE_01]`, `[TEL_01]`. Nummeriert, nicht alle «Hans Muster», sonst geht verloren,
 wer wer ist. Technische Indikatoren (IPs, Domains, Hashes, Adressen der Täterseite) bleiben stehen, denn nach
 ihnen wird gesucht. Eine fertige Anweisung für euer LLM und die Regeln, was bleibt und was geht, stehen in
-[docs/PSEUDONYMISIERUNG.md](docs/PSEUDONYMISIERUNG.md).
+[docs/PSEUDONYMISIERUNG.md](docs/PSEUDONYMISIERUNG.md). Fällt das LLM aus, gibt es einen zweiten Weg, der den
+Rechner nicht verlässt: [Pseudonymisieren ohne LLM](#pseudonymisieren-ohne-llm-der-rückfall).
 
 **2. Ermitteln.** Ein Befehl in Claude Code:
 
@@ -374,6 +376,151 @@ python3 tools/musterfall.py                    # Musterfall neu bauen
 ```
 
 In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>`, `/protokoll <Fall-ID>`.
+
+## Pseudonymisieren ohne LLM: der Rückfall
+
+Fällt euer LLM im Haus aus, pseudonymisiert `tools/pseudonymisieren.py` ein Dokument auf dem eigenen Rechner:
+ohne Sprachmodell, ohne Netz, nur mit der Standardbibliothek von Python. Das Werkzeug schlägt vor, ein Mensch
+entscheidet. Es läuft nur an einem Terminal und nicht aus Claude Code heraus, denn was es zeigt, ist Klartext.
+
+```bash
+python3 tools/pseudonymisieren.py /sicher/rapport.docx \
+    --zuordnung /sicher/2026-0412_zuordnung.csv --ausgabe /sicher/pseudonymisiert/
+```
+
+Dokument, Zuordnungstabelle und Ausgabeordner liegen ausserhalb des Projektordners. Gibt es die Zuordnungstabelle
+schon, wird sie fortgeschrieben: Wer im Rapport `[PERSON_01]` war, bleibt es im Nachtrag. Das Ergebnis ist eine
+Textdatei mit Platzhaltern und die Tabelle im Format von `tools/reidentifizieren.py`.
+
+> **Stand: nicht abgeschlossen.** Die Feldmarken in `tools/feldmarken.txt` sind vorläufig mit üblichen Marken
+> gefüllt, die Vornamenliste in `tools/vornamen.txt` ist vorläufig von Hand zusammengestellt. Die Messwerte unten
+> gelten für genau diese beiden Dateien und für erfundene Rapporte. Mit der Liste eurer Feldmarken wird neu
+> gemessen, erst dann ist das Werkzeug für den Betrieb beurteilt.
+
+**So arbeitet es.** Sieben Schichten, in dieser Reihenfolge:
+
+| Schicht | Was sie tut | Ersetzt von selbst? |
+|---|---|---|
+| 0 Schutz | Markiert technische Indikatoren: IP-Adressen, Domains, URLs, Hashes, Wallet-Adressen, Transaktions-IDs, Onion-Adressen, Dateinamen. Keine spätere Schicht ersetzt sie. | nein, sie schützt |
+| 1 Feldmarken | Liest die Werte hinter den Marken aus `tools/feldmarken.txt` («Name:», «Geb.-Datum», «Name/Vorname»): auf derselben Zeile, auf der nächsten, in Tabellen, mit oder ohne Doppelpunkt. | ja |
+| 2 Fortpflanzung | Sucht jede geerntete oder bestätigte Angabe im ganzen Dokument, in allen Schreibweisen: «Muster, Hans», «H. Muster», «MUSTER Hans», Genitiv, Zeilenumbruch, Silbentrennung, «Mueller» für «Müller», Telefonnummern und Daten in jeder Schreibung. | ja |
+| 3 Muster | AHV-Nummer, IBAN (mit Prüfziffer), Telefonnummer, Geburtsdatum mit Stichwort, Kontrollschild, Kreditkarte, E-Mail-Adresse, Strassenadresse. Dieselben Muster wie in der PII-Prüfung. | ja |
+| 4 Namensliste | Was der Sachbearbeiter zum Fall mitgibt (`--namen`). | ja |
+| 5 Kandidaten | Mögliche Namen und Firmen im Fliesstext: nach Anreden und Titeln (deutsch, französisch, italienisch), nach einem Vornamen aus der Liste, vor einer Rechtsform («AG», «Sàrl»). | **nie**, sie legt vor |
+| 6 Bestätigung | Der Mensch nimmt jede Fundstelle an, verwirft sie, ändert den Typ oder ergänzt, was fehlt. Erst danach wird geschrieben. | |
+
+Bei E-Mail-Adressen kann das Werkzeug nicht wissen, ob sie der Täterseite gehören (dann bleiben sie stehen) oder
+den Geschädigten (dann werden sie ersetzt). Es fragt. Am Ende läuft die PII-Prüfung über das Ergebnis, und bei der
+Aufnahme in einen Fall prüft `tools/fall.py` noch einmal. Ablauf, Format der Feldmarken und alle Grenzen stehen in
+[docs/PSEUDONYMISIERUNG.md](docs/PSEUDONYMISIERUNG.md#rückfall-ohne-llm-toolspseudonymisierenpy).
+
+**Messung.** `python3 tools/pseudo_messen.py` erzeugt 240 erfundene Schweizer Polizeirapporte mit bekannter Lösung
+(`tools/pseudo_pruefsatz.py`) und zählt, was stehen bleibt. Massstab ist zuerst die Durchrutschquote: der Anteil
+der Stellen mit Personendaten, die im Ergebnis noch lesbar sind. Eine Stelle gilt nur als ersetzt, wenn jeder
+Buchstabe und jede Ziffer ersetzt ist. Die Tabellen schreibt das Werkzeug selbst (`--readme`), die CI prüft, dass
+sie zum Stand des Codes passen (`--pruefen`).
+
+<!-- pseudo-messung:anfang -->
+Prüfsatz: 240 synthetische Rapporte, 10395 Stellen mit Personendaten, 1875 technische Indikatoren. Feldmarken: 132 (vorläufige Liste). Vornamenliste: 820 Namen (vorläufige Liste). Von 1050 Personen im Prüfsatz tragen 166 einen Vornamen, der nicht in der Liste steht.
+
+**Angaben, die in einem Feld stehen (alle ihre Stellen, auch die im Fliesstext)**: Stellen, die stehen bleiben
+
+| Typ | Stellen | nach Schicht 1 | nach 2 | nach 3 (ohne Zutun) | mit 5 (Kandidaten bestätigt) | mit 4 (alle Namen eingegeben) |
+|---|---:|---:|---:|---:|---:|---:|
+| Person | 4657 | 3600 (77.3 %) | 0 | 0 | 0 | 0 |
+| Organisation | 327 | 218 (66.7 %) | 0 | 0 | 0 | 0 |
+| Adresse | 1045 | 365 (34.9 %) | 0 | 0 | 0 | 0 |
+| Telefonnummer | 487 | 139 (28.5 %) | 0 | 0 | 0 | 0 |
+| E-Mail-Adresse | 483 | 146 (30.2 %) | 0 | 0 | 0 | 0 |
+| Geburtsdatum | 747 | 399 (53.4 %) | 0 | 0 | 0 | 0 |
+| AHV-Nummer | 283 | 89 (31.4 %) | 0 | 0 | 0 | 0 |
+| Bankverbindung | 332 | 102 (30.7 %) | 0 | 0 | 0 | 0 |
+| Kontrollschild | 166 | 44 (26.5 %) | 0 | 0 | 0 | 0 |
+| Ausweisnummer | 191 | 57 (29.8 %) | 0 | 0 | 0 | 0 |
+| **Alle** | 8718 | 5159 (59.2 %) | 0 | 0 | 0 | 0 |
+
+**Angaben, die nur im Fliesstext stehen (Drittpersonen, weitere Firmen)**: Stellen, die stehen bleiben
+
+| Typ | Stellen | nach Schicht 1 | nach 2 | nach 3 (ohne Zutun) | mit 5 (Kandidaten bestätigt) | mit 4 (alle Namen eingegeben) |
+|---|---:|---:|---:|---:|---:|---:|
+| Person | 771 | 771 (100.0 %) | 759 (98.4 %) | 759 (98.4 %) | 103 (13.4 %) | 1 (0.1 %) |
+| Organisation | 329 | 329 (100.0 %) | 329 (100.0 %) | 329 (100.0 %) | 20 (6.1 %) | 0 |
+| Adresse | 124 | 39 (31.5 %) | 39 (31.5 %) | 0 | 0 | 0 |
+| Telefonnummer | 121 | 121 (100.0 %) | 121 (100.0 %) | 0 | 0 | 0 |
+| E-Mail-Adresse | 43 | 43 (100.0 %) | 43 (100.0 %) | 0 | 0 | 0 |
+| AHV-Nummer | 64 | 64 (100.0 %) | 64 (100.0 %) | 0 | 0 | 0 |
+| Bankverbindung | 43 | 43 (100.0 %) | 43 (100.0 %) | 0 | 0 | 0 |
+| Kontrollschild | 98 | 98 (100.0 %) | 98 (100.0 %) | 0 | 0 | 0 |
+| Ausweisnummer | 84 | 84 (100.0 %) | 84 (100.0 %) | 84 (100.0 %) | 84 (100.0 %) | 84 (100.0 %) |
+| **Alle** | 1677 | 1592 (94.9 %) | 1580 (94.2 %) | 1172 (69.9 %) | 207 (12.3 %) | 85 (5.1 %) |
+
+**Fehlalarme und technische Indikatoren**
+
+| Was | Zahl |
+|---|---:|
+| Ersetzungen ohne Zutun insgesamt | 9268 |
+| davon keine Personendaten (Fehlalarm) | 26 (0.3 %) |
+| … als Kontrollschild | 26 |
+| Technische Indikatoren im Prüfsatz | 1875 |
+| davon verändert, ohne Zutun | 0 |
+| davon verändert, nach Bestätigung und Namensliste | 0 |
+| Rückfragen «Täterseite oder Geschädigte?» zu E-Mail-Adressen | 184 |
+| E-Mail-Adressen der Täterseite im Prüfsatz | 142 |
+| davon ersetzt, wenn niemand die Rückfrage beantwortet | 142 |
+| Kandidaten, die Schicht 5 vorlegt | 1021 |
+| davon richtig (Personendaten) | 785 (76.9 %) |
+
+**Gegenprobe: Das Dokument trägt Marken, die nicht in der Liste stehen.** Dieselben Dokumente, aber das Werkzeug kennt nur jede zweite Marke (66 von 132). Von 8718 Stellen der Angaben, die in einem Feld stehen, bleiben ohne Zutun 3137 (36.0 %) stehen.
+
+**Kontrolle an 240 weiteren Rapporten (Nummern 241 bis 480), die bei der Entwicklung nie angesehen wurden.** Stellen, die stehen bleiben:
+
+| Angaben | Stellen | nach 3 (ohne Zutun) | mit 5 (Kandidaten bestätigt) | mit 4 (alle Namen eingegeben) |
+|---|---:|---:|---:|---:|
+| in einem Feld | 8527 | 3 (< 0.1 %) | 1 (< 0.1 %) | 1 (< 0.1 %) |
+| nur im Fliesstext | 1775 | 1252 (70.5 %) | 203 (11.4 %) | 90 (5.1 %) |
+
+Technische Indikatoren in der Kontrolle: 1834, davon verändert: 0.
+
+<!-- pseudo-messung:ende -->
+
+Was die Zahlen sagen, und was nicht:
+
+- **Was in einem Feld steht, findet das Werkzeug fast vollständig**, auch an allen anderen Stellen des Dokuments.
+  Das gilt nur, solange die Marke in der Liste steht. Die Gegenprobe zeigt, wie viel sonst stehen bleibt. Darum
+  ist die Liste eurer Feldmarken die wichtigste Zutat.
+- **Wer nur im Fliesstext vorkommt, wird von keiner Schicht von selbst ersetzt.** Das ist Absicht: Ein Name im
+  Fliesstext lässt sich ohne Sprachverständnis nicht von einem gewöhnlichen Wort unterscheiden, und ein falsch
+  ersetztes Wort zerstört den Rapport. Schicht 5 legt diese Stellen vor. Bestätigt der Mensch alles Richtige,
+  bleibt der Rest der Spalte «mit 5» stehen: Namen ohne Anrede, deren Vorname nicht in der Liste steht, Firmen
+  ohne Rechtsform, Ausweisnummern ohne Feld.
+- **Für diesen Rest ist ein lokales Sprachmodell die naheliegende nächste Schicht** (GLiNER, Flair). Es ist nicht
+  eingebaut. Die Schnittstelle dafür steht: `erkennen(text, erkenner=[funktion])` in `tools/_pseudo.py` nimmt eine
+  Funktion, die einen Text liest und Kandidaten liefert (Beginn, Ende, Typ, Grund). Auch sie legt nur vor. Die
+  Messung beziffert, was sie höchstens beitragen kann: die Spalte «mit 5» der zweiten Tabelle. An den Schichten 0
+  bis 3 ändert ein Modell nichts, sie sind genauer und nachvollziehbar.
+- **Die Zahlen sind eine Obergrenze dessen, was das Werkzeug kann, keine Zusage für echte Rapporte.** Prüfsatz
+  und Erkennung stammen vom selben Verfasser, und die Erkennung wurde an den Rapporten 1 bis 240 nachgebessert.
+  Die Kontrolle an 240 weiteren Rapporten zeigt, dass die Werte nicht an den einzelnen Dokumenten hängen. Sie
+  zeigt nicht, wie eure Rapporte aufgebaut sind. Die Spalten «mit 5» und «mit 4» setzen einen Menschen voraus,
+  der nichts übersieht.
+- **Fehlalarme**: Als Kontrollschild ersetzt das Werkzeug auch «ZH 2024» (Kanton und Jahr). Die PII-Prüfung sperrt
+  an derselben Stelle, das Verhalten ist also dasselbe. In der Bestätigung lässt sich die Stelle verwerfen.
+
+**Grenzen.** Kein Werkzeug findet alles, das Ergebnis wird gelesen. Scans ohne Text gehen nicht (zuerst OCR im
+Haus). Aus `.docx` und `.pdf` entsteht eine Textdatei, die Gestaltung geht verloren. Der blosse Wohnort ohne
+Postleitzahl bleibt stehen. «Herr Muster» und «Frau Muster» kann das Werkzeug nicht auseinanderhalten: Gibt es
+zwei Personen mit demselben Nachnamen, meldet es die Stelle als mehrdeutig.
+
+**Zwei Wege, die verworfen sind.** *Claude liest den Klartext selbst und pseudonymisiert ihn:* Dann sind die
+Personendaten bereits an Anthropic übermittelt, bevor ein Platzhalter steht. *Ein Inkognito-Chat:* Er ändert, was
+aufbewahrt wird, nicht, dass der Text das Haus verlässt.
+
+**Die Vornamenliste.** Vorgesehen ist die Vornamenstatistik des Bundesamtes für Statistik («Vornamen der
+Bevölkerung nach Jahrgang», BFS-Nummer su-d-01.04.00.11). Auf der Seite des Datensatzes steht als Nutzungsbedingung
+«OPEN-BY: Freie Nutzung. Quellenangabe ist Pflicht.» (gesehen am 16.11.2026). Die Datei liess sich aus der
+Entwicklungsumgebung nicht abrufen, im Repository liegt deshalb eine von Hand zusammengestellte Liste. Wer die
+Tabellen des BFS heruntergeladen hat, baut die Liste mit `python3 tools/vornamen.py bauen <Dateien> --stand 2025`
+und misst neu.
 
 ## Das Ermittler-Team
 
@@ -621,6 +768,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind gesperrt. `WebFetch` und `WebSearch` fragen jedes Mal nach. | `.claude/settings.json`, Wächter |
 | Keine öffentliche Einreichung | Eine URL geht bei urlscan.io und urlquery nur als «private» hinaus. Die Werkzeuge haben keinen Parameter dafür, und eine Schranke im Kern hält jede andere Einreichung auf, egal welches Werkzeug sie schickt. | `gateway/kern.py` (`schranke`) |
 | Kein selbst geschriebener Beleg | Abklärungen von Hand erfasst nur der Sachbearbeiter am Terminal. Wächter und Berechtigungen sperren den Befehl für Agenten. | `tools/beleg.py`, Wächter |
+| Klartext bleibt beim Sachbearbeiter | `tools/pseudonymisieren.py` und `tools/reidentifizieren.py` laufen nur an einem Terminal und nicht aus Claude Code heraus. Wächter und Berechtigungen sperren beide für Agenten, in jeder Phase. Dokument, Zuordnungstabelle und Ausgabe müssen ausserhalb des Projektordners liegen. Das Pseudonymisieren sperrt sich selbst jede Netzverbindung. | Wächter, `tools/pseudonymisieren.py` |
 | Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten unveränderbar für Agenten | Schreibschutz über Berechtigungen und Wächter. | beide |
 | Agenten stellen die Einrichtung nicht um | `setup.sh`, `setup.cmd` und `tools/einrichten.py` sind für Agenten gesperrt, ebenso das Schreiben an Gateway, Hooks und Einstellungen. | Wächter |
@@ -706,7 +854,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 57 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 71 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -716,6 +864,16 @@ PowerShell 7:
   Regel im Rapport (jede IP trägt den Wert aus der Fallakte, Empfehlungen bekommen den Vorbehalt), der Beleg von
   Hand, urlscan.io (Suche, Seitentext als Text, Bildschirmfoto als Datei, und: ohne «private» verlässt keine
   Einreichung das Gateway) und die Etikettenliste (Prüfsumme, Einstufung, veränderte Liste gilt als nicht geprüft).
+- Vierzehn gelten der lokalen Pseudonymisierung (`tools/pseudonymisieren.py`), Stand 16.11.2026: jede Schicht
+  für sich (technische Indikatoren bleiben zeichengenau stehen, Feldmarken in zwölf Lagen, eine andere
+  Feldmarken-Liste ohne Änderung am Code, Fortpflanzung in allen Schreibweisen, die Muster der PII-Prüfung,
+  Namensliste und Kandidaten, Entscheide und Zuordnungstabelle über zwei Dokumente), der Dialog mit gespielten
+  Eingaben, ein Lauf im Pseudo-Terminal von Dokument bis Zuordnungstabelle (nur Linux und macOS), kein Start ohne
+  Terminal und aus Claude Code heraus, kein Zusatzpaket und kein Netz, die Sperre im Wächter, der Prüfsatz
+  (über 200 Rapporte, immer gleich, jede Feldmarke kommt vor, nichts darin kann echt sein) und Schwellen der
+  Messung an 45 Rapporten. Ein eigener Schritt der CI prüft, dass die Tabellen im README zum Stand des Codes
+  passen (`python3 tools/pseudo_messen.py --pruefen`). Nicht geprüft: echte Rapporte, die Liste eurer
+  Feldmarken, die Tabellen des BFS und der Dialog in einer Windows-Konsole.
 - Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
