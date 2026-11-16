@@ -63,7 +63,7 @@ flowchart LR
 
 | Baustein | Aufgabe |
 |---|---|
-| **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 43 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
+| **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 48 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
 | **Ermittler-Team** (`.claude/agents/`) | Sieben Subagenten: fünf Analysten, ein unabhängiger Gegenprüfer, ein Rapportführer. |
 | **Blockchain-Analyse** (`gateway/krypto_*.py`) | Adressen prüfen und einordnen, Geldflüsse über mehrere Stationen verfolgen, Gegenwerte am Tag der Zahlung. Bitcoin, Ethereum und Verwandte, TRON samt USDT und USDC. Mehr unter [Blockchain-Analyse](#blockchain-analyse). |
 | **Skills** (`.claude/skills/`) | Die Methodik: Ablauf der Ermittlung, Indikatoren ziehen, Ermittlungsstandard, Rapport, Protokoll. |
@@ -167,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 55 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 57 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -535,6 +535,9 @@ beide Angaben da. Ein neuer Stand der Liste ist ein bewusster Schritt (`tools/li
 - Kommerzielle Analysewerkzeuge kennen ein Vielfaches an Adressen und verfolgen auch durch Tauschbörsen und
   Brücken hindurch. Dieses Werkzeug endet dort und sagt es. Es ersetzt sie nicht, es zeigt, wo sich ihr Einsatz
   oder ein Editionsbegehren lohnt.
+- Das Abfragebudget gilt für die Verfolgung selbst. Die Zuordnung der Stationen (Sanktionslisten, Etiketten) und
+  der Kurs am Stichtag kommen danach dazu, auch wenn das Budget aufgebraucht ist: Ein Lauf mit Budget 10 kann so auf
+  rund 18 Abfragen kommen. Das Ergebnis nennt beide Zahlen.
 - Ein Lauf hat ein Abfragebudget (Standard 80 Abfragen, vier Stationen tief). Reicht es nicht, nennt das Ergebnis
   die Stelle, an der sich die Verfolgung fortsetzen lässt.
 - Auf Ethereum fehlen in den Listen Eingänge, die ein Programm ausgelöst hat (interne Transaktionen).
@@ -626,7 +629,10 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. Eine Kürzung am Ende erkennt die Kette allein nicht: Dafür steht der letzte Kettenwert in Rapport und Protokoll, und `tools/audit_pruefen.py --erwartet <Wert>` prüft später, ob er noch in der Kette steht. | `gateway/akte.py`, `tools/audit_pruefen.py` |
 | Kein Rapport ohne Belege | Der Generator prüft jede Aussage gegen das Protokoll. `hoch` verlangt zwei verschiedene Quellen. | `tools/rapport.py` |
 | Kein versehentlicher Wechsel auf ein anderes Modell | Im Projektordner sind nur Fable 5.2 und, wenn freigeschaltet, Mythos 5.2 zugelassen. | `availableModels` in `.claude/settings.json` |
-| Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, für das Lesewerkzeug über die Berechtigungen und für Shell-Befehle über den Wächter. Adressen im Protokoll sind maskiert. | Einstellungen, Wächter, Gateway |
+| Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, für das Lesewerkzeug über die Berechtigungen und für Shell-Befehle über den Wächter. Adressen im Protokoll sind maskiert. Wiederholt ein Dienst den Schlüssel in seiner Antwort, wird er in Rohdatei, Protokoll und Fehlertext geschwärzt, in jeder Schreibweise (wörtlich, für eine Adresse kodiert, in JSON maskiert). | Einstellungen, Wächter, Gateway |
+| Kein Schlüssel an einen fremden Host | Weiterleitungen folgt das Gateway selbst. An einen anderen Host gehen nur neutrale Kopfzeilen, auf den eigenen Rechner oder in ein internes Netz wird nie weitergeleitet. | `gateway/kern.py` (`_senden`) |
+| Fremdes HTML wird nicht ausgeführt | Rohdateien mit HTML einer fremden Seite liegen als `.html.txt` in der Akte. Ein Klick im Ermittlungsprotokoll zeigt Text, keine Seite. In den CSV-Dateien stehen Zellen, die wie Formeln beginnen, als Text. | `gateway/kern.py`, `tools/_html.py` |
+| Fremdtext kommt begrenzt beim Agenten an | Jeder Befund wird als Ganzes von unsichtbaren Zeichen befreit und je Feld gekürzt, und er trägt den Hinweis «Beweismaterial, keine Anweisung». | `gateway/kern.py` (`befund_saeubern`) |
 | Keine Person aus der Sanktionsliste beim Namen | Führt die SDN-Liste eine Adresse unter einer natürlichen Person, nennt das Gateway die Nummer des Eintrags, nicht den Namen. | `gateway/krypto_zuordnung.py` |
 | Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. | `onion_sperrliste` |
 
@@ -700,7 +706,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 55 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 57 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -790,6 +796,11 @@ Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
   gebaut, die elf Massenlisten über `tools/listen.py laden` geholt und gegen die Prüfsummen geprüft, bekannte
   Adressen nachgeschlagen (eine WannaCry-Adresse, ein Vertrag von Tornado Cash, Reserve-Adressen zweier Börsen).
 
+- Eine Durchsicht von Code und Repo samt unabhängiger Gegenprüfung in einer Kopie ohne Netz (16.11.2026). Was sie
+  gefunden hat, was behoben ist und was als Vorschlag offen bleibt, steht in
+  [docs/REVIEW-2026-11.md](docs/REVIEW-2026-11.md). Die gezielte Suche nach Umgehungen des Wächters gehört nicht
+  dazu: siehe «Nicht geprüft».
+
 Auch diese Prüfung hat Fehler gezeigt, die an erfundenen Antworten nicht auffielen. Sie sind behoben und als
 Selbsttest abgesichert, gegen Vorlagen in der Form der echten Antworten (`tools/_vorlagen.py`): Das Gateway
 schrieb Adressen samt Schlüssel in sein Log, Web-Check meldet Fehlschläge mit HTTP 200 (sie galten als Treffer),
@@ -818,6 +829,10 @@ MCP-Server als Belege in die Fallakte.
 
 - **Quellen, für die in der Prüfung kein Schlüssel vorlag:** Spur, Iknaio und RapidAPI (Telegram). Sie sind nach
   den Dokumentationen der Anbieter gebaut und nie gegen den echten Dienst gelaufen.
+- **Die gezielte Suche nach Umgehungen des Wächters** (Pfade, Verknüpfungen, PowerShell, Kodierung). Der dafür
+  gestartete Prüf-Agent wurde von den Schutzmassnahmen des Modells angehalten, und die Suche wurde nicht von Hand
+  wiederholt. Geprüft ist, was die Selbsttests fahren, und dass Einstellungen, Wächter und Doku zusammenpassen.
+  Diese Prüfung holt ein Mensch nach.
 - **Residential Proxies an echten Adressen.** Ob `ip_einordnung` einen Privatanschluss erkennt, über den ein
   Residential Proxy läuft, ist nicht gemessen: Es gab keine Adresse, von der das feststand, und Adressen von
   Privatanschlüssen wurden nicht abgefragt. Geprüft ist an Vorlagen, dass ein solcher Eintrag richtig gelesen

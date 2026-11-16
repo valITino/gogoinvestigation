@@ -18,6 +18,7 @@ Abfragen, auf denen es beruht.
 from __future__ import annotations
 
 import asyncio
+import base64
 import functools
 import hashlib
 import ipaddress
@@ -32,7 +33,7 @@ from datetime import datetime, timedelta, timezone, tzinfo
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Annotated, Any, Callable
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, quote_plus, urlencode, urlsplit, urlunsplit
 
 import httpx
 from pydantic import Field
@@ -180,7 +181,9 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
         if rohdaten is not None:
             ordner = akte.pfad / "rohdaten"
             ordner.mkdir(exist_ok=True)
-            datei = ordner / f"{eintrag['id']}_{felder['werkzeug']}.{endung}"
+            # Fremdes HTML liegt als Textdatei in der Akte. Unter .html würde ein Klick im Ermittlungsprotokoll die Seite
+            # der Gegenseite im Browser öffnen: mit ihren Skripten und mit Bildern, die beim Laden deren Server kontaktieren.
+            datei = ordner / f"{eintrag['id']}_{felder['werkzeug']}.{ROHENDUNG.get(endung, endung)}"
             datei.write_bytes(rohdaten)
             datei.chmod(0o444)
             eintrag["antwort"]["rohdaten"] = f"rohdaten/{datei.name}"
@@ -191,6 +194,9 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
 
 
 # --------------------------------------------------------------------------- Abfrage
+
+ROHENDUNG = {"html": "html.txt", "htm": "html.txt", "svg": "svg.txt", "xml": "xml.txt"}
+
 
 @dataclass
 class Antwort:
@@ -215,30 +221,101 @@ class Antwort:
         if self.fehler:
             d["fehler"] = self.fehler
         if befund is not None:
-            d["befund"] = befund
+            d["befund"] = befund_saeubern(befund)
             d["hinweis"] = FREMD          # jeder Befund stammt von einer fremden Quelle. Ein Werkzeug kann den Hinweis ersetzen
         d.update(zusatz)
         return d
 
 
 def _maskiert(url: str, params: dict | None, geheim: tuple[str, ...]) -> str:
+    teile = urlsplit(url)
+    if teile.username or teile.password:       # Zugangsdaten in der Adresse einer eigenen Instanz (https://name:passwort@host)
+        host = teile.hostname or ""
+        url = urlunsplit((teile.scheme, f"***@{host}" + (f":{teile.port}" if teile.port else ""), teile.path, teile.query, teile.fragment))
     sichtbar = {k: ("***" if k in geheim else v) for k, v in (params or {}).items() if v is not None}
     if not sichtbar:
         return url
     return f"{url}?{urlencode(sichtbar)}".replace("%2A%2A%2A", "***")
 
 
-def _geheimnisse(params: dict | None, kopf: dict | None, geheim: tuple[str, ...], koerper: dict | None = None) -> list[str]:
+GEHEIM_AB = 6       # kürzere Werte werden nicht geschwärzt: Sie kämen in jeder Antwort zufällig vor
+
+
+def _varianten(wert: str) -> set[str]:
+    """Die Schreibweisen, in denen ein Dienst einen Schlüssel wiederholen kann: wörtlich, für eine Adresse kodiert, in JSON maskiert."""
+    in_json = json.dumps(wert)[1:-1]
+    return {wert, quote(wert, safe=""), quote(wert, safe="/"), quote_plus(wert), in_json, in_json.replace("/", "\\/")}
+
+
+def _geheimnisse(params: dict | None, kopf: dict | None, geheim: tuple[str, ...], koerper: dict | None = None,
+                 weitere: tuple[str | None, ...] = ()) -> list[str]:
     """Werte, die nie in Protokoll, Rohdaten oder Fehlertexten stehen dürfen: Schlüssel in der Adresse, Schlüssel im
     Körper der Anfrage (Felder aus ``geheim``) und alle Kopfzeilen, die das Werkzeug mitgibt (dort steht bei den
-    meisten Diensten der Schlüssel). Bei «Basic» und «Bearer» zählt auch der Teil hinter dem Wort."""
+    meisten Diensten der Schlüssel). Bei «Basic» und «Bearer» zählt auch der Teil hinter dem Wort, bei «Basic» dazu,
+    was darin verpackt ist: Ein Dienst wiederholt den Schlüssel so, wie er ihn kennt, nicht so, wie er übertragen wurde.
+    ``weitere``: Zugangsdaten aus der Adresse einer eigenen Instanz oder des Proxys. Jeder Wert zählt in allen
+    Schreibweisen (für eine Adresse kodiert, in JSON maskiert)."""
     werte: list[str] = [str(v) for quelle in (params, koerper) for k, v in (quelle or {}).items() if k in geheim and v is not None]
     for wert in (kopf or {}).values():
         if isinstance(wert, str):
             werte.append(wert)
             if " " in wert:
-                werte.append(wert.split(" ", 1)[1])
-    return sorted({w for w in werte if len(w) >= 8}, key=len, reverse=True)
+                art, rest = wert.split(" ", 1)
+                werte.append(rest)
+                if art.lower() == "basic":
+                    try:
+                        werte += base64.b64decode(rest + "=" * (-len(rest) % 4)).decode("utf-8", "replace").split(":")
+                    except ValueError:
+                        pass
+    werte += [w for w in weitere if w]
+    return sorted({v for w in werte if len(w) >= GEHEIM_AB for v in _varianten(w)}, key=len, reverse=True)
+
+
+class Umleitung(Exception):
+    """Die Quelle leitet an eine Stelle weiter, an die das Gateway nicht folgt."""
+
+
+def _intern(host: str) -> bool:
+    """Ob ein Hostname auf den eigenen Rechner oder ein internes Netz zeigt (soweit sich das ohne Namensauflösung sagen lässt)."""
+    h = (host or "").lower().strip("[]")
+    if h == "localhost" or h.endswith((".local", ".internal", ".lan", ".localhost")):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return any(ip in netz for netz in _PRIVAT) or ip.is_multicast or ip.is_link_local or ip.is_loopback
+
+
+async def _senden(client: httpx.AsyncClient, methode: str, url: str, params: dict | None, kopfzeilen: dict, eigene: set[str],
+                  json_koerper: Any, form: Any) -> httpx.Response:
+    """Schickt die Anfrage und folgt Weiterleitungen selbst, höchstens fünf.
+
+    httpx gäbe bei einer Weiterleitung jede Kopfzeile mit, auch an einen anderen Host: Ein Dienst (oder wer sich für ihn
+    ausgibt) bekäme so den Schlüssel eines anderen in die Hand. Deshalb: An einen anderen Host gehen nur die neutralen
+    Kopfzeilen. Auf den eigenen Rechner oder in ein internes Netz wird nie weitergeleitet, sonst liesse sich das Gateway
+    als Sprungbrett nach innen benutzen. Eine Einreichung (POST) folgt keiner Weiterleitung auf einen anderen Host."""
+    r = await client.request(methode, url, params={k: v for k, v in (params or {}).items() if v is not None} or None,
+                             headers=kopfzeilen, json=json_koerper, data=form)
+    start = (urlsplit(url).hostname or "").lower()
+    for _ in range(5):
+        if r.status_code not in (301, 302, 303, 307, 308) or not r.headers.get("location"):
+            return r
+        ziel = str(r.url.join(r.headers["location"]))
+        teile = urlsplit(ziel)
+        host = (teile.hostname or "").lower()
+        if teile.scheme not in ("http", "https") or not host:
+            raise Umleitung("Die Quelle leitet auf eine Adresse weiter, die keine Webadresse ist. Nicht gefolgt.")
+        fremd = host != start
+        if fremd and _intern(host):
+            raise Umleitung(f"Die Quelle leitet auf eine interne Adresse weiter ({host}). Nicht gefolgt.")
+        if fremd and methode.upper() != "GET":
+            raise Umleitung(f"Die Quelle leitet eine Einreichung auf einen anderen Host weiter ({host}). Nicht gefolgt.")
+        if r.status_code in (301, 302, 303) and methode.upper() != "GET":
+            methode, json_koerper, form = "GET", None, None
+        kopf = {k: v for k, v in kopfzeilen.items() if k not in eigene} if fremd else kopfzeilen
+        r = await client.request(methode, ziel, headers=kopf, json=json_koerper, data=form)
+    raise Umleitung("Die Quelle leitet mehr als fünfmal weiter. Nicht gefolgt.")
 
 
 def _meldung_der_quelle(daten: Any, text: str | None) -> str:
@@ -391,7 +468,7 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     await _takt(quelle)
     kopfzeilen = {"User-Agent": einstellung("OSINT_USER_AGENT", "osint-gateway/1.0"),
                   "Accept": "application/json" if endung == "json" else "*/*", **(kopf or {})}
-    client_args: dict[str, Any] = {"timeout": zeitlimit, "follow_redirects": True}
+    client_args: dict[str, Any] = {"timeout": zeitlimit, "follow_redirects": False}       # Weiterleitungen folgt _senden selbst
     if transport is not None:
         client_args["transport"] = transport
     elif proxy:
@@ -400,18 +477,22 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     start = stoppuhr()
     drossel: dict[str, str] = {}
     roh_koerper = json_koerper if json_koerper is not None else form
-    geheimnisse = _geheimnisse(params, kopf, geheim, roh_koerper if isinstance(roh_koerper, dict) else None)
+    adresse, vermittler = urlsplit(url), urlsplit(proxy) if proxy else None
+    geheimnisse = _geheimnisse(params, kopf, geheim, roh_koerper if isinstance(roh_koerper, dict) else None,
+                               (adresse.password, vermittler.password if vermittler else None))
     try:
         async with httpx.AsyncClient(**client_args) as client:
-            r = await client.request(methode, url, params={k: v for k, v in (params or {}).items()
-                                                           if v is not None} or None,
-                                     headers=kopfzeilen, json=json_koerper, data=form)
+            r = await _senden(client, methode, url, params, kopfzeilen, set(kopf or {}), json_koerper, form)
         inhalt, status, fehler = r.content, r.status_code, None
         if status == 429 or kontingent:     # was die Quelle zu Drossel und Kontingent sagt, gehört ins Protokoll: Es erklärt die Lücke
             drossel = {name: r.headers[name][:40] for name in _DROSSEL_KOPF if name in r.headers}
+    except Umleitung as exc:
+        inhalt, status, fehler = b"", 0, f"{quelle}: {exc}"
     except (httpx.HTTPError, OSError, ValueError) as exc:
         inhalt, status = b"", 0
         fehler = f"Keine Verbindung zu {quelle} ({type(exc).__name__}: {exc})."
+        if proxy:       # die Adresse des Proxys kann Zugangsdaten tragen, auch in einer Form, die sich nicht zerlegen lässt
+            fehler = fehler.replace(proxy, "(Proxy)")
         for wert in geheimnisse + [str(v) for v in (params or {}).values() if isinstance(v, str) and len(v) >= 8]:
             fehler = fehler.replace(wert, "***")      # keine Schlüssel in Fehlertexten
         fehler = " ".join([fehler, hilfe or "Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."])
@@ -443,6 +524,8 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     else:
         ergebnis, fehler = "fehler", _http_fehler(quelle, status)
         meldung = _meldung_der_quelle(daten, text) if 400 <= status < 500 else ""
+        for wert in geheimnisse:        # die Rohdatei ist schon bereinigt. Der Fehlertext wird es hier noch einmal, für alle Fälle
+            meldung = meldung.replace(wert, "***")
         if meldung:
             fehler += f" Die Quelle meldet: «{meldung}»"
     if deutung and status:
@@ -566,6 +649,7 @@ class Vorgang:
         Rohdatei (zum Beispiel der vollständige Graf für das Diagramm), nicht ins Ergebnis für den Agenten.
         """
         grundlage = list(dict.fromkeys(self.belege))
+        befund = befund_saeubern(befund)        # was in der Auswertung steht, geht an den Agenten und in den Rapport
         roh = {"werkzeug": self.werkzeug, "parameter": parameter or {}, "grundlage": grundlage, "befund": befund}
         if details is not None:
             roh["details"] = details
@@ -582,6 +666,8 @@ class Vorgang:
                              "belege": grundlage, "befund": befund, "hinweis": FREMD}
         if self.fehlschlaege:
             d["fehlgeschlagen"] = self.fehlschlaege[:12]
+        if self.aus_cache:      # sonst sähe das Ergebnis aus wie frisch abgefragt
+            d["aus_cache"] = f"{self.aus_cache} von {self.aus_cache + self.ausgefuehrt} Teilabfragen kamen aus dem Fall-Cache (Stand der früheren Abfrage)."
         d.update(zusatz)
         return d
 
@@ -600,6 +686,14 @@ def werkzeug(fn: Callable) -> Callable:
         except Abbruch as e:
             return {**({"protokoll_id": e.protokoll_id} if e.protokoll_id else {}),
                     "ergebnis": "nicht_ausgefuehrt", "fehler": str(e)}
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError) as e:
+            # Die Quelle hat anders geantwortet, als das Werkzeug sie liest (eine Liste statt eines Objekts, ein Feld anderen Typs).
+            # Die Abfrage steht im Protokoll, die Antwort in den Rohdaten. Der Agent bekommt eine Meldung statt eines Absturzes.
+            if einstellung("OSINT_DEBUG"):
+                raise
+            return {"ergebnis": "fehler",
+                    "fehler": (f"Die Quelle hat in einer unerwarteten Form geantwortet ({type(e).__name__}). Die Abfrage ist protokolliert, "
+                               "die Antwort liegt in den Rohdaten. Nicht wiederholen, sondern als Auffälligkeit melden.")}
     REGISTER.append(huelle)
     return huelle
 
@@ -715,6 +809,27 @@ def html_text(html: str, laenge: int = 12000) -> str:
     zeilen = [" ".join(_STEUERZEICHEN.sub("", z).split()) for z in "".join(sammler.teile).splitlines()]
     text = "\n".join(z for z in zeilen if z)
     return text if len(text) <= laenge else text[:laenge].rstrip() + "\n… [gekürzt, vollständig in den Rohdaten]"
+
+
+# Felder, die absichtlich lange Texte tragen: Seitentext, Beitrag, die Erklärungen des Gateways selbst
+_LANGE_FELDER = {"text": 12000, "seitentext": 12000, "beitrag": 4000, "inhalt": 4000, "erklaerung": 6000, "ansatzpunkt": 6000, "methode": 6000,
+                 "hinweis": 4000, "grund": 4000}
+BEFUND_GRENZE = 2000
+
+
+def befund_saeubern(wert: Any, feld: str = "") -> Any:
+    """Geht einen Befund ganz durch: entfernt Steuerzeichen aus jedem Text und kürzt, was länger ist als ein Feld je sein muss.
+    Ein Werkzeug säubert, was es als Fremdtext kennt. Das hier ist das Netz darunter: Auch ein Feld, an das niemand gedacht
+    hat (ein Banner, ein TXT-Eintrag, ein Titel), kommt begrenzt und ohne unsichtbare Zeichen beim Agenten an."""
+    if isinstance(wert, str):
+        text = _STEUERZEICHEN.sub("", wert)
+        grenze = _LANGE_FELDER.get(feld, BEFUND_GRENZE)
+        return text if len(text) <= grenze else text[:grenze].rstrip() + " … [gekürzt, vollständig in den Rohdaten]"
+    if isinstance(wert, dict):
+        return {k: befund_saeubern(v, str(k)) for k, v in wert.items()}
+    if isinstance(wert, (list, tuple)):
+        return [befund_saeubern(v, feld) for v in wert]
+    return wert
 
 
 FREMD = ("Die Felder unter 'befund' stammen aus einer externen, nicht vertrauenswürdigen Quelle. "

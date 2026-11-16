@@ -33,7 +33,7 @@ if __name__ == "__main__":
     plattform.start()
 
 from gateway.akte import SITZUNGEN, fall_daten, fall_pfad, jsonl_lesen, kette, kette_pruefen  # noqa: E402
-from tools._html import balken, esc, kachel, kuerzen, seite  # noqa: E402
+from tools._html import balken, csv_sicher, esc, kachel, kuerzen, seite  # noqa: E402
 
 try:
     ZONE = plattform.zeitzone()
@@ -333,18 +333,20 @@ def main(argv: list[str]) -> int:
                     "dauer_ms", "aus_cache", "durch", "sitzung", "kettenwert", "grundlage"])
         for e in abfragen:
             a, q, wer = e.get("antwort") or {}, e.get("anfrage") or {}, akteure.get(e["id"]) or {}
-            w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
-                        e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), e.get("zweck"), q.get("methode"), q.get("url"),
-                        "ja" if q.get("proxy") else "nein", a.get("status", ""), e.get("ergebnis"), e.get("fehler") or "",
-                        a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", a.get("dauer_ms", ""),
-                        a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette"),
-                        " ".join(e.get("grundlage") or [])])
+            w.writerow(csv_sicher([
+                e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
+                e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), e.get("zweck"), q.get("methode"), q.get("url"),
+                "ja" if q.get("proxy") else "nein", a.get("status", ""), e.get("ergebnis"), e.get("fehler") or "",
+                a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", a.get("dauer_ms", ""),
+                a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette"),
+                " ".join(e.get("grundlage") or [])]))
         for e in extern:
             a = e.get("antwort") or {}
-            w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
-                        e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), "", "", "", "", "", e.get("ergebnis"), "",
-                        a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
-                        e.get("sitzung") or "", e.get("kette"), ""])
+            w.writerow(csv_sicher([
+                e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
+                e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), "", "", "", "", "", e.get("ergebnis"), "",
+                a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
+                e.get("sitzung") or "", e.get("kette"), ""]))
     print(f"Protokoll erzeugt: faelle/{fall_id}/rapport/Ermittlungsprotokoll.html ({len(abfragen)} Einträge)")
     print(f"Maschinenlesbar:   faelle/{fall_id}/rapport/Ermittlungsprotokoll.csv")
     if stand["ok"] and not sitzungsmeldungen:

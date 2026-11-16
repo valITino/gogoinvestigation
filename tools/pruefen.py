@@ -148,7 +148,7 @@ def umgebung(env: dict[str, str]) -> None:
             schritte.append(f"Docker starten, dann {SETUP} erneut (für Web-Check und Robin)")
         else:
             zeile(GUT, "Docker", "läuft")
-            abbild = env.get("ROBIN_IMAGE", "apurvsg/robin:latest")
+            abbild = env.get("ROBIN_IMAGE") or plattform.ROBIN_ABBILD
             code, _ = lauf(["docker", "image", "inspect", abbild], 15)
             zeile(GUT if code == 0 else AUS, "Robin-Abbild", abbild if code == 0 else f"{abbild} nicht geladen ({SETUP} holt es)")
     adresse = env.get("WEBCHECK_URL", "http://127.0.0.1:3000")

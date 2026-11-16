@@ -167,10 +167,17 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | Etikettenliste (GraphSense TagPacks) | niemand etwas: Die Liste liegt im Repo. Nur wer mit `tools/listen.py laden` die Massenlisten holt, zeigt GitHub, dass dieser Rechner die öffentlichen TagPacks abruft. **Nie** eine geprüfte Adresse. | nichts |
 | DefiLlama, EZB | eure Adresse, Währung und Stichtag. **Nicht** den Betrag und keine Wallet-Adresse. | nichts |
 
+Rohdateien mit HTML einer fremden Seite (Wayback, Telegram, Seitentext von urlscan.io) liegen als `.html.txt` in der
+Akte: unverändert im Inhalt, aber so benannt, dass ein Klick sie als Text zeigt und nicht als Seite öffnet.
+
 Wer einem Explorer nicht zeigen will, welche Adressen in einem Verfahren stehen, betreibt ihn selbst:
 `KRYPTO_BITCOIN_API` nimmt die Adresse einer eigenen Esplora-Schnittstelle (mempool oder electrs),
 `KRYPTO_ETHEREUM_API` und die Entsprechungen je Kette die einer eigenen Blockscout-Instanz, `KRYPTO_TRON_API` die
 einer Schnittstelle nach Art von TronGrid.
+
+Zugangsdaten in der Adresse einer eigenen Instanz (`https://name:passwort@host`) schwärzt das Gateway im Protokoll.
+Einen Schlüssel im Pfad einer solchen Adresse kann es nicht erkennen: Er stünde im Protokoll. Dafür also keinen
+Pfad verwenden, sondern Benutzername und Passwort.
 
 Mit `OSINT_PROXY` in `.env` laufen alle Abfragen des Gateways über einen Proxy. Das Protokoll vermerkt je
 Abfrage, ob ein Proxy verwendet wurde. Web-Check auf dem eigenen Rechner wird immer direkt angesprochen. Für
@@ -309,7 +316,9 @@ sind Einzelpersonen unbekannter Herkunft. Vor dem Einsatz prüfen, ob Selektoren
 **Darkus.** Menügesteuert. Seine drei Suchmaschinen (Ahmia, Torch, notEvil) sind in Robin enthalten oder durch
 dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sperrliste.
 
-**Robin.** Eigener MCP-Server, läuft als Container (`apurvsg/robin`), Tor inklusive. Der Analyst nutzt
+**Robin.** Eigener MCP-Server, läuft als Container (`apurvsg/robin`), Tor inklusive. Das Abbild ist auf eine
+Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026), ebenso das von Web-Check (Stand vom 15.11.2026): Was
+läuft, ändert sich nicht von selbst. Ein neuer Stand ist ein bewusster Schritt. Der Analyst nutzt
 `robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
 Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, übernehmen die Hooks: Der
 Wächter verlangt die Freigabe `darkweb`, der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der

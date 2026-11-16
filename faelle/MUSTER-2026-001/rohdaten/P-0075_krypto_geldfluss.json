@@ -157,7 +157,10 @@
     "tiefe": 2,
     "art": "liegt",
     "betrag": "0.09984984",
-    "anteil": 20.0
+    "anteil": 20.0,
+    "etiketten": [
+     "Unbenannte Wallet (WalletExplorer)"
+    ]
    },
    {
     "nr": 5,
@@ -348,7 +351,10 @@
     "tiefe": 2,
     "art": "liegt",
     "betrag": "0.09984984",
-    "anteil": 20.0
+    "anteil": 20.0,
+    "etiketten": [
+     "Unbenannte Wallet (WalletExplorer)"
+    ]
    },
    {
     "nr": 5,

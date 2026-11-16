@@ -93,7 +93,8 @@ class Graf:
         if zeit:
             k["zeit_von"] = min(k["zeit_von"] or zeit, zeit)
             k["zeit_bis"] = max(k["zeit_bis"] or zeit, zeit)
-        self.knoten[an]["betrag"] += betrag
+        if an != von:       # Wechselgeld an die eigene Adresse ist kein neuer Zufluss: Die Station hätte sonst mehr erhalten, als hereinkam
+            self.knoten[an]["betrag"] += betrag
 
     def ende(self, schluessel: str | None, art: str, betrag: int, text: str = "", **mehr: Any) -> None:
         if betrag <= 0:
@@ -168,9 +169,15 @@ async def btc_start(v: Vorgang, g: Graf, *, tx: dict | None, adresse: str | None
             break
         letzte = txs[-1]["tx"]
     for t in alle:
+        # Gibt die Adresse in derselben Transaktion selbst Geld aus, ist ihr Ausgang (so weit) Wechselgeld und kein Eingang von
+        # aussen. Als Start zählt nur, was darüber hinausgeht. Dem Wechselgeld folgt die Verfolgung später von selbst.
+        eigen = sum(e["betrag"] for e in t["eingaenge"] if gleich(g.kette, e.get("adresse"), adresse))
         for a in t["ausgaenge"]:
             if a["betrag"] > 0 and gleich(g.kette, a.get("adresse"), adresse):
-                posten.append((0, t["tx"], a["nr"], adresse, a["betrag"], t.get("zeit")))
+                neu = max(0, a["betrag"] - eigen)
+                eigen = max(0, eigen - a["betrag"])
+                if neu:
+                    posten.append((0, t["tx"], a["nr"], adresse, neu, t.get("zeit")))
         for e in t["eingaenge"]:
             if gleich(g.kette, e.get("adresse"), adresse):
                 wissen["ausgegeben_in"][(e["tx"], e["ausgang"])] = t
@@ -252,6 +259,12 @@ async def btc_fluss(v: Vorgang, z: Zuordner, g: Graf, posten: list[tuple], grenz
             if mit:
                 k.setdefault("mitgenutzt", set()).update(mit)
             summe_ein = sum(x["betrag"] for x in folge["eingaenge"]) or anteil
+            if summe_ein < sum(x["betrag"] for x in folge["ausgaenge"]):
+                # Bei Bitcoin sind die Eingänge nie kleiner als die Ausgänge. Hier fehlt der Quelle der Betrag eines Eingangs:
+                # Der Anteil liesse sich nur falsch berechnen (mehr würde verteilt, als hereinkam). Also hier enden und es sagen.
+                g.ende(schluessel, "unklar", anteil, f"Die Quelle nennt für die weiterleitende Transaktion {folge['tx']} nicht jeden "
+                       "Eingangsbetrag. Ohne ihn lässt sich der Anteil nicht berechnen", fortsetzen=weiter_bei)
+                continue
             if not folge["bestaetigt"]:
                 _notiz(k, f"Weiterleitung {folge['tx']} ist noch nicht bestätigt")
             einzeln = len(folge["eingaenge"]) == 1 and len([x for x in folge["ausgaenge"] if x["betrag"] > 0]) == 1

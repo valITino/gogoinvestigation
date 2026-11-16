@@ -41,7 +41,7 @@ jobs:
       - name: Web-Check starten
         run: |
           docker compose up -d webcheck
-          docker image inspect lissy93/web-check --format 'Abbild {{index .RepoDigests 0}}, gebaut {{.Created}}'
+          docker inspect osint-webcheck --format 'Abbild {{.Config.Image}}, gestartet {{.State.StartedAt}}'
 
       - name: Jede passive Prüfung einmal gegen example.com
         run: python3 tools/webcheck_live.py --warten 120

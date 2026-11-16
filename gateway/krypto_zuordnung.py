@@ -49,6 +49,7 @@ _KUNDEN_MARKEN = {"exchange", "cex", "centralized-exchange", "hot-wallet", "cold
 _MISCH_MARKEN = {"mixer", "mixing", "mixing-service", "tumbler", "coinjoin"}
 _MISCH_NAME = re.compile(r"tornado[ .]?cash|mixer|mixing|tumbler|coin ?join|joinmarket|wasabi|samourai|whirlpool|bitcoin ?fog|blender\.io|sinbad|railgun",
                          re.IGNORECASE)
+_WEBADRESSE = re.compile(r"^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(-\w+)?$")
 _WALLET_ROLLE = re.compile(r"(?<![a-z])(hot|cold|deposit|withdraw(?:al)?|wallet|exchange|custody)(?![a-z])", re.IGNORECASE)
 _IKNAIO_DIENST = {"exchange", "service", "gambling", "payment_processor", "wallet_service", "hosted_wallet", "atm", "mining_pool"}
 _IKNAIO_MISCHER = {"mixing_service", "mixer", "coinjoin"}
@@ -303,7 +304,9 @@ class Zuordner:
             # WalletExplorer benennt Wallets von Diensten, sagt aber nicht, welcher Art. Kennt die lokale Liste den Namen, gilt
             # ihre Kategorie: Ein Mining-Pool oder ein Marktplatz ist kein Dienst, bei dem sich ein Kunde erfragen liesse.
             kategorie = self._we_kategorie(name)
-            dienst_ = kategorie in krypto_listen.DIENST if kategorie else True
+            # Kennt die Liste den Namen nicht, bleibt nur seine Form: WalletExplorer benennt Dienste nach ihrer Webadresse
+            # («Beispielboerse.com»). Ein anderer Name (eine Kampagne, ein Spitzname, ein Mensch) macht keinen Dienst.
+            dienst_ = kategorie in krypto_listen.DIENST if kategorie else bool(_WEBADRESSE.match(name))
             mischer_ = kategorie in krypto_listen.MISCHER if kategorie else bool(_MISCH_NAME.search(name))
             art = f", Art laut Etikettenliste: {krypto_listen.KATEGORIE.get(kategorie, kategorie)}" if kategorie else ""
             return [etikett("WalletExplorer", "name", name,

@@ -631,7 +631,7 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
     if a.ohne_robin:
         zeile(AUS, "Robin", "übersprungen")
         return False
-    abbild = env.get("ROBIN_IMAGE") or "apurvsg/robin:latest"
+    abbild = env.get("ROBIN_IMAGE") or plattform.ROBIN_ABBILD
     if lauf(docker["vor"] + ["docker", "image", "inspect", abbild], 60)[0] == 0:
         zeile(GUT, "Robin", f"Abbild bereit ({abbild})")
         return True

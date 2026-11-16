@@ -10,6 +10,13 @@ import random
 
 esc = html.escape
 
+
+def csv_sicher(zeile: list) -> list:
+    """Eine Zeile für eine CSV-Datei, die jemand in einer Tabellenkalkulation öffnet. Beginnt eine Zelle mit =, +, - oder @,
+    hält das Programm sie für eine Formel und führt sie aus. Solche Werte kommen aus Fremdinhalten (ein Ziel, ein Kanalname).
+    Ein vorangestelltes Hochkomma macht sie zu Text."""
+    return [("'" + w) if isinstance(w, str) and w[:1] in ("=", "+", "-", "@", "\t", "\r") else w for w in zeile]
+
 # Farbrollen. Hell und dunkel sind je eigens gewählt, im Druck gilt immer hell.
 _HELL = """--flaeche:#fcfcfb;--seite:#f9f9f7;--tinte:#0b0b0b;--tinte-2:#52514e;--gedaempft:#898781;
 --raster:#e1e0d9;--achse:#c3c2b7;--rand:rgba(11,11,11,.10);--serie:#2a78d6;--serie-hell:#cde2fb;

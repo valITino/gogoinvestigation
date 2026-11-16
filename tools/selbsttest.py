@@ -2335,8 +2335,184 @@ def _():
     finally:
         (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").unlink()
     assert not abgelehnt(waechter("Glob", pattern="*.py", path="tools")), "Glob ausserhalb der Fallakten wurde gesperrt"
+    # Die Abbilder der beiden Container sind auf eine Prüfsumme festgelegt, an jeder Stelle dieselbe
+    assert f"${{ROBIN_IMAGE:-{plattform.ROBIN_ABBILD}}}" in lesen(REPO / ".mcp.json") and re.search(r"@sha256:[0-9a-f]{64}$", plattform.ROBIN_ABBILD), \
+        "das Abbild von Robin ist nicht überall dasselbe oder nicht festgelegt"
+    assert re.search(r"^\s+image: lissy93/web-check@sha256:[0-9a-f]{64}$", lesen(REPO / "docker-compose.yml"), re.M), "das Abbild von Web-Check ist nicht festgelegt"
+    for datei in (REPO / ".github" / "workflows").glob("*.yml"):
+        for zeile_ in re.findall(r"uses: (\S+)", lesen(datei)):
+            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", zeile_), f"{datei.name}: Die Action {zeile_} ist nicht auf einen Commit festgelegt"
     treffer = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["hooks"]["PreToolUse"][0]["matcher"]
     assert "Glob" in treffer.split("|"), f"der Wächter wird für Glob nicht aufgerufen: {treffer}"
+
+
+@test("Kern: Schlüssel bleiben in jeder Schreibweise draussen, folgen keiner Weiterleitung auf fremde Hosts, und nichts führt nach innen")
+def _():
+    import base64
+    schluessel_ = "Sh0dan+Key/mit=Sonder&zeichen"
+    gesehen: list[httpx.Request] = []
+
+    def gegenstelle(anfrage: httpx.Request) -> httpx.Response:
+        gesehen.append(anfrage)
+        host, pfad = anfrage.url.host, anfrage.url.path
+        if host == "weiter.example" and pfad == "/fremd":
+            return httpx.Response(302, headers={"location": "https://fremd.example/ziel"})
+        if host == "weiter.example" and pfad == "/gleich":
+            return httpx.Response(307, headers={"location": "/angekommen"})
+        if host == "weiter.example" and pfad == "/innen":
+            return httpx.Response(302, headers={"location": "http://169.254.169.254/latest/meta-data/"})
+        if host == "weiter.example" and pfad == "/kreis":
+            return httpx.Response(302, headers={"location": "/kreis"})
+        if host == "echo.example":
+            # Ein Dienst, der den Schlüssel in seiner Fehlermeldung wiederholt: für die Adresse kodiert und in JSON maskiert
+            from urllib.parse import quote
+            return httpx.Response(401, content=json.dumps({"error": f"Invalid API key in request https://echo.example/x?key={quote(schluessel_, safe='')}",
+                                                           "key_json": schluessel_}).replace("/", "\\/").encode(),
+                                  headers={"content-type": "application/json"})
+        if host == "basic.example":
+            return httpx.Response(401, json={"message": "API key ca_live_GEHEIM0123456789 is not authorized for this endpoint"})
+        if host == "form.example":
+            return httpx.Response(200, json=[1, 2, 3])
+        return httpx.Response(200, json={"ok": True, "titel": "T" * 5000 + "‮\u0007"})
+    kern.transport = httpx.MockTransport(gegenstelle)
+
+    def frage(url: str, **mehr) -> kern.Antwort:
+        return asyncio.run(kern.abfrage(FALL, ZWECK, werkzeug="probe_kern", quelle="Probe", ziel="Probe", ziel_typ="probe", url=url, cache_h=0, **mehr))
+
+    # Weiterleitung auf einen fremden Host: Die Kopfzeile mit dem Schlüssel geht nicht mit. Auf demselben Host bleibt sie
+    a = frage("https://weiter.example/fremd", kopf={"X-Api-Key": "KOPFSCHLUESSEL-0123456789"})
+    fremd = next(x for x in gesehen if x.url.host == "fremd.example")
+    assert a.ergebnis == "ok" and "x-api-key" not in fremd.headers and fremd.headers["user-agent"], dict(fremd.headers)
+    frage("https://weiter.example/gleich", kopf={"X-Api-Key": "KOPFSCHLUESSEL-0123456789"})
+    assert gesehen[-1].url.path == "/angekommen" and gesehen[-1].headers["x-api-key"] == "KOPFSCHLUESSEL-0123456789"
+    # Eine Quelle kann das Gateway nicht nach innen schicken, und sie kann es nicht im Kreis laufen lassen
+    vorher = len(gesehen)
+    a = frage("https://weiter.example/innen")
+    assert a.ergebnis == "fehler" and "interne Adresse" in a.fehler and len(gesehen) == vorher + 1, (a.fehler, [str(x.url) for x in gesehen[vorher:]])
+    a = frage("https://weiter.example/kreis")
+    assert a.ergebnis == "fehler" and "mehr als fünfmal" in a.fehler, a.fehler
+    try:        # eine Einreichung folgt keiner Weiterleitung auf einen anderen Host: Der Körper ginge sonst an einen Dritten
+        asyncio.run(kern._senden(httpx.AsyncClient(transport=kern.transport), "POST", "https://weiter.example/fremd", None, {}, set(), {"a": 1}, None))
+        raise AssertionError("eine Einreichung ist einer Weiterleitung auf einen fremden Host gefolgt")
+    except kern.Umleitung as fehler:
+        assert "anderen Host" in str(fehler)
+
+    # Der Dienst wiederholt den Schlüssel kodiert: weder Rohdatei noch Protokoll noch Fehlertext tragen ihn, in keiner Schreibweise
+    a = frage("https://echo.example/x", params={"key": schluessel_}, geheim=("key",))
+    akte = lesen(pfad / "protokoll" / "abfragen.jsonl").splitlines()[-1] + lesen(PROJEKT / a.rohdaten) + (a.fehler or "")
+    for form in kern._varianten(schluessel_):
+        assert form not in akte, f"der Schlüssel steht in der Schreibweise «{form}» in der Akte"
+    assert "Invalid API key in request" in a.fehler and "***" in a.fehler, a.fehler
+    # Basic: Der Dienst wiederholt den Schlüssel so, wie er ihn kennt, nicht so, wie er verpackt übertragen wurde
+    roh = "ca_live_GEHEIM0123456789"
+    a = frage("https://basic.example/x", kopf={"Authorization": "Basic " + base64.b64encode(f"{roh}:{roh}".encode()).decode()})
+    akte = lesen(pfad / "protokoll" / "abfragen.jsonl").splitlines()[-1] + lesen(PROJEKT / a.rohdaten) + (a.fehler or "")
+    assert roh not in akte and "is not authorized" in a.fehler, a.fehler
+    # Zugangsdaten in der Adresse einer eigenen Instanz stehen nicht im Protokoll
+    a = frage("https://ermittler:GeheimesPasswort2026@mempool.intern.example/api/x")
+    eintrag = letzter_eintrag()
+    assert "GeheimesPasswort2026" not in json.dumps(eintrag) and eintrag["anfrage"]["url"] == "https://***@mempool.intern.example/api/x", eintrag["anfrage"]
+    # Ein Proxy mit Zugangsdaten in unlesbarer Form: Die Fehlermeldung nennt ihn nicht
+    kern.transport = None
+    os.environ["OSINT_PROXY"] = "nutzer:GeheimProxyPw@proxy.intern.invalid:3128"
+    try:
+        a = frage("https://ohne-netz.example/x")
+    finally:
+        del os.environ["OSINT_PROXY"]
+        kern.transport = httpx.MockTransport(gegenstelle)
+    assert a.ergebnis == "fehler" and "GeheimProxyPw" not in json.dumps(letzter_eintrag()) and "GeheimProxyPw" not in a.fehler, a.fehler
+
+    # Fremdes HTML liegt als Textdatei in der Akte: Ein Klick im Protokoll öffnet keine Seite der Gegenseite
+    a = frage("https://seite.example/", endung="html")
+    assert a.rohdaten.endswith("_probe_kern.html.txt"), a.rohdaten
+    # Jeder Befund wird begrenzt und von unsichtbaren Zeichen befreit, auch in Feldern, an die kein Werkzeug gedacht hat
+    b = kern.Antwort("P-0", 200, "ok").als_dict({"titel": "T" * 5000 + "‮\u0007", "liste": [{"x": "kurz​"}], "text": "S" * 9000, "zahl": 7})["befund"]
+    assert len(b["titel"]) < 2100 and b["titel"].endswith("[gekürzt, vollständig in den Rohdaten]") and "‮" not in b["titel"], len(b["titel"])
+    assert b["liste"] == [{"x": "kurz"}] and len(b["text"]) == 9000 and b["zahl"] == 7, b["liste"]
+    # Antwortet eine Quelle in einer Form, die das Werkzeug nicht liest, gibt es eine Meldung statt eines Absturzes
+
+    @kern.werkzeug
+    async def probe_form(fall: str, zweck: str) -> dict:
+        a = await kern.abfrage(fall, zweck, werkzeug="probe_form", quelle="Probe", ziel="x", ziel_typ="probe", url="https://form.example/x", cache_h=0)
+        return a.als_dict({"wert": a.daten.get("feld")})
+    kern.REGISTER.remove(probe_form)
+    r = aufruf(probe_form, zweck=ZWECK)
+    assert r["ergebnis"] == "fehler" and "unerwarteten Form" in r["fehler"] and letzter_eintrag()["werkzeug"] == "probe_form", r
+    # Tabellenkalkulationen führen Zellen aus, die mit = + - @ beginnen. In den CSV-Dateien stehen sie als Text
+    assert rapport.csv_sicher(["=HYPERLINK(\"http://x\")", "@kanal", "+1", "-1", "normal", 7, None]) == \
+        ["'=HYPERLINK(\"http://x\")", "'@kanal", "'+1", "'-1", "normal", 7, None]
+    assert "csv_sicher(" in lesen(REPO / "tools" / "protokoll.py") and "csv_sicher(" in lesen(REPO / "tools" / "rapport.py")
+    kern.transport = httpx.MockTransport(antwort)
+    assert kette_pruefen(FALL)["ok"], kette_pruefen(FALL)["fehler"]
+
+
+@test("Geldfluss: Wechselgeld ist kein Eingang, fehlende Eingangsbeträge enden als unklar, ein Name ohne Kategorie ist kein Dienst")
+def _():
+    # A erhält 1 BTC von aussen, zahlt 0.4 an B und bekommt 0.5999 als Wechselgeld zurück. Der Startbetrag ist 1, nicht 1.5999
+    w = kwelt()
+    w.btc_zahlung("w1", [("extern", "fremd", 100_000_000)], [("wa", 100_000_000)], T0)
+    w.btc_zahlung("w2", [("w1", 0)], [("wb", 40_000_000), ("wa", 59_990_000)], T0 + 3600)
+    for start in ({"start": kw.btc("wa")}, {"start": kw.txid("w1"), "adresse": kw.btc("wa")}):
+        r = kruf(krypto.krypto_geldfluss, start.pop("start"), **start)
+        b = r["befund"]
+        je = {s_["adresse"]: s_ for s_ in b["stationen"]}
+        assert b["startbetrag"] == "1" and b["summe_geht_auf"], f"Wechselgeld zählt als Eingang: Startbetrag {b['startbetrag']}"
+        assert je[kw.btc("wa")]["betrag"] == "1" and je[kw.btc("wa")]["anteil"] == 100.0, f"die Station erhielt mehr, als hereinkam: {je[kw.btc('wa')]}"
+        assert sum(e["anteil"] for e in b["verteilung"]) <= 100.01, b["verteilung"]
+
+    # Nennt die Quelle für einen Eingang keinen Betrag, wird nicht geraten: Das Ende heisst «unklar», die Summe geht auf
+    w = kwelt()
+    w.btc_zahlung("u1", [("extern", "fremd", 100_000_000)], [("ua", 100_000_000)], T0)
+    w.btc_zahlung("u2", [("u1", 0), ("extern", "dritter", 200_000_000)], [("ub", 299_990_000)], T0 + 3600)
+
+    def ohne_betrag(wert):
+        if isinstance(wert, dict):
+            if wert.get("txid") == kw.txid("u2") and isinstance(wert.get("vin"), list) and len(wert["vin"]) > 1:
+                wert["vin"][1]["prevout"]["value"] = None
+            for v in wert.values():
+                ohne_betrag(v)
+        elif isinstance(wert, list):
+            for v in wert:
+                ohne_betrag(v)
+
+    def gegenstelle(anfrage: httpx.Request) -> httpx.Response:
+        r = w.antwort(anfrage)
+        try:
+            daten = json.loads(r.content)
+        except ValueError:
+            return r
+        ohne_betrag(daten)
+        return httpx.Response(r.status_code, json=daten)
+    kern.transport = httpx.MockTransport(gegenstelle)
+    b = kruf(krypto.krypto_geldfluss, kw.txid("u1"), adresse=kw.btc("ua"))["befund"]
+    arten = {e["art"]: e["betrag"] for e in b["verteilung"]}
+    assert b["summe_geht_auf"] and arten == {"unklar": "1"}, f"aus einem fehlenden Eingangsbetrag wurde eine Zuordnung errechnet: {arten}"
+    assert any("nicht jeden Eingangsbetrag" in e["grund"] for e in b["enden"]), b["enden"]
+
+    # WalletExplorer nennt einen Namen, den die Liste nicht kennt und der keine Webadresse ist: kein Dienst, kein Editionsbegehren
+    w = kwelt()
+    w.btc_zahlung("n1", [("extern", "opfer", 50_000_000)], [("erpresser", 50_000_000)], T0)
+    w.btc_zahlung("n2", [("n1", 0)], [("ziel", 49_990_000)], T0 + 3600)
+    w.walletexplorer[kw.btc("ziel")] = "Max Mustermann"
+    b = kruf(krypto.krypto_geldfluss, kw.txid("n1"), adresse=kw.btc("erpresser"))["befund"]
+    assert not any(e["art"] == "dienst" for e in b["verteilung"]) and not any("Editionsbegehren" in a for a in b["ansatzpunkte"]), \
+        f"ein Name allein wurde zum Dienst: {b['ansatzpunkte']}"
+    # Rapport: Die Zuordnung über mehrere Stationen ist höchstens «mittel», auch wenn zwei Quellen die Zahlungen zeigen
+    e = kprotokoll()
+    fluss_id = next(k for k, v in e.items() if v.get("werkzeug") == "krypto_geldfluss" and v.get("art") == "auswertung")
+    befund = {"zusammenfassung": ["x"], "luecken": ["x"], "indikatoren": [], "befunde": [{
+        "id": "B-01", "art": "bewertung", "sicherheit": "hoch", "titel": "t", "text": "t", "gegenpruefung": "bestaetigt",
+        "erlaeuterung": "Eine Erklärung in einfachen Worten, lang genug.", "belege": [fluss_id]}]}
+    assert any("höchstens 'mittel'" in m for m in rapport.pruefen(befund, e, entwurf=False)[0]), rapport.pruefen(befund, e, entwurf=False)[0]
+    befund["befunde"][0]["sicherheit"] = "mittel"
+    assert not any("höchstens 'mittel'" in m for m in rapport.pruefen(befund, e, entwurf=False)[0])
+
+    # IP-Einordnung: Ein Name aus einem freien Feld des Registers ist kein Inhaber. Im Ansatzpunkt steht der Inhaber des AS
+    netz = ipq.whois_lesen([[{"key": "inetnum", "value": "198.51.100.0/29"}, {"key": "owner", "value": "Hans Muster"}, {"key": "descr", "value": "Hans Muster"},
+                             {"key": "country", "value": "BR"}]])
+    assert "inhaber" not in netz and netz["land"] == "BR", netz
+    assert ipq._netzbetreiber({"inhaber": "Musterfirma LLC", "as_inhaber": "MUSTER-AS Musternetz AG"}) == "MUSTER-AS Musternetz AG"
+    kern.transport = httpx.MockTransport(antwort)
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")

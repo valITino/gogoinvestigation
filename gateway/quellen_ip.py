@@ -324,7 +324,9 @@ async def _ripe(v: Vorgang, call: str, ziel: str, schritt: str, **params: Any) -
 
 # Register nennen dieselbe Angabe verschieden (RIPE: inetnum, netname, country. ARIN: NetRange, NetName, Country).
 _WHOIS_FELDER = {"bereich": ("inetnum", "inet6num", "netrange", "cidr"), "netzname": ("netname",),
-                 "inhaber": ("org-name", "orgname", "organization", "owner", "descr"), "organisation": ("org", "orgid"),
+                 # «owner» (LACNIC) und «descr» sind freie Felder: Dort steht bei kleinen Netzen der Name eines Menschen.
+                 # Als Inhaber zählt nur, was das Register als Organisation führt.
+                 "inhaber": ("org-name", "orgname", "organization"), "organisation": ("org", "orgid"),
                  "land": ("country",), "status": ("status", "nettype"), "registriert": ("created", "regdate"),
                  "geaendert": ("last-modified", "updated")}
 _WHOIS_KONTAKT = ("person", "role", "admin-c", "tech-c", "abuse-c", "phone", "address", "e-mail", "nic-hdl")
@@ -497,7 +499,7 @@ def erklaerung(ip: str, u: dict, stimmen: list[dict], tat: datetime | None, jetz
 
 def _netzbetreiber(netz: dict) -> str:
     """Name des Netzinhabers für den Ansatzpunkt. Ein blosses Kürzel des Registers (ORG-…) ist kein Name."""
-    for feld in ("inhaber", "as_inhaber", "betreiber", "organisation", "netzname"):
+    for feld in ("as_inhaber", "inhaber", "betreiber", "organisation", "netzname"):       # zuerst der Inhaber des AS: immer eine Organisation
         wert = str(netz.get(feld) or "")
         if wert and not wert.upper().startswith("ORG-"):
             return wert

@@ -35,6 +35,13 @@
     "name": "MusterLocker",
     "detail": "1 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
     "beleg": "P-0081"
+   },
+   {
+    "quelle": "WalletExplorer",
+    "art": "hinweis",
+    "name": "Unbenannte Wallet",
+    "detail": "gehört zur Wallet 008f8ef05279fff2, der WalletExplorer keinen Namen gibt",
+    "beleg": "P-0083"
    }
   ],
   "auffaellig": [

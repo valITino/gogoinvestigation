@@ -127,6 +127,11 @@ def dateisperre(datei: Path, warten: float = 30.0):
                     msvcrt.locking(sperre.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+# Das Abbild von Robin, auf eine Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026). Dieselbe Angabe steht in
+# .mcp.json, ein Selbsttest hält beide gleich. Ein neuer Stand ist ein bewusster Schritt, per Pull Request.
+ROBIN_ABBILD = "apurvsg/robin@sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0"
+
+
 def einstellung(name: str, standard: str = "") -> str:
     """Wert einer Einstellung: zuerst die Umgebung, dann die Datei .env im Projekt, sonst der Standard.
     So gilt etwa OSINT_ZEITZONE aus .env für Gateway, Hooks und Werkzeuge gleichermassen."""

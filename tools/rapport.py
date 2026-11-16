@@ -44,8 +44,8 @@ if __name__ == "__main__":
 
 from gateway.akte import (FREIGABE_TEXT, FREIGABEN, IP_VORBEHALT, IP_WERTE, VON_HAND, belege_lesen, fall_daten, fall_pfad,  # noqa: E402
                           freigabe_erteilt, kette_pruefen)
-from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, esc, geldfluss, graf, graf_legende,  # noqa: E402
-                         kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
+from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, csv_sicher, esc, geldfluss, graf,  # noqa: E402
+                         graf_legende, kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
 
 try:
     ZONE = plattform.zeitzone()
@@ -243,6 +243,12 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | Non
                            f"(vorhanden: {', '.join(sorted(q for q in quellen if q)) or 'keine'}). Sonst 'mittel'.")
         if art == "hypothese" and f.get("sicherheit") == "hoch":
             maengel.append(f"{wo}: Eine Hypothese kann nicht Sicherheit 'hoch' haben.")
+        if f.get("sicherheit") == "hoch" and any((protokoll.get(pid) or {}).get("werkzeug") == "krypto_geldfluss"
+                                                 and (protokoll.get(pid) or {}).get("art") == "auswertung" for pid in f.get("belege") or []):
+            # Zwei Explorer bestätigen die einzelnen Zahlungen. Welcher Teil eines Betrags über mehrere Stationen wohin ging, ist
+            # trotzdem eine Zuordnung nach einem Verfahren, keine Beobachtung.
+            maengel.append(f"{wo}: stützt sich auf einen Geldfluss über mehrere Stationen. Diese Zuordnung ist eine Bewertung nach einem "
+                           "Verfahren und höchstens 'mittel'. Eine einzelne Zahlung belegt krypto_transaktion, dann ist 'hoch' möglich.")
         for iid in f.get("indikatoren") or []:
             if iid not in indikatoren:
                 maengel.append(f"{wo}: verweist auf unbekannten Indikator {iid}.")
@@ -430,7 +436,7 @@ def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
                  '<th class="zahl">Anteil</th><th>Begründung</th></tr>')
         for x in enden[:30]:
             farbe = FLUSS_KLASSEN[_FLUSS_ART.get(x.get("art"), "offen")][1]
-            wer = f"{x['station']} · <span class='mono'>{esc(kurz_adresse(str(x.get('adresse', ''))))}</span>" if x.get("station") else "–"
+            wer = f"{esc(str(x['station']))} · <span class='mono'>{esc(kurz_adresse(str(x.get('adresse', ''))))}</span>" if x.get("station") else "–"
             h.append(f"<tr><td class='nw'>{marke(x.get('bezeichnung', ''), farbe)}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
                      + f"</td><td class='nw'>{wer}</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td>"
                      f"<td class='zahl nw'>{esc(str(x.get('anteil', '')))} %</td><td class='klein'>{esc(ortszeit(x.get('grund') or ''))}"
@@ -443,7 +449,7 @@ def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
         h.append('<div class="tabelle-breit"><table><tr><th>Nr.</th><th>Adresse</th><th>Rolle</th><th class="zahl">Betrag</th><th>Etiketten und Hinweise</th></tr>')
         for x in stationen[:60]:
             zusatz = ortszeit("; ".join((x.get("etiketten") or []) + (x.get("hinweise") or [])))
-            h.append(f"<tr><td class='nw'>{x.get('nr')}</td><td class='mono'>{esc(str(x.get('adresse', '')))}</td>"
+            h.append(f"<tr><td class='nw'>{esc(str(x.get('nr', '')))}</td><td class='mono'>{esc(str(x.get('adresse', '')))}</td>"
                      f"<td class='nw'>{esc(_FLUSS_WORT.get(x.get('art'), str(x.get('art'))))}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
                      + f"</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td><td class='klein'>{esc(zusatz)}</td></tr>")
         h.append("</table></div>")
@@ -819,9 +825,9 @@ def main(argv: list[str]) -> int:
         protokoll = {e["id"]: e for e in eintraege}
         for i in b.get("indikatoren") or []:
             stand = ip_stand(str(i.get("wert")), protokoll, pfad) if i.get("typ") == "ip" else None
-            w.writerow([i.get("id"), i.get("typ"), i.get("wert"), i.get("bewertung"), i.get("rolle") or "",
-                        i.get("herkunft") or "", " ".join(i.get("belege") or []),
-                        (stand["wert"] + (f" ({stand['vermerk']})" if stand["vermerk"] else "")) if stand else ""])
+            w.writerow(csv_sicher([i.get("id"), i.get("typ"), i.get("wert"), i.get("bewertung"), i.get("rolle") or "",
+                                   i.get("herkunft") or "", " ".join(i.get("belege") or []),
+                                   (stand["wert"] + (f" ({stand['vermerk']})" if stand["vermerk"] else "")) if stand else ""]))
     print(f"\nRapport erzeugt: faelle/{fall_id}/rapport/Abschlussrapport.html"
           + (" (ENTWURF)" if entwurf and maengel else ""))
     print(f"Indikatorliste:  faelle/{fall_id}/rapport/indikatoren.csv")
