@@ -1,0 +1,51 @@
+# Prüft die 13 passiven Prüfungen von Web-Check gegen eine frisch gestartete Instanz, über das Gateway und gegen
+# example.com. Auf einem Arbeitsplatz hinter einem Proxy erreicht der Container DNS, WHOIS und die befragten Dienste
+# oft nicht. Ein Runner erreicht sie. Das Log zeigt je Prüfung das Urteil des Gateways und die Rohantwort: Aus ihr
+# stammen die Vorlagen des Selbsttests (tools/_vorlagen.py).
+# Aktive Prüfungen laufen hier nie: Sie riefen das Ziel auf.
+# Bei Änderungen am Code darf der Lauf scheitern, ohne etwas zu blockieren: Er hängt von fremden Diensten ab.
+# Der wöchentliche Lauf scheitert sichtbar, wenn die Instanz nicht startet oder eine Prüfung umbenannt wurde.
+name: Web-Check live
+
+on:
+  pull_request:
+    paths: ["gateway/quellen_web.py", "gateway/kern.py", "tools/webcheck_live.py", "docker-compose.yml",
+            ".github/workflows/webcheck-live.yml"]
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webcheck-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    name: Passive Prüfungen über das Gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pakete des Gateways
+        run: python3 -m pip install --quiet -r requirements.txt
+
+      - name: Web-Check starten
+        run: |
+          docker compose up -d webcheck
+          docker image inspect lissy93/web-check --format 'Abbild {{index .RepoDigests 0}}, gebaut {{.Created}}'
+
+      - name: Jede passive Prüfung einmal gegen example.com
+        run: python3 tools/webcheck_live.py --warten 120
+
+      - name: Meldungen des Containers
+        if: always()
+        run: docker logs --tail 120 osint-webcheck
