@@ -1,0 +1,267 @@
+{
+ "werkzeug": "ip_einordnung",
+ "parameter": {
+  "ip": "203.0.113.7",
+  "tatzeit": "2026-09-29T07:14:00Z",
+  "quellen": null
+ },
+ "grundlage": [
+  "P-0008",
+  "P-0009",
+  "P-0010",
+  "P-0011",
+  "P-0012",
+  "P-0013",
+  "P-0014",
+  "P-0015",
+  "P-0016",
+  "P-0017"
+ ],
+ "befund": {
+  "ip": "203.0.113.7",
+  "abfragezeit": "2026-11-12T08:03:14Z",
+  "tatzeit": "2026-09-29T07:14:00Z",
+  "netz": {
+   "praefix": "203.0.113.0/24",
+   "as": "AS64500",
+   "as_inhaber": "BEISPIEL-HOSTING Beispiel Hosting AG",
+   "angekuendigt": true,
+   "bereich": "203.0.113.0 - 203.0.113.255",
+   "netzname": "BEISPIEL-HOSTING-NL",
+   "organisation": "ORG-BH1-RIPE",
+   "land": "NL",
+   "status": "ASSIGNED PA",
+   "registriert": "2019-03-11T09:00:00Z",
+   "geaendert": "2024-05-06T08:00:00Z",
+   "register": "RIPE",
+   "meldestelle": [
+    "abuse@beispiel-hosting.example"
+   ],
+   "betreiber": "Beispiel Hosting AG",
+   "ort": "Amsterdam",
+   "zur_tatzeit": {
+    "tatzeit": "2026-09-29T07:14:00Z",
+    "angekuendigt_von": [
+     {
+      "as": "AS64500",
+      "praefix": "203.0.113.0/24",
+      "von": "2026-09-28T00:00:00",
+      "bis": "2026-09-29T07:59:59"
+     }
+    ],
+    "zuteilung": {
+     "gueltig_von": "2024-05-06T08:00:00",
+     "gueltig_bis": "2026-11-12T08:00:00",
+     "fassung": 2,
+     "fassungen_gesamt": 2,
+     "netzname": "BEISPIEL-HOSTING-NL",
+     "organisation": "ORG-BH1-RIPE",
+     "land": "NL",
+     "status": "ASSIGNED PA"
+    }
+   }
+  },
+  "anschlussart": [
+   {
+    "quelle": "proxycheck.io",
+    "art": "Rechenzentrum"
+   },
+   {
+    "quelle": "ipapi.is",
+    "art": "Rechenzentrum",
+    "merkmale": [
+     "Rechenzentrum"
+    ]
+   },
+   {
+    "quelle": "AbuseIPDB",
+    "art": "Data Center/Web Hosting/Transit"
+   },
+   {
+    "quelle": "Spur",
+    "art": "DATACENTER"
+   }
+  ],
+  "anonymisierung": {
+   "wert": "kein Hinweis",
+   "geantwortet": [
+    "proxycheck.io",
+    "ipapi.is",
+    "Spur"
+   ],
+   "nicht_geantwortet": [
+    {
+     "quelle": "AbuseIPDB",
+     "grund": "äussert sich zu dieser Frage nicht"
+    }
+   ],
+   "ohne_eintrag": [
+    {
+     "quelle": "proxycheck.io",
+     "beleg": "P-0008"
+    },
+    {
+     "quelle": "ipapi.is",
+     "beleg": "P-0009"
+    },
+    {
+     "quelle": "Spur",
+     "beleg": "P-0017"
+    }
+   ]
+  },
+  "erklaerung": "Keine der befragten Quellen (proxycheck.io, ipapi.is, Spur) führt die Adresse 203.0.113.7 als Ausgang eines VPN, eines Proxys oder des Tor-Netzes. Das ist kein «nein». Die befragten Quellen erkennen Residential Proxies nur lückenhaft. Der Anschluss kann einem Unbeteiligten gehören, über dessen Gerät ein solcher Dienst läuft. Die Auskunft gilt für den Abfragezeitpunkt (12.11.2026, 09:03). Die Tat lag früher (29.09.2026, 09:14). proxycheck.io: Im abgefragten Zeitraum, der die Tatzeit einschliesst, führt die Quelle die Adresse nicht, auch nicht als inzwischen gelöschten Eintrag. Eine IP-Adresse identifiziert niemanden.",
+  "ansatzpunkt": "Editionsbegehren an den Betreiber des Netzes (BEISPIEL-HOSTING Beispiel Hosting AG) zur Adresse 203.0.113.7 und zur Tatzeit: Die Adresse liegt laut den Quellen in einem Rechenzentrum, der Betreiber kennt den Kunden, dem sie zugeteilt war. Vorbehalt: Auch ein gemieteter Server kann als Weiterleitung dienen (VPN, Proxy), ohne dass eine Quelle ihn führt.",
+  "quellenstand": {
+   "proxycheck.io": {
+    "ergebnis": "ok",
+    "beleg": "P-0008"
+   },
+   "ipapi.is": {
+    "ergebnis": "ok",
+    "beleg": "P-0009"
+   },
+   "RIPEstat": {
+    "ergebnis": "ok",
+    "beleg": "P-0010"
+   },
+   "AbuseIPDB": {
+    "ergebnis": "ok",
+    "beleg": "P-0016"
+   },
+   "Spur": {
+    "ergebnis": "ok",
+    "beleg": "P-0017"
+   }
+  }
+ },
+ "details": {
+  "stimmen": [
+   {
+    "quelle": "proxycheck.io",
+    "beleg": "P-0008",
+    "geantwortet": true,
+    "fuehrt": false,
+    "arten": [],
+    "netz": {
+     "as": "AS64500",
+     "praefix": "203.0.113.0/24",
+     "betreiber": "Beispiel Hosting AG",
+     "organisation": "Beispiel Hosting AG",
+     "land": "NL",
+     "ort": "Amsterdam"
+    },
+    "anschlussart": "Rechenzentrum",
+    "angriffsmeldungen": {
+     "comment_spam": 12,
+     "login_attempt": 3
+    },
+    "zur_tatzeit": "Im abgefragten Zeitraum, der die Tatzeit einschliesst, führt die Quelle die Adresse nicht, auch nicht als inzwischen gelöschten Eintrag.",
+    "tatzeit_gedeckt": true
+   },
+   {
+    "quelle": "ipapi.is",
+    "beleg": "P-0009",
+    "geantwortet": true,
+    "fuehrt": false,
+    "arten": [],
+    "netz": {
+     "as": "AS64500",
+     "praefix": "203.0.113.0/24",
+     "betreiber": "Beispiel Hosting AG",
+     "organisation": "Beispiel Hosting AG",
+     "netzname": "BEISPIEL-HOSTING-NL",
+     "bereich": "203.0.113.0 - 203.0.113.255",
+     "land": "NL",
+     "ort": "Amsterdam",
+     "register": "RIPE",
+     "meldestelle": "abuse@beispiel-hosting.example"
+    },
+    "anschlussart": "Rechenzentrum",
+    "merkmale": [
+     "Rechenzentrum"
+    ]
+   },
+   {
+    "quelle": "RIPEstat",
+    "beleg": "P-0010",
+    "geantwortet": true,
+    "fuehrt": null,
+    "arten": [],
+    "netz": {
+     "praefix": "203.0.113.0/24",
+     "as": "AS64500",
+     "as_inhaber": "BEISPIEL-HOSTING Beispiel Hosting AG",
+     "angekuendigt": true,
+     "bereich": "203.0.113.0 - 203.0.113.255",
+     "netzname": "BEISPIEL-HOSTING-NL",
+     "organisation": "ORG-BH1-RIPE",
+     "land": "NL",
+     "status": "ASSIGNED PA",
+     "registriert": "2019-03-11T09:00:00Z",
+     "geaendert": "2024-05-06T08:00:00Z",
+     "register": "RIPE",
+     "meldestelle": [
+      "abuse@beispiel-hosting.example"
+     ]
+    },
+    "belege": [
+     "P-0010",
+     "P-0011",
+     "P-0012",
+     "P-0013",
+     "P-0014",
+     "P-0015"
+    ],
+    "zur_tatzeit": {
+     "tatzeit": "2026-09-29T07:14:00Z",
+     "angekuendigt_von": [
+      {
+       "as": "AS64500",
+       "praefix": "203.0.113.0/24",
+       "von": "2026-09-28T00:00:00",
+       "bis": "2026-09-29T07:59:59"
+      }
+     ],
+     "zuteilung": {
+      "gueltig_von": "2024-05-06T08:00:00",
+      "gueltig_bis": "2026-11-12T08:00:00",
+      "fassung": 2,
+      "fassungen_gesamt": 2,
+      "netzname": "BEISPIEL-HOSTING-NL",
+      "organisation": "ORG-BH1-RIPE",
+      "land": "NL",
+      "status": "ASSIGNED PA"
+     }
+    }
+   },
+   {
+    "quelle": "AbuseIPDB",
+    "beleg": "P-0016",
+    "geantwortet": true,
+    "fuehrt": null,
+    "arten": [],
+    "netz": {
+     "betreiber": "Beispiel Hosting AG",
+     "land": "NL"
+    },
+    "anschlussart": "Data Center/Web Hosting/Transit",
+    "meldungen_90_tage": 64
+   },
+   {
+    "quelle": "Spur",
+    "beleg": "P-0017",
+    "geantwortet": true,
+    "fuehrt": false,
+    "arten": [],
+    "netz": {
+     "as": "AS64500",
+     "betreiber": "Beispiel Hosting AG",
+     "organisation": "Beispiel Hosting AG",
+     "land": "NL"
+    },
+    "anschlussart": "DATACENTER"
+   }
+  ]
+ }
+}

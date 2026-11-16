@@ -1,6 +1,6 @@
 {
   "fall_id": "MUSTER-2026-001",
-  "stand": "2026-11-12T08:09:47Z",
+  "stand": "2026-11-12T08:10:11Z",
   "zusammenfassung": [
     "Die Phishing-Seite, über die am 29.09.2026 Zugangsdaten der [ORG_01] abgegriffen wurden, lag auf einem gemieteten Server in den Niederlanden. Die Domain wurde drei Tage vor der Tat registriert. Derselbe Server lieferte die Phishing-E-Mail ein und ist das Ziel der angehängten Schadsoftware.",
     "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt.",
@@ -25,7 +25,7 @@
     },
     {
       "text": "Die Anmelde-IP ist ein VPN-Ausgang und identifiziert keine Person.",
-      "sicherheit": "mittel",
+      "sicherheit": "hoch",
       "befunde": [
         "B-04"
       ]
@@ -58,9 +58,9 @@
         "vt_gesamt": 93
       },
       "belege": [
-        "P-0011",
-        "P-0013",
-        "P-0015"
+        "P-0033",
+        "P-0035",
+        "P-0037"
       ]
     },
     {
@@ -71,8 +71,8 @@
       "rolle": "Phishing-Seite",
       "bewertung": "boesartig",
       "belege": [
-        "P-0014",
-        "P-0012"
+        "P-0036",
+        "P-0034"
       ]
     },
     {
@@ -97,8 +97,15 @@
         "P-0001",
         "P-0002",
         "P-0003",
-        "P-0004"
-      ]
+        "P-0004",
+        "P-0018"
+      ],
+      "anonymisierung": {
+        "wert": "kein Hinweis",
+        "belege": [
+          "P-0018"
+        ]
+      }
     },
     {
       "id": "I-04",
@@ -113,8 +120,15 @@
       "belege": [
         "P-0005",
         "P-0006",
-        "P-0007"
-      ]
+        "P-0007",
+        "P-0029"
+      ],
+      "anonymisierung": {
+        "wert": "ja",
+        "belege": [
+          "P-0029"
+        ]
+      }
     },
     {
       "id": "I-05",
@@ -128,8 +142,8 @@
         "vt_gesamt": 72
       },
       "belege": [
-        "P-0016",
-        "P-0017"
+        "P-0038",
+        "P-0039"
       ]
     },
     {
@@ -140,8 +154,8 @@
       "rolle": "Absender der Phishing-Mail",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0011",
-        "P-0010"
+        "P-0033",
+        "P-0032"
       ]
     },
     {
@@ -152,7 +166,7 @@
       "rolle": "Unterzeichner des Erpresserschreibens",
       "bewertung": "boesartig",
       "belege": [
-        "P-0020"
+        "P-0042"
       ]
     },
     {
@@ -163,19 +177,19 @@
       "rolle": "Im Erpresserschreiben genannte Adresse",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0020",
-        "P-0022"
+        "P-0042",
+        "P-0044"
       ]
     },
     {
       "id": "I-09",
       "typ": "domain",
       "wert": "rechnung-portal.example",
-      "herkunft": "Pivot aus P-0009 (frühere Namensauflösungen von I-03)",
+      "herkunft": "Pivot aus P-0031 (frühere Namensauflösungen von I-03)",
       "rolle": "Weitere Domain auf demselben Server",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0009"
+        "P-0031"
       ]
     },
     {
@@ -191,8 +205,8 @@
         "transaktionen": 2
       },
       "belege": [
-        "P-0024",
-        "P-0059"
+        "P-0046",
+        "P-0081"
       ]
     },
     {
@@ -203,29 +217,29 @@
       "rolle": "Lösegeldzahlung der [ORG_01] (Bitcoin)",
       "bewertung": "unauffaellig",
       "belege": [
-        "P-0034"
+        "P-0056"
       ]
     },
     {
       "id": "I-12",
       "typ": "wallet",
       "wert": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
-      "herkunft": "Geldfluss P-0051 (erste Station nach der Zahlungsadresse)",
+      "herkunft": "Geldfluss P-0073 (erste Station nach der Zahlungsadresse)",
       "rolle": "Mutmassliche Einzahlungsadresse bei einer Börse",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0051"
+        "P-0073"
       ]
     },
     {
       "id": "I-13",
       "typ": "wallet",
       "wert": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
-      "herkunft": "Geldfluss P-0051 (zweite Station)",
+      "herkunft": "Geldfluss P-0073 (zweite Station)",
       "rolle": "Adresse, auf der ein Teil des Lösegelds unbewegt liegt",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0051"
+        "P-0073"
       ]
     }
   ],
@@ -243,9 +257,9 @@
         "I-03"
       ],
       "belege": [
-        "P-0011",
+        "P-0033",
         "P-0001",
-        "P-0010"
+        "P-0032"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -262,9 +276,9 @@
         "I-02"
       ],
       "belege": [
-        "P-0011",
-        "P-0015",
-        "P-0014"
+        "P-0033",
+        "P-0037",
+        "P-0036"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -274,7 +288,7 @@
       "art": "feststellung",
       "sicherheit": "hoch",
       "quellenbewertung": "B2",
-      "text": "203.0.113.7 gehört zum Netz der Beispiel Hosting AG (AS64500, Niederlande) und wird übereinstimmend als Rechenzentrumsadresse geführt, nicht als Anonymisierungsdienst. Bei AbuseIPDB liegen 64 Meldungen von 23 Meldern vor, Abuse-Score 87 von 100, zuletzt am 05.10.2026 wegen Phishing. Offen sind die Ports 22, 25, 80 und 443.",
+      "text": "203.0.113.7 gehört zum Netz der Beispiel Hosting AG (AS64500, Niederlande) und wird übereinstimmend als Rechenzentrumsadresse geführt. Auf einen Anonymisierungsdienst gibt es keinen Hinweis (befragt: proxycheck.io, ipapi.is, Spur). Bei AbuseIPDB liegen 64 Meldungen von 23 Meldern vor, Abuse-Score 87 von 100, zuletzt am 05.10.2026 wegen Phishing. Offen sind die Ports 22, 25, 80 und 443.",
       "erlaeuterung": "Der Server ist ein gemieteter Rechner in einem Rechenzentrum. Der Vermieter kennt seinen Kunden. Über ihn führt der direkteste Weg zum Betreiber. Der Server ist auch anderen schon negativ aufgefallen, was gegen einen Zufall spricht.",
       "indikatoren": [
         "I-03"
@@ -283,7 +297,8 @@
         "P-0001",
         "P-0002",
         "P-0004",
-        "P-0003"
+        "P-0003",
+        "P-0018"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -291,14 +306,15 @@
       "id": "B-04",
       "titel": "Die Anmelde-IP ist der Ausgang eines VPN-Dienstes",
       "art": "bewertung",
-      "sicherheit": "mittel",
+      "sicherheit": "hoch",
       "quellenbewertung": "B2",
-      "text": "198.51.100.23 wird als Ausgangsknoten des VPN-Dienstes «BEISPIEL_VPN» geführt (anonymisierend, rund 214 beobachtete Geräte aus 31 Ländern). Offen sind die Ports 443 und 1194, wie für VPN-Knoten üblich. Missbrauchsmeldungen gibt es wenige (Score 12 von 100). Die Einstufung als VPN stammt von einem einzelnen Anbieter.",
+      "text": "198.51.100.23 wird von 3 Quellen als Ausgang eines VPN-Dienstes geführt (proxycheck.io, ipapi.is, Spur; als Dienst genannt: Beispiel VPN, BEISPIEL_VPN). Die Adresse war laut proxycheck.io schon vor der Tat und bis nach der Tat als VPN-Ausgang geführt. Spur beobachtete rund 214 Geräte aus 31 Ländern hinter der Adresse. Offen sind die Ports 443 und 1194, wie für VPN-Knoten üblich. Missbrauchsmeldungen gibt es wenige (Score 12 von 100).",
       "erlaeuterung": "Wer über einen VPN-Dienst ins Internet geht, tritt nach aussen mit der Adresse des Dienstes auf, zusammen mit Hunderten anderer Kunden. Die Adresse aus dem Serverprotokoll gehört also dem VPN-Anbieter und nicht dem Täter. Eine Anfrage beim Anschlussanbieter würde ins Leere laufen.",
       "indikatoren": [
         "I-04"
       ],
       "belege": [
+        "P-0029",
         "P-0005",
         "P-0007",
         "P-0006"
@@ -318,8 +334,8 @@
         "I-03"
       ],
       "belege": [
-        "P-0016",
-        "P-0017"
+        "P-0038",
+        "P-0039"
       ],
       "gegenpruefung": "eingeschraenkt",
       "gegenpruefung_notiz": "Die Zuordnung zur Familie beruht auf den Bezeichnungen der Scanner, nicht auf einer eigenen Analyse der Datei. Erkennungsrate und kontaktierte Adresse sind in den Rohdaten nachvollziehbar."
@@ -337,9 +353,9 @@
         "I-03"
       ],
       "belege": [
-        "P-0014",
-        "P-0013",
-        "P-0012"
+        "P-0036",
+        "P-0035",
+        "P-0034"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -356,10 +372,10 @@
         "I-08"
       ],
       "belege": [
-        "P-0020",
-        "P-0021",
-        "P-0022",
-        "P-0023"
+        "P-0042",
+        "P-0043",
+        "P-0044",
+        "P-0045"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -390,7 +406,7 @@
         "I-03"
       ],
       "belege": [
-        "P-0009"
+        "P-0031"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -407,7 +423,7 @@
         "I-10"
       ],
       "belege": [
-        "P-0034"
+        "P-0056"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -425,7 +441,7 @@
         "I-13"
       ],
       "belege": [
-        "P-0051"
+        "P-0073"
       ],
       "gegenpruefung": "eingeschraenkt",
       "gegenpruefung_notiz": "Die einzelnen Zahlungen stehen in den Rohdaten. Dass die Adresse zu einer Börse gehört, ist die Angabe eines einzelnen Dienstes (WalletExplorer) und stützt sich zusätzlich auf das Muster der Sammeltransaktion. Der Name der Börse ist erst mit ihrer Antwort gesichert."
@@ -443,7 +459,7 @@
         "I-07"
       ],
       "belege": [
-        "P-0059"
+        "P-0081"
       ],
       "gegenpruefung": "bestaetigt"
     }
@@ -455,7 +471,7 @@
       "art": "zeigt auf",
       "sicherheit": "hoch",
       "belege": [
-        "P-0011",
+        "P-0033",
         "P-0001"
       ]
     },
@@ -465,7 +481,7 @@
       "art": "liegt auf",
       "sicherheit": "hoch",
       "belege": [
-        "P-0014"
+        "P-0036"
       ]
     },
     {
@@ -481,7 +497,7 @@
       "art": "kontaktiert",
       "sicherheit": "mittel",
       "belege": [
-        "P-0017"
+        "P-0039"
       ]
     },
     {
@@ -490,7 +506,7 @@
       "art": "zeigte auf",
       "sicherheit": "mittel",
       "belege": [
-        "P-0009"
+        "P-0031"
       ]
     },
     {
@@ -506,7 +522,7 @@
       "art": "Leak-Seite von",
       "sicherheit": "mittel",
       "belege": [
-        "P-0020"
+        "P-0042"
       ]
     },
     {
@@ -521,7 +537,7 @@
       "art": "zahlt an",
       "sicherheit": "hoch",
       "belege": [
-        "P-0034"
+        "P-0056"
       ]
     },
     {
@@ -530,7 +546,7 @@
       "art": "leitet weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0051"
+        "P-0073"
       ]
     },
     {
@@ -539,7 +555,7 @@
       "art": "leitet anteilig weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0051"
+        "P-0073"
       ]
     },
     {
@@ -548,13 +564,13 @@
       "art": "Zahlungsadresse von",
       "sicherheit": "mittel",
       "belege": [
-        "P-0059"
+        "P-0081"
       ]
     }
   ],
   "geldfluesse": [
     {
-      "beleg": "P-0051",
+      "beleg": "P-0073",
       "titel": "Verbleib der Lösegeldzahlung vom 03.10.2026",
       "befunde": [
         "B-11"
@@ -567,28 +583,28 @@
       "zeit": "2026-09-19T15:22:00Z",
       "ereignis": "rechnung-portal.example zeigt auf den Server 203.0.113.7.",
       "belege": [
-        "P-0009"
+        "P-0031"
       ]
     },
     {
       "zeit": "2026-09-26T07:41:00Z",
       "ereignis": "Registrierung der Domain kundenportal-sicher.example.",
       "belege": [
-        "P-0011"
+        "P-0033"
       ]
     },
     {
       "zeit": "2026-09-27T11:02:00Z",
       "ereignis": "Die Schaddatei wird erstmals bei VirusTotal eingereicht.",
       "belege": [
-        "P-0016"
+        "P-0038"
       ]
     },
     {
       "zeit": "2026-09-28T10:15:00Z",
       "ereignis": "Erste Archivaufnahme der gefälschten Anmeldeseite.",
       "belege": [
-        "P-0015"
+        "P-0037"
       ]
     },
     {
@@ -605,7 +621,7 @@
       "zeit": "2026-09-30T06:18:00Z",
       "ereignis": "Sandbox-Bericht von urlquery stuft die Seite als Phishing ein.",
       "belege": [
-        "P-0014"
+        "P-0036"
       ]
     },
     {
@@ -622,14 +638,14 @@
       "zeit": "2026-10-03T13:42:00Z",
       "ereignis": "Die [ORG_01] zahlt 0.5 BTC an die Adresse aus dem Erpresserschreiben.",
       "belege": [
-        "P-0034"
+        "P-0056"
       ]
     },
     {
       "zeit": "2026-10-03T21:05:00Z",
       "ereignis": "Das Lösegeld wird in zwei Teilen weitergeleitet, der grössere an eine Börse.",
       "belege": [
-        "P-0051"
+        "P-0073"
       ]
     },
     {
@@ -643,10 +659,10 @@
   "luecken": [
     "Wer den Server gemietet hat, ist aus offenen Quellen nicht ersichtlich. Das weiss nur der Hosting-Anbieter.",
     "Hinter der Anmelde-IP steht ein VPN-Dienst. Ob er Verbindungsdaten führt, ist nicht bekannt.",
-    "Der aktuelle Zustand der Phishing-Seite wurde nicht geprüft. Die Freigabe für aktive Massnahmen fehlte, eine Einreichung bei urlquery wurde deshalb abgelehnt (P-0019).",
-    "Die Einzelmeldungen von AbuseIPDB waren wegen des Tageskontingents nicht abrufbar (P-0008). Die Zeitachse stützt sich auf die Kurzübersicht.",
+    "Der aktuelle Zustand der Phishing-Seite wurde nicht geprüft. Die Freigabe für aktive Massnahmen fehlte, eine Einreichung bei urlquery wurde deshalb abgelehnt (P-0041).",
+    "Die Einzelmeldungen von AbuseIPDB waren wegen des Tageskontingents nicht abrufbar (P-0030). Die Zeitachse stützt sich auf die Kurzübersicht.",
     "Die Schaddatei wurde nicht selbst untersucht. Die Einordnung beruht auf den Angaben von VirusTotal.",
-    "Ob die [ORG_01] auf der Leak-Seite genannt ist, liess sich nicht prüfen, weil ihr Name pseudonymisiert ist. Die Opferliste der Gruppe liegt in den Rohdaten (P-0021) und ist im Haus mit dem Klarnamen abzugleichen.",
+    "Ob die [ORG_01] auf der Leak-Seite genannt ist, liess sich nicht prüfen, weil ihr Name pseudonymisiert ist. Die Opferliste der Gruppe liegt in den Rohdaten (P-0043) und ist im Haus mit dem Klarnamen abzugleichen.",
     "Eine Recherche auf der Leak-Seite selbst fand nicht statt (Freigabe darkweb nicht erteilt).",
     "Wem die Einzahlungsadresse bei der Börse gehört, steht nicht in der Blockchain. Das weiss nur die Börse.",
     "0.09945045 BTC gingen durch eine Transaktion mit dem Muster eines Mischdienstes. Dahinter ist die Zuordnung mit offenen Quellen nicht belastbar.",
@@ -660,6 +676,13 @@
     {
       "text": "Registrar um Sperrung von kundenportal-sicher.example und rechnung-portal.example ersuchen und Registrierungsdaten sichern.",
       "prioritaet": "hoch"
+    },
+    {
+      "text": "Zur Anmeldung vom 29.09.2026, 09:31 Uhr: Verbindungsdaten sichern lassen, soweit der Betreiber des Dienstes welche führt.",
+      "indikatoren": [
+        "I-04"
+      ],
+      "prioritaet": "mittel"
     },
     {
       "text": "Editionsbegehren an die Börse «Beispielboerse.example»: Welchem Kundenkonto wurde die Einzahlung von 0.3 BTC auf 1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg gutgeschrieben (Sammeltransaktion 7b42ac1ec7abe172741f5b5e45faf1bd94dce1395ef0aa88096299b28d123d81)? Kundendaten, Anmeldeprotokolle und Auszahlungen sichern lassen.",
@@ -710,6 +733,10 @@
     {
       "begriff": "Börse (Handelsplattform)",
       "erklaerung": "Unternehmen, bei dem Kunden Kryptowährungen kaufen, verkaufen und verwahren. Es kennt seine Kunden und führt für jeden eigene Einzahlungsadressen."
+    },
+    {
+      "begriff": "Anonymisierungsdienst",
+      "erklaerung": "Dienst, der die eigene Internetadresse verbirgt: VPN, Proxy, das Tor-Netz. Bei einem Residential Proxy läuft der Verkehr über den Anschluss eines Dritten, meist ohne dessen Wissen."
     },
     {
       "begriff": "Editionsbegehren",

@@ -14,7 +14,9 @@ Für die Blockchain-Quellen gibt es die erfundene Kette in tools/_kryptowelt.py.
 """
 from __future__ import annotations
 
+import calendar
 import json
+import time
 from urllib.parse import parse_qs
 
 import httpx
@@ -286,6 +288,211 @@ def telegram_kanalseite(kanal: str = "ohnevorschau") -> str:
 
 # --------------------------------------------------------------------------- Gegenstelle für die Selbsttests
 
+# --------------------------------------------------------------------------- IP-Einordnung: proxycheck.io v3, ipapi.is, RIPEstat
+
+# Sechs Adressen aus einem Dokumentationsnetz, jede steht für einen Fall, den die Einordnung unterscheiden muss.
+IP_VPN = "203.0.113.20"          # Ausgang eines VPN-Dienstes im Rechenzentrum: beide Quellen führen ihn
+IP_RESI = "203.0.113.30"         # Privatanschluss, den proxycheck.io als Residential Proxy führt. ipapi.is erkennt ihn nicht
+IP_SAUBER = "203.0.113.40"       # Privatanschluss ohne Eintrag
+IP_STRITTIG = "203.0.113.50"     # proxycheck.io: «anonymous» ohne Art und ohne Dienst (so gesehen bei 8.8.8.8). ipapi.is: nichts
+IP_TOR = "203.0.113.60"          # Ausgang des Tor-Netzes
+IP_GELOESCHT = "203.0.113.70"    # früher geführt, Eintrag gelöscht (Form laut Blog des Dienstes vom 11.2.2026, nicht live gesehen)
+IP_ARIN = "192.0.2.8"           # Netz im Register ARIN: andere Feldnamen im Whois, keine frühere Zuteilung abrufbar
+KONTAKT = "Erika Erfunden"       # Kontaktperson im Registereintrag und bei ipapi.is. Sie geht nie an den Agenten
+
+# Angaben zum Netz, in dem die Adressen liegen. Der Musterfall gibt eigene mit (tools/musterfall.py).
+NETZ = {"asn": 64500, "as_name": "MUSTER-AS", "inhaber": "Musternetz AG", "netzname": "MUSTER-NET", "org": "ORG-MN1-RIPE", "land": "CH",
+        "landname": "Switzerland", "ort": "Zurich", "region": ("Zurich", "ZH"), "plz": "8000", "lage": (47.37, 8.54), "zeitzone": "Europe/Zurich",
+        "waehrung": ("Swiss Franc", "CHF", "CHF"), "domain": "netz.example.org", "register": "ripe", "block": "203.0.0.0/8", "erstellt": "2021-08-19T08:09:49Z"}
+NETZ_ARIN = {**NETZ, "inhaber": "Musterfirma LLC", "netzname": "MUSTER-US", "land": "US", "landname": "United States", "register": "arin",
+             "domain": "firma.example.org", "block": "192.0.0.0/8"}
+PC_SCHLUESSEL, IPAPI_SCHLUESSEL = "pc-testschluessel-000001", "ipapi-testschluessel-0001"
+
+_PC_ERKENNUNG = {"proxy": False, "vpn": False, "compromised": False, "scraper": False, "tor": False, "hosting": False, "anonymous": False,
+                 "risk": 0, "confidence": 100, "first_seen": None, "last_seen": None, "times_seen": None}
+_PC_REGELN = {"ad_filtering": False, "free_access": False, "paid_access": True, "port_forwarding": False, "logging": False,
+              "anonymous_payments": True, "crypto_payments": True, "traceable_ownership": False}
+_PC = {
+    IP_VPN: ("Hosting", "Musterhosting AG", {"vpn": True, "hosting": True, "anonymous": True, "risk": 66,
+                                             "first_seen": "2026-06-01T08:00:00Z", "last_seen": "2026-11-16T09:00:00Z", "times_seen": 420},
+             {"delisted": False, "delist_datetime": "2026-11-23T09:00:00Z"}, ("MusterVPN", ["datacenter_vpns"], []), None),
+    IP_RESI: ("Residential", "Musternetz AG", {"proxy": True, "anonymous": True, "risk": 75,
+                                               "first_seen": "2026-10-20T06:00:00Z", "last_seen": "2026-11-10T18:00:00Z", "times_seen": 37},
+              {"delisted": False, "delist_datetime": "2026-11-17T18:00:00Z"}, ("MusterProxy", ["residential_proxies", "wireless_proxies"], ["BeispielSocks"]),
+              {"login_attempt": 8, "comment_spam": 1}),
+    IP_SAUBER: ("Residential", "Musternetz AG", {}, None, None, None),
+    IP_STRITTIG: ("Business", "Musterfirma GmbH", {"anonymous": True, "risk": 100, "first_seen": "2026-11-16T11:21:23Z", "last_seen": "2026-11-16T11:21:23Z"},
+                  {"delisted": True, "delist_datetime": "2026-11-15T09:58:06Z"}, None, {"vulnerability_probing": 52}),
+    IP_TOR: ("Business", "Musterstiftung", {"proxy": True, "tor": True, "compromised": True, "anonymous": True, "risk": 100,
+                                            "first_seen": "2026-01-31T12:07:44Z", "last_seen": "2026-11-16T11:11:49Z", "times_seen": 18968},
+             {"delisted": False, "delist_datetime": "2026-11-16T13:40:19Z"}, ("TOR", ["residential_proxies", "wireless_proxies", "datacenter_proxies"], ["BeispielSocks"]),
+             {"login_attempt": 8, "vulnerability_probing": 2}),
+    IP_GELOESCHT: ("Residential", "Musternetz AG", {}, {"delisted": True, "delist_datetime": "2026-10-25T10:00:00Z"}, None, None),
+}
+
+
+def pc_antwort(ip: str, frage: dict, tabelle: dict | None = None, netz: dict | None = None, schluessel: str = PC_SCHLUESSEL) -> httpx.Response:
+    """proxycheck.io, GET /v3/<ip>. Der Eintrag steht unter der Adresse selbst. Ohne Schlüssel und mit falschem antwortet der
+    Dienst mit eigenem HTTP-Code und den Feldern status und message."""
+    tabelle, netz = _PC if tabelle is None else tabelle, netz or NETZ
+    if frage.get("key") != schluessel:
+        return _json({"status": "error", "message": "Your API Key is invalid, please check your key and try again."}, 401)
+    if ip not in tabelle:
+        return _json({"status": "error", "message": "No valid IP addresses supplied."}, 400)
+    art, anbieter, erkennung, geschichte, dienst, angriffe = tabelle[ip]
+    name, angebote, weitere = dienst or ("", [], [])
+    eintrag = {
+        "network": {"asn": f"AS{netz['asn']}", "range": f"{ip.rsplit('.', 1)[0]}.0/24", "hostname": f"host-{ip.replace('.', '-')}.{netz['domain']}" if dienst else None,
+                    "provider": anbieter, "organisation": anbieter, "type": art},
+        "location": {"continent_name": "Europe", "continent_code": "EU", "country_name": netz["landname"], "country_code": netz["land"],
+                     "region_name": netz["region"][0], "region_code": netz["region"][1], "city_name": netz["ort"], "postal_code": netz["plz"],
+                     "latitude": netz["lage"][0], "longitude": netz["lage"][1], "timezone": netz["zeitzone"],
+                     "currency": dict(zip(("name", "code", "symbol"), netz["waehrung"]))},
+        "device_estimate": {"address": 1, "subnet": 36},
+        "detections": {**_PC_ERKENNUNG, **erkennung},
+        "detection_history": geschichte,
+        "attack_history": angriffe,
+        "operator": {"name": name, "url": "https://dienst.example.org/", "anonymity": "high", "popularity": "medium", "services": angebote,
+                     "protocols": ["Onion Routing"] if name == "TOR" else ["WireGuard", "OpenVPN"], "policies": dict(_PC_REGELN),
+                     "additional_operators": weitere} if dienst else None,
+        "last_updated": "2026-11-15T23:01:26Z",
+    }
+    return _json({"status": "ok", ip: eintrag, "query_time": 5})
+
+
+_IPAPI = {       # is_vpn, is_proxy, is_tor, Art der Firma, Rechenzentrum
+    IP_VPN: (True, False, False, "hosting", True), IP_RESI: (False, False, False, "isp", False), IP_SAUBER: (False, False, False, "isp", False),
+    IP_STRITTIG: (False, False, False, "business", False), IP_TOR: (False, True, True, "business", False),
+    IP_GELOESCHT: (False, False, False, "isp", False),
+}
+
+
+def ipapi_antwort(koerper: dict, tabelle: dict | None = None, netz: dict | None = None, schluessel: str = IPAPI_SCHLUESSEL) -> httpx.Response:
+    """ipapi.is, POST mit {"q", "key"}. Mit Schlüssel die volle Antwort, ohne die gekürzte (seit dem 1.9.2026: elf Felder, keine
+    Merkmale is_*). Das Objekt «vpn» steht so in der Dokumentation, in einer echten Antwort war es am 16.11.2026 nicht zu sehen."""
+    tabelle, netz = _IPAPI if tabelle is None else tabelle, netz or NETZ
+    ip = str(koerper.get("q") or "")
+    if koerper.get("key") is None:
+        return _json({"ip": ip, "is_bogon": False, "company": netz["inhaber"], "asn": f"AS{netz['asn']} {netz['inhaber']}", "city": netz["ort"],
+                      "region": netz["region"][0], "country": netz["landname"], "lat": netz["lage"][0], "lon": netz["lage"][1],
+                      "timezone": netz["zeitzone"], "docs": "https://ipapi.is/free-tier.html?ref=api"})
+    if koerper["key"] != schluessel:
+        return _json({"error": "Invalid API key", "error_code": "ERR_FORBIDDEN_INVALID_API_KEY"}, 403)
+    if ip not in tabelle:
+        return _json({"error": "Invalid IP Address or AS Number", "error_code": "ERR_INVALID_IP_OR_ASN"}, 400)
+    vpn, proxy, tor, art, rechenzentrum = tabelle[ip][:5]
+    dienst = tabelle[ip][5] if len(tabelle[ip]) > 5 else "MusterVPN"
+    praefix = ip.rsplit(".", 1)[0]
+    meldung = f"abuse@{netz['domain']}"
+    inhalt = {
+        "ip": ip, "rir": netz["register"].upper(), "is_bogon": False, "is_mobile": False, "is_satellite": False, "is_anycast": False, "is_crawler": False,
+        "is_datacenter": rechenzentrum, "is_tor": tor, "is_proxy": proxy, "is_vpn": vpn, "is_abuser": tor,
+        **({"datacenter": {"datacenter": netz["inhaber"], "network": f"{praefix}.0/24"}} if rechenzentrum else {}),
+        "company": {"name": netz["inhaber"], "abuser_score": "0.0039 (Low)", "domain": netz["domain"],
+                    "type": art, "network": f"{praefix}.0 - {praefix}.255", "netname": netz["netzname"]},
+        "abuse": {"name": KONTAKT, "address": f"Musterweg 1, {netz['plz']} {netz['ort']}", "email": meldung, "phone": "+41 00 000 00 00"},
+        "asn": {"asn": netz["asn"], "abuser_score": "0.0012 (Low)", "route": f"{praefix}.0/24", "descr": f"{netz['as_name']} - {netz['inhaber']}, {netz['land']}",
+                "country": netz["land"].lower(), "active": True, "org": netz["inhaber"], "domain": netz["domain"], "abuse": meldung, "type": art,
+                "created": "2013-05-22", "updated": "2024-02-12", "rir": netz["register"].upper()},
+        "location": {"is_eu_member": netz["land"] in ("DE", "NL"), "calling_code": "41", "currency_code": netz["waehrung"][1], "continent": "EU",
+                     "country": netz["landname"], "country_code": netz["land"], "state": netz["region"][0], "city": netz["ort"],
+                     "latitude": netz["lage"][0], "longitude": netz["lage"][1], "zip": netz["plz"],
+                     "timezone": netz["zeitzone"], "local_time": "2026-11-16T12:17:10+01:00", "local_time_unix": 1794827830, "is_dst": False,
+                     "utcoffset": "+01:00", "accuracy": "MEDIUM"},
+    }
+    if vpn:
+        gesehen = netz.get("vpn_gesehen", "2026-11-16T09:00:00")       # ohne Zeitzone: UTC
+        inhalt["vpn"] = {"ip": ip, "service": dienst, "url": "https://dienst.example.org/", "type": "exit_node",
+                         "last_seen": calendar.timegm(time.strptime(gesehen, "%Y-%m-%dT%H:%M:%S")) * 1000,
+                         "last_seen_str": gesehen + ".000Z", "exit_node_region": netz["region"][0], "country_code": netz["land"],
+                         "city_name": netz["ort"], "latitude": netz["lage"][0], "longitude": netz["lage"][1]}
+    return _json(inhalt)
+
+
+def _ripe_huelle(call: str, data: dict, status: str = "ok", meldungen: list | None = None) -> dict:
+    return {"messages": meldungen or [], "see_also": [], "version": "1.1", "data_call_name": call, "data_call_status": "supported",
+            "cached": False, "query_id": "20261116112035-00000000-0000-0000-0000-000000000000", "process_time": 7, "server_id": "app173",
+            "build_version": "v0.12.2-2026.10.23", "pipeline": "1478200", "status": status, "status_code": 200 if status == "ok" else 400,
+            "time": "2026-11-16T11:20:35.338521", "data": data}
+
+
+def _whois_satz(*felder: tuple[str, str]) -> list[dict]:
+    return [{"key": k, "value": w, "comment": None, "details_link": None} for k, w in felder]
+
+
+RIPE_FASSUNGEN = [{"from_time": "2026-10-20T13:35:44", "to_time": "2026-11-16T11:03:00", "version": 3},
+                  {"from_time": "2021-08-20T19:50:12", "to_time": "2026-10-20T13:35:44", "version": 2},
+                  {"from_time": "2021-08-19T08:09:49", "to_time": "2021-08-20T19:50:12", "version": 1}]
+
+
+def ripe_antwort(call: str, frage: dict, netz: dict | None = None, fassungen: list | None = None) -> httpx.Response:
+    """RIPEstat, GET /data/<call>/data.json. Jede Antwort steckt in derselben Hülle, der Inhalt unter «data». Im Whois nennt jedes
+    Register dieselbe Angabe anders (RIPE: inetnum, netname. ARIN: NetRange, NetName), und ARIN liefert eigene Sätze zu Kontaktpersonen."""
+    ziel = frage.get("resource", "")
+    ip = ziel.split("/")[0].split(" ")[0]
+    praefix = ip.rsplit(".", 1)[0]
+    netz = netz or (NETZ_ARIN if praefix == IP_ARIN.rsplit(".", 1)[0] else NETZ)
+    fassungen = RIPE_FASSUNGEN if fassungen is None else fassungen
+    arin, meldung = netz["register"] == "arin", f"abuse@{netz['domain']}"
+    if not frage.get("sourceapp"):
+        return _json(_ripe_huelle(call, {}, "error", [["error", "Missing sourceapp"]]), 400)
+    if call == "network-info":
+        return _json(_ripe_huelle(call, {"asns": [str(netz["asn"])], "prefix": f"{praefix}.0/24"}))
+    if call == "prefix-overview":
+        return _json(_ripe_huelle(call, {"is_less_specific": False, "announced": True,
+                                         "asns": [{"asn": netz["asn"], "holder": f"{netz['as_name']} {netz['inhaber']}"}],
+                                         "related_prefixes": [], "resource": f"{praefix}.0/24", "type": "prefix",
+                                         "block": {"resource": netz["block"], "desc": f"{'ARIN' if arin else 'RIPE NCC'} (Status: ALLOCATED)",
+                                                   "name": "IANA IPv4 Address Space Registry"},
+                                         "actual_num_related": 0, "query_time": "2026-11-16T00:00:00", "num_filtered_out": 0}))
+    if call == "whois":
+        if arin:
+            saetze = [_whois_satz(("NetRange", f"{praefix}.0 - {praefix}.255"), ("CIDR", f"{praefix}.0/24"), ("NetName", netz["netzname"]),
+                                  ("NetHandle", f"NET-{praefix.replace('.', '-')}-0-1"), ("Parent", "NET198 (NET-198-0-0-0-0)"),
+                                  ("NetType", "Direct Allocation"), ("OriginAS", ""), ("Organization", f"{netz['inhaber']} (MUSTER)"),
+                                  ("RegDate", "2023-12-28"), ("Ref", f"https://rdap.arin.net/registry/ip/{praefix}.0"), ("source", "ARIN")),
+                      _whois_satz(("OrgAbuseHandle", "ABUSE0000-ARIN"), ("OrgAbuseName", KONTAKT), ("OrgAbusePhone", "+1-000-000-0000"),
+                                  ("OrgAbuseEmail", meldung), ("source", "ARIN")),
+                      _whois_satz(("OrgName", netz["inhaber"]), ("OrgId", "MUSTER"), ("Address", "1 Example Road"), ("City", "Beispielstadt"),
+                                  ("StateProv", "CA"), ("PostalCode", "00000"), ("Country", netz["land"]), ("RegDate", "2000-03-30"), ("source", "ARIN")),
+                      _whois_satz(("OrgTechHandle", "TECH0000-ARIN"), ("OrgTechName", KONTAKT), ("OrgTechPhone", "+1-000-000-0000"),
+                                  ("OrgTechEmail", f"tech@{netz['domain']}"), ("source", "ARIN"))]
+        else:
+            saetze = [_whois_satz(("inetnum", f"{praefix}.0 - {praefix}.255"), ("netname", netz["netzname"]), ("country", netz["land"]), ("org", netz["org"]),
+                                  ("admin-c", "EE0000-RIPE"), ("tech-c", "EE0000-RIPE"), ("status", "ASSIGNED PA"), ("mnt-by", "MUSTER-MNT"),
+                                  ("created", netz["erstellt"]), ("last-modified", fassungen[0]["from_time"] + "Z"), ("source", "RIPE")),
+                      _whois_satz(("person", KONTAKT), ("address", f"Musterweg 1, {netz['plz']} {netz['ort']}"), ("phone", "+41 00 000 00 00"),
+                                  ("nic-hdl", "EE0000-RIPE"), ("source", "RIPE"))]
+        return _json(_ripe_huelle(call, {"records": saetze, "authorities": ["arin" if arin else "ripe"], "resource": ip, "query_time": "2026-11-16T11:20:00",
+                                         "irr_records": [_whois_satz(("route", f"{praefix}.0/24"), ("origin", str(netz["asn"])), ("mnt-by", "MUSTER-MNT"),
+                                                                     ("source", "RIPE"))]}))
+    if call == "abuse-contact-finder":
+        return _json(_ripe_huelle(call, {"abuse_contacts": [meldung], "authoritative_rir": "arin" if arin else "ripe",
+                                         "latest_time": "2026-11-15T19:51:07", "earliest_time": "2026-11-15T19:51:07",
+                                         "parameters": {"resource": ip, "cache": None}}))
+    if call == "routing-history":
+        return _json(_ripe_huelle(call, {"by_origin": [{"origin": str(netz["asn"]), "prefixes": [{"prefix": f"{praefix}.0/24", "timelines": [
+            {"starttime": frage.get("starttime", "")[:10] + "T00:00:00", "endtime": frage.get("endtime", "")[:10] + "T07:59:59", "full_peers_seeing": 324.0}]}]}],
+            "resource": ip, "query_starttime": frage.get("starttime"), "query_endtime": frage.get("endtime"), "time_granularity": 28800,
+            "latest_max_ff_peers": {"v4": 327, "v6": 363}}))
+    if call == "historical-whois":
+        nr = int(frage.get("version") or fassungen[0]["version"])
+        fassung = next(f for f in fassungen if f["version"] == nr)
+        heute = nr == fassungen[0]["version"]
+        return _json(_ripe_huelle(call, {
+            "terms_and_conditions": "http://www.ripe.net/db/support/db-terms-conditions.pdf", "num_versions": len(fassungen), "resource": ziel,
+            "versions": fassungen, "database": "RIPE", "type": "inetnum",
+            "objects": [{"type": "inetnum", "key": ziel, "from_time": fassung["from_time"], "version": nr, "latest": heute, "deleted": False,
+                         "attributes": [{"attribute": k, "value": w} for k, w in (
+                             ("inetnum", ziel), ("netname", netz["netzname"] if heute else "VORGAENGER-NET"), ("country", netz["land"]),
+                             ("org", netz["org"] if heute else "ORG-VG1-RIPE"), ("admin-c", "EE0000-RIPE"), ("tech-c", "EE0000-RIPE"),
+                             ("status", "ASSIGNED PA"), ("mnt-by", "MUSTER-MNT"), ("created", netz["erstellt"]),
+                             ("last-modified", fassung["from_time"] + "Z"), ("source", "RIPE"))]}],
+            "referencing": [[{"type": "organisation", "key": netz["org"], "from_time": "2021-08-19T08:09:49", "version": 1, "latest": True}]],
+            "referenced_by": [], "access": "standard", "suggestions": [], "version": "2026-11-16T11:03:00", "cache": None}))
+    return _json(_ripe_huelle(call, {}, "error", [["error", f"Unknown data call {call}"]]), 404)
+
+
 def antwort(anfrage: httpx.Request) -> httpx.Response | None:
     """Antwortet wie der echte Dienst, in der Form der Vorlagen. None: Diese Gegenstelle kennt die Adresse nicht."""
     host, pfad = anfrage.url.host, anfrage.url.path
@@ -320,6 +527,12 @@ def antwort(anfrage: httpx.Request) -> httpx.Response | None:
         kanal = pfad.rsplit("/", 1)[1]
         return httpx.Response(200, text=telegram_kanalseite(kanal) if kanal == "ohnevorschau" else telegram_vorschau(kanal),
                               headers={"content-type": "text/html; charset=utf-8"})
+    if host == "proxycheck.io" and pfad.startswith("/v3/"):
+        return pc_antwort(pfad.rsplit("/", 1)[1], frage)
+    if host == "api.ipapi.is":
+        return ipapi_antwort(json.loads(anfrage.content or b"{}"))
+    if host == "stat.ripe.net" and pfad.startswith("/data/"):
+        return ripe_antwort(pfad.split("/")[2], frage)
     if host == "web.archive.org" and pfad == "/cdx/search/cdx":
         return _json([] if "ohne-aufnahme" in frage.get("url", "") else
                      [["timestamp", "original", "statuscode", "mimetype", "digest", "length"],

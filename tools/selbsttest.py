@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ECHT = Path(__file__).resolve().parents[1]
@@ -63,11 +64,12 @@ try:
 
     import httpx
 
-    from gateway import (kern, krypto_adressen, krypto_ketten, krypto_zuordnung, quellen_infrastruktur as infra, quellen_krypto as krypto,
-                         quellen_szene as szene, quellen_web as web)
-    from gateway.akte import jsonl_lesen, kette, kette_pruefen
+    from gateway import (kern, krypto_adressen, krypto_ketten, krypto_zuordnung, quellen_infrastruktur as infra, quellen_ip as ipq,
+                         quellen_krypto as krypto, quellen_szene as szene, quellen_web as web)
+    from gateway.akte import belege_lesen, jsonl_lesen, kette, kette_pruefen
     from gateway.quellen import ROBIN_WERKZEUGE, alle_werkzeuge
-    from tools import _kryptowelt as kw, _vorlagen as vorlagen, einrichten, fall as fallwerkzeug, protokoll as protokollwerkzeug, rapport
+    from tools import (_kryptowelt as kw, _vorlagen as vorlagen, beleg, einrichten, fall as fallwerkzeug, protokoll as protokollwerkzeug,
+                       rapport)
     from tools._oberflaeche import Abbruch, Oberflaeche
     from tools.pii_pruefung import pruefen as pii_pruefen
 except ModuleNotFoundError as e:
@@ -531,7 +533,8 @@ def _():
 def _():
     protokoll = {e["id"]: e for e in kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl")}
     basis = {"zusammenfassung": ["x"], "luecken": ["x"],
-             "indikatoren": [{"id": "I-01", "typ": "ip", "wert": "8.8.8.8", "herkunft": "Test", "bewertung": "unauffaellig", "belege": ["P-0001"]}]}
+             "indikatoren": [{"id": "I-01", "typ": "ip", "wert": "8.8.8.8", "herkunft": "Test", "bewertung": "unauffaellig", "belege": ["P-0001"],
+                              "anonymisierung": {"wert": "nicht geprüft"}}]}
 
     def maengel(befund: dict) -> list[str]:
         voll = {"id": "B-01", "titel": "t", "text": "t", "erlaeuterung": "Eine Erklärung in einfachen Worten, lang genug.",
@@ -1704,6 +1707,287 @@ def _():
     muster = json.loads(lesen(REPO / "faelle" / "MUSTER-2026-001" / "fall.json"))
     assert muster.get("muster") is True and muster.get("sitzungen") == ["muster-sitzung-0001"], "der Musterfall nennt seine Sitzung nicht"
     assert "sitzungen_laden(fall_id, set(fall[\"sitzungen\"])" in lesen(REPO / "tools" / "protokoll.py"), "das Protokoll beachtet die Angabe nicht"
+
+
+IP_SCHLUESSEL = {"PROXYCHECK_API_KEY": vorlagen.PC_SCHLUESSEL, "IPAPI_API_KEY": vorlagen.IPAPI_SCHLUESSEL}
+
+
+@contextlib.contextmanager
+def ip_welt(schluessel: bool = True, jetzt: datetime = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)):
+    """Gegenstelle mit den Vorlagen, Schlüssel für proxycheck.io und ipapi.is, und eine gestellte Uhr: Das Fenster der Historie
+    hängt am Abstand zwischen Tatzeit und Abfrage."""
+    vorlagen_welt()
+    uhr = kern.uhr
+    kern.uhr = lambda: jetzt
+    if schluessel:
+        os.environ.update(IP_SCHLUESSEL)
+    try:
+        yield
+    finally:
+        kern.uhr = uhr
+        for name in IP_SCHLUESSEL:
+            os.environ.pop(name, None)
+
+
+@test("IP-Einordnung: «ja», «kein Hinweis», «nicht geprüft». Uneinige Quellen ergeben «ja» mit Vermerk, nie ein «nein»")
+def _():
+    with ip_welt():
+        r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_VPN)
+        b, a = r["befund"], r["befund"]["anonymisierung"]
+        assert r["ergebnis"] == "ok" and a["wert"] == "ja" and "vermerk" not in a and a["arten"] == ["VPN"] and a["dienste"] == ["MusterVPN"], a
+        assert set(a["geantwortet"]) == {"proxycheck.io", "ipapi.is"} and a["residential"] is False, a
+        assert b["ansatzpunkt"].startswith("Zuerst an den Betreiber MusterVPN") and "nennt nur den Kunden" in b["ansatzpunkt"], b["ansatzpunkt"]
+        assert b["netz"]["praefix"] == "203.0.113.0/24" and b["netz"]["as"] == "AS64500" and b["netz"]["meldestelle"] == ["abuse@netz.example.org"], b["netz"]
+        assert {x["quelle"]: x["art"] for x in b["anschlussart"]} == {"proxycheck.io": "Rechenzentrum", "ipapi.is": "Rechenzentrum"}, b["anschlussart"]
+        # Jede Teilabfrage steht einzeln im Protokoll, die Auswertung nennt sie als Grundlage und die Quellen, die geantwortet haben
+        eintraege = {e["id"]: e for e in jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")}
+        auswertung = eintraege[r["protokoll_id"]]
+        assert auswertung["art"] == "auswertung" and auswertung["werkzeug"] == "ip_einordnung" and auswertung["grundlage"] == r["belege"], auswertung
+        assert {eintraege[x]["quelle"] for x in r["belege"]} == {"proxycheck.io", "ipapi.is", "RIPEstat", "AbuseIPDB"}, r["belege"]
+        assert set(auswertung["quellen"]) == {"proxycheck.io", "ipapi.is", "RIPEstat", "AbuseIPDB"}, auswertung["quellen"]
+        assert all(eintraege[x]["werkzeug"] == "ip_abruf" for x in r["belege"])
+
+        # Kein Eintrag bei den Quellen ist kein «nein»: Der Wert heisst «kein Hinweis» und trägt den Vorbehalt
+        b = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_SAUBER)["befund"]
+        assert b["anonymisierung"]["wert"] == "kein Hinweis" and "kein «nein»" in b["erklaerung"] and ipq.VORBEHALT in b["erklaerung"], b["erklaerung"]
+        assert b["ansatzpunkt"].startswith("Editionsbegehren an den Zugangsanbieter") and ipq.VORBEHALT in b["ansatzpunkt"], b["ansatzpunkt"]
+        assert "nachholen" not in b["ansatzpunkt"]
+        assert [x["quelle"] for x in b["anonymisierung"]["ohne_eintrag"]] == ["proxycheck.io", "ipapi.is"], b["anonymisierung"]
+
+        # Eine Quelle führt die Adresse, die andere nicht: «ja» mit Vermerk. Die Quelle nennt weder Art noch Dienst, also auch der Text nicht
+        b = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_STRITTIG)["befund"]
+        a = b["anonymisierung"]
+        assert a["wert"] == "ja" and a["vermerk"] == "Quellen uneinig" and a["arten"] == [] and a["dienste"] == [], a
+        assert "weder die Art noch einen Dienst" in b["erklaerung"] and "uneinig: ipapi.is führt die Adresse nicht" in b["erklaerung"], b["erklaerung"]
+        assert "Ausgang eines Anonymisierungsdienstes (" not in b["erklaerung"], "der Text behauptet mehr, als die Quelle sagt"
+
+        # Tor: Auch der Betreiber des Ausgangs kennt die Herkunft nicht. Der Ansatzpunkt sagt das, statt ein Begehren zu empfehlen
+        b = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_TOR)["befund"]
+        assert b["anonymisierung"]["wert"] == "ja" and "Tor" in b["anonymisierung"]["arten"] and "führt nicht zum Nutzer" in b["ansatzpunkt"], b
+        for b_ in (b,):
+            assert b_["erklaerung"].endswith("Eine IP-Adresse identifiziert niemanden.")
+
+    # Ohne Schlüssel bleibt die Frage offen. Das Netz klärt RIPEstat trotzdem, und der Ansatzpunkt verlangt, die Abklärung nachzuholen
+    del os.environ["ABUSEIPDB_API_KEY"]
+    try:
+        with ip_welt(schluessel=False):
+            r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI)
+    finally:
+        os.environ["ABUSEIPDB_API_KEY"] = "GEHEIMER-TESTSCHLUESSEL-123"
+    b = r["befund"]
+    assert r["ergebnis"] == "ok" and b["anonymisierung"]["wert"] == "nicht geprüft" and b["anonymisierung"]["geantwortet"] == [], b["anonymisierung"]
+    assert {o["quelle"] for o in b["anonymisierung"]["nicht_geantwortet"]} == {"proxycheck.io", "ipapi.is", "AbuseIPDB", "Spur"}, b["anonymisierung"]
+    assert b["quellenstand"]["proxycheck.io"]["ergebnis"] == "aus" and b["quellenstand"]["RIPEstat"]["ergebnis"] == "ok", b["quellenstand"]
+    assert b["netz"]["as_inhaber"] == "MUSTER-AS Musternetz AG" and b["netz"]["netzname"] == "MUSTER-NET" and b["netz"]["register"] == "RIPE", b["netz"]
+    assert "tools/beleg.py" in b["erklaerung"] and "vorher nachholen" in b["ansatzpunkt"], (b["erklaerung"], b["ansatzpunkt"])
+    r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, quellen=["hellseher"])
+    assert r["ergebnis"] == "nicht_ausgefuehrt" and "Unbekannte Quelle" in r["fehler"], r
+    r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2027-01-01")
+    assert r["ergebnis"] == "nicht_ausgefuehrt" and "Zukunft" in r["fehler"], r
+    assert kette_pruefen(FALL)["ok"]
+
+
+@test("IP-Einordnung: Tatzeit im Fenster der Historie, Residential Proxy, frühere Zuteilung, nie eine Kontaktperson")
+def _():
+    with ip_welt():
+        # Tatzeit am 1.11.: Die Quelle hat die Adresse vom 20.10. bis 10.11. gesehen. Die Tat fällt in die Zeit, in der sie geführt war
+        r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2026-11-01T10:00:00Z")
+        b, a = r["befund"], r["befund"]["anonymisierung"]
+        assert a["wert"] == "ja" and a["residential"] is True and a["vermerk"] == "Quellen uneinig" and a["dienste"] == ["MusterProxy"], a
+        assert b["tatzeit"] == "2026-11-01T10:00:00Z" and b["abfragezeit"] == "2026-11-16T12:00:00Z", (b["tatzeit"], b["abfragezeit"])
+        assert "war zur Tatzeit geführt" in b["erklaerung"] and "voraussichtlich unbeteiligt" in b["erklaerung"], b["erklaerung"]
+        assert b["ansatzpunkt"].startswith("Zuerst an den Betreiber MusterProxy") and "voraussichtlich unbeteiligt" in b["ansatzpunkt"], b["ansatzpunkt"]
+        eintraege = {e["id"]: e for e in jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")}
+        pc = next(eintraege[x] for x in r["belege"] if eintraege[x]["quelle"] == "proxycheck.io")
+        assert "days=17" in pc["anfrage"]["url"] and "history=1" in pc["anfrage"]["url"] and "tag=0" in pc["anfrage"]["url"], pc["anfrage"]["url"]
+        damals = b["netz"]["zur_tatzeit"]
+        assert damals["angekuendigt_von"] == [{"as": "AS64500", "praefix": "203.0.113.0/24", "von": "2026-10-31T00:00:00", "bis": "2026-11-01T07:59:59"}], damals
+        assert damals["zuteilung"]["netzname"] == "MUSTER-NET" and damals["zuteilung"]["fassung"] == 3, damals["zuteilung"]
+
+        # Tatzeit am 1.10.: vor der ersten Sichtung, und das Netz war damals einem anderen zugeteilt (Fassung 2 des Registereintrags)
+        r2 = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2026-10-01")
+        b2 = r2["befund"]
+        assert "erst nach der Tatzeit zuerst gesehen" in b2["erklaerung"] and "war zur Tatzeit geführt" not in b2["erklaerung"], b2["erklaerung"]
+        zuteilung = b2["netz"]["zur_tatzeit"]["zuteilung"]
+        assert zuteilung["netzname"] == "VORGAENGER-NET" and zuteilung["organisation"] == "ORG-VG1-RIPE" and zuteilung["fassung"] == 2, zuteilung
+        assert zuteilung["gueltig_von"] == "2021-08-20T19:50:12" and zuteilung["gueltig_bis"] == "2026-10-20T13:35:44", zuteilung
+
+        # Tatzeit vor dem Fenster (60 Tage): keine Historie abgefragt, und der Text sagt, dass die Auskunft nur für heute gilt
+        r3 = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2026-06-01T08:00:00Z")
+        eintraege = {e["id"]: e for e in jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")}
+        pc = next(eintraege[x] for x in r3["belege"] if eintraege[x]["quelle"] == "proxycheck.io")
+        assert "days=" not in pc["anfrage"]["url"] and "vor dem Fenster der Historie" in r3["befund"]["erklaerung"], pc["anfrage"]["url"]
+
+        # Ein gelöschter Eintrag zählt als geführt: Die Tat kann in die Zeit davor fallen
+        b4 = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_GELOESCHT, tatzeit="2026-10-22")["befund"]
+        aussage = b4["anonymisierung"]["aussagen"][0]
+        assert b4["anonymisierung"]["wert"] == "ja" and aussage["heute"] == "gelöscht" and aussage["geloescht_am"] == "2026-10-25T10:00:00Z", b4["anonymisierung"]
+
+        # Ein Netz ausserhalb der RIPE-Datenbank: Das Whois nennt die Felder anders, und eine frühere Zuteilung gibt es nicht
+        r5 = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_ARIN, tatzeit="2026-11-01", quellen=["ripestat"])
+        n5 = r5["befund"]["netz"]
+        assert n5["bereich"] == "192.0.2.0 - 192.0.2.255" and n5["netzname"] == "MUSTER-US" and n5["inhaber"] == "Musterfirma LLC (MUSTER)", n5
+        assert n5["register"] == "ARIN" and "nur für die RIPE-Datenbank" in n5["zur_tatzeit"]["zuteilung"], n5
+        assert r5["befund"]["anonymisierung"]["wert"] == "nicht geprüft", r5["befund"]["anonymisierung"]
+
+        # Kontaktpersonen aus Register und ipapi.is erreichen den Agenten nie. In der Rohdatei der Quelle stehen sie, unverändert
+        for x in (r, r2, r3, r5):
+            assert vorlagen.KONTAKT not in json.dumps(x, ensure_ascii=False), f"eine Kontaktperson steht im Ergebnis ({x['protokoll_id']})"
+            assert vorlagen.KONTAKT not in lesen(PROJEKT / x["rohdaten"]), "eine Kontaktperson steht in der Auswertung"
+        assert any(vorlagen.KONTAKT in lesen(d) for d in (pfad / "rohdaten").glob("*_ip_abruf.json")), "die Rohdaten der Quelle fehlen"
+
+        # Schlüssel: bei proxycheck.io in der Adresse, bei ipapi.is im Körper der Anfrage. Weder Protokoll noch Rohdaten kennen sie
+        alles = lesen(pfad / "protokoll" / "abfragen.jsonl") + "".join(lesen(d) for d in (pfad / "rohdaten").glob("*_ip_*.json"))
+        for wert in IP_SCHLUESSEL.values():
+            assert wert not in alles, "ein Schlüssel der IP-Quellen steht in der Fallakte"
+        assert "key=***" in pc["anfrage"]["url"], pc["anfrage"]["url"]
+        # Der Hash des Körpers im Protokoll trägt nichts vom Schlüssel: Er gilt dem Körper ohne ihn
+        ipapi = next(eintraege[x] for x in r3["belege"] if eintraege[x]["quelle"] == "ipapi.is")
+        erwartet = hashlib.sha256(kern.kanonisch({"q": vorlagen.IP_RESI, "key": "***"})).hexdigest()
+        assert ipapi["anfrage"]["koerper_sha256"] == erwartet and ipapi["anfrage"]["methode"] == "POST", ipapi["anfrage"]
+        assert kette_pruefen(FALL)["ok"]
+
+    # Ein falscher Schlüssel: Die Quelle lehnt ab, ihr Wortlaut steht im Protokoll, und der Wert bleibt «nicht geprüft» statt «kein Hinweis»
+    with ip_welt():
+        os.environ["PROXYCHECK_API_KEY"] = "pc-falscher-schluessel-0009"
+        r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_GELOESCHT, quellen=["proxycheck"])     # ohne Tatzeit noch nie gefragt
+        assert r["befund"]["anonymisierung"]["wert"] == "nicht geprüft" and r["befund"]["quellenstand"]["proxycheck.io"]["ergebnis"] == "fehler", r["befund"]
+        assert "API Key is invalid" in r["fehlgeschlagen"][0]["fehler"] and "pc-falscher" not in json.dumps(r), r["fehlgeschlagen"]
+
+
+IP_OFFEN = "198.51.100.77"        # eine IP, zu der die Fallakte keine Einordnung enthält
+
+
+@test("Rapport: Jede IP trägt den Wert zum Anonymisierungsdienst aus der Fallakte, Empfehlungen bekommen den Vorbehalt dazu")
+def _():
+    with ip_welt():
+        vpn = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_VPN)
+        sauber = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_SAUBER)
+        resi = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2026-11-01T10:00:00Z")
+    protokoll = {e["id"]: e for e in belege_lesen(FALL)}
+    empfehlungen = [{"text": f"Editionsbegehren an den Zugangsanbieter zu {vorlagen.IP_SAUBER}, Tatzeit 01.11.2026.", "prioritaet": "hoch"},
+                    {"text": "Verbindungsdaten zur Anmelde-IP sichern lassen.", "indikatoren": ["I-01"], "prioritaet": "mittel"},
+                    {"text": "Begehren zum Anschluss, von dem die zweite Anmeldung kam.", "adressat": "zugangsanbieter", "indikatoren": ["I-03", "I-04"], "prioritaet": "mittel"},
+                    {"text": "Zugangsdaten zurücksetzen.", "prioritaet": "tief"}]
+
+    def befunde(empf: list | None = None, **ersatz) -> dict:
+        ind = {"I-01": {"typ": "ip", "wert": vorlagen.IP_VPN, "anonymisierung": {"wert": "ja", "belege": [vpn["protokoll_id"]]}},
+               "I-02": {"typ": "ip", "wert": vorlagen.IP_SAUBER, "anonymisierung": {"wert": "kein Hinweis", "belege": [sauber["protokoll_id"]]}},
+               "I-03": {"typ": "ip", "wert": IP_OFFEN, "anonymisierung": {"wert": "nicht geprüft"}},
+               "I-04": {"typ": "ip", "wert": vorlagen.IP_RESI, "anonymisierung": {"wert": "ja", "belege": [resi["protokoll_id"]]}},
+               "I-05": {"typ": "domain", "wert": "example.org"}}
+        for kennung, a in ersatz.items():
+            ind[kennung.replace("_", "-")]["anonymisierung"] = a
+        return {"zusammenfassung": ["x"], "luecken": ["x"], "befunde": [], "empfehlungen": empfehlungen if empf is None else empf,
+                "indikatoren": [{"id": k, "herkunft": "Rapport Ziff. 3", "bewertung": "unbekannt", **v} for k, v in ind.items()]}
+
+    def maengel(b: dict) -> list[str]:
+        return rapport.pruefen(b, protokoll, entwurf=False, pfad=pfad)[0]
+
+    assert not maengel(befunde()), maengel(befunde())
+    assert any("I-01: 'anonymisierung.wert' fehlt" in m and "laut Fallakte: «ja»" in m for m in maengel(befunde(I_01=None))), maengel(befunde(I_01=None))
+    # Ein «nein» gibt es nicht, und der Wert kommt aus der Fallakte: weder beschönigt noch aus der Erinnerung
+    assert any("I-02: 'anonymisierung.wert' fehlt" in m for m in maengel(befunde(I_02={"wert": "nein"})))
+    assert any("I-01: 'anonymisierung.wert' ist «kein Hinweis», die Fallakte ergibt «ja»" in m
+               for m in maengel(befunde(I_01={"wert": "kein Hinweis", "belege": [vpn["protokoll_id"]]})))
+    assert any("I-02: 'anonymisierung.wert' ist «nicht geprüft», die Fallakte ergibt «kein Hinweis»" in m for m in maengel(befunde(I_02={"wert": "nicht geprüft"})))
+    assert any("I-03: 'anonymisierung.wert' ist «ja», die Fallakte ergibt «nicht geprüft»" in m for m in maengel(befunde(I_03={"wert": "ja"})))
+    assert any("keine Einordnung dieser IP" in m for m in maengel(befunde(I_01={"wert": "ja", "belege": [sauber["protokoll_id"]]})))
+    assert any("I-02: 'anonymisierung.belege' fehlt" in m for m in maengel(befunde(I_02={"wert": "kein Hinweis"})))
+    # Eine Empfehlung an einen Zugangsanbieter muss sagen, um welche IP es geht: Sonst fehlte ihr der Vorbehalt
+    ohne = [{"text": "Editionsbegehren an den Zugangsanbieter zur Anmeldung vom 29.09.2026.", "prioritaet": "hoch"}]
+    assert any("Empfehlung 1: richtet sich an einen Zugangsanbieter, nennt aber keine IP-Adresse" in m for m in maengel(befunde(empf=ohne)))
+    assert any("Empfehlung 1: verweist auf unbekannten Indikator I-99" in m for m in maengel(befunde(empf=[{"text": "x", "indikatoren": ["I-99"]}])))
+    assert not maengel(befunde(empf=[{"text": "Begehren an den Anbieter.", "adressat": "zugangsanbieter", "indikatoren": ["I-02"]}]))
+
+    fallwerkzeug.schreiben(pfad / "befunde.json", befunde())
+    with contextlib.redirect_stdout(io.StringIO()) as ausgabe:
+        assert rapport.main([FALL]) == 0, ausgabe.getvalue()
+    html = lesen(pfad / "rapport" / "Abschlussrapport.html")
+    for erwartet in ("Einordnung der IP-Adressen", "</span>ja</span>", "</span>kein Hinweis</span>", "</span>nicht geprüft</span>", "Dienst: MusterVPN",
+                     "Laut proxycheck.io, ipapi.is", "Befragt: proxycheck.io, ipapi.is", "Keine Quelle konnte befragt werden", "203.0.113.0/24 · AS64500",
+                     "Tatzeit 01.11.2026, 11:00", "Inhaber voraussichtlich unbeteiligt", "Quellen uneinig",
+                     # die festen Sätze zu den Empfehlungen: je Wert einer
+                     f"Zu {vorlagen.IP_VPN}: Die Adresse ist laut proxycheck.io, ipapi.is der Ausgang eines Anonymisierungsdienstes (VPN). "
+                     "Zuerst ist der Betreiber des Dienstes anzugehen (MusterVPN)",
+                     f"Zu {vorlagen.IP_SAUBER}: Kein Hinweis auf einen Anonymisierungsdienst (befragt: proxycheck.io, ipapi.is). Das ist kein «nein».",
+                     f"Zu {IP_OFFEN}: Ob die Adresse zu einem Anonymisierungsdienst gehört, ist nicht geprüft.", "tools/beleg.py",
+                     f"Zu {vorlagen.IP_RESI}: ", "Er ist voraussichtlich unbeteiligt. Die Quellen sind uneinig."):
+        assert erwartet in html, f"im Rapport fehlt: {erwartet}"
+    assert html.count(rapport.esc(rapport.IP_VORBEHALT)) >= 3, "der Vorbehalt steht nicht bei jeder Empfehlung, zu der er gehört"
+    assert "Zugangsdaten zurücksetzen.</td>" in html, "eine Empfehlung ohne IP bekommt keinen Vorbehalt"
+    import csv as csvmodul
+    zeilen = {z["id"]: z for z in csvmodul.DictReader(io.StringIO(lesen(pfad / "rapport" / "indikatoren.csv")), delimiter=";")}
+    assert [zeilen[k]["anonymisierungsdienst"] for k in ("I-01", "I-02", "I-03", "I-04", "I-05")] == \
+        ["ja", "kein Hinweis", "nicht geprüft", "ja (Quellen uneinig)", ""], zeilen
+
+
+@test("Beleg von Hand: nur am Terminal, verkettet und gekennzeichnet, setzt den Wert einer IP, nimmt keine Personendaten an")
+def _():
+    # Ein Agent schreibt sich keinen Beleg: Das Werkzeug verlangt ein Terminal, der Wächter lehnt den Aufruf ab, die Einstellungen verbieten ihn
+    befehl = "erfassen"
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "beleg.py"), befehl, FALL, "--indikator", IP_OFFEN, "--typ", "ip",
+                        "--quelle", "Beispieldienst", "--abgeklaert", "2026-11-16 10:20", "--wortlaut", "Kein Eintrag zur Adresse.", "--durch", "agent",
+                        "--anonymisierung", "kein-hinweis"], capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
+    assert r.returncode == 2 and "am Terminal" in r.stderr, (r.returncode, r.stderr)
+    assert not any(e.get("werkzeug") == "abklaerung_von_hand" for e in jsonl_lesen(pfad / "protokoll" / "extern.jsonl")), "ohne Terminal wurde ein Beleg eingetragen"
+    assert abgelehnt(waechter("Bash", command=f"python3 tools/beleg.py {befehl} {FALL} --indikator {IP_OFFEN}"))
+    assert abgelehnt(waechter("PowerShell", command=f"python tools\\beleg.py  {befehl} {FALL}"))
+    assert not abgelehnt(waechter("Bash", command=f"python3 tools/beleg.py zeigen {FALL}"))
+    assert abgelehnt(waechter("Write", file_path=str(pfad / "protokoll" / "extern.jsonl"), content="{}"))
+    regeln = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]
+    for py in ("python3", "python"):
+        assert f"Bash({py} tools/beleg.py {befehl} *)" in regeln["deny"], "das Verbot für das Erfassen von Belegen fehlt in settings.json"
+
+    jetzt = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    angaben = dict(indikator=IP_OFFEN, typ="ip", quelle="Beispieldienst, Weboberfläche", abgeklaert=datetime(2026, 11, 16, 9, 20, tzinfo=timezone.utc),
+                   wortlaut="Die Adresse wird als Ausgang des Dienstes MusterProxy geführt, Art: Residential Proxy.", durch="sb-01",
+                   anonymisierung="ja", art="Residential Proxy", dienst="MusterProxy", residential=True, jetzt=jetzt)
+    e = beleg.erfassen(FALL, **angaben)
+    assert e["id"].startswith("X-") and e["art"] == "von_hand" and e["werkzeug"] == "abklaerung_von_hand" and e["ziel"] == IP_OFFEN, e
+    assert e["quelle"] == "Beispieldienst, Weboberfläche (von Hand erfasst)" and e["agent"] is None, e
+    roh = json.loads(lesen(pfad / e["antwort"]["rohdaten"]))
+    assert roh["art"] == "von Hand erfasst" and roh["erfasst_durch"] == "sb-01" and roh["abgeklaert_am"] == "2026-11-16T09:20:00Z", roh
+    assert roh["anonymisierung"] == {"wert": "ja", "art": "Residential Proxy", "dienst": "MusterProxy", "residential": True}, roh
+    assert kette_pruefen(FALL)["ok"], kette_pruefen(FALL)["fehler"]
+
+    # Der Beleg setzt den Wert. Er zählt wie eine weitere Stimme: «ja» schlägt «kein Hinweis», und der Rapport verlangt den neuen Wert
+    protokoll = {x["id"]: x for x in belege_lesen(FALL)}
+    stand = rapport.ip_stand(IP_OFFEN, protokoll, pfad)
+    assert stand["wert"] == "ja" and stand["residential"] and stand["dienste"] == ["MusterProxy"] and stand["belege"] == [e["id"]], stand
+    assert stand["quellen"] == ["Beispieldienst, Weboberfläche (von Hand erfasst)"], stand["quellen"]
+    kein = beleg.erfassen(FALL, **{**angaben, "indikator": vorlagen.IP_VPN, "wortlaut": "Zur Adresse führt der Dienst keinen Eintrag.",
+                                   "anonymisierung": "kein-hinweis", "art": None, "dienst": None, "residential": False})
+    stand = rapport.ip_stand(vorlagen.IP_VPN, {x["id"]: x for x in belege_lesen(FALL)}, pfad)
+    assert stand["wert"] == "ja" and stand["vermerk"] == "Quellen uneinig" and kein["id"] in stand["belege"], stand
+    b = json.loads(lesen(pfad / "befunde.json"))
+    maengel = rapport.pruefen(b, {x["id"]: x for x in belege_lesen(FALL)}, entwurf=False, pfad=pfad)[0]
+    assert any("I-03: 'anonymisierung.wert' ist «nicht geprüft», die Fallakte ergibt «ja»" in m for m in maengel), maengel
+
+    for falsch, grund in (({"anonymisierung": "nein"}, "Ein «nein» gibt es nicht"),
+                          ({"indikator": "[PERSON_01]", "typ": "konto", "anonymisierung": None, "art": None, "dienst": None, "residential": False}, "Platzhalter"),
+                          ({"wortlaut": "Anschlussinhaber erreichbar unter 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7"}, "Personendaten"),
+                          ({"typ": "domain", "indikator": "example.org"}, "nur für IP-Adressen"),
+                          ({"abgeklaert": datetime(2026, 12, 1, tzinfo=timezone.utc)}, "Zukunft"),
+                          ({"anonymisierung": "kein-hinweis"}, "gehören zum Wert «ja»"), ({"durch": ""}, "Wer hat die Abklärung gemacht")):
+        vorher = len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl"))
+        try:
+            beleg.erfassen(FALL, **{**angaben, **falsch})
+            raise AssertionError(f"angenommen: {falsch}")
+        except beleg.Fehler as fehler:
+            assert grund in str(fehler), (grund, str(fehler))
+        assert len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl")) == vorher, "trotz Ablehnung wurde etwas eingetragen"
+
+    # Im Ermittlungsprotokoll und im Rapport steht «von Hand erfasst» dabei
+    b["indikatoren"][2]["anonymisierung"] = {"wert": "ja", "belege": [e["id"]]}
+    b["indikatoren"][0]["anonymisierung"]["belege"].append(kein["id"])
+    fallwerkzeug.schreiben(pfad / "befunde.json", b)
+    with contextlib.redirect_stdout(io.StringIO()) as ausgabe:
+        assert rapport.main([FALL]) == 0 and protokollwerkzeug.main([FALL]) == 0, ausgabe.getvalue()
+    html = lesen(pfad / "rapport" / "Abschlussrapport.html")
+    assert f"Von Hand erfasst ({e['id']}) durch sb-01" in html and "Wortlaut der Quelle: «Die Adresse wird als Ausgang des Dienstes MusterProxy" in html, "Kennzeichnung fehlt"
+    eintraege = lesen(pfad / "rapport" / "Ermittlungsprotokoll.html")
+    assert "✎ von Hand" in eintraege and "erfasst durch sb-01" in eintraege and "von Hand erfasst" in eintraege
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")

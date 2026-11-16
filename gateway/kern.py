@@ -114,6 +114,9 @@ INTERVALL = {
     "Chainabuse": 1.0,
     "TRM Labs": 1.1,            # ohne Schlüssel: eine Anfrage je Sekunde, 100 am Tag
     "Blockscout": 0.25 if einstellung("BLOCKSCOUT_API_KEY") else 1.0,   # ohne Schlüssel drosselt Blockscout früh (HTTP 429)
+    "proxycheck.io": 0.3,       # Gratis-Paket: 1'000 Abfragen am Tag
+    "ipapi.is": 0.3,            # Gratis-Paket: 1'000 Abfragen am Tag
+    "RIPEstat": 0.25,           # höchstens acht gleichzeitige Anfragen je Anschluss. Das Gateway fragt nacheinander
 }
 # Wartezeit vor dem zweiten Versuch eines Vorgangs. Austauschbar, damit Tests nicht warten.
 schlaf: Callable[[float], Any] = asyncio.sleep
@@ -222,11 +225,11 @@ def _maskiert(url: str, params: dict | None, geheim: tuple[str, ...]) -> str:
     return f"{url}?{urlencode(sichtbar)}".replace("%2A%2A%2A", "***")
 
 
-def _geheimnisse(params: dict | None, kopf: dict | None, geheim: tuple[str, ...]) -> list[str]:
-    """Werte, die nie in Protokoll, Rohdaten oder Fehlertexten stehen dürfen: Schlüssel in der Adresse und alle
-    Kopfzeilen, die das Werkzeug mitgibt (dort steht bei den meisten Diensten der Schlüssel). Bei «Basic» und
-    «Bearer» zählt auch der Teil hinter dem Wort."""
-    werte: list[str] = [str(v) for k, v in (params or {}).items() if k in geheim and v is not None]
+def _geheimnisse(params: dict | None, kopf: dict | None, geheim: tuple[str, ...], koerper: dict | None = None) -> list[str]:
+    """Werte, die nie in Protokoll, Rohdaten oder Fehlertexten stehen dürfen: Schlüssel in der Adresse, Schlüssel im
+    Körper der Anfrage (Felder aus ``geheim``) und alle Kopfzeilen, die das Werkzeug mitgibt (dort steht bei den
+    meisten Diensten der Schlüssel). Bei «Basic» und «Bearer» zählt auch der Teil hinter dem Wort."""
+    werte: list[str] = [str(v) for quelle in (params, koerper) for k, v in (quelle or {}).items() if k in geheim and v is not None]
     for wert in (kopf or {}).values():
         if isinstance(wert, str):
             werte.append(wert)
@@ -319,6 +322,9 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     anfrage = {"methode": methode, "url": _maskiert(url, params, geheim), "proxy": bool(proxy)}
     koerper = json_koerper if json_koerper is not None else form
     if koerper is not None:
+        # Steht der Schlüssel im Körper, zählt für Protokoll und Cache der Körper ohne ihn: Auch ein Hash soll nichts vom Schlüssel tragen
+        if isinstance(koerper, dict) and geheim:
+            koerper = {k: ("***" if k in geheim else v) for k, v in koerper.items()}
         anfrage["koerper_sha256"] = hashlib.sha256(kanonisch(koerper)).hexdigest()
     basis = {"werkzeug": werkzeug, "quelle": quelle, "art": art, "freigabe": freigabe,
              "ziel": ziel, "ziel_typ": ziel_typ, "zweck": zweck, "anfrage": anfrage}
@@ -355,7 +361,8 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
 
     start = stoppuhr()
     drossel: dict[str, str] = {}
-    geheimnisse = _geheimnisse(params, kopf, geheim)
+    roh_koerper = json_koerper if json_koerper is not None else form
+    geheimnisse = _geheimnisse(params, kopf, geheim, roh_koerper if isinstance(roh_koerper, dict) else None)
     try:
         async with httpx.AsyncClient(**client_args) as client:
             r = await client.request(methode, url, params={k: v for k, v in (params or {}).items()

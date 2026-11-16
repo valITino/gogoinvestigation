@@ -149,6 +149,9 @@ def shell(befehl: str) -> None:
     if re.search(r"fall\.py\s+freigabe|--trotzdem", b, re.I):
         ablehnen("Freigaben und das Übersteuern der PII-Prüfung sind Entscheidungen des Sachbearbeiters. "
                  "Er führt den Befehl selbst am Terminal aus.")
+    if re.search(r"beleg\.py\s+erfassen", b, re.I):
+        ablehnen("Einen Beleg von Hand erfasst nur der Sachbearbeiter am Terminal (tools/beleg.py). Ein Agent schreibt sich "
+                 "keinen Beleg selbst. Fehlt eine Abklärung, steht sie im Rapport als «nicht geprüft».")
     if not aufbau() and re.search(r"einrichten\.py|(^|[\s/;&|(])setup\.(sh|ps1|cmd)\b", b, re.I):
         ablehnen("Die Einrichtung des Arbeitsplatzes (Modelle, MCP-Server, Schlüsseldatei) ändert nur der "
                  "Sachbearbeiter am Terminal.")

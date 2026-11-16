@@ -13,6 +13,7 @@
       "mcp__osint__shodan_*",
       "mcp__osint__spur_*",
       "mcp__osint__abuseipdb_*",
+      "mcp__osint__ip_einordnung",
       "mcp__osint__virustotal_*",
       "mcp__osint__urlquery_suche",
       "mcp__osint__urlquery_bericht",
@@ -35,6 +36,7 @@
       "Bash(python3 tools/rapport.py *)",
       "Bash(python3 tools/protokoll.py *)",
       "Bash(python3 tools/audit_pruefen.py *)",
+      "Bash(python3 tools/beleg.py zeigen *)",
       "Bash(python3 tools/pruefen.py)",
       "Bash(python tools/fall.py neu *)",
       "Bash(python tools/fall.py aufnehmen *)",
@@ -43,6 +45,7 @@
       "Bash(python tools/rapport.py *)",
       "Bash(python tools/protokoll.py *)",
       "Bash(python tools/audit_pruefen.py *)",
+      "Bash(python tools/beleg.py zeigen *)",
       "Bash(python tools/pruefen.py)"
     ],
     "ask": [
@@ -63,6 +66,8 @@
       "Edit(./faelle/*/eingang/**)",
       "Bash(python3 tools/fall.py freigabe *)",
       "Bash(python tools/fall.py freigabe *)",
+      "Bash(python3 tools/beleg.py erfassen *)",
+      "Bash(python tools/beleg.py erfassen *)",
       "Bash(curl *)",
       "Bash(wget *)",
       "PowerShell(Invoke-WebRequest *)",

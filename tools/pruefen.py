@@ -346,6 +346,10 @@ async def alle():
             r = await werkzeuge[p["werkzeug"]]("SELBSTTEST", zweck="Live-Test der Einrichtung mit harmlosem Testwert", **p["argumente"])
         except Exception as e:
             r = {"ergebnis": "fehler", "fehler": f"{type(e).__name__}: {e}"}
+        # Ein Werkzeug, das mehrere Quellen bündelt, meldet «ok», auch wenn die eine gefragte Quelle ausfiel. Ihr Stand sagt es.
+        stand = (r.get("befund") or {}).get("quellenstand", {}).get(p["quelle"]) if isinstance(r.get("befund"), dict) else None
+        if isinstance(stand, dict) and stand.get("ergebnis") in ("fehler", "aus"):
+            r = {"ergebnis": "fehler", "fehler": stand.get("hinweis") or "Die Quelle hat nicht verwertbar geantwortet.", "protokoll_id": r.get("protokoll_id")}
         print(json.dumps({"quelle": p["quelle"], "werkzeug": p["werkzeug"], "ergebnis": r.get("ergebnis"), "fehler": r.get("fehler"), "id": r.get("protokoll_id")}, ensure_ascii=False), flush=True)
 asyncio.run(alle())
 '''

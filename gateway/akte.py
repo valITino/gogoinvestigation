@@ -33,6 +33,13 @@ FREIGABE_TEXT = {
 }
 FALL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$")
 
+# Einordnung einer IP: Ob sie der Ausgang eines Anonymisierungsdienstes ist, hat genau einen von drei Werten.
+# «kein Hinweis» ist kein «nein». Der Vorbehalt steht überall im selben Wortlaut: im Werkzeug ip_einordnung und im Rapport.
+IP_WERTE = ("ja", "kein Hinweis", "nicht geprüft")
+IP_VORBEHALT = ("Die befragten Quellen erkennen Residential Proxies nur lückenhaft. Der Anschluss kann einem Unbeteiligten "
+                "gehören, über dessen Gerät ein solcher Dienst läuft.")
+VON_HAND = "abklaerung_von_hand"        # Werkzeugname der Belege, die der Sachbearbeiter mit tools/beleg.py erfasst
+
 
 def kanonisch(obj: Any) -> bytes:
     return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

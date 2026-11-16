@@ -222,15 +222,22 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     # ---- 3 Weitere Werkzeuge
     h.append("<h2>3 Abfragen über weitere Werkzeuge</h2>"
              "<p class='klein'>Aufrufe von MCP-Servern ausserhalb des Gateways, zum Beispiel die Dark-Web-Suche Robin über Tor. "
-             "Der Sitzungs-Hook sichert jede Antwort vollständig in der Fallakte und verkettet sie wie die Abfragen des Gateways.</p>")
+             "Der Sitzungs-Hook sichert jede Antwort vollständig in der Fallakte und verkettet sie wie die Abfragen des Gateways. "
+             "Hier stehen auch Abklärungen, die der Sachbearbeiter von Hand gemacht und mit tools/beleg.py erfasst hat. Sie sind als "
+             "«von Hand erfasst» gekennzeichnet: Ihr Inhalt stammt nicht aus einer protokollierten Abfrage.</p>")
     if extern:
         h.append("<div class='tabelle-breit'><table class='eintraege'>" + KOPFZEILE.replace("Ziel und Zweck", "Eingabe"))
         for e in extern:
             antwort = e.get("antwort") or {}
-            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span>",
-                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span>",
+            hand = e.get("art") == "von_hand"
+            anfrage = e.get("anfrage") or {}
+            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span>"
+                             + ("<br><span class='marke'>von Hand erfasst</span>" if hand else ""),
+                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span>"
+                             + (f"<br>Abgeklärt am {esc(lokal(anfrage.get('abgeklaert_am')))}, erfasst durch {esc(str(anfrage.get('erfasst_durch') or '?'))}" if hand else ""),
+                             "<span class='marke'><span class='punkt' style='background:var(--warnung)'></span>✎ von Hand</span>" if hand else
                              "<span class='marke'><span class='punkt' style='background:var(--gut)'></span>✓ gesichert</span>",
-                             e.get("agent"),
+                             (anfrage.get("erfasst_durch") if hand else None) or e.get("agent"),
                              [f"Rohdaten: <a href='../{esc(antwort.get('rohdaten', ''))}'>{esc(antwort.get('rohdaten', ''))}</a>"
                               f" · SHA-256: {esc(antwort.get('sha256') or '')}, {groesse(antwort.get('bytes'))}"]))
         h.append("</table></div>")

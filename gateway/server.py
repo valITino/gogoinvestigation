@@ -5,7 +5,7 @@ das Protokoll in kern.py, die Quellenliste in quellen.py.
 """
 from __future__ import annotations
 
-from . import kern, quellen_infrastruktur, quellen_krypto, quellen_szene, quellen_web  # noqa: F401  (registrieren die Werkzeuge)
+from . import kern, quellen_infrastruktur, quellen_ip, quellen_krypto, quellen_szene, quellen_web  # noqa: F401  (registrieren die Werkzeuge)
 from .kern import FREIGABEN, Fall, einstellung, fall_laden, protokoll_lesen, werkzeug
 from .quellen import QUELLEN
 
