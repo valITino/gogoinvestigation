@@ -456,8 +456,8 @@ Muster: [Datenblätter des Musterfalls (PDF)](muster/Datenblaetter.pdf).
 **Grenzen.** Die Oberfläche hat keine Anmeldung und gehört auf den Arbeitsplatz des Sachbearbeiters, nicht auf
 einen geteilten Server. Dieser erste Teil liest nur: Fall anlegen, Freigaben und der Start der Ermittlung bleiben
 am Terminal. Rohdateien über 3 MB zeigt sie nur im Anfang und durchsucht sie nicht. Für Werkzeuge, zu denen keine
-echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Telegram über RapidAPI, Shodan-DNS, Robin), ist nicht
-geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
+echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Spur, Telegram über RapidAPI, Shodan-DNS, Wayback Machine,
+Robin), ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
 
 Alle Einzelheiten, die Abschnitte je Art des Indikators, die Regeln der Darstellung und die Tabelle der
 Darsteller: [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md).

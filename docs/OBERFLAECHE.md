@@ -182,25 +182,28 @@ davon einem benannten Feld zugeordnet sind und wie viele unter «Weitere Angaben
   Gateway. Listen sind auf zwei Einträge gekürzt. E-Mail-Adressen, Telefonnummern, Namen von Kontaktpersonen und
   Regelautoren sowie freie Texte Dritter sind ersetzt. Bei Antworten über Seiten Dritter (urlquery, Suche bei
   urlscan.io) sind auch Hostnamen, IP-Adressen und Kennungen ersetzt. Die Form ist unverändert.
-- **Musterfall:** erfunden, in der Form der echten Antwort.
-- **Erfunden:** Für diese Werkzeuge lag keine echte Antwort vor. Die Vorlage folgt der Dokumentation der Quelle. Das
-  betrifft die aktiven Massnahmen (nie ausgelöst), die Abfragen mit Personenbezug, die Werkzeuge ohne Schlüssel
-  (Telegram über RapidAPI, Shodan-DNS) und Robin (Dark Web). **Ob diese Darsteller zur echten Antwort passen, ist
-  nicht geprüft.** Passen sie nicht, stehen die Angaben unter «Weitere Angaben».
+- **Inhalt erfunden, Form der echten Antwort:** Die Form stammt aus einer echten Antwort, die in der Prüfung gesehen
+  wurde, der Inhalt ist erfunden. So bei ransomware.live (echte Antworten nennen Opfer beim Namen), bei den passiven
+  Prüfungen von Web-Check, beim Kanal auf Telegram und bei der Sperrliste von Ahmia.
+- **Erfunden nach Dokumentation:** Für diese Werkzeuge lag keine echte Antwort vor. Die Vorlage folgt der Dokumentation
+  der Quelle. Das betrifft die aktiven Massnahmen (nie ausgelöst), die Abfragen mit Personenbezug, die Werkzeuge ohne
+  Schlüssel (Spur, Telegram über RapidAPI, Shodan-DNS), die Wayback Machine (am Prüftag nicht erreichbar) und Robin
+  (Dark Web). **Ob diese Darsteller zur echten Antwort passen, ist nicht geprüft.** Passen sie nicht, stehen die
+  Angaben unter «Weitere Angaben».
 
 `fall_status` hat keine Vorlage: Es fragt keine Quelle ab und hinterlässt keinen Protokolleintrag.
 
 <!-- darsteller:anfang -->
 | Werkzeug | Eigener Darsteller | Angaben in der Vorlage | zugeordnet | unter «Weitere Angaben» | Vorlage |
 |---|---|---:|---:|---:|---|
-| `abklaerung_von_hand` | ja | 13 | 13 | 0 | erfunden |
+| `abklaerung_von_hand` | ja | 13 | 13 | 0 | Inhalt erfunden, Form der echten Antwort |
 | `abuseipdb_meldungen` | ja | 19 | 17 | 2 | echte Antwort |
 | `abuseipdb_pruefen` | ja | 28 | 28 | 0 | echte Antwort |
 | `chan_katalog` | ja | 133 | 49 | 84 | echte Antwort |
 | `chan_thread` | ja | 36 | 17 | 19 | echte Antwort |
 | `ip_abruf (AbuseIPDB)` | ja | 14 | 14 | 0 | echte Antwort |
 | `ip_abruf (RIPEstat)` | ja | 42 | 9 | 33 | echte Antwort |
-| `ip_abruf (Spur)` | ja | 20 | 13 | 7 | Musterfall (erfunden, echte Form) |
+| `ip_abruf (Spur)` | ja | 20 | 13 | 7 | erfunden nach Dokumentation |
 | `ip_abruf (ipapi.is)` | ja | 52 | 26 | 26 | echte Antwort |
 | `ip_abruf (proxycheck.io)` | ja | 59 | 37 | 22 | echte Antwort |
 | `ip_einordnung` | ja | 138 | 49 | 89 | echte Antwort |
@@ -216,37 +219,37 @@ davon einem benannten Feld zugeordnet sind und wie viele unter «Weitere Angaben
 | `krypto_abruf (WalletExplorer)` | ja | 4 | 4 | 0 | echte Antwort |
 | `krypto_abruf (mempool.space)` | ja | 29 | 13 | 16 | echte Antwort |
 | `krypto_adresse` | ja | 37 | 32 | 5 | echte Antwort |
-| `krypto_adresse_pruefen` | ja | 12 | 9 | 3 | Musterfall (erfunden, echte Form) |
+| `krypto_adresse_pruefen` | ja | 12 | 9 | 3 | Inhalt erfunden, Form der echten Antwort |
 | `krypto_geldfluss` | ja | 158 | 76 | 82 | echte Antwort |
 | `krypto_kurs` | ja | 22 | 15 | 7 | echte Antwort |
 | `krypto_transaktion` | ja | 36 | 30 | 6 | echte Antwort |
 | `krypto_transaktionen` | ja | 49 | 40 | 9 | echte Antwort |
 | `krypto_zuordnung` | ja | 29 | 22 | 7 | echte Antwort |
 | `mastodon_instanz` | ja | 140 | 13 | 127 | echte Antwort |
-| `mastodon_konto` | ja | 15 | 13 | 2 | erfunden |
-| `onion_sperrliste` | ja | Text | – | – | Musterfall (erfunden, echte Form) |
-| `ransomware_aktuell` | ja | 59 | 32 | 27 | erfunden |
-| `ransomware_gruppe` | ja | 285 | 243 | 42 | erfunden |
-| `ransomware_iocs` | ja | 8 | 6 | 2 | erfunden |
-| `ransomware_opfer` | ja | 64 | 37 | 27 | erfunden |
-| `robin_scrape` | ja | 3 | 3 | 0 | erfunden |
-| `robin_search` | ja | 8 | 8 | 0 | erfunden |
-| `shodan_dns` | ja | 13 | 13 | 0 | erfunden |
+| `mastodon_konto` | ja | 15 | 13 | 2 | erfunden nach Dokumentation |
+| `onion_sperrliste` | ja | Text | – | – | Inhalt erfunden, Form der echten Antwort |
+| `ransomware_aktuell` | ja | 59 | 32 | 27 | Inhalt erfunden, Form der echten Antwort |
+| `ransomware_gruppe` | ja | 285 | 243 | 42 | Inhalt erfunden, Form der echten Antwort |
+| `ransomware_iocs` | ja | 8 | 6 | 2 | Inhalt erfunden, Form der echten Antwort |
+| `ransomware_opfer` | ja | 64 | 37 | 27 | Inhalt erfunden, Form der echten Antwort |
+| `robin_scrape` | ja | 3 | 3 | 0 | erfunden nach Dokumentation |
+| `robin_search` | ja | 8 | 8 | 0 | erfunden nach Dokumentation |
+| `shodan_dns` | ja | 13 | 13 | 0 | erfunden nach Dokumentation |
 | `shodan_host` | ja | 86 | 22 | 64 | echte Antwort |
 | `shodan_internetdb` | ja | 8 | 8 | 0 | echte Antwort |
 | `shodan_suche` | ja | 14 | 13 | 1 | echte Antwort |
-| `spur_kontext` | ja | 20 | 13 | 7 | Musterfall (erfunden, echte Form) |
-| `telegram_entitaet` | ja | 7 | 7 | 0 | erfunden |
-| `telegram_kanal` | ja | Text | – | – | Musterfall (erfunden, echte Form) |
-| `telegram_kanalinfo` | ja | 6 | 6 | 0 | erfunden |
-| `telegram_suche` | ja | 8 | 8 | 0 | erfunden |
+| `spur_kontext` | ja | 20 | 13 | 7 | erfunden nach Dokumentation |
+| `telegram_entitaet` | ja | 7 | 7 | 0 | erfunden nach Dokumentation |
+| `telegram_kanal` | ja | Text | – | – | Inhalt erfunden, Form der echten Antwort |
+| `telegram_kanalinfo` | ja | 6 | 6 | 0 | erfunden nach Dokumentation |
+| `telegram_suche` | ja | 8 | 8 | 0 | erfunden nach Dokumentation |
 | `urlquery_bericht` | ja | 428 | 51 | 377 | echte Antwort |
-| `urlquery_einreichen` | ja | 5 | 5 | 0 | erfunden |
+| `urlquery_einreichen` | ja | 5 | 5 | 0 | erfunden nach Dokumentation |
 | `urlquery_reputation` | ja | 3 | 3 | 0 | echte Antwort |
-| `urlquery_status` | ja | 4 | 4 | 0 | erfunden |
+| `urlquery_status` | ja | 4 | 4 | 0 | erfunden nach Dokumentation |
 | `urlquery_suche` | ja | 188 | 23 | 165 | echte Antwort |
 | `urlscan_abruf (urlscan.io)` | nein (allgemeiner) | 506 | 0 | 506 | echte Antwort |
-| `urlscan_einreichen` | ja | 10 | 6 | 4 | erfunden |
+| `urlscan_einreichen` | ja | 10 | 6 | 4 | erfunden nach Dokumentation |
 | `urlscan_ergebnis` | ja | 77 | 56 | 21 | echte Antwort |
 | `urlscan_kontingent` | ja | 50 | 47 | 3 | echte Antwort |
 | `urlscan_suche` | ja | 83 | 28 | 55 | echte Antwort |
@@ -255,11 +258,11 @@ davon einem benannten Feld zugeordnet sind und wie viele unter «Weitere Angaben
 | `virustotal_domain` | ja | 222 | 55 | 167 | echte Antwort |
 | `virustotal_ip` | ja | 278 | 42 | 236 | echte Antwort |
 | `virustotal_url` | ja | 74 | 46 | 28 | echte Antwort |
-| `wayback_abruf` | ja | Text | – | – | erfunden |
-| `wayback_sichern` | ja | 4 | 4 | 0 | erfunden |
-| `wayback_verlauf` | ja | 18 | 18 | 0 | Musterfall (erfunden, echte Form) |
-| `webcheck_aktiv` | ja | 163 | 132 | 31 | erfunden (27 Prüfungen) |
-| `webcheck_passiv` | ja | 129 | 96 | 33 | erfunden (13 Prüfungen) |
+| `wayback_abruf` | ja | Text | – | – | erfunden nach Dokumentation |
+| `wayback_sichern` | ja | 4 | 4 | 0 | erfunden nach Dokumentation |
+| `wayback_verlauf` | ja | 18 | 18 | 0 | erfunden nach Dokumentation |
+| `webcheck_aktiv` | ja | 163 | 132 | 31 | erfunden nach Dokumentation (27 Prüfungen) |
+| `webcheck_passiv` | ja | 129 | 96 | 33 | Inhalt erfunden, Form der echten Antwort (13 Prüfungen) |
 <!-- darsteller:ende -->
 
 Die Tabelle je einzelner Vorlage (auch je Prüfung von Web-Check) gibt `python3 tools/ui/pruefstand.py` aus.
@@ -309,8 +312,8 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Anfang und verweist auf die Datei. Ein Baum zeigt höchstens 6000 Angaben, der Rest steht in der Rohdatei.
 - **Suche.** Höchstens 200 Treffer. Bilder werden nicht durchsucht.
 - **Analyst je Abfrage.** Wer eine Abfrage ausgelöst hat, steht nur da, wenn das Sitzungsprotokoll des Falls auf dem Rechner liegt.
-- **Darsteller ohne echte Vorlage.** Siehe oben: Für aktive Massnahmen, Abfragen mit Personenbezug, Telegram über
-  RapidAPI, Shodan-DNS und Robin ist nicht geprüft, ob der Darsteller zur echten Antwort passt.
+- **Darsteller ohne echte Vorlage.** Siehe oben: Für aktive Massnahmen, Abfragen mit Personenbezug, Spur, Telegram
+  über RapidAPI, Shodan-DNS, die Wayback Machine und Robin ist nicht geprüft, ob der Darsteller zur echten Antwort passt.
 - **Keine Anmeldung, kein Mehrbenutzerbetrieb.** Siehe Schutz.
 
 Was geprüft ist und was nicht, mit Datum, steht im README unter «Stand der Prüfung und Grenzen».

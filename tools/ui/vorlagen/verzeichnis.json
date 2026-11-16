@@ -6,7 +6,7 @@
   "ziel": "203.0.113.30",
   "datei": "abklaerung_von_hand.json",
   "herkunft": "Form von tools/beleg.py, Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "abuseipdb_meldungen",
@@ -86,8 +86,8 @@
   "quelle": "Spur",
   "ziel": "198.51.100.23",
   "datei": "ip_abruf.spur.json",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen",
+  "art": "erfunden"
  },
  {
   "name": "ip_einordnung",
@@ -212,8 +212,8 @@
   "quelle": "Gateway",
   "ziel": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
   "datei": "krypto_adresse_pruefen.json",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: Inhalt erfunden, Form der echten Antwort",
+  "art": "form"
  },
  {
   "name": "krypto_geldfluss",
@@ -284,8 +284,8 @@
   "quelle": "Ahmia",
   "ziel": "o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion",
   "datei": "onion_sperrliste.txt",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: Inhalt erfunden, Form der echten Antwort",
+  "art": "form"
  },
  {
   "name": "ransomware_aktuell",
@@ -294,7 +294,7 @@
   "ziel": "neueste Opfer",
   "datei": "ransomware_aktuell.json",
   "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "ransomware_gruppe",
@@ -303,7 +303,7 @@
   "ziel": "musterlocker",
   "datei": "ransomware_gruppe.json",
   "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "ransomware_iocs",
@@ -312,7 +312,7 @@
   "ziel": "musterlocker",
   "datei": "ransomware_iocs.json",
   "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "ransomware_opfer",
@@ -321,7 +321,7 @@
   "ziel": "musterlocker",
   "datei": "ransomware_opfer.json",
   "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "robin_scrape",
@@ -383,8 +383,8 @@
   "quelle": "Spur",
   "ziel": "198.51.100.23",
   "datei": "spur_kontext.json",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen",
+  "art": "erfunden"
  },
  {
   "name": "telegram_entitaet",
@@ -401,8 +401,8 @@
   "quelle": "Telegram (Web-Vorschau)",
   "ziel": "@breachdetect / Stichwort 'kundenportal' lokal gefiltert",
   "datei": "telegram_kanal.html.txt",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: Inhalt erfunden, Form der echten Antwort",
+  "art": "form"
  },
  {
   "name": "telegram_kanalinfo",
@@ -581,8 +581,8 @@
   "quelle": "Wayback Machine",
   "ziel": "https://kundenportal-sicher.example/login",
   "datei": "wayback_verlauf.json",
-  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
-  "art": "muster"
+  "herkunft": "aus dem Musterfall: erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen",
+  "art": "erfunden"
  },
  {
   "name": "webcheck_aktiv.carbon",
@@ -834,7 +834,7 @@
   "ziel": "example.org (archives)",
   "datei": "webcheck_passiv.archives.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.block-lists",
@@ -843,7 +843,7 @@
   "ziel": "example.org (block-lists)",
   "datei": "webcheck_passiv.block-lists.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.breaches",
@@ -852,7 +852,7 @@
   "ziel": "example.org (breaches)",
   "datei": "webcheck_passiv.breaches.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.caa-records",
@@ -861,7 +861,7 @@
   "ziel": "example.org (caa-records)",
   "datei": "webcheck_passiv.caa-records.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.dns",
@@ -870,7 +870,7 @@
   "ziel": "example.org (dns)",
   "datei": "webcheck_passiv.dns.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.dnssec",
@@ -879,7 +879,7 @@
   "ziel": "example.org (dnssec)",
   "datei": "webcheck_passiv.dnssec.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.get-ip",
@@ -888,7 +888,7 @@
   "ziel": "example.org (get-ip)",
   "datei": "webcheck_passiv.get-ip.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.rank",
@@ -897,7 +897,7 @@
   "ziel": "example.org (rank)",
   "datei": "webcheck_passiv.rank.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.shodan",
@@ -906,7 +906,7 @@
   "ziel": "example.org (shodan)",
   "datei": "webcheck_passiv.shodan.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.subdomains",
@@ -915,7 +915,7 @@
   "ziel": "example.org (subdomains)",
   "datei": "webcheck_passiv.subdomains.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.threats",
@@ -924,7 +924,7 @@
   "ziel": "example.org (threats)",
   "datei": "webcheck_passiv.threats.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.txt-records",
@@ -933,7 +933,7 @@
   "ziel": "example.org (txt-records)",
   "datei": "webcheck_passiv.txt-records.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  },
  {
   "name": "webcheck_passiv.whois",
@@ -942,6 +942,6 @@
   "ziel": "example.org (whois)",
   "datei": "webcheck_passiv.whois.json",
   "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
-  "art": "erfunden"
+  "art": "form"
  }
 ]

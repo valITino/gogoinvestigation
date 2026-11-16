@@ -2,7 +2,7 @@
 
 Unter `tools/ui/vorlagen/` liegt je Werkzeug des Gateways eine Rohantwort als Vorlage: eine echte Antwort (gekürzt,
 ohne Angaben zu Personen) oder, wo keine echte Antwort vorliegt, eine erfundene in der Form der Quelle. Welche es ist,
-steht in `verzeichnis.json` und in der Tabelle unten.
+steht in `verzeichnis.json` und in der Tabelle, die dieses Modul ausgibt.
 
 Der Prüfstand rechnet für jede Vorlage aus, wie viele Angaben die Rohantwort enthält, wie viele davon der Darsteller
 einem benannten Feld zuordnet und wie viele unter «Weitere Angaben der Quelle» stehen. Die Selbsttests bauen darauf auf:
@@ -27,7 +27,7 @@ from . import darsteller as ds  # noqa: E402
 ORT = Path(__file__).resolve().parent / "vorlagen"
 ZEIT = "2026-11-16T10:00:00Z"
 ANFANG, ENDE = "<!-- darsteller:anfang -->", "<!-- darsteller:ende -->"
-ARTEN = {"echt": "echte Antwort", "muster": "Musterfall (erfunden, echte Form)", "erfunden": "erfunden"}
+ARTEN = {"echt": "echte Antwort", "form": "Inhalt erfunden, Form der echten Antwort", "erfunden": "erfunden nach Dokumentation"}
 
 
 def vorlagen() -> list[dict]:
