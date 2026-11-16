@@ -32,6 +32,12 @@ FALL_IM_PFAD = re.compile(r"faelle(?:/|\\{1,2})([A-Za-z0-9][A-Za-z0-9._-]{2,63})
 FALL_IM_BEFEHL = re.compile(r"/ermittlung\s+([A-Za-z0-9][A-Za-z0-9._-]{2,63})")
 PROTOKOLL_ID = re.compile(r'protokoll_id\\*"\s*:\s*\\*"(P-\d{4,})')
 LANG = 400
+# MCP-Server, deren Antworten Beweismaterial sind und als Beleg X-… in die Fallakte kommen. Das Gateway (osint)
+# sichert seine Antworten selbst. Alle anderen Server (GitHub, Dokumente, Steuerung der Sitzung) sind Arbeitsmittel:
+# Ihre Aufrufe stehen mit Prüfsumme im Sitzungsprotokoll, ihre Antworten kommen nicht in die Fallakte. Sonst
+# landet jede Antwort irgendeines Servers als «Beleg» in dem Fall, den die Sitzung zuletzt berührt hat.
+# Wer eine weitere Quelle als MCP-Server anbindet, trägt ihren Namen hier ein.
+BELEG_SERVER = ("robin",)
 
 
 def kuerzen(wert, tiefe: int = 3):
@@ -186,7 +192,8 @@ def main() -> int:
                 eintrag["protokoll_id"] = m.group(1)
             # Antworten fremder MCP-Server (z. B. Robin) als Beleg X-… in die Fallakte legen.
             # Das Gateway sieht diese Aufrufe nicht, also übernimmt der Hook Sicherung und Verkettung.
-            if werkzeug.startswith("mcp__") and not werkzeug.startswith("mcp__osint__") and art == "PostToolUse":
+            server = werkzeug.split("__")[1] if werkzeug.startswith("mcp__") and werkzeug.count("__") >= 2 else ""
+            if server in BELEG_SERVER and art == "PostToolUse":
                 if fall:
                     eintrag["protokoll_id"] = extern_sichern(fall, werkzeug, eingabe, antwort_text, eintrag, jetzt)
                     hinweis = (f"Antwort gesichert als Beleg {eintrag['protokoll_id']} in der Fallakte {fall}. "

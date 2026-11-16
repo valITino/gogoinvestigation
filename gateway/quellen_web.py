@@ -6,13 +6,14 @@ kann das bemerken. Aktive Werkzeuge brauchen die Freigabe 'aktiv' in fall.json.
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from pydantic import Field
 
-from .kern import (FREMD, Abbruch, Fall, Zweck, abfrage, einstellung, entschaerfen, html_text, nimm,
+from .kern import (DOMAIN_RE, FREMD, Abbruch, Fall, Zweck, abfrage, einstellung, entschaerfen, html_text, nimm,
                    pruef_muster, pruef_url, saeubern, schluessel, werkzeug)
 
 # --------------------------------------------------------------------------- urlquery
@@ -26,30 +27,87 @@ def _uq_kopf() -> dict:
 
 def _uq_bericht(b: dict) -> dict:
     final = b.get("final") or {}
+    # Die Alarme stehen je Sensorgruppe unter «detection» (ids, analyzer, urlquery). Ältere Antworten führten dafür stats.alert_count.
+    erkennung = b.get("detection") if isinstance(b.get("detection"), dict) else {}
+    alarme = {gruppe: len(liste) for gruppe, liste in erkennung.items() if isinstance(liste, list)} \
+        or (b.get("stats") or {}).get("alert_count")
     return {**nimm(b, "report_id", "status", "date", "tags"),
             "url": (b.get("url") or {}).get("addr"),
             "ip": nimm(b.get("ip"), "addr", "asn", "as", "country_code"),
             "end_url": (final.get("url") or {}).get("addr"), "titel": saeubern(final.get("title"), 160),
-            "alarme": (b.get("stats") or {}).get("alert_count")}
+            "alarme": alarme}
+
+
+_UQ_HASH = re.compile(r"^(?:[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64}|[a-f0-9]{128})$")
+UQ_ARTEN = ("auto", "domain", "ip", "url", "hash", "text")
+
+
+def _uq_phrase(wert: str) -> str:
+    return '"' + wert.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def uq_abfrage(suchtext: str, art: str = "auto") -> tuple[str, str]:
+    """Baut die Abfrage in der Feldsyntax von urlquery (https://urlquery.net/help/search) und gibt (Abfrage, Art) zurück.
+    Ohne Feldnamen sucht urlquery im Volltext der Berichte: Wer «example.com» sucht, bekommt jeden Bericht, in dem die
+    Zeichenkette irgendwo vorkommt, und die neuesten zuerst. Am 16.11.2026 hatten die obersten Treffer mit der Domain
+    nichts zu tun. Deshalb fragt das Werkzeug die Felder ab, in denen eine Domain, IP, URL steht."""
+    q = suchtext.strip()
+    if art == "auto":
+        try:
+            ipaddress.ip_address(q)
+            art = "ip"
+        except ValueError:
+            if _UQ_HASH.match(q.lower()):
+                art = "hash"
+            elif "://" in q or "/" in q:
+                art = "url"
+            elif DOMAIN_RE.match(q.lower().rstrip(".")):
+                art = "domain"
+            else:
+                art = "text"
+    if art == "ip":
+        return f"(ip.addr:{_uq_phrase(q)} OR http.ip.addr:{_uq_phrase(q)})", art
+    if art == "hash":
+        return q.lower(), art              # ein nackter Hash sucht laut Hilfe die üblichen Stellen (Antworten, Skripte, Dateien)
+    if art == "url":
+        adresse = _uq_phrase(q.split("://", 1)[-1])          # die Felder .addr führen Host, Pfad und Abfrage ohne Schema
+        return f"(url.addr:{adresse} OR final.url.addr:{adresse} OR http.url.addr:{adresse})", art
+    if art == "domain":
+        d = _uq_phrase(q.lower().rstrip("."))
+        felder = ("url.domain", "url.fqdn", "final.url.domain", "final.url.fqdn", "http.url.domain", "http.url.fqdn")
+        return "(" + " OR ".join(f"{feld}:{d}" for feld in felder) + ")", art
+    return q, "text"
 
 
 @werkzeug
 async def urlquery_suche(fall: Fall, zweck: Zweck,
                          suchtext: Annotated[str, Field(description="URL, Domain, IP oder Hash")],
-                         limit: Annotated[int, Field(ge=1, le=50)] = 10) -> dict:
+                         limit: Annotated[int, Field(ge=1, le=50)] = 10,
+                         art: Annotated[str, Field(description=(
+                             "auto (Standard: wird am Suchtext erkannt) | domain | ip | url | hash | text. "
+                             "'text' sucht im Volltext aller Berichte und liefert auch Berichte ohne Bezug zum Ziel."))] = "auto") -> dict:
     """urlquery: vorhandene Sandbox-Berichte zu einer URL, Domain oder IP suchen. Passiv.
-    Vor jeder Einreichung zuerst hier nachsehen, ob es bereits einen Bericht gibt."""
+    Gesucht wird in den Feldern der Berichte (eingereichte Adresse, Endadresse, nachgeladene Adressen), neueste
+    zuerst. Vor jeder Einreichung zuerst hier nachsehen, ob es bereits einen Bericht gibt. Einen Treffer immer am
+    Bericht bestätigen (urlquery_bericht): Die Suche sagt, dass der Wert im Bericht vorkommt, nicht in welcher Rolle."""
     q = entschaerfen(suchtext)
     if len(q) < 4:
         raise Abbruch("Suchtext zu kurz.")
+    if art not in UQ_ARTEN:
+        raise Abbruch(f"art muss eines sein von: {', '.join(UQ_ARTEN)}.")
+    abfrage_text, art = uq_abfrage(q, art)
     a = await abfrage(fall, zweck, werkzeug="urlquery_suche", quelle="urlquery", ziel=q, ziel_typ="suchtext",
-                      url=f"{UQ}/search/reports/", params={"query": q, "limit": limit, "offset": 0},
+                      url=f"{UQ}/search/reports/", params={"query": abfrage_text, "limit": limit, "offset": 0},
                       kopf=_uq_kopf())
     if a.ergebnis != "ok":
         return a.als_dict()
     berichte = (a.daten or {}).get("reports") or []
-    return a.als_dict({"gesamt": (a.daten or {}).get("total_hits"), "anzahl": len(berichte),
-                       "berichte": [_uq_bericht(b) for b in berichte]})
+    befund = {"gesamt": (a.daten or {}).get("total_hits"), "anzahl": len(berichte), "art": art, "abfrage": abfrage_text,
+              "berichte": [_uq_bericht(b) for b in berichte]}
+    if art == "text":
+        befund["hinweis"] = ("Volltextsuche: Die Berichte enthalten den Suchtext irgendwo, sie müssen das Ziel nicht betreffen. "
+                             "Für eine Domain, IP, URL oder einen Hash die passende art wählen.")
+    return a.als_dict(befund, hinweis=FREMD)
 
 
 @werkzeug
@@ -62,15 +120,34 @@ async def urlquery_bericht(fall: Fall, zweck: Zweck, bericht_id: str) -> dict:
     if a.ergebnis != "ok":
         return a.als_dict()
     b = a.daten or {}
-    sensoren = b.get("sensors") or {}
-    alarme = [{"sensor": s.get("sensor_name"), "urteil": s.get("verdict"), "ausloeser": saeubern(s.get("trigger"), 120),
-               "kommentar": saeubern(s.get("comment"), 160)}
-              for gruppe in ("urlquery", "analyzer", "ids") for s in (sensoren.get(gruppe) or [])[:15]]
-    anfragen = [{"url": ((h.get("url") or {}).get("addr")), "ip": ((h.get("ip") or {}).get("addr"))}
-                for h in (b.get("http") or [])[:40]]
-    dateien = [nimm(f, "sha256", "magic", "size") for f in (b.get("files") or [])[:20]]
-    return a.als_dict({**_uq_bericht(b), "zusammenfassung": (b.get("summary") or [])[:25],
-                       "alarme": alarme, "http_anfragen": anfragen, "dateien": dateien}, hinweis=FREMD)
+    # Form des Berichts, gesehen am 16.11.2026: Alarme unter detection.{urlquery,analyzer,ids}, je Aufruf ein Eintrag unter
+    # http (url, ip, request.method, response.status_code, response.data), Dateien unter artifacts.files, je Host eine
+    # Zeile unter summary. Die älteren Namen (sensors, files) bleiben als zweite Wahl stehen.
+    erkennung = b.get("detection") if isinstance(b.get("detection"), dict) else (b.get("sensors") or {})
+    alarme = [{k: w for k, w in {
+        "gruppe": gruppe, "sensor": s.get("sensor_name"), "alarm": saeubern(s.get("alert"), 80), "urteil": s.get("verdict"),
+        "schwere": s.get("severity"), "ausloeser": saeubern(s.get("trigger"), 120),
+        "kommentar": saeubern(s.get("comment"), 160)}.items() if w}
+        for gruppe in ("urlquery", "analyzer", "ids") for s in (erkennung.get(gruppe) or [])[:15] if isinstance(s, dict)]
+    aufrufe = [h for h in (b.get("http") or []) if isinstance(h, dict)]
+    anfragen = []
+    for h in aufrufe[:40]:
+        antwort, daten = h.get("response") or {}, (h.get("response") or {}).get("data") or {}
+        anfragen.append({k: w for k, w in {
+            "url": (h.get("url") or {}).get("addr"), "ip": (h.get("ip") or {}).get("addr"),
+            "methode": (h.get("request") or {}).get("method"), "status": antwort.get("status_code"),
+            "art": h.get("resource_type"), "mime": daten.get("mime_type"), "sha256": daten.get("sha256")}.items() if w})
+    artefakte = b.get("artifacts") if isinstance(b.get("artifacts"), dict) else {}
+    dateien = [nimm(f, "sha256", "md5", "magic", "mime_type", "size", "filename", "url")
+               for f in (artefakte.get("files") or b.get("files") or [])[:20] if isinstance(f, dict)]
+    hosts = [{k: w for k, w in {
+        "host": s.get("fqdn"), "ip": (s.get("ip") or {}).get("addr"), "domain_registriert": s.get("domain_registered"),
+        "alarme": s.get("alert_count"), "anfragen": s.get("request_count"), "tags": s.get("tags"),
+        "technik": [saeubern(f.get("name"), 40) for f in (s.get("fingerprints") or [])[:8] if isinstance(f, dict)]}.items()
+        if w not in (None, "", [], {})} if isinstance(s, dict) else saeubern(str(s), 200)
+        for s in (b.get("summary") or [])[:25]]
+    return a.als_dict({**_uq_bericht(b), "alarme_anzahl": len(alarme), "alarme": alarme, "hosts": hosts,
+                       "http_anfragen_anzahl": len(aufrufe), "http_anfragen": anfragen, "dateien": dateien}, hinweis=FREMD)
 
 
 @werkzeug

@@ -434,6 +434,15 @@ def _():
     stand = kette_pruefen(FALL)
     assert stand["ok"] and stand["anzahl_extern"] == 1, stand
     assert (pfad / "rohdaten" / "extern" / "X-0001_robin_search.json").is_file()
+    # Andere MCP-Server sind Arbeitsmittel, keine Quelle. Ihre Antworten sind kein Beleg und kommen nicht in die Fallakte:
+    # In einer echten Sitzung legte der Hook sonst jede Antwort von GitHub als «Beleg X-…» in den zuletzt berührten Fall.
+    code, a = hook("protokoll_hook.py", {"hook_event_name": "PostToolUse", "tool_name": "mcp__github__list_pull_requests",
+                                         "tool_use_id": "toolu_2", "tool_input": {"owner": "x", "repo": "y"},
+                                         "tool_response": [{"type": "text", "text": "kein Beweismaterial"}]})
+    assert code == 0 and "X-000" not in json.dumps(a), f"Antwort eines fremden Servers als Beleg gemeldet: {a}"
+    assert kette_pruefen(FALL)["anzahl_extern"] == 1 and len(list((pfad / "rohdaten" / "extern").iterdir())) == 1, "fremde Antwort liegt in der Fallakte"
+    sitzung = [json.loads(z) for z in lesen(PROJEKT / "protokoll" / "sitzungen" / "test-sitzung.jsonl").splitlines()]
+    assert sitzung[-1]["werkzeug"] == "mcp__github__list_pull_requests" and sitzung[-1]["antwort_sha256"], "der Aufruf fehlt im Sitzungsprotokoll"
 
 
 @test("Sitzungs-Hook ordnet Abfragen dem Agenten zu, auch bei Windows-Pfaden")
@@ -1633,6 +1642,52 @@ def _():
         del os.environ["VIRUSTOTAL_API_KEY"]
     assert r["befund"]["gesamt"] == 49 and r["befund"]["anzahl"] == 2, f"VirusTotal kennt 49 Auflösungen, geliefert sind 2: {r['befund']}"
     assert r["befund"]["eintraege"][0]["ip_address"] == "203.0.113.1" and r["befund"]["eintraege"][0]["date"].endswith("Z"), r["befund"]["eintraege"][0]
+
+
+@test("urlquery: Die Suche fragt Felder ab statt den Volltext, der Bericht liest Alarme, Aufrufe und Dateien")
+def _():
+    vorlagen_welt()
+    os.environ["URLQUERY_API_KEY"] = "uq-testschluessel-0001"
+    # Ohne Feldnamen sucht urlquery im Volltext: 25'280 Treffer zu «example.com», die obersten ohne Bezug zur Domain
+    assert web.uq_abfrage("portal.example.org") == (
+        '(url.domain:"portal.example.org" OR url.fqdn:"portal.example.org" OR final.url.domain:"portal.example.org" OR '
+        'final.url.fqdn:"portal.example.org" OR http.url.domain:"portal.example.org" OR http.url.fqdn:"portal.example.org")', "domain")
+    assert web.uq_abfrage("203.0.113.7") == ('(ip.addr:"203.0.113.7" OR http.ip.addr:"203.0.113.7")', "ip")
+    assert web.uq_abfrage("hxxps://portal.example.org/login".replace("hxxps", "https"))[0].startswith('(url.addr:"portal.example.org/login"')
+    assert web.uq_abfrage("A1" * 32) == ("a1" * 32, "hash") and web.uq_abfrage("Rechnung offen") == ("Rechnung offen", "text")
+    r = aufruf(web.urlquery_suche, zweck=ZWECK, suchtext="portal.example.org")
+    b = r["befund"]
+    assert r["ergebnis"] == "ok" and b["art"] == "domain" and b["gesamt"] == 2, b
+    assert "url.domain%3A%22portal.example.org%22" in letzter_eintrag()["anfrage"]["url"], letzter_eintrag()["anfrage"]["url"]
+    assert b["berichte"][0]["url"] == "portal.example.org/login" and b["berichte"][0]["alarme"] == {"ids": 0, "urlquery": 0, "analyzer": 2}, b["berichte"][0]
+    r = aufruf(web.urlquery_suche, zweck=ZWECK, suchtext="Rechnung offen")
+    assert r["befund"]["art"] == "text" and "Volltextsuche" in r["befund"]["hinweis"], r["befund"]
+    r = aufruf(web.urlquery_bericht, zweck=ZWECK, bericht_id="12dbca67-276e-47a0-a205-000000000001")
+    b = r["befund"]
+    assert b["alarme_anzahl"] == 2 and b["alarme"][0] == {"gruppe": "analyzer", "sensor": "cloudflare_dns", "alarm": "Sinkholed", "urteil": "malicious",
+                                                          "schwere": "medium", "ausloeser": "cdn.example.net"}, b["alarme"]
+    assert b["http_anfragen_anzahl"] == 2 and b["http_anfragen"][1] == {
+        "url": "cdn.example.net/kit/formular.js", "ip": "203.0.113.7", "methode": "GET", "status": "200", "art": "script",
+        "mime": "text/javascript", "sha256": f"{1:064x}"}, b["http_anfragen"]
+    assert b["dateien"][0]["filename"] == "unterlagen.zip" and b["dateien"][0]["sha256"] == "a" * 64, b["dateien"]
+    assert b["hosts"][0] == {"host": "portal.example.org", "ip": "203.0.113.7", "domain_registriert": "2026-01-11", "alarme": 2,
+                             "anfragen": 5, "technik": ["Nginx"]}, b["hosts"]
+
+
+@test("Musterfall: Sein Protokoll besteht aus der Sitzung, die fall.json nennt, auch wenn eine andere den Ordner berührt hat")
+def _():
+    # Beim Weiterbauen berührt eine Sitzung den Ordner des Musterfalls. Ihr Schrittprotokoll gehört nicht in dessen
+    # Ermittlungsprotokoll: Sonst fällt der Musterfall je Rechner anders aus und trägt fremde Arbeitsschritte.
+    for name in ("muster-eigen", "fremde-sitzung"):
+        hook("protokoll_hook.py", {"session_id": name, "hook_event_name": "PostToolUse", "tool_name": "Read", "tool_use_id": "toolu_m1",
+                                   "tool_input": {"file_path": f"faelle/{FALL}/befunde.json"}, "tool_response": {"ok": True}})
+    alle, _ = protokollwerkzeug.sitzungen_laden(FALL)
+    assert {"muster-eigen", "fremde-sitzung"} <= {z["sitzung"] for z in alle}, "ein echter Fall zeigt jede Sitzung, die ihn berührt hat"
+    nur, _ = protokollwerkzeug.sitzungen_laden(FALL, {"muster-eigen"})
+    assert {z["sitzung"] for z in nur} == {"muster-eigen"}, {z["sitzung"] for z in nur}
+    muster = json.loads(lesen(REPO / "faelle" / "MUSTER-2026-001" / "fall.json"))
+    assert muster.get("muster") is True and muster.get("sitzungen") == ["muster-sitzung-0001"], "der Musterfall nennt seine Sitzung nicht"
+    assert "sitzungen_laden(fall_id, set(fall[\"sitzungen\"])" in lesen(REPO / "tools" / "protokoll.py"), "das Protokoll beachtet die Angabe nicht"
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")

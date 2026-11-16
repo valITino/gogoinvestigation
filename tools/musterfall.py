@@ -137,6 +137,47 @@ def _zeit(text: str) -> int:
     return int(datetime.fromisoformat(text).replace(tzinfo=timezone.utc).timestamp())
 
 
+def _uq_adresse(adresse: str, schema: str = "https") -> dict:
+    host = adresse.split("/", 1)[0]
+    return {"schema": schema, "addr": adresse, "fqdn": host, "domain": host, "tld": host.rsplit(".", 1)[-1]}
+
+
+def UQ_AUFRUF(adresse: str, methode: str, art: str, mime: str, groesse: int) -> dict:
+    """Ein Aufruf aus einem Sandbox-Bericht von urlquery, in der Form des echten Dienstes."""
+    return {"date": "2026-09-30T06:17:42.118Z", "timestamp": 1790749062118, "http_version": "HTTP/2", "url": _uq_adresse(adresse),
+            "ip": {"addr": IP_SERVER, "port": 443, "asn": 64500, "as": "BEISPIEL-HOSTING", "country": "Netherlands", "country_code": "NL"},
+            "is_navigation_request": art == "document", "requested_by": URL, "resource_type": art,
+            "request": {"method": methode, "headers": [], "cookies": [], "raw": f"{methode} /{adresse.split('/', 1)[1]} HTTP/2\r\nHost: {DOMAIN}\r\n"},
+            "response": {"status_code": "200", "status_text": "OK", "headers": [], "cookies": [], "fingerprints": [], "raw": "HTTP/2 200 OK\r\n",
+                         "data": {"size": groesse, "size_decoded": groesse, "mime_type": mime, "magic": "HTML document, UTF-8 Unicode text" if "html" in mime else "JSON data",
+                                  "md5": hashlib.md5(adresse.encode()).hexdigest(), "sha1": hashlib.sha1(adresse.encode()).hexdigest(),
+                                  "sha256": hashlib.sha256(adresse.encode()).hexdigest()}},
+            "alerts": {"ids": [], "analyzer": [], "urlquery": []}, "security_state": "secure", "security_info": None,
+            "time_used": 0.184, "timings": None}
+
+
+def _uq_alarm(sensor: str, art: str, alarm: str, urteil: str, schwere: str, ausloeser: str, kommentar: str) -> dict:
+    return {"sensor_name": sensor, "sensor_type": art, "title": alarm, "description": alarm, "scan_date": "2026-09-30", "alert": alarm,
+            "trigger": ausloeser, "verdict": urteil, "severity": schwere, "comment": kommentar, "link": "", "meta": None}
+
+
+_UQ_IP = {"addr": IP_SERVER, "asn": 64500, "as": "Beispiel Hosting AG", "country": "Netherlands", "country_code": "NL"}
+UQ_KOPF = {"report_id": "0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44", "version": 0, "status": "done", "tags": ["phishing"],
+           "date": "2026-09-30T06:18:00Z", "url": _uq_adresse(URL.split("://", 1)[1]), "ip": _UQ_IP,
+           "final": {"url": _uq_adresse(URL.split("://", 1)[1]), "title": "Kundenportal – Anmeldung"},
+           "submit": {"url": _uq_adresse(URL.split("://", 1)[1]), "ip": _UQ_IP, "tags": [], "meta": None},
+           "settings": {"access": "public", "device_type": "desktop", "expires_at": "2027-11-04T06:18:00Z",
+                        "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+                        "referer": "", "cookies": None, "exit_node": "musterknoten01"}}
+UQ_ALARME = {"ids": [],
+             "urlquery": [_uq_alarm("urlquery", "Phishing", "Phishing-Seite", "phishing", "high", URL,
+                                    "Nachbau einer Anmeldemaske, Formular sendet an /gate.php"),
+                          _uq_alarm("urlquery", "Domain", "Junge Domain", "suspicious", "medium", DOMAIN, "Domain jünger als 7 Tage")],
+             "analyzer": [_uq_alarm("phishing-kit", "Kit", "Phishing-Kit", "phishing", "high", "gate.php", "Bekanntes Formular-Sammelskript")]}
+UQ_HOSTS = [{"fqdn": DOMAIN, "ips": [{"addr": IP_SERVER, "asn": 64500, "as": "BEISPIEL-HOSTING", "country": "Netherlands", "country_code": "NL"}],
+             "domain_rank": 0, "domain_registered": "2026-09-26", "first_seen": "2026-09-30T06:17:41.469637Z",
+             "last_seen": "2026-09-30T06:17:58.967125Z", "request_count": 14, "sent_data": 9120, "received_data": 184211, "fingerprints": []}]
+
 ANTWORTEN: dict[tuple[str, str], tuple[int, object]] = {
     ("api.shodan.io", f"/shodan/host/{IP_SERVER}"): (200, SHODAN_HOST),
     ("internetdb.shodan.io", f"/{IP_LOGIN}"): (200, {"ip": IP_LOGIN, "ports": [443, 1194], "hostnames": [], "cpes": [],
@@ -179,20 +220,23 @@ ANTWORTEN: dict[tuple[str, str], tuple[int, object]] = {
                                   "Scanner C": {"category": "malicious", "result": "Stealer/Muster.A"}}}}}),
     ("www.virustotal.com", f"/api/v3/files/{DATEI}/contacted_ips"): (200, {"data": [
         {"type": "ip_address", "id": IP_SERVER, "attributes": {"last_analysis_stats": VT_STATS(9, 93)}}]}),
-    ("api.urlquery.net", "/public/v1/search/reports/"): (200, {"query": DOMAIN, "total_hits": 1, "limit": 10, "offset": 0, "reports": [
-        {"report_id": "0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44", "status": "done", "date": "2026-09-30T06:18:00Z", "tags": ["phishing"],
-         "url": {"addr": URL}, "ip": {"addr": IP_SERVER, "asn": 64500, "as": "Beispiel Hosting AG", "country_code": "NL"},
-         "final": {"url": {"addr": URL}, "title": "Kundenportal – Anmeldung"}, "stats": {"alert_count": {"ids": 0, "urlquery": 2, "analyzer": 1}}}]}),
+    # urlquery in der Form des echten Dienstes (gesehen am 16.11.2026): Adressen ohne Schema unter addr, Alarme je
+    # Sensorgruppe unter detection, je Aufruf ein Eintrag unter http, Dateien unter artifacts.files.
+    ("api.urlquery.net", "/public/v1/search/reports/"): (200, {
+        "query": web.uq_abfrage(DOMAIN)[0], "total_hits": 1, "time_used": "0.412s", "limit": 10, "offset": 0,
+        "reports": [{**UQ_KOPF, "detection": UQ_ALARME, "summary": [], "hosts": UQ_HOSTS}]}),
     ("api.urlquery.net", "/public/v1/report/0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44"): (200, {
-        "report_id": "0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44", "status": "done", "date": "2026-09-30T06:18:00Z", "tags": ["phishing"],
-        "url": {"addr": URL}, "ip": {"addr": IP_SERVER, "asn": 64500, "as": "Beispiel Hosting AG", "country_code": "NL"},
-        "final": {"url": {"addr": URL}, "title": "Kundenportal – Anmeldung"}, "stats": {"alert_count": {"ids": 0, "urlquery": 2, "analyzer": 1}},
-        "summary": [{"fqdn": DOMAIN, "ip": {"addr": IP_SERVER}, "domain_registered": "2026-09-26", "alert_count": 3, "request_count": 14}],
-        "sensors": {"urlquery": [{"sensor_name": "urlquery", "verdict": "phishing", "trigger": URL, "comment": "Nachbau einer Anmeldemaske, Formular sendet an /gate.php"},
-                                 {"sensor_name": "urlquery", "verdict": "suspicious", "trigger": DOMAIN, "comment": "Domain jünger als 7 Tage"}],
-                    "analyzer": [{"sensor_name": "phishing-kit", "verdict": "phishing", "trigger": "gate.php", "comment": "Bekanntes Formular-Sammelskript"}], "ids": []},
-        "http": [{"url": {"addr": URL}, "ip": {"addr": IP_SERVER}}, {"url": {"addr": f"https://{DOMAIN}/gate.php"}, "ip": {"addr": IP_SERVER}}],
-        "files": []}),
+        **UQ_KOPF, "detection": UQ_ALARME,
+        "summary": [{"fqdn": DOMAIN, "ip": {"addr": IP_SERVER, "port": 443, "asn": 64500, "as": "BEISPIEL-HOSTING", "country": "Netherlands", "country_code": "NL"},
+                     "domain_registered": "2026-09-26", "domain_rank": 0, "first_seen": "2026-09-30T06:17:41Z", "last_seen": "2026-09-30T06:17:58Z",
+                     "alert_count": 3, "request_count": 14, "received_data": 184211, "sent_data": 9120, "comment": "", "tags": ["phishing"],
+                     "fingerprints": [{"name": "Nginx", "description": "Webserver", "website": "https://nginx.org/en", "categories": ["Web servers"],
+                                       "common_platform_enumeration": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "icon": "Nginx.svg"}]}],
+        "hosts": UQ_HOSTS,
+        "http": [UQ_AUFRUF(URL.split("://", 1)[1], "GET", "document", "text/html", 5121),
+                 UQ_AUFRUF(f"{DOMAIN}/gate.php", "POST", "xhr", "application/json", 34)],
+        "javascript": {"script": [], "eval": [], "write": [], "console": []},
+        "artifacts": {"windows_shortcuts": [], "files": [], "telegram": [], "pdfs": [], "clipboard": []}}),
     ("web.archive.org", "/cdx/search/cdx"): (200, [
         ["timestamp", "original", "statuscode", "mimetype", "digest", "length"],
         ["20260928101500", URL, "200", "text/html", "K4JQ2WFT6ZL3ZC7E5N2DQGZ4H3PXMUST", "5121"],
@@ -603,6 +647,7 @@ def main() -> int:
         "auftrag": "Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen, prüfen, "
                    "ob ein Bezug zur im Erpresserschreiben genannten Gruppe besteht, und den Verbleib der Lösegeldzahlung klären.",
         "sachbearbeiter": "MUS", "klassifizierung": "MUSTER", "eroeffnet": "2026-11-12T08:55:00+01:00",
+        "sitzungen": [SITZUNG],     # nur diese Sitzung gehört zum Musterfall, siehe tools/protokoll.py
         "freigaben": {n: {"erteilt": False, "durch": "", "am": "", "vermerk": ""} for n in ("aktiv", "darkweb", "personenbezug")}})
     fallwerkzeug.jetzt = lambda: "2026-11-12T08:56:00+01:00"
     quelle = pfad / "eingang" / "rapport_pseudonymisiert.md"

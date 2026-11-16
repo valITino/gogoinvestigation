@@ -103,6 +103,70 @@ def vt_beziehungen(domain: str = "example.org", geliefert: int = 2, gesamt: int 
                       "next": f"https://www.virustotal.com/api/v3/domains/{domain}/resolutions?limit={geliefert}&cursor=Cl4KEQoEZGF0ZRIJ"}}
 
 
+# --------------------------------------------------------------------------- urlquery
+
+def _uq_adresse(adresse: str, schema: str = "https") -> dict:
+    """urlquery führt Adressen ohne Schema: schema, addr (Host, Pfad, Abfrage), fqdn, domain, tld."""
+    host = adresse.split("/", 1)[0]
+    return {"schema": schema, "addr": adresse, "fqdn": host, "domain": host.split(".", host.count(".") - 1)[-1], "tld": host.rsplit(".", 1)[-1]}
+
+
+def _uq_alarm(sensor: str, alarm: str, urteil: str, ausloeser: str) -> dict:
+    return {"sensor_name": sensor, "sensor_type": "DNS", "title": alarm, "description": alarm, "scan_date": "2026-11-16", "alert": alarm,
+            "trigger": ausloeser, "verdict": urteil, "severity": "medium", "comment": "", "link": "https://sensor.example.org/", "meta": None}
+
+
+def uq_bericht(nr: int = 1, ziel: str = "portal.example.org/login", voll: bool = False) -> dict:
+    """Ein Bericht, wie ihn die Suche (GET /search/reports/) und der Abruf (GET /report/{id}) liefern. Die Suche lässt http,
+    javascript und artifacts weg. Alarme stehen je Sensorgruppe unter «detection», nicht unter «sensors» oder «stats»."""
+    ip = {"addr": "203.0.113.7", "asn": 64500, "as": "Beispiel Hosting AG", "country": "Netherlands", "country_code": "NL"}
+    alarme = {"ids": [], "urlquery": [], "analyzer": [_uq_alarm("cloudflare_dns", "Sinkholed", "malicious", "cdn.example.net"),
+                                                       _uq_alarm("dns4eu", "Blocked", "malicious", "cdn.example.net")]}
+    bericht = {"report_id": f"12dbca67-276e-47a0-a205-0000000000{nr:02d}", "version": 0, "status": "done", "tags": [],
+               "date": f"2026-11-{17 - nr:02d}T02:30:18Z", "url": _uq_adresse(ziel, "http"), "ip": ip,
+               "final": {"url": _uq_adresse(ziel), "title": "Erfundene Anmeldeseite"},
+               "submit": {"url": _uq_adresse(ziel, "http"), "ip": ip, "tags": [], "meta": None},
+               "settings": {"access": "public", "device_type": "desktop", "expires_at": "2027-12-21T02:30:18Z",
+                            "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+                            "referer": "", "cookies": None, "exit_node": "erfundenerknoten"},
+               "detection": alarme,
+               "summary": [{"fqdn": "portal.example.org", "ip": {**ip, "port": 443}, "domain_registered": "2026-01-11", "domain_rank": 0,
+                            "first_seen": "2026-10-11T04:04:23Z", "last_seen": "2026-10-11T04:04:26Z", "alert_count": 2,
+                            "request_count": 5, "received_data": 97104, "sent_data": 2904, "comment": "", "tags": [],
+                            "fingerprints": [{"name": "Nginx", "description": "Webserver", "website": "https://nginx.org/en",
+                                              "categories": ["Web servers"], "icon": "Nginx.svg",
+                                              "common_platform_enumeration": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*"}]}] if voll else [],
+               "hosts": [{"fqdn": "portal.example.org", "ips": [ip], "domain_rank": 0, "domain_registered": "2026-01-11",
+                          "first_seen": "2026-10-11T04:04:23.469637Z", "last_seen": "2026-10-11T04:04:26.967125Z",
+                          "request_count": 5, "sent_data": 2904, "received_data": 97104, "fingerprints": []}]}
+    if voll:
+        bericht["http"] = [{"date": "2026-11-16T02:29:35.328Z", "timestamp": 1794796175328, "http_version": "HTTP/2",
+                            "url": _uq_adresse(adresse), "ip": {**ip, "port": 443}, "is_navigation_request": n == 0,
+                            "requested_by": "https://portal.example.org/login", "resource_type": art,
+                            "request": {"method": "GET", "headers": [], "cookies": [], "raw": f"GET /{adresse.split('/', 1)[1]} HTTP/2\r\n"},
+                            "response": {"status_code": "200", "status_text": "OK", "headers": [], "cookies": [], "fingerprints": [],
+                                         "raw": "HTTP/2 200 OK\r\n",
+                                         "data": {"size": 84711, "size_decoded": 85330, "mime_type": mime, "magic": "data",
+                                                  "md5": "5b6aa154f1e11448400ac4ca74d616ca", "sha1": "26fad341773ffa0a2a4c7f6d3f6f3e7a1b2c3d4e",
+                                                  "sha256": f"{n:064x}"}},
+                            "alerts": {"ids": [], "analyzer": alarme["analyzer"] if n else [], "urlquery": []},
+                            "security_state": "secure", "security_info": None, "time_used": 0.184, "timings": None}
+                           for n, (adresse, art, mime) in enumerate((("portal.example.org/login", "document", "text/html"),
+                                                                     ("cdn.example.net/kit/formular.js", "script", "text/javascript")))]
+        bericht["javascript"] = {"script": [], "eval": [], "write": [], "console": []}
+        bericht["artifacts"] = {"windows_shortcuts": [], "telegram": [], "pdfs": [], "clipboard": [],
+                                "files": [{"sha256": "a" * 64, "md5": "b" * 32, "magic": "Zip archive data", "mime_type": "application/zip",
+                                           "size": 20480, "filename": "unterlagen.zip", "url": "portal.example.org/unterlagen.zip"}]}
+    return bericht
+
+
+def uq_suche(abfrage: str, limit: int = 3) -> dict:
+    """GET /public/v1/search/reports/?query=… . «query» wiederholt die Abfrage. Ohne Feldnamen sucht der Dienst im Volltext."""
+    volltext = ":" not in abfrage
+    return {"query": abfrage, "total_hits": 25280 if volltext else 2, "time_used": "0.412s", "limit": limit, "offset": 0,
+            "reports": [uq_bericht(n, "fremd.example.net/seite" if volltext else "portal.example.org/login") for n in (1, 2)]}
+
+
 # --------------------------------------------------------------------------- Shodan
 
 SHODAN_OHNE_MITGLIEDSCHAFT = {"error": "Requires membership or higher to access"}      # GET /dns/domain/{d}, HTTP 403, kostenloses Konto
@@ -183,6 +247,11 @@ def antwort(anfrage: httpx.Request) -> httpx.Response | None:
             return _json(rl_gruppe(pfad.rsplit("/", 1)[1]))
         if pfad.startswith("/iocs/"):
             return _json(rl_iocs(pfad.rsplit("/", 1)[1]))
+    if host == "api.urlquery.net":
+        if pfad == "/public/v1/search/reports/":
+            return _json(uq_suche(frage.get("query", ""), int(frage.get("limit", 3))))
+        if pfad.startswith("/public/v1/report/"):
+            return _json(uq_bericht(1, voll=True))
     if host == "www.virustotal.com" and pfad.endswith("/resolutions"):
         return _json(vt_beziehungen(pfad.split("/")[-2], int(frage.get("limit", 2))))
     if host == "api.shodan.io" and pfad.startswith("/dns/domain/"):
