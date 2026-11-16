@@ -7,7 +7,7 @@ Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was
 
 | Paket | Pull Request | Stand | Selbsttests |
 |---|---|---|---:|
-| A: Prüfung mit echten Schlüsseln | [PR 5](https://github.com/valITino/gogoinvestigation/pull/5) | offen, CI grün | 43 |
+| A: Prüfung mit echten Schlüsseln | [PR 5](https://github.com/valITino/gogoinvestigation/pull/5) | offen, CI grün | 45 |
 | B: neue Quellen | [PR 6](https://github.com/valITino/gogoinvestigation/pull/6) | offen, CI grün | 53 |
 | C: Review von Code und Repo | [PR 7](https://github.com/valITino/gogoinvestigation/pull/7) | offen, CI grün | 57 |
 | D: lokale Pseudonymisierung | [PR 8](https://github.com/valITino/gogoinvestigation/pull/8) | offen, CI grün. **Nicht abgeschlossen:** wartet auf die Liste der Feldmarken | 71 |
@@ -55,7 +55,7 @@ Zahl der Abfragen im Protokoll.
 | Blockscout | Ethereum, Optimism, Arbitrum, Gnosis, mit Schlüssel (217, davon 9 Fehlschläge) | HTTP 402 für Polygon und Base hiess «Schlüssel falsch». Jetzt stimmt die Meldung, und das Gateway weicht aus. | Polygon und Base über diesen Zugang: nur mit bezahltem Paket. | P-0022, P-0056 |
 | Etherscan | Gegenprüfung auf Ethereum, Polygon, Arbitrum (31) | Die Live-Prüfung bestand, obwohl die andere Quelle geantwortet hatte. | Gnosis und Base: im kostenlosen Paket abgelehnt. BNB Smart Chain, Optimism. | P-0057, Ablehnung P-0459 |
 | TronGrid | Konto, Zahlungen, Transaktion (155) | | | P-0030 |
-| Tronscan | Etiketten, Risikohinweise (54) | Ein Name machte jede Adresse zum «Dienst». Jetzt entscheidet die Kategorie. | Ein Geldfluss, der bei einem benannten Dienst endet: kam nicht vor. | P-0040 |
+| Tronscan | Etiketten, Risikohinweise (54) | Jeder Name machte die Adresse zum «Dienst». Jetzt nur, wenn der Name sie als Wallet eines Dienstes ausweist. | Ein Geldfluss, der bei einem benannten Dienst endet: kam nicht vor. | P-0040 |
 | OFAC, TRM Labs, Ransomwhere, WalletExplorer | Zuordnung (88, 88, 8, 23) | Natürliche Personen aus der Sanktionsliste werden nicht mehr beim Namen genannt. | | P-0016, P-0019, P-0018, P-0020 |
 | Chainabuse | eine Abfrage | Bei Anmeldung nach «Basic» blieb ein wiederholter Schlüssel stehen. | Mehr Abfragen: Kontingent geschont. | P-0079 |
 | Iknaio GraphSense | | | Kein Schlüssel. | |
@@ -201,7 +201,7 @@ Jeweils mit Empfehlung. Die Begründung steht im genannten Pull Request.
 | Frage | Empfehlung | Wo |
 |---|---|---|
 | Spur, kostenloser Zugang | Nicht für Ermittlungen nutzen: Der Anbieter schliesst Strafverfolgung aus. | PR 6 |
-| urlscan.io, Bedingungen «persönlich, nicht kommerziell» | Beim Anbieter nachfragen oder ein bezahltes Konto nehmen. | PR 6 |
+| urlscan.io und urlquery: Die Bedingungen beider Dienste sprechen von persönlicher, nicht kommerzieller Nutzung | Beim Anbieter nachfragen oder ein bezahltes Konto nehmen, bevor echte Fälle laufen. | PR 6, `QUELLEN.md` |
 | proxycheck.io nennt weder Firma noch Sitz | Als zweite Stimme behalten, nie als alleinige Grundlage. | PR 6 |
 | eth-labels | Nicht einbauen: Die Daten stammen aus Etherscan, dessen Bedingungen das untersagen. | PR 6 |
 | Echte Antworten als Vorlagen im Repo | Wird das Repo öffentlich: die Bedingungen von VirusTotal, Shodan, AbuseIPDB, urlquery und urlscan.io dazu lesen. Sonst durch erfundene Werte in gleicher Form ersetzen. | PR 9 |
