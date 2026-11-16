@@ -274,6 +274,19 @@ _WC_NICHT_EINGERICHTET = re.compile(r"requires|api[_ -]?key|not (?:set|configure
 _WC_OHNE_ANTWORT = re.compile(r"no \w+ sources? returned|returned no data|unavailable|timed? ?out", re.I)
 
 
+def _wc_teilquellen(daten: dict) -> tuple[list[str], dict[str, str]]:
+    """Manche Prüfungen befragen mehrere Stellen und antworten je Stelle (threats: safeBrowsing, urlHaus, phishTank,
+    cloudmersive, netApi). Gibt zurück, welche geantwortet haben und welche nicht, mit dem Grund. Eine Stelle, die
+    nur «error» oder «skipped» meldet, hat nicht geantwortet."""
+    mit, ohne = [], {}
+    for name, wert in daten.items():
+        if isinstance(wert, dict) and (wert.get("error") or wert.get("skipped")) and set(wert) <= {"error", "skipped", "retryable"}:
+            ohne[name] = saeubern(str(wert.get("error") or wert.get("skipped")), 160)
+        else:
+            mit.append(name)
+    return (mit, ohne) if ohne else (list(daten), {})
+
+
 def _webcheck_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
     """Web-Check meldet eine gescheiterte Prüfung mit HTTP 200 und dem Feld «error», eine ausgelassene mit dem
     Feld «skipped» (gesehen am 16.11.2026: «Error fetching Wayback data: fetch failed», «No TXT records for this
@@ -295,6 +308,10 @@ def _webcheck_deutung(status: int, daten: Any, text: str | None) -> tuple[str, s
                 return "fehler", (f"Web-Check hat diese Prüfung ausgelassen: «{grund}». Die befragten Stellen haben nicht "
                                   "geantwortet. Das Ziel ist damit nicht geprüft.")
             return "kein_treffer", None
+        if daten and not _wc_teilquellen(daten)[0]:
+            return "fehler", ("Web-Check: Keine der befragten Stellen hat geantwortet ("
+                              + "; ".join(f"{name}: {grund}" for name, grund in _wc_teilquellen(daten)[1].items())[:300]
+                              + "). Das Ziel ist damit nicht geprüft.")
     if status == 200 and daten is None:
         return "fehler", "Web-Check hat kein lesbares JSON geliefert. Details in den Rohdaten."
     if status >= 500:
@@ -319,6 +336,9 @@ async def _webcheck(fall: str, zweck: str, ziel: str, pruefung: str, aktiv: bool
     befund = a.daten
     if isinstance(befund, dict) and pruefung == "screenshot":
         befund = {"hinweis": "Bildschirmfoto liegt base64-kodiert in den Rohdaten."}
+    ohne = _wc_teilquellen(befund)[1] if isinstance(befund, dict) else {}
+    if ohne:        # ein Teil der befragten Stellen hat nicht geantwortet: Das Ergebnis gilt nur für die übrigen
+        return a.als_dict(befund, hinweis=FREMD, teilweise_nicht_geprueft=ohne)
     return a.als_dict(befund, hinweis=FREMD)
 
 

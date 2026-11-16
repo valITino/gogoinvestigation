@@ -261,9 +261,12 @@ ANTWORTEN: dict[tuple[str, str], tuple[int, object]] = {
 <div class="tgme_widget_message_text">Forum-Angebot: Zugangsdaten Muster-Bank, ungeprüft</div>
 <a class="tgme_widget_message_date"><time datetime="2026-10-03T07:40:52+00:00">07:40</time></a></div></div>
 </body></html>"""),
-    ("127.0.0.1", "/api/dns"): (200, {"A": [{"address": IP_SERVER, "family": 4}], "AAAA": [], "MX": [{"exchange": f"mail.{DOMAIN}", "priority": 10}],
+    # Web-Check in der Form des echten Dienstes (gesehen am 16.11.2026 im Workflow «Web-Check live»): A als Liste von Adressen
+    ("127.0.0.1", "/api/dns"): (200, {"A": [IP_SERVER], "AAAA": [], "MX": [{"exchange": f"mail.{DOMAIN}", "priority": 10}],
                                     "TXT": [["v=spf1 ip4:203.0.113.7 -all"]], "NS": ["ns1.beispiel-dns.example", "ns2.beispiel-dns.example"],
-                                    "CNAME": [], "SOA": {"nsname": "ns1.beispiel-dns.example", "serial": 2026092601}, "SRV": [], "PTR": []}),
+                                    "CNAME": [], "SOA": {"nsname": "ns1.beispiel-dns.example", "hostmaster": "hostmaster.beispiel-dns.example",
+                                                         "serial": 2026092601, "refresh": 10000, "retry": 2400, "expire": 604800, "minttl": 1800},
+                                    "SRV": [], "PTR": []}),
 }
 
 

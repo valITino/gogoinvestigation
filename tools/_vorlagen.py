@@ -174,25 +174,81 @@ SHODAN_OHNE_MITGLIEDSCHAFT = {"error": "Requires membership or higher to access"
 
 # --------------------------------------------------------------------------- Web-Check (eigene Instanz)
 
-# Eine Prüfung, die scheitert, antwortet mit HTTP 200 und «error», eine ausgelassene mit «skipped». So gesehen am
-# 16.11.2026 an einer Instanz, deren Container die befragten Dienste nicht erreichte.
+# Antworten der 13 passiven Prüfungen, wie sie eine Instanz mit freiem Netz liefert. Gesehen am 16.11.2026 im Workflow
+# «Web-Check live» auf einem GitHub-Runner gegen example.com (Abbild lissy93/web-check, gebaut am 15.11.2026).
+# Hier mit example.org und Adressen aus den Dokumentationsnetzen.
+_DNSKEY = {"name": "example.org.", "type": 48, "TTL": 3600,
+           "data": "256 3 13 MjyZielP0GqniI1+j+wAG/3t0ImDDIlj1CxR0oobkZQHSKH2Fqx6tm2NcYu57POJ83SzCWLkqIjZHS1mh5wbaw=="}
+_DS = {"name": "example.org.", "type": 43, "TTL": 1082,
+       "data": "2371 13 2 C988EC423E3880EB8DD8A46FE06CA230EE23F35B578D64E78B29C3E1C83D245A"}
 WEBCHECK = {
+    "archives": (200, {"firstScan": "2002-01-20T14:25:10.000Z", "lastScan": "2026-11-16T01:07:23.000Z", "daysArchived": 6846,
+                       "changeCount": 494, "averagePageSize": 660,
+                       "scanFrequency": {"daysBetweenScans": 1.32, "daysBetweenChanges": 18.35, "scansPerDay": 0.76,
+                                         "changesPerDay": 0.05},
+                       "scanUrl": "https://example.org"}),
+    "block-lists": (200, {"blocklists": [{"server": "AdGuard", "serverIp": "176.103.130.130", "isBlocked": False},
+                                         {"server": "CloudFlare", "serverIp": "1.1.1.1", "isBlocked": False},
+                                         {"server": "Quad9", "serverIp": "9.9.9.9", "isBlocked": True}]}),
+    "breaches": (200, {"domain": "example.org", "breaches": []}),
+    "caa-records": (200, {"domain": "example.org", "records": []}),
+    "dns": (200, {"A": ["203.0.113.7", "203.0.113.8"], "AAAA": ["2001:db8::7"], "MX": [{"exchange": "", "priority": 0}],
+                  "TXT": [["_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9"], ["v=spf1 -all"]],
+                  "NS": ["ns1.example.net", "ns2.example.net"], "CNAME": [],
+                  "SOA": {"nsname": "ns2.example.net", "hostmaster": "dns.example.net", "serial": 2420077714,
+                          "refresh": 10000, "retry": 2400, "expire": 604800, "minttl": 1800},
+                  "SRV": [], "PTR": []}),
+    "dnssec": (200, {"DNSKEY": {"isFound": True, "answer": [_DNSKEY], "response": [_DNSKEY]},
+                     "DS": {"isFound": True, "answer": [_DS], "response": [_DS]},
+                     "RRSIG": {"isFound": True, "answer": None,
+                               "response": {"Status": 0, "TC": False, "RD": True, "RA": True, "AD": True, "CD": False,
+                                            "Question": [{"name": "example.org.", "type": 1}],
+                                            "Answer": [{"name": "example.org.", "type": 1, "TTL": 300, "data": "203.0.113.7"}],
+                                            "Comment": "Response from 203.0.113.53."}}}),
+    "get-ip": (200, {"ip": "203.0.113.7", "family": 4}),
+    "rank": (200, {"ranks": [{"date": "2026-11-15", "rank": 185}, {"date": "2026-11-14", "rank": 184},
+                             {"date": "2026-11-13", "rank": 182}], "domain": "example.org"}),
+    "shodan": (200, {"skipped": "Shodan requires SHODAN_API_KEY to be set"}),
+    "subdomains": (200, {"domain": "example.org", "count": 2, "truncated": False,
+                         "subdomains": ["labor.example.org", "www.example.org"], "source": "certSpotter"}),
+    # Diese Prüfung befragt fünf Stellen. Jede antwortet für sich, mit Ergebnis, «skipped» oder «error».
+    "threats": (200, {"safeBrowsing": {"skipped": "Google Safe Browsing requires GOOGLE_CLOUD_API_KEY to be set"},
+                      "urlHaus": {"error": "URLhaus blocked (HTTP 401)"},
+                      "phishTank": {"url0": {"url": "https://example.org", "in_database": "true", "phish_id": "7366538",
+                                             "phish_detail_page": "https://www.phishtank.com/phish_detail.php?phish_id=7366538",
+                                             "verified": "false"}},
+                      "cloudmersive": {"skipped": "Cloudmersive requires CLOUDMERSIVE_API_KEY to be set"},
+                      "netApi": {"value": "example.org", "type": "domain", "listed_now": False, "listed_ever": False,
+                                 "matched_value": None, "first_seen": None, "last_seen": None, "block_reason": None,
+                                 "registrar": None, "note": "Not in the current or historical compromised feed.",
+                                 "lists": {"page": "https://netapi.com/compromised-urls/",
+                                           "current": "https://netapi.com/api2/?method=compromised&dataset_type=url",
+                                           "all_time": "https://netapi.com/api2/?method=compromised&dataset_type=url-all"},
+                                 "source": "NetAPI compromised feed, updated daily (CC BY 4.0)"}}),
+    "txt-records": (200, {"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9": "", "v": "spf1 -all"}),
+    "whois": (200, {"domain": "EXAMPLE.ORG", "registrar": "Beispiel Registrar AG", "registrarUrl": "http://registrar.example.net",
+                    "registrarIanaId": "376", "registrarWhoisServer": "whois.example.net",
+                    "registryDomainId": "2336799_DOMAIN_ORG-VRSN", "created": "1995-08-14T04:00:00.000Z",
+                    "updated": "2026-08-14T08:01:43.000Z", "expires": "2027-08-13T04:00:00.000Z",
+                    "nameservers": ["ns1.example.net", "ns2.example.net"],
+                    "status": ["clientDeleteProhibited https://icann.org/epp#clientDeleteProhibited",
+                               "clientTransferProhibited https://icann.org/epp#clientTransferProhibited"],
+                    "dnssec": "signedDelegation"}),
+}
+# Dieselben Prüfungen an einer Instanz, deren Container die befragten Dienste nicht erreicht (hinter einem HTTPS-Proxy,
+# gesehen am 16.11.2026). Eine gescheiterte Prüfung antwortet mit HTTP 200 und «error», eine ausgelassene mit «skipped».
+WEBCHECK_OHNE_NETZ = {
+    **WEBCHECK,
     "archives": (200, {"error": "Error fetching Wayback data: fetch failed"}),
     "breaches": (200, {"error": "Have I Been Pwned failed: fetch failed"}),
     "rank": (200, {"error": "Tranco rank lookup failed: fetch failed"}),
     "subdomains": (200, {"error": "Subdomain lookup is temporarily unavailable for this domain", "retryable": True}),
     "dnssec": (500, {"error": "fetch failed"}),
-    "shodan": (200, {"skipped": "Shodan requires SHODAN_API_KEY to be set"}),
     "threats": (200, {"skipped": "No threat sources returned data for this host"}),
     "txt-records": (200, {"skipped": "No TXT records for this host"}),
     "whois": (200, {"skipped": "No WHOIS data available for this domain"}),
-    "caa-records": (200, {"domain": "example.org", "records": []}),
-    "get-ip": (200, {"ip": "203.0.113.7", "family": 4}),
     "dns": (200, {"A": ["203.0.113.7", "203.0.113.8"], "AAAA": [], "MX": [], "TXT": [], "NS": [], "CNAME": [], "SOA": None,
                   "SRV": [], "PTR": []}),
-    "block-lists": (200, {"blocklists": [{"server": "AdGuard", "serverIp": "176.103.130.130", "isBlocked": False},
-                                         {"server": "CloudFlare", "serverIp": "1.1.1.1", "isBlocked": False},
-                                         {"server": "Quad9", "serverIp": "9.9.9.9", "isBlocked": True}]}),
 }
 
 
@@ -257,7 +313,8 @@ def antwort(anfrage: httpx.Request) -> httpx.Response | None:
     if host == "api.shodan.io" and pfad.startswith("/dns/domain/"):
         return _json(SHODAN_OHNE_MITGLIEDSCHAFT, 403)
     if host == "127.0.0.1" and pfad.startswith("/api/"):
-        status, inhalt = WEBCHECK.get(pfad.rsplit("/", 1)[1], (404, {"error": "Not found"}))
+        tabelle = WEBCHECK_OHNE_NETZ if "ohne-netz" in frage.get("url", "") else WEBCHECK
+        status, inhalt = tabelle.get(pfad.rsplit("/", 1)[1], (404, {"error": "Not found"}))
         return _json(inhalt, status)
     if host == "t.me" and pfad.startswith("/s/"):
         kanal = pfad.rsplit("/", 1)[1]

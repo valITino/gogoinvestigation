@@ -29,7 +29,7 @@ Datei anpassen.
 | Wayback Machine | `wayback_verlauf` | `GET web.archive.org/cdx/search/cdx` | nicht prüfbar aus der Prüfumgebung vom 16.11.2026: Die Verbindung zu `web.archive.org` brach jedes Mal ab. Endpunkte nach der Dokumentation der CDX-Schnittstelle. |
 | | `wayback_abruf` | `GET web.archive.org/web/{zeit}id_/{url}` | wie oben |
 | | `wayback_sichern` | `GET web.archive.org/save/{url}` | nicht geprüft (aktive Massnahme) |
-| Web-Check | `webcheck_passiv` | `GET {WEBCHECK_URL}/api/{prüfung}?url=` | Am 16.11.2026 gesehen: Der Container startet, das Gateway erreicht die Instanz, alle 13 Prüfungen gibt es unter ihrem Namen. Die Inhalte prüft der Workflow «Web-Check live» auf einem GitHub-Runner, siehe [Hinweise](#hinweise-je-quelle). |
+| Web-Check | `webcheck_passiv` | `GET {WEBCHECK_URL}/api/{prüfung}?url=` | geprüft am 16.11.2026 auf einem GitHub-Runner (Workflow «Web-Check live», Abbild vom 15.11.2026): Zwölf der 13 Prüfungen lieferten für example.com ein Ergebnis, `shodan` fehlt in der Instanz der Schlüssel. Hinter einem Proxy gesehen: Der Container startet, das Gateway erreicht die Instanz, die Prüfungen scheitern und das Gateway sagt es. Siehe [Hinweise](#hinweise-je-quelle). |
 | | `webcheck_aktiv` | wie oben | nicht geprüft (aktive Massnahme) |
 | ransomware.live | `ransomware_aktuell`, `_opfer`, `_gruppe`, `_iocs` | API PRO: `api-pro.ransomware.live/{victims/recent, victims/search?q=, victims/?group=, victims/?country=, groups/{g}, iocs/{g}}`, Kopfzeile `X-API-KEY` | alle sechs Pfade geprüft am 16.11.2026 |
 | | | API v2: `api.ransomware.live/v2/{recentvictims, searchvictims/{x}, groupvictims/{g}, countryvictims/{cc}, group/{g}}` | nicht geprüft: laut Anbieter nur für private Nutzung |
@@ -171,6 +171,11 @@ wenn es nichts gab («No TXT records for this host»), und ein Fehlschlag, wenn 
 keine der befragten Stellen geantwortet hat. Die Prüfung `shodan` braucht einen Shodan-Schlüssel im Container. Den
 gibt die Einrichtung nicht weiter, die Prüfung meldet deshalb «nicht eingerichtet». Für Shodan gibt es die eigenen
 Werkzeuge `shodan_host` und `shodan_internetdb`.
+
+Die Prüfung `threats` befragt fünf Stellen und antwortet je Stelle. Am 16.11.2026 antworteten zwei (PhishTank,
+NetAPI), drei nicht: Google Safe Browsing und Cloudmersive verlangen einen Schlüssel in der Instanz, URLhaus wies
+die Anfrage mit HTTP 401 ab. Das Gateway nennt das unter `teilweise_nicht_geprueft`: Das Ergebnis gilt dann nur für
+die Stellen, die geantwortet haben. Antwortet keine, ist die Prüfung ein Fehlschlag.
 
 Die Instanz muss DNS, WHOIS und die befragten Dienste selbst erreichen. Hinter einem HTTPS-Proxy tut sie das oft
 nicht: Dann scheitern die meisten Prüfungen, und das Gateway sagt es. `python3 tools/webcheck_live.py` ruft jede

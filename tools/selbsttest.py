@@ -1598,22 +1598,38 @@ def _():
 def _():
     vorlagen_welt()
     os.environ["WEBCHECK_URL"] = "http://127.0.0.1:3000"
-    erwartet = {"archives": "fehler", "breaches": "fehler", "rank": "fehler", "subdomains": "fehler", "dnssec": "fehler", "shodan": "fehler",
-                "threats": "fehler", "txt-records": "kein_treffer", "whois": "kein_treffer",
-                "caa-records": "ok", "get-ip": "ok", "dns": "ok", "block-lists": "ok"}
-    assert set(erwartet) == set(web.WEBCHECK_PASSIV), "für jede passive Prüfung gibt es eine Vorlage"
-    je: dict[str, dict] = {}
-    for pruefung, soll in erwartet.items():
-        je[pruefung] = r = aufruf(web.webcheck_passiv, zweck=ZWECK, ziel="example.org", pruefung=pruefung)
-        assert r["ergebnis"] == soll, f"{pruefung}: {r['ergebnis']} statt {soll}"
-        assert letzter_eintrag()["ergebnis"] == soll, f"{pruefung}: Im Protokoll steht {letzter_eintrag()['ergebnis']}, beim Agenten {soll}"
-        assert ("befund" in r) == (soll == "ok"), r
-    assert "fetch failed" in je["archives"]["fehler"] and "nicht geprüft" in je["archives"]["fehler"], je["archives"]
+    assert set(vorlagen.WEBCHECK) == set(web.WEBCHECK_PASSIV) == set(vorlagen.WEBCHECK_OHNE_NETZ), "für jede passive Prüfung gibt es eine Vorlage"
+
+    def lauf(ziel: str, erwartet: dict[str, str]) -> dict[str, dict]:
+        je: dict[str, dict] = {}
+        for pruefung in web.WEBCHECK_PASSIV:
+            soll = erwartet.get(pruefung, "ok")
+            je[pruefung] = r = aufruf(web.webcheck_passiv, zweck=ZWECK, ziel=ziel, pruefung=pruefung)
+            assert r["ergebnis"] == soll, f"{ziel}, {pruefung}: {r['ergebnis']} statt {soll}"
+            assert letzter_eintrag()["ergebnis"] == soll, f"{pruefung}: Im Protokoll steht {letzter_eintrag()['ergebnis']}, beim Agenten {soll}"
+            assert ("befund" in r) == (soll == "ok"), r
+        return je
+    # Instanz mit freiem Netz, in der Form des Laufs auf dem GitHub-Runner: zwölf Prüfungen antworten, shodan fehlt der Schlüssel
+    je = lauf("example.org", {"shodan": "fehler"})
     assert "nicht eingerichtet" in je["shodan"]["fehler"] and "SHODAN_API_KEY" in je["shodan"]["fehler"], je["shodan"]
+    assert je["dns"]["befund"]["MX"] == [{"exchange": "", "priority": 0}] and je["dns"]["befund"]["SOA"]["serial"] == 2420077714, je["dns"]
+    assert je["whois"]["befund"]["created"] == "1995-08-14T04:00:00.000Z" and je["archives"]["befund"]["daysArchived"] == 6846
+    assert je["subdomains"]["befund"]["count"] == 2 and je["rank"]["befund"]["ranks"][0] == {"date": "2026-11-15", "rank": 185}
+    # threats befragt fünf Stellen. Drei haben nicht geantwortet: Das Ergebnis gilt nur für die zwei übrigen, und das steht da
+    assert set(je["threats"]["teilweise_nicht_geprueft"]) == {"safeBrowsing", "urlHaus", "cloudmersive"}, je["threats"]
+    assert "HTTP 401" in je["threats"]["teilweise_nicht_geprueft"]["urlHaus"] and je["threats"]["befund"]["netApi"]["listed_ever"] is False
+    assert "teilweise_nicht_geprueft" not in je["dns"], je["dns"]
+    # Instanz, deren Container nichts erreicht (hinter einem Proxy): Web-Check antwortet trotzdem mit HTTP 200
+    je = lauf("ohne-netz.example.org", {"archives": "fehler", "breaches": "fehler", "rank": "fehler", "subdomains": "fehler",
+                                        "dnssec": "fehler", "shodan": "fehler", "threats": "fehler",
+                                        "txt-records": "kein_treffer", "whois": "kein_treffer"})
+    assert "fetch failed" in je["archives"]["fehler"] and "nicht geprüft" in je["archives"]["fehler"], je["archives"]
     assert "HTTP 500" in je["dnssec"]["fehler"] or "fetch failed" in je["dnssec"]["fehler"], je["dnssec"]
     assert "No TXT records for this host" in je["txt-records"]["grund"], je["txt-records"]
     assert "nicht geantwortet" in je["threats"]["fehler"], "«keine Stelle hat geantwortet» ist kein «nichts gefunden»"
     assert je["dns"]["befund"]["A"] == ["203.0.113.7", "203.0.113.8"], je["dns"]
+    # Antwortet bei einer Prüfung mit mehreren Stellen keine einzige, ist die ganze Prüfung ein Fehlschlag
+    assert web._webcheck_deutung(200, {"a": {"error": "x"}, "b": {"skipped": "y"}}, None)[0] == "fehler"
 
 
 @test("Telegram, Wayback, VirusTotal: «nichts da» steht als kein Treffer im Protokoll, Zähler stammen aus der Antwort")

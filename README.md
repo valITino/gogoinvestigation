@@ -730,11 +730,11 @@ Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
 - Blockchain mit Schlüssel, 22 von 22 Prüfungen: Blockscout für Ethereum, Optimism, Arbitrum und Gnosis, TronGrid,
   Etherscan (Gegenprüfung einer Ethereum-Transaktion, Polygon, Arbitrum), Tronscan (Etikett einer Börsen-Adresse,
   Risikohinweise), Chainabuse.
-- Web-Check: Der Container startet, das Gateway erreicht die Instanz, alle 13 passiven Prüfungen gibt es unter
-  ihrem Namen. Die Prüfumgebung lag hinter einem HTTPS-Proxy, die Instanz erreichte dort die befragten Dienste
-  nicht. Gesehen sind damit die Fehlerbilder. Die Inhalte prüft der Workflow
-  [«Web-Check live»](.github/workflows/webcheck-live.yml) auf einem GitHub-Runner, jede Woche und bei Änderungen
-  (`python3 tools/webcheck_live.py`).
+- Web-Check auf einem GitHub-Runner (Workflow [«Web-Check live»](.github/workflows/webcheck-live.yml),
+  `python3 tools/webcheck_live.py`): Zwölf der 13 passiven Prüfungen lieferten für example.com ein Ergebnis, der
+  dreizehnten (`shodan`) fehlt in der Instanz der Schlüssel. Der Lauf wiederholt sich jede Woche und bei Änderungen.
+  Hinter dem HTTPS-Proxy der Prüfumgebung erreichte der Container die befragten Dienste nicht: Dort sind die
+  Fehlerbilder gesehen, und dass das Gateway sie als «nicht geprüft» meldet.
 - Ein Durchlauf von Anfang bis Ende mit einem synthetischen Rapport: Fall anlegen samt PII-Prüfung, 48 Abfragen,
   `befunde.json`, Gegenprüfung durch den Agenten `gegenpruefer` in einer echten Claude-Code-Sitzung (ein Befund
   bestätigt, fünf eingeschränkt, keiner widerlegt), Rapport, Protokoll, Kettenprüfung. Die Abfragen liefen über
@@ -814,8 +814,9 @@ MCP-Server als Belege in die Fallakte.
 - **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie die Installation von
   Docker, ob über `--docker-installieren` oder über die Frage «Dienste».
   Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
-- **Robin im Betrieb und die Inhalte der Web-Check-Prüfungen von einem Arbeitsplatz aus.** Robin ist nie
-  gelaufen. Web-Check ist gestartet und angesprochen, seine Prüfungen laufen im Workflow «Web-Check live».
+- **Robin im Betrieb.** Robin ist nie gelaufen.
+- **Web-Check mit einem bösartigen Ziel.** Die Prüfungen liefen gegen example.com. Wie `threats`, `block-lists` und
+  `breaches` bei einem Treffer antworten, ist nicht gesehen.
 
 **Grenzen:**
 
