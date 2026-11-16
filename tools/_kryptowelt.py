@@ -371,10 +371,12 @@ class Welt:
         null = "-0- "
         sdn = [f'36,"AEROCARIBBEAN AIRLINES",{null},"CUBA",{null},{null},{null},{null},{null},{null},{null},{null}']
         kommentare = []
-        for nr, name, programm, adressen in self.ofac:
+        for eintrag in self.ofac:
+            nr, name, programm, adressen = eintrag[:4]
+            typ = f'"{eintrag[4]}"' if len(eintrag) > 4 else null       # «individual» bei natürlichen Personen, sonst leer (-0-)
             bemerkung = "; ".join(("" if i == 0 else "alt. ") + f"Digital Currency Address - {w} {a}" for i, (w, a) in enumerate(adressen)) + "."
             vorn, hinten = bemerkung[:250], bemerkung[250:]
-            sdn.append(f'{nr},"{name}",{null},"{programm}",{null},{null},{null},{null},{null},{null},{null},"{vorn}"')
+            sdn.append(f'{nr},"{name}",{typ},"{programm}",{null},{null},{null},{null},{null},{null},{null},"{vorn}"')
             if hinten:
                 kommentare.append(f'{nr},"{hinten}"')
         return "\r\n".join(sdn) + "\r\n", "\r\n".join(kommentare) + ("\r\n" if kommentare else "")

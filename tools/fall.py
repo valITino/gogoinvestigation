@@ -39,7 +39,11 @@ class Fehler(Exception):
 
 
 def jetzt() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    """Jetzt, in der Zeitzone des Arbeitsplatzes (OSINT_ZEITZONE, sonst Europe/Zurich): dieselbe wie in Protokoll und Rapport."""
+    try:
+        return datetime.now(plattform.zeitzone()).isoformat(timespec="seconds")
+    except plattform.Zeitzonenfehler:       # ohne Zeitzonendaten: die Zeit des Systems, wie bisher
+        return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def schreiben(datei: Path, daten: dict) -> None:

@@ -167,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 53 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 55 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -586,7 +586,7 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | Robin | Eigener MCP-Server des Projekts, läuft als Container mit Tor. Wächter verlangt Freigabe `darkweb`, Hook sichert jede Antwort als Beleg `X-…`. | Tor |
 | Darkus | Menügesteuert, deshalb nicht agentenfähig. Seine Suchmaschinen deckt Robin ab. Die Prüfung gegen die Ahmia-Sperrliste ist als `onion_sperrliste` nachgebaut und Pflicht vor jedem Öffnen einer Onion-Seite. | passiv |
 | ransomware.live | Gateway: `ransomware_opfer`, `_gruppe`, `_iocs`, `_aktuell` | passiv |
-| urlquery | Gateway: `urlquery_suche`, `_bericht`, `_reputation`, `_status` und `urlquery_einreichen` | passiv, Einreichen aktiv |
+| urlquery | Gateway: `urlquery_suche`, `_bericht`, `_reputation`, `_status` und `urlquery_einreichen` | passiv, Einreichen aktiv und nur «private» |
 | Wayback Machine | Gateway: `wayback_verlauf`, `wayback_abruf` und `wayback_sichern` | passiv, Sichern aktiv |
 | Telegram Breach Monitor | Die Seite verweist auf den Kanal `breachdetect`. Gateway: `telegram_kanal` liest die öffentliche Web-Vorschau eines Kanals. Für `breachdetect` zeigte Telegram am 16.11.2026 keine Vorschau mehr, das Werkzeug meldet das. | passiv |
 | TeleGramSint | Menügesteuert. Drei seiner Abfragen sind nachgebaut: `telegram_kanalinfo`, `telegram_entitaet`, `telegram_suche`. Die Suche nach Telefonnummern ist bewusst weggelassen. | passiv, teils Personenbezug |
@@ -616,14 +616,18 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Aktiv, Dark Web, Personenbezug nur mit Freigabe | Gateway und Wächter prüfen `fall.json`. Abgelehnte Versuche stehen im Protokoll. | `gateway/kern.py`, Wächter |
 | Keine Selbstfreigabe | `fall.py freigabe` verlangt ein Terminal. Wächter und Berechtigungen sperren den Befehl für Agenten. | `tools/fall.py` |
 | Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind gesperrt. `WebFetch` und `WebSearch` fragen jedes Mal nach. | `.claude/settings.json`, Wächter |
+| Keine öffentliche Einreichung | Eine URL geht bei urlscan.io und urlquery nur als «private» hinaus. Die Werkzeuge haben keinen Parameter dafür, und eine Schranke im Kern hält jede andere Einreichung auf, egal welches Werkzeug sie schickt. | `gateway/kern.py` (`schranke`) |
+| Kein selbst geschriebener Beleg | Abklärungen von Hand erfasst nur der Sachbearbeiter am Terminal. Wächter und Berechtigungen sperren den Befehl für Agenten. | `tools/beleg.py`, Wächter |
+| Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten unveränderbar für Agenten | Schreibschutz über Berechtigungen und Wächter. | beide |
 | Agenten stellen die Einrichtung nicht um | `setup.sh`, `setup.cmd` und `tools/einrichten.py` sind für Agenten gesperrt, ebenso das Schreiben an Gateway, Hooks und Einstellungen. | Wächter |
 | Fällt der Wächter aus, läuft nichts | Kann der Wächter nicht starten oder seine Eingabe nicht lesen, sperrt Claude Code den Werkzeugaufruf (`onFailure: block`, ab Claude Code 2.1.295). | `.claude/settings.json`, `.claude/hooks/start.sh` |
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
-| Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. | `gateway/akte.py`, `tools/audit_pruefen.py` |
+| Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. Eine Kürzung am Ende erkennt die Kette allein nicht: Dafür steht der letzte Kettenwert in Rapport und Protokoll, und `tools/audit_pruefen.py --erwartet <Wert>` prüft später, ob er noch in der Kette steht. | `gateway/akte.py`, `tools/audit_pruefen.py` |
 | Kein Rapport ohne Belege | Der Generator prüft jede Aussage gegen das Protokoll. `hoch` verlangt zwei verschiedene Quellen. | `tools/rapport.py` |
 | Kein versehentlicher Wechsel auf ein anderes Modell | Im Projektordner sind nur Fable 5.2 und, wenn freigeschaltet, Mythos 5.2 zugelassen. | `availableModels` in `.claude/settings.json` |
-| Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, Adressen im Protokoll sind maskiert. | Einstellungen, Gateway |
+| Keine Schlüssel im Kontext | `.env` ist für Claude Code gesperrt, für das Lesewerkzeug über die Berechtigungen und für Shell-Befehle über den Wächter. Adressen im Protokoll sind maskiert. | Einstellungen, Wächter, Gateway |
+| Keine Person aus der Sanktionsliste beim Namen | Führt die SDN-Liste eine Adresse unter einer natürlichen Person, nennt das Gateway die Nummer des Eintrags, nicht den Namen. | `gateway/krypto_zuordnung.py` |
 | Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. | `onion_sperrliste` |
 
 Dem Modell aufgetragen (`CLAUDE.md`, Skills, Agenten), ohne technische Sperre: Platzhalter nie auflösen,
@@ -696,7 +700,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 53 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 55 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -946,4 +950,10 @@ Die Blockchain-Analyse fragt öffentliche Dienste ab (mempool.space, Blockstream
 TRM Labs, Ransomwhere, WalletExplorer, DefiLlama, EZB). Deren Nutzungsbedingungen gelten auch für euch.
 
 Beiträge sind willkommen, besonders neue Quellen und Rückmeldungen aus `pruefen.py --live`. Bitte keine
-Falldaten, Schlüssel oder echten Indikatoren in Issues und Pull Requests.
+Falldaten, Schlüssel oder echten Indikatoren in Issues und Pull Requests. Wie eine Quelle dazukommt und was vor
+einem Pull Request läuft, steht in [CONTRIBUTING.md](CONTRIBUTING.md). Schwachstellen bitte vertraulich melden:
+[SECURITY.md](SECURITY.md). Wie die Aufbauphase durch einen sauberen Entwicklungsmodus abgelöst werden kann, steht
+als Vorschlag in [docs/ENTWICKLUNGSMODUS.md](docs/ENTWICKLUNGSMODUS.md).
+
+Die Etikettenliste unter `gateway/listen/` ist aus den GraphSense TagPacks abgeleitet (MIT-Lizenz, Text in
+[`gateway/listen/LIZENZ-TagPacks.txt`](gateway/listen/LIZENZ-TagPacks.txt)).

@@ -49,6 +49,7 @@ _KUNDEN_MARKEN = {"exchange", "cex", "centralized-exchange", "hot-wallet", "cold
 _MISCH_MARKEN = {"mixer", "mixing", "mixing-service", "tumbler", "coinjoin"}
 _MISCH_NAME = re.compile(r"tornado[ .]?cash|mixer|mixing|tumbler|coin ?join|joinmarket|wasabi|samourai|whirlpool|bitcoin ?fog|blender\.io|sinbad|railgun",
                          re.IGNORECASE)
+_WALLET_ROLLE = re.compile(r"(?<![a-z])(hot|cold|deposit|withdraw(?:al)?|wallet|exchange|custody)(?![a-z])", re.IGNORECASE)
 _IKNAIO_DIENST = {"exchange", "service", "gambling", "payment_processor", "wallet_service", "hosted_wallet", "atm", "mining_pool"}
 _IKNAIO_MISCHER = {"mixing_service", "mixer", "coinjoin"}
 TRM_KOERPER = 900          # TRM nimmt je Anfrage höchstens 1 KB an. Grössere Listen gehen in mehreren Anfragen
@@ -233,7 +234,10 @@ class Zuordner:
                 ergebnis.append(etikett(krypto_listen.QUELLE, m["art"], e["label"], m["detail"], dienst=m["dienst"], mischer=m["mischer"],
                                         betreiber=m["betreiber"], beleg=self._tp_beleg))
         for e in (self._ofac or {}).get(_schluessel(adresse), []):
-            ergebnis.append(etikett("OFAC", "sanktion", e["name"],
+            # Die Liste nennt auch natürliche Personen. Das Gateway nennt keine Person: Der Eintrag lässt sich über seine Nummer
+            # in der öffentlichen Liste nachschlagen, der Name steht in der Rohdatei.
+            person = e.get("typ", "").lower() == "individual"
+            ergebnis.append(etikett("OFAC", "sanktion", "Sanktionierte natürliche Person (Name in der Liste)" if person else e["name"],
                                     f"SDN-Liste, Programm {e['programm']}, Eintrag {e['nr']}, geführt als {e['waehrung']}",
                                     beleg=self._ofac_beleg))
         z = (self._rw or {}).get(_schluessel(adresse))
@@ -295,10 +299,28 @@ class Zuordner:
         if a.daten.get("wallet_id"):
             self.cluster[adresse] = str(a.daten["wallet_id"])
         if a.daten.get("label"):
-            return [etikett("WalletExplorer", "name", str(a.daten["label"]),
-                            f"Wallet-Kennung {a.daten.get('wallet_id')}: Zuordnung über gemeinsam ausgegebene Adressen", dienst=True,
-                            mischer=bool(_MISCH_NAME.search(str(a.daten["label"]))), beleg=a.id)]
+            name = str(a.daten["label"])
+            # WalletExplorer benennt Wallets von Diensten, sagt aber nicht, welcher Art. Kennt die lokale Liste den Namen, gilt
+            # ihre Kategorie: Ein Mining-Pool oder ein Marktplatz ist kein Dienst, bei dem sich ein Kunde erfragen liesse.
+            kategorie = self._we_kategorie(name)
+            dienst_ = kategorie in krypto_listen.DIENST if kategorie else True
+            mischer_ = kategorie in krypto_listen.MISCHER if kategorie else bool(_MISCH_NAME.search(name))
+            art = f", Art laut Etikettenliste: {krypto_listen.KATEGORIE.get(kategorie, kategorie)}" if kategorie else ""
+            return [etikett("WalletExplorer", "name", name,
+                            f"Wallet-Kennung {a.daten.get('wallet_id')}: Zuordnung über gemeinsam ausgegebene Adressen{art}", dienst=dienst_,
+                            mischer=mischer_ or bool(_MISCH_NAME.search(name)), beleg=a.id)]
+        if a.daten.get("found") and a.daten.get("wallet_id"):
+            return [etikett("WalletExplorer", "hinweis", "Unbenannte Wallet",
+                            f"gehört zur Wallet {a.daten['wallet_id']}, der WalletExplorer keinen Namen gibt", beleg=a.id)]
         return []
+
+    def _we_kategorie(self, name: str) -> str:
+        """Kategorie, unter der die lokale Etikettenliste einen Namen von WalletExplorer führt, oder ''."""
+        if not isinstance(self._tp, krypto_listen.Liste):
+            return ""
+        if not hasattr(self._tp, "we_namen"):
+            self._tp.we_namen = {t[0].lower(): t[1] for t in self._tp._tupel if t[5] == "walletexplorer" and t[1]}
+        return self._tp.we_namen.get(name.lower(), "")
 
     async def _tether(self, adresse: str) -> list[dict]:
         try:
@@ -326,10 +348,15 @@ class Zuordner:
             return []
         self._melden("Tronscan", "ok", a.id)
         d = a.daten
+        vertrag = d.get("accountType") == 2 or bool(d.get("contractMap"))
         for feld in ("addressTag", "publicTag", "blueTag"):
             name = str(d.get(feld) or "").strip()
             if name and name != adresse and not any(e["name"] == saeubern(name, 90) for e in ergebnis):
-                ergebnis.append(etikett("Tronscan", "name", name, dienst=True, mischer=bool(_MISCH_NAME.search(name)), beleg=a.id))
+                # Tronscan vergibt Namen ohne Kategorie, auch an Token, Programme und gemeldete Adressen. Ein Name allein macht
+                # keinen Dienst. Als Dienst gilt die Adresse nur, wenn der Name sie als Wallet eines Dienstes ausweist
+                # («Binance-Hot 2», «… Cold», «… Deposit») und sie kein Programm ist.
+                ergebnis.append(etikett("Tronscan", "name", name, dienst=not vertrag and bool(_WALLET_ROLLE.search(name)),
+                                        mischer=bool(_MISCH_NAME.search(name)), beleg=a.id))
         if str(d.get("redTag") or "").strip():
             ergebnis.append(etikett("Tronscan", "meldung", str(d["redTag"]), "Warnhinweis von Tronscan", beleg=a.id))
         if str(d.get("greyTag") or "").strip():

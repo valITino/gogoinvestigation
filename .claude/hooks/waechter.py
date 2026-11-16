@@ -62,6 +62,7 @@ SCHLUESSELDATEIEN = (".env", ".env.local")      # bleiben auch in der Aufbauphas
 GESCHUETZT_IM_FALL = ("fall.json", "protokoll/", "rohdaten/", "eingang/")
 SHELLS = ("Bash", "PowerShell", "Monitor")
 EINGANG = re.compile(r"(?:^|/)faelle/([^/]+)/eingang(?:/(.+))?$", re.I)
+SCHLUESSEL_IM_BEFEHL = re.compile(r"(?<![\w-])\.env(\.local)?(?![\w.-])")       # .env und .env.local, nicht .env.example
 FALLWERKZEUG = re.compile(r"\s*\S*py(thon[\d.]*)?(\.exe)?\s+\S*tools/fall\.py\s[^;&|`$<>]*", re.I)
 NETZ = re.compile(r"(^|[\s;&|(`$'\"])(curl|wget|nc|ncat|ssh|scp|sftp|telnet|ftp|iwr|irm|invoke-webrequest|"
                   r"invoke-restmethod|start-bitstransfer|bitsadmin)(\.exe)?(\s|$)"
@@ -149,6 +150,10 @@ def shell(befehl: str) -> None:
     if re.search(r"fall\.py\s+freigabe|--trotzdem", b, re.I):
         ablehnen("Freigaben und das Übersteuern der PII-Prüfung sind Entscheidungen des Sachbearbeiters. "
                  "Er führt den Befehl selbst am Terminal aus.")
+    if SCHLUESSEL_IM_BEFEHL.search(b):
+        # Die Berechtigungen sperren .env nur für das Lesewerkzeug. Ein Befehl in der Shell käme sonst daran vorbei.
+        ablehnen("Die Schlüsseldatei .env wird von Agenten weder gelesen noch verändert. Welche Schlüssel gesetzt sind, "
+                 f"zeigt {plattform.PY} tools/pruefen.py (nur die Namen).")
     if re.search(r"beleg\.py\s+erfassen", b, re.I):
         ablehnen("Einen Beleg von Hand erfasst nur der Sachbearbeiter am Terminal (tools/beleg.py). Ein Agent schreibt sich "
                  "keinen Beleg selbst. Fehlt eine Abklärung, steht sie im Rapport als «nicht geprüft».")
@@ -184,7 +189,8 @@ def main() -> None:
 
     if werkzeug == "Read":
         lesen(str(eingabe.get("file_path") or ""), cwd, verzeichnis_erlaubt=False)
-    elif werkzeug == "Grep":
+    elif werkzeug in ("Grep", "Glob"):
+        # Auch eine Dateiliste verrät etwas: Der Name eines ungeprüften Dokuments kann eine Person nennen
         lesen(str(eingabe.get("path") or "."), cwd, verzeichnis_erlaubt=True)
     elif werkzeug in ("Edit", "Write", "NotebookEdit"):
         schreiben(str(eingabe.get("file_path") or eingabe.get("notebook_path") or ""), cwd)

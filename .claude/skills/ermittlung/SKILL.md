@@ -99,7 +99,9 @@ Stationen führt. Ihre Grenzen (Tiefe, Abfragebudget) setzt das Werkzeug.
 
 Nur wenn ein Analyst eine vorschlägt **und** die Freigabe `aktiv` erteilt ist. Dann je Massnahme einzeln fragen:
 was genau, was man erfährt, was das Ziel bemerkt. Nach Zustimmung führst du sie selbst aus
-(`urlquery_einreichen` mit `sichtbarkeit: private`, `webcheck_aktiv`, `wayback_sichern`). Ohne Freigabe oder
+(`urlquery_einreichen`, `urlscan_einreichen`, `webcheck_aktiv`, `wayback_sichern`). Die beiden Einreichungen gehen
+immer privat hinaus, dafür gibt es keinen Parameter. Vor einer Einreichung steht die Suche nach vorhandenen
+Berichten und Scans. Ohne Freigabe oder
 Zustimmung: als Empfehlung in den Rapport.
 
 ## Phase 6: Befunde schreiben

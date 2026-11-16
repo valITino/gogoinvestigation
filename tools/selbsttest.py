@@ -2255,6 +2255,90 @@ def _():
         assert abgelehnt(a) is gesperrt, (befehl, a)
 
 
+@test("Zuordnung: keine Person beim Namen, ein Name von Tronscan macht keinen Dienst, WalletExplorer mit Art aus der Liste, Einreichen nur privat")
+def _():
+    # Die Sanktionsliste nennt auch natürliche Personen. Das Gateway nennt keine: Der Eintrag ist über seine Nummer nachschlagbar
+    w = kwelt()
+    w.ofac.append(("90001", "ERFUNDEN, Erika", "CYBER2", [("XBT", kw.btc("person"))], "individual"))
+    w.walletexplorer[kw.btc("pool")] = "SlushPool.com"            # führt die Etikettenliste als Mining
+    w.walletexplorer[kw.btc("boerse")] = "Bitfinex.com"           # führt sie als Börse
+    w.walletexplorer[kw.btc("fremd")] = "Unbekanntdienst.example"  # kennt sie nicht
+    r = kruf(krypto.krypto_zuordnung, [kw.btc("person"), kw.btc("ofac-fest"), kw.btc("pool"), kw.btc("boerse"), kw.btc("fremd"), kw.btc("namenlos")])
+    je = {z["adresse"]: z for z in r["befund"]["adressen"]}
+    person = je[kw.btc("person")]
+    assert person["auffaellig"] == ["sanktion"] and "ERFUNDEN" not in json.dumps(r, ensure_ascii=False), f"eine sanktionierte Person steht mit Namen im Ergebnis: {person}"
+    assert person["etiketten"][0]["name"].startswith("Sanktionierte natürliche Person") and "Eintrag 90001" in person["etiketten"][0]["detail"], person
+    assert je[kw.btc("ofac-fest")]["etiketten"][0]["name"] == "MUSTER HANDELS AG", "eine sanktionierte Organisation bleibt benannt"
+    # WalletExplorer sagt nicht, welcher Art ein Dienst ist. Kennt die Liste den Namen, gilt ihre Kategorie
+    assert "dienst" not in je[kw.btc("pool")] and "Mining" in je[kw.btc("pool")]["etiketten"][0]["detail"], je[kw.btc("pool")]
+    assert je[kw.btc("boerse")]["dienst"] == "Bitfinex.com" and je[kw.btc("fremd")]["dienst"] == "Unbekanntdienst.example", (je[kw.btc("boerse")], je[kw.btc("fremd")])
+    namenlos = je[kw.btc("namenlos")]["etiketten"]
+    assert [m["name"] for m in namenlos] == ["Unbenannte Wallet"] and "dienst" not in je[kw.btc("namenlos")], namenlos
+
+    # Tronscan vergibt Namen ohne Kategorie: an Token, Programme, gemeldete Adressen. Dienst ist nur, was als Wallet eines Dienstes benannt ist
+    w = kwelt()
+    os.environ["TRONSCAN_API_KEY"] = "tronscan-testschluessel-01"
+    try:
+        w.tronscan[kw.tron("heiss")] = {"publicTag": "Beispielboerse-Hot 2", "accountType": 0}
+        w.tronscan[kw.tron("token")] = {"addressTag": "MusterToken", "name": "MusterToken", "accountType": 2, "contractMap": {kw.tron("token"): True}}
+        w.tronscan[kw.tron("gemeldet")] = {"publicTag": "Fake_Phishing9041", "accountType": 0}
+        w.tronscan[kw.tron("tausch")] = {"publicTag": "MusterSwap Wallet Router", "accountType": 2}
+        r = kruf(krypto.krypto_zuordnung, [kw.tron("heiss"), kw.tron("token"), kw.tron("gemeldet"), kw.tron("tausch")], quellen=["tronscan"])
+        je = {z["adresse"]: z for z in r["befund"]["adressen"]}
+        assert je[kw.tron("heiss")]["dienst"] == "Beispielboerse-Hot 2", je[kw.tron("heiss")]
+        for name in ("token", "gemeldet", "tausch"):
+            assert "dienst" not in je[kw.tron(name)] and je[kw.tron(name)]["etiketten"], f"ein Name allein macht keinen Dienst: {je[kw.tron(name)]}"
+    finally:
+        del os.environ["TRONSCAN_API_KEY"]
+
+    # urlquery: Eine Einreichung geht nur privat hinaus. Das Werkzeug hat keinen Parameter mehr dafür, und der Kern hält alles andere auf
+    import inspect
+    assert list(inspect.signature(web.urlquery_einreichen).parameters) == ["fall", "zweck", "url"], inspect.signature(web.urlquery_einreichen)
+    assert kern.schranke("POST", "https://api.urlquery.net/public/v1/submit/url", {"url": "https://example.org/", "access": "public"})
+    assert kern.schranke("POST", "https://api.urlquery.net/public/v1/submit/url", {"url": "https://example.org/"})
+    assert kern.schranke("POST", "https://api.urlquery.net/public/v1/submit/url", {"url": "https://example.org/", "access": "private"}) is None
+    assert kern.schranke("GET", "https://api.urlquery.net/public/v1/submit/status/abc", None) is None
+
+    # Jeder Befund aus einer Quelle trägt den Hinweis «Fremdinhalt», auch wo das Werkzeug ihn nicht eigens setzt
+    kern.transport = httpx.MockTransport(antwort)
+    r = aufruf(infra.shodan_internetdb, zweck=ZWECK, ip="203.0.113.77")
+    assert r["ergebnis"] == "ok" and r["hinweis"] == kern.FREMD, r
+    r = aufruf(infra.abuseipdb_pruefen, zweck=ZWECK, ip="203.0.113.78", tage=30)
+    assert r["hinweis"] == kern.FREMD and r["befund"]["zeitraum_tage"] == 30, r
+
+    # Aus dem Cache: Das Urteil über den Inhalt fällt mit der Deutung von heute, nicht mit der von damals
+    def als_treffer(anfrage: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "fehlgeschlagen", "grund": "erfunden"})
+    kern.transport = httpx.MockTransport(als_treffer)
+    angaben = dict(werkzeug="probe_cache", quelle="Probe", ziel="x", ziel_typ="probe", url="https://probe.example.org/x", cache_h=24)
+    erst = asyncio.run(kern.abfrage(FALL, ZWECK, **angaben))
+    assert erst.ergebnis == "ok" and not erst.aus_cache
+    deutung = lambda status, daten, text: ("fehler", "Die Quelle meldet einen Fehlschlag.") if (daten or {}).get("status") == "fehlgeschlagen" else None  # noqa: E731
+    wieder = asyncio.run(kern.abfrage(FALL, ZWECK, deutung=deutung, **angaben))
+    assert wieder.aus_cache == erst.id and wieder.ergebnis == "fehler" and "Fehlschlag" in wieder.fehler, (wieder.ergebnis, wieder.fehler)
+    kern.transport = httpx.MockTransport(antwort)
+
+
+@test("Wächter: Die Schlüsseldatei ist auch in der Shell tabu, und eine Dateiliste zeigt keinen ungeprüften Eingang")
+def _():
+    # .env sperren die Berechtigungen nur für das Lesewerkzeug. Der Wächter hält dieselbe Datei in Shell-Befehlen auf, auch in der Aufbauphase
+    for befehl in ("cat .env", "head -3 ./.env", "grep KEY .env.local", "cp .env /tmp/x", "python3 -c \"print(open('.env').read())\"", "type .env", "echo X=1 >> .env"):
+        for werkzeug in ("Bash", "PowerShell"):
+            assert abgelehnt(waechter(werkzeug, command=befehl)), f"{werkzeug}: «{befehl}» kam an die Schlüsseldatei"
+    for befehl in ("cat .env.example", "diff .env.example docs/x", "python3 tools/pruefen.py", "ls .environment", "echo my.envelope"):
+        assert not abgelehnt(waechter("Bash", command=befehl)), f"«{befehl}» wurde zu Unrecht gesperrt"
+    # Eine Dateiliste über den Eingang verrät die Namen ungeprüfter Dokumente. Der Wächter behandelt sie wie eine Suche
+    (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").write_text("ungeprüft", encoding="utf-8")
+    try:
+        for eingabe in ({"pattern": "**/*", "path": f"faelle/{FALL}"}, {"pattern": f"faelle/{FALL}/eingang/*"}, {"pattern": "*", "path": f"faelle/{FALL}/eingang"}):
+            assert abgelehnt(waechter("Glob", **eingabe)), f"Glob {eingabe} listet einen ungeprüften Eingang"
+    finally:
+        (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").unlink()
+    assert not abgelehnt(waechter("Glob", pattern="*.py", path="tools")), "Glob ausserhalb der Fallakten wurde gesperrt"
+    treffer = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["hooks"]["PreToolUse"][0]["matcher"]
+    assert "Glob" in treffer.split("|"), f"der Wächter wird für Glob nicht aufgerufen: {treffer}"
+
+
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")
 def _():
     bekannt = {f"mcp__osint__{w}" for w in alle_werkzeuge() | {"fall_status"}} | {f"mcp__robin__{w}" for w in ROBIN_WERKZEUGE}

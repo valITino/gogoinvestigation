@@ -153,7 +153,7 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | `urlscan_einreichen` | urlscan.io: die URL. Der Scan ist «private»: sichtbar für das eigene Konto und für urlscan.io, nicht in der öffentlichen Suche. | einen Besuch von einem Server von urlscan.io |
 | Web-Check passiv | je nach Prüfung DNS-Resolver, RDAP, crt.sh, Tranco und weitere Dritte: eure Adresse und die Domain | nichts vom Webserver. Die Nameserver des Ziels sehen DNS-Anfragen der Resolver. |
 | Web-Check aktiv | | die Adresse eurer Web-Check-Instanz, in seinen Serverprotokollen |
-| `urlquery_einreichen` | urlquery: die URL | einen Besuch von urlquery. Je nach `sichtbarkeit` ist der Bericht öffentlich. |
+| `urlquery_einreichen` | urlquery: die URL. Der Bericht ist «private», das Gateway reicht nie öffentlich ein. | einen Besuch von urlquery |
 | `wayback_sichern` | archive.org: die URL | einen Besuch von archive.org. Die Aufnahme ist öffentlich und bleibt. |
 | `onion_sperrliste` | Ahmia: dass jemand die Liste lädt. **Nicht** die geprüfte Adresse. | nichts |
 | `telegram_kanal`, `chan_*` | Telegram oder 4chan: eure Adresse, Kanal oder Board. **Nicht** das Stichwort, es wird lokal gefiltert. | nichts |
@@ -242,7 +242,8 @@ law enforcement or government investigative agencies. Standard commercial licens
 Lizenz ist nach den Bedingungen für die eigene Erprobung gedacht. Für Ermittlungen deckt sie das Nachschlagen von
 Hand also nicht: Dafür braucht es eine bezahlte Lizenz.
 
-**urlquery.** `urlquery_einreichen` steht standardmässig auf `private`. Vor jeder Einreichung sucht der Analyst
+**urlquery.** `urlquery_einreichen` reicht immer mit dem Zugriff `private` ein. Einen Parameter dafür gibt es nicht mehr,
+und die Schranke im Kern des Gateways lässt eine Einreichung mit anderem Zugriff nicht hinaus. Vor jeder Einreichung sucht der Analyst
 nach vorhandenen Berichten.
 
 Ohne Feldnamen sucht urlquery im Volltext der Berichte ([Hilfe des Anbieters](https://urlquery.net/help/search)). Am

@@ -216,6 +216,7 @@ class Antwort:
             d["fehler"] = self.fehler
         if befund is not None:
             d["befund"] = befund
+            d["hinweis"] = FREMD          # jeder Befund stammt von einer fremden Quelle. Ein Werkzeug kann den Hinweis ersetzen
         d.update(zusatz)
         return d
 
@@ -307,6 +308,10 @@ def schranke(methode: str, url: str, koerper: Any) -> str | None:
         if not isinstance(koerper, dict) or koerper.get("visibility") != "private":
             return ("Eine Einreichung bei urlscan.io verlässt das Gateway nur mit der Sichtbarkeit «private». "
                     "Öffentliche und nicht gelistete Scans sind für Dritte auffindbar.")
+    if host == "api.urlquery.net" and methode.upper() != "GET" and "/submit" in urlsplit(url).path:
+        if not isinstance(koerper, dict) or koerper.get("access") != "private":
+            return ("Eine Einreichung bei urlquery verlässt das Gateway nur mit dem Zugriff «private». "
+                    "Ein öffentlicher Bericht nennt die eingereichte Adresse für alle sichtbar.")
     return None
 
 
@@ -372,6 +377,13 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
         e = protokollieren(akte, {**basis, "antwort": {**alt, "dauer_ms": 0, "aus_cache": treffer["id"]},
                                   "ergebnis": treffer["ergebnis"], "fehler": None, "schluessel": key})
         daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
+        if deutung and treffer["ergebnis"] != "fehler":
+            # Das Urteil über den Inhalt fällt neu, mit der Deutung von heute: Was eine frühere Fassung des Gateways als Treffer
+            # ablegte, obwohl es keiner war, bleibt sonst so lange falsch, wie der Cache hält. Im Protokoll steht das alte Urteil.
+            urteil = deutung(alt.get("status") or 0, daten, text)
+            if urteil and urteil[0] != treffer["ergebnis"]:
+                return Antwort(e["id"], alt["status"], urteil[0], daten, text, f"faelle/{akte.id}/{alt['rohdaten']}" if alt.get("rohdaten") else None,
+                               treffer["id"], urteil[1] if urteil[0] == "fehler" else None, quelle)
         return Antwort(e["id"], alt["status"], treffer["ergebnis"], daten, text,
                        f"faelle/{akte.id}/{alt['rohdaten']}" if alt.get("rohdaten") else None,
                        treffer["id"], None, quelle)
@@ -567,7 +579,7 @@ class Vorgang:
             "ergebnis": ergebnis, "fehler": None, "schluessel": None}, inhalt, "json")
         d: dict[str, Any] = {"protokoll_id": e["id"], "ergebnis": ergebnis,
                              "rohdaten": f"faelle/{self.akte.id}/{e['antwort']['rohdaten']}",
-                             "belege": grundlage, "befund": befund}
+                             "belege": grundlage, "befund": befund, "hinweis": FREMD}
         if self.fehlschlaege:
             d["fehlgeschlagen"] = self.fehlschlaege[:12]
         d.update(zusatz)

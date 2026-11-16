@@ -166,6 +166,7 @@ async def abuseipdb_pruefen(fall: Fall, zweck: Zweck, ip: str,
     return a.als_dict({**nimm(d, "ipAddress", "abuseConfidenceScore", "totalReports", "numDistinctUsers",
                               "lastReportedAt", "isp", "usageType", "domain", "countryCode", "hostnames",
                               "isTor", "isWhitelisted", "isPublic"),
+                       "zeitraum_tage": tage,       # Zahl und Score gelten für diesen Zeitraum, nicht für immer
                        "letzte_meldungen": _meldungen(d.get("reports"), 10)})
 
 

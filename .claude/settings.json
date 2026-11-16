@@ -85,7 +85,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Bash|PowerShell|Monitor|Edit|Write|NotebookEdit|mcp__robin__.*",
+        "matcher": "Read|Grep|Glob|Bash|PowerShell|Monitor|Edit|Write|NotebookEdit|mcp__robin__.*",
         "hooks": [
           {
             "type": "command",
