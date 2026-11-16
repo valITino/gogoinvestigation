@@ -167,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 43 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 45 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -666,7 +666,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 43 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 45 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -725,7 +725,7 @@ Werkzeug einzeln. Je Werkzeug wurde die gekürzte Antwort Feld für Feld mit der
 Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
 
 - Shodan (`shodan_host`, Zählen in `shodan_suche`), Shodan InternetDB, VirusTotal (alle fünf Werkzeuge), AbuseIPDB
-  (beide), urlquery (Suche und Reputation), ransomware.live API PRO (alle sechs Pfade), Ahmia-Sperrliste (60'371
+  (beide), urlquery (Suche, Bericht und Reputation), ransomware.live API PRO (alle sechs Pfade), Ahmia-Sperrliste (60'371
   Einträge, jeder ein MD5-Wert), Telegram-Vorschau, 4chan (Katalog und Thread), Mastodon-Instanz.
 - Blockchain mit Schlüssel, 22 von 22 Prüfungen: Blockscout für Ethereum, Optimism, Arbitrum und Gnosis, TronGrid,
   Etherscan (Gegenprüfung einer Ethereum-Transaktion, Polygon, Arbitrum), Tronscan (Etikett einer Börsen-Adresse,
@@ -746,7 +746,9 @@ Auch diese Prüfung hat Fehler gezeigt, die an erfundenen Antworten nicht auffie
 Selbsttest abgesichert, gegen Vorlagen in der Form der echten Antworten (`tools/_vorlagen.py`): Das Gateway
 schrieb Adressen samt Schlüssel in sein Log, Web-Check meldet Fehlschläge mit HTTP 200 (sie galten als Treffer),
 ransomware.live nannte als Zahl der Opfer die Länge der gekürzten Liste und reichte die E-Mail-Adresse des
-eigenen Kontos an den Agenten weiter, und der kostenlose Blockscout-Schlüssel deckt Polygon und Base nicht.
+eigenen Kontos an den Agenten weiter, urlquery suchte im Volltext und fand Berichte ohne Bezug zum Ziel, der
+kostenlose Blockscout-Schlüssel deckt Polygon und Base nicht, und der Sitzungs-Hook legte Antworten fremder
+MCP-Server als Belege in die Fallakte.
 
 **Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
 

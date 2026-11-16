@@ -23,8 +23,8 @@ Datei anpassen.
 | | `virustotal_beziehungen` | `GET …/{sammlung}/{id}/{beziehung}` | geprüft am 16.11.2026 mit `resolutions` einer Domain. Andere Beziehungen sind nicht geprüft, manche verlangen ein Premium-Abo. |
 | Spur | `spur_kontext` | `GET api.spur.us/v2/context/{ip}`, Kopfzeile `Token` | nicht geprüft, kein Schlüssel. Endpunkt nach docs.spur.us. |
 | AbuseIPDB | `abuseipdb_pruefen`, `_meldungen` | `GET api.abuseipdb.com/api/v2/check` und `/reports`, Kopfzeile `Key` | geprüft am 16.11.2026 (8.8.8.8, 1.1.1.1) |
-| urlquery | `urlquery_suche`, `_reputation` | `GET api.urlquery.net/public/v1/search/reports/`, `/reputation/check/`, Kopfzeile `x-apikey` | geprüft am 16.11.2026. Die Suche ist eine Volltextsuche, siehe [Hinweise](#hinweise-je-quelle). |
-| | `urlquery_bericht` | `GET …/report/{id}` | siehe [Hinweise](#hinweise-je-quelle) |
+| urlquery | `urlquery_suche`, `_reputation` | `GET api.urlquery.net/public/v1/search/reports/`, `/reputation/check/`, Kopfzeile `x-apikey` | geprüft am 16.11.2026. Die Suche fragt Felder ab, siehe [Hinweise](#hinweise-je-quelle). |
+| | `urlquery_bericht` | `GET …/report/{id}` | geprüft am 16.11.2026 an einem öffentlichen Bericht: Alarme, Aufrufe, Hosts. Ein Bericht mit heruntergeladenen Dateien (`artifacts.files`) kam nicht vor. |
 | | `urlquery_status`, `_einreichen` | `GET …/submit/status/{id}`, `POST …/submit/url` | nicht geprüft: Beides setzt eine Einreichung voraus, und die ist eine aktive Massnahme. Eine erfundene Kennung beantwortet der Dienst mit HTTP 400. |
 | Wayback Machine | `wayback_verlauf` | `GET web.archive.org/cdx/search/cdx` | nicht prüfbar aus der Prüfumgebung vom 16.11.2026: Die Verbindung zu `web.archive.org` brach jedes Mal ab. Endpunkte nach der Dokumentation der CDX-Schnittstelle. |
 | | `wayback_abruf` | `GET web.archive.org/web/{zeit}id_/{url}` | wie oben |
@@ -51,6 +51,9 @@ Was die Prüfung vom 16.11.2026 gezeigt hat und seither behoben ist, jeweils mit
   wiederholt in jeder Antwort die E-Mail-Adresse des eigenen Kontos: Sie ging an den Agenten und in die Rohdatei.
 - VirusTotal: Bei Beziehungen stand nur die Zahl der gelieferten Einträge da, nicht die Gesamtzahl.
 - Telegram und Wayback: «nichts da» stand im Protokoll als Treffer.
+- urlquery: Die Suche lief im Volltext, und der Bericht las Alarme und Dateien aus Feldern, die es nicht gibt.
+- Der Sitzungs-Hook legte die Antwort jedes MCP-Servers als Beleg `X-…` in den Fall, den die Sitzung zuletzt berührt
+  hatte, auch die von GitHub. Belege sind jetzt nur noch Antworten von Quellen (Robin).
 - Blockscout: siehe [Blockchain](#blockchain).
 
 ## Blockchain
@@ -145,6 +148,17 @@ von heute beschreibt den Besitzer von heute.
 **urlquery.** `urlquery_einreichen` steht standardmässig auf `private`. Vor jeder Einreichung sucht der Analyst
 nach vorhandenen Berichten.
 
+Ohne Feldnamen sucht urlquery im Volltext der Berichte ([Hilfe des Anbieters](https://urlquery.net/help/search)). Am
+16.11.2026 lieferte «example.com» so 25'280 Treffer, die obersten ohne Bezug zur Domain. `urlquery_suche` erkennt
+deshalb, ob der Suchtext eine Domain, IP, URL oder ein Hash ist, und fragt die passenden Felder ab, für eine Domain
+`url.domain`, `url.fqdn`, `final.url.*` und `http.url.*`. Mit `art=text` bleibt die Volltextsuche möglich, das
+Ergebnis sagt es dann dazu. Ein Treffer heisst: Der Wert kommt im Bericht vor. In welcher Rolle, zeigt erst der
+Bericht. Dessen Form weicht von dem ab, was beim Bau angenommen war: Alarme stehen je Sensorgruppe unter
+`detection`, Dateien unter `artifacts.files`. Beides ist behoben.
+
+Die Nutzungsbedingungen von urlquery sprechen von «lawful, personal, non-commercial purposes». Ob euer Einsatz
+darunter fällt, klärt ihr mit dem Anbieter.
+
 **Web-Check.** 13 passive und 27 aktive Prüfungen. Passiv: `archives`, `block-lists`, `breaches`, `caa-records`,
 `dns`, `dnssec`, `get-ip`, `rank`, `shodan`, `subdomains`, `threats`, `txt-records`, `whois`. Die Prüfung
 `threats` bleibt nur passiv, solange in der Web-Check-Instanz kein Cloudmersive-Schlüssel hinterlegt ist: Mit
@@ -196,7 +210,9 @@ dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sp
 `robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
 Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, übernehmen die Hooks: Der
 Wächter verlangt die Freigabe `darkweb`, der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
-Fallakte und verkettet sie. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
+Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
+`.claude/hooks/protokoll_hook.py`, heute Robin). Andere MCP-Server sind Arbeitsmittel: Ihre Aufrufe stehen im
+Sitzungsprotokoll, ihre Antworten sind kein Beleg. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
 
 ```bash
 docker build -t robin-intern /pfad/zu/eurem/robin-fork
