@@ -1,6 +1,6 @@
 {
   "fall_id": "MUSTER-2026-001",
-  "stand": "2026-11-12T08:10:11Z",
+  "stand": "2026-11-12T08:10:41Z",
   "zusammenfassung": [
     "Die Phishing-Seite, über die am 29.09.2026 Zugangsdaten der [ORG_01] abgegriffen wurden, lag auf einem gemieteten Server in den Niederlanden. Die Domain wurde drei Tage vor der Tat registriert. Derselbe Server lieferte die Phishing-E-Mail ein und ist das Ziel der angehängten Schadsoftware.",
     "Die Anmeldung mit den erbeuteten Zugangsdaten kam über einen kommerziellen VPN-Dienst. Die Adresse führt deshalb nicht zu einem Anschlussinhaber. Die im Erpresserschreiben genannte Gruppe ist bekannt und betreibt die genannte Leak-Seite. Ein technischer Zusammenhang zwischen Phishing und Erpressung ist bisher nicht belegt.",
@@ -60,7 +60,10 @@
       "belege": [
         "P-0033",
         "P-0035",
-        "P-0037"
+        "P-0037",
+        "P-0085",
+        "P-0086",
+        "P-0087"
       ]
     },
     {
@@ -72,7 +75,8 @@
       "bewertung": "boesartig",
       "belege": [
         "P-0036",
-        "P-0034"
+        "P-0034",
+        "P-0091"
       ]
     },
     {
@@ -269,7 +273,7 @@
       "art": "bewertung",
       "sicherheit": "hoch",
       "quellenbewertung": "B2",
-      "text": "Die Domain wurde am 26.09.2026 registriert. Die erste Archivaufnahme der Anmeldeseite stammt vom 28.09.2026, die Phishing-E-Mail vom 29.09.2026. Der Sandbox-Dienst stuft die Domain als jünger als sieben Tage ein. Eine frühere, unverdächtige Nutzung ist nicht ersichtlich.",
+      "text": "Die Domain wurde am 26.09.2026 registriert, so steht es bei VirusTotal und in den Registrierungsdaten (Whois). Die erste Archivaufnahme der Anmeldeseite stammt vom 28.09.2026, die Phishing-E-Mail vom 29.09.2026. Der Sandbox-Dienst stuft die Domain als jünger als sieben Tage ein. Eine frühere, unverdächtige Nutzung ist nicht ersichtlich.",
       "erlaeuterung": "Die Internetadresse gab es vor der Tat praktisch nicht. Sie wurde kurz davor angelegt und sofort mit der gefälschten Anmeldeseite bestückt. Das spricht dafür, dass sie eigens für diesen Zweck eingerichtet wurde und nicht einer gehackten, sonst harmlosen Website gehört.",
       "indikatoren": [
         "I-01",
@@ -278,7 +282,8 @@
       "belege": [
         "P-0033",
         "P-0037",
-        "P-0036"
+        "P-0036",
+        "P-0085"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -346,7 +351,7 @@
       "art": "feststellung",
       "sicherheit": "mittel",
       "quellenbewertung": "B2",
-      "text": "Der Sandbox-Bericht vom 30.09.2026 zeigt eine Seite mit dem Titel «Kundenportal – Anmeldung». Das Formular sendet die Eingaben an /gate.php auf 203.0.113.7. Das Skript ist als Bestandteil eines bekannten Phishing-Baukastens erkannt. Bei VirusTotal lag zur genauen URL keine Analyse vor.",
+      "text": "Der Sandbox-Bericht vom 30.09.2026 zeigt eine Seite mit dem Titel «Kundenportal – Anmeldung». Das Formular sendet die Eingaben an /gate.php auf 203.0.113.7. Das Skript ist als Bestandteil eines bekannten Phishing-Baukastens erkannt. Bei VirusTotal lag zur genauen URL keine Analyse vor. Ein vorhandener Scan bei urlscan.io vom 30.09.2026 nennt denselben Seitentitel und stuft die Seite als Phishing ein. Das Bildschirmfoto des Scans liegt in den Rohdaten.",
       "erlaeuterung": "Die Seite sah aus wie das echte Kundenportal. Was dort eingetippt wurde, ging aber nicht an die [ORG_01], sondern an ein kleines Programm der Täter, das Benutzername und Passwort einsammelt.",
       "indikatoren": [
         "I-02",
@@ -355,7 +360,9 @@
       "belege": [
         "P-0036",
         "P-0035",
-        "P-0034"
+        "P-0034",
+        "P-0087",
+        "P-0091"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -460,6 +467,22 @@
       ],
       "belege": [
         "P-0084"
+      ],
+      "gegenpruefung": "bestaetigt"
+    },
+    {
+      "id": "B-13",
+      "titel": "Eine von drei geprüften DNS-Sperrlisten führt die Phishing-Domain",
+      "art": "feststellung",
+      "sicherheit": "mittel",
+      "quellenbewertung": "B2",
+      "text": "Die eigene Web-Check-Instanz fragte drei DNS-Dienste mit Schutzfilter nach kundenportal-sicher.example. Quad9 sperrt die Domain, AdGuard und Cloudflare sperren sie nicht.",
+      "erlaeuterung": "Manche DNS-Dienste weigern sich, bekannte schädliche Namen aufzulösen. Einer von drei geprüften Diensten kennt die Domain bereits als schädlich. Das stützt die Einordnung, sagt aber nichts über den Betreiber. Wer einen der beiden anderen Dienste nutzt, erreicht die Seite weiterhin.",
+      "indikatoren": [
+        "I-01"
+      ],
+      "belege": [
+        "P-0086"
       ],
       "gegenpruefung": "bestaetigt"
     }
@@ -622,6 +645,13 @@
       "ereignis": "Sandbox-Bericht von urlquery stuft die Seite als Phishing ein.",
       "belege": [
         "P-0036"
+      ]
+    },
+    {
+      "zeit": "2026-09-30T11:32:10Z",
+      "ereignis": "Öffentlicher Scan der Phishing-Seite bei urlscan.io, Einstufung als Phishing.",
+      "belege": [
+        "P-0091"
       ]
     },
     {

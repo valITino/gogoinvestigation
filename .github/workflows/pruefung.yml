@@ -122,6 +122,17 @@ jobs:
           python tools\pruefen.py
           exit $LASTEXITCODE
 
+      # Die Oberfläche startet mit einem Befehl, auf jedem System: Server hoch, Hauptseiten abrufen, fremden Host-Kopf abweisen, beenden.
+      - name: Oberfläche starten (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: python3 tools/oberflaeche.py --selbstpruefung
+
+      - name: Oberfläche starten (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python tools\oberflaeche.py --selbstpruefung
+          exit $LASTEXITCODE
+
       - name: Meldungen der Installationsprogramme (nur bei Fehlern)
         if: failure()
         shell: bash

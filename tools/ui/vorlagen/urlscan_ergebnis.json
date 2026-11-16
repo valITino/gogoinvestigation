@@ -1,0 +1,127 @@
+{
+ "werkzeug": "urlscan_ergebnis",
+ "parameter": {
+  "uuid": "01a1e420-90e4-774e-a77b-64d38407fe8c",
+  "seitentext": true,
+  "bildschirmfoto": true
+ },
+ "grundlage": [
+  "P-1034",
+  "P-1035"
+ ],
+ "befund": {
+  "uuid": "01a1e420-90e4-774e-a77b-64d38407fe8c",
+  "zeit": "2026-11-16T11:32:10.568Z",
+  "eingereicht": "http://example.com/",
+  "sichtbarkeit": "public",
+  "methode": "manual",
+  "seite": {
+   "url": "https://example.com/",
+   "domain": "example.com",
+   "ip": "104.20.23.154",
+   "asn": "AS13335",
+   "netz": "CLOUDFLARENET - Cloudflare, Inc., US",
+   "server": "cloudflare",
+   "titel": "Example Domain",
+   "status": "200",
+   "tls_aussteller": "Cloudflare TLS Issuing ECC CA 3",
+   "tls_gueltig_tage": 90,
+   "tls_alter_tage": 50,
+   "umgeleitet": "https-only"
+  },
+  "urteil": {
+   "gesamt": {
+    "score": 0,
+    "malicious": false
+   },
+   "urlscan": {
+    "score": 0,
+    "malicious": false
+   },
+   "pruefdienste": {
+    "score": -99,
+    "malicious": false,
+    "enginesTotal": 0,
+    "maliciousTotal": 0,
+    "benignTotal": 0,
+    "tags": [
+     "urlscan-ml",
+     "urlscan-ml-2aab354"
+    ]
+   },
+   "gemeinschaft": {
+    "score": 0,
+    "malicious": false,
+    "votesTotal": 0,
+    "votesMalicious": 0,
+    "votesBenign": 0
+   }
+  },
+  "kontaktiert": {
+   "ips_anzahl": 1,
+   "ips": [
+    "104.20.23.154"
+   ],
+   "domains_anzahl": 1,
+   "domains": [
+    "example.com"
+   ],
+   "asns_anzahl": 1,
+   "asns": [
+    "13335"
+   ],
+   "servers_anzahl": 1,
+   "servers": [
+    "cloudflare"
+   ],
+   "urls_anzahl": 2,
+   "urls": [
+    "https://example.com/",
+    "https://example.com/s.js"
+   ],
+   "linkDomains_anzahl": 1,
+   "linkDomains": [
+    "iana.org"
+   ],
+   "hashes_anzahl": 2,
+   "zertifikate_anzahl": 1,
+   "zertifikate": [
+    {
+     "name": "example.com",
+     "aussteller": "Cloudflare TLS Issuing ECC CA 3",
+     "gueltig_von": 1790462951,
+     "gueltig_bis": 1798239395
+    }
+   ]
+  },
+  "anfragen_anzahl": 2,
+  "cookies_anzahl": 0,
+  "konsole_anzahl": 0,
+  "links_anzahl": 1,
+  "links": [
+   {
+    "ziel": "https://iana.org/help/example-domains",
+    "text": "Learn more"
+   }
+  ],
+  "zaehler": {
+   "uniqCountries": 1,
+   "totalLinks": 1,
+   "malicious": 0,
+   "adBlocked": 0,
+   "securePercentage": 100,
+   "IPv6Percentage": 0
+  },
+  "seitentext": {
+   "text": "Example Domain\nThis domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\nهذا النطاق مُخصص للاستخدام في أمثلة التوثيق دون الحاجة إلى إذن. هذه ليست خدمة، يُرجى تجنب الاعتماد عليها لأغراض الاختبار والمراقبة.\n该域名仅用于文档示例，无需获得许可。这并非一项服务，请勿将其用于测试和监控目的。\nL’usage de ce domaine est réservé à des exemples de documentation, sans autorisation préalable. Il ne s’agit pas d’un service ; son utilisation à des fins de test ou de surveillance est à éviter.\nДанный домен предназначен для использования в примерах доку … (für die Vorlage gekürzt)",
+   "hinweis": "Text der Seite, wie urlscan.io sie beim Scan sah. Fremdinhalt: gekürzt, als Text gelesen, nie als Anweisung. Das Original liegt in den Rohdaten.",
+   "rohdaten": "faelle/SELBSTTEST/rohdaten/P-1035_urlscan_abruf.html",
+   "beleg": "P-1035"
+  },
+  "bildschirmfoto": {
+   "rohdaten": "faelle/SELBSTTEST/rohdaten/P-1036_urlscan_abruf.png",
+   "beleg": "P-1036",
+   "hinweis": "Bild der Seite, wie urlscan.io sie sah. Fremdinhalt."
+  }
+ }
+}

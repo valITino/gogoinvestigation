@@ -1,0 +1,10 @@
+{
+ "isPresent": true,
+ "foundIn": "/.well-known/security.txt",
+ "content": "Contact: mailto:sicherheit@example.org\nExpires: 2027-01-01T00:00:00.000Z\n",
+ "isPgpSigned": false,
+ "fields": {
+  "Contact": "mailto:sicherheit@example.org",
+  "Expires": "2027-01-01T00:00:00.000Z"
+ }
+}

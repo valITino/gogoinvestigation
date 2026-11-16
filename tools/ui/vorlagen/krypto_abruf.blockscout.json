@@ -1,0 +1,40 @@
+{
+ "addresses": {
+  "0x098B716B8Aaf21512996dC57EB0615e2383E2f96": {
+   "tags": [
+    {
+     "slug": "ronin-bridge-exploiter",
+     "name": "Ronin Bridge Exploiter",
+     "tagType": "name",
+     "ordinal": 10,
+     "meta": "{}"
+    },
+    {
+     "slug": "sanctioned",
+     "name": "SANCTIONED",
+     "tagType": "generic",
+     "ordinal": 0,
+     "meta": "{\"info\":[\"MOF SANCTIONED\",\"OFAC Sanctioned\"]}"
+    }
+   ]
+  },
+  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": {
+   "tags": [
+    {
+     "slug": "usdc-token-1",
+     "name": "USDC Token",
+     "tagType": "name",
+     "ordinal": 10,
+     "meta": "{\"projectName\":\"Circle\",\"tagIcon\":\"https://assets.coingecko.com/coins/images/6319/small/usdc.png?1696506694\",\"tagIcon \":\"https://blockscout-icons.s3.us-east-1.amazonaws.com/OLI_tag_logo.svg\",\"tagUrl\":\"https://scout-app.kleros.io/single-tags/0x924f91c6a015abb7e7a5f8c7c0989761b4df998abdbd6541365eb3c82132a390\",\"textColor\":\"#C163D4\",\"tokenAttributes\":\"{\\\"logo_url\\\":\\\"https://cdn.kleros.link/ipfs/Qmc3TH5cPhyh7418kSD83SSBzng1oqbLxjzxfjwA2VAoj8/BccwoeFESYBsv6XiJVRAp5b3pRpvMgdhfZCxV5vSppWbAukhqrBRVRj3jAxHnbfmvg181rcVw9ny4LBLbFdm2S2RRH\\\",\\\"token_symbol\\\":\\\"USDC\\\",\\\"token_name\\\":\\\"USD Coin\\\",\\\"decimals\\ … (für die Vorlage gekürzt)"
+    },
+    {
+     "slug": "token-contract",
+     "name": "Token Contract",
+     "tagType": "generic",
+     "ordinal": 0,
+     "meta": "{}"
+    }
+   ]
+  }
+ }
+}

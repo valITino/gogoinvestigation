@@ -1,0 +1,296 @@
+{
+ "query": "example.com",
+ "total_hits": 25280,
+ "time_used": "6.663414939s",
+ "limit": 3,
+ "offset": 0,
+ "reports": [
+  {
+   "report_id": "00000000-0000-4000-8000-000000000001",
+   "version": 0,
+   "status": "done",
+   "tags": [],
+   "date": "2026-11-16T10:09:25Z",
+   "url": {
+    "schema": "http",
+    "addr": "seite-1.example/pfad",
+    "fqdn": "seite-1.example",
+    "domain": "seite-1.example",
+    "tld": "seite-2.example"
+   },
+   "ip": {
+    "addr": "203.0.113.1",
+    "asn": 15169,
+    "as": "Google LLC",
+    "country": "United States",
+    "country_code": "US"
+   },
+   "final": {
+    "url": {
+     "schema": "https",
+     "addr": "seite-3.example/pfad",
+     "fqdn": "seite-3.example",
+     "domain": "seite-4.example",
+     "tld": "com"
+    },
+    "title": "Titel der Seite (für die Vorlage ersetzt)"
+   },
+   "submit": {
+    "url": {
+     "schema": "http",
+     "addr": "seite-1.example/pfad",
+     "fqdn": "seite-1.example",
+     "domain": "seite-1.example",
+     "tld": "seite-2.example"
+    },
+    "ip": {
+     "addr": "203.0.113.1",
+     "asn": 15169,
+     "as": "Google LLC",
+     "country": "United States",
+     "country_code": "US"
+    },
+    "tags": [],
+    "meta": null
+   },
+   "settings": {
+    "access": "public",
+    "device_type": "desktop",
+    "expires_at": "2027-12-21T10:09:25Z",
+    "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+    "referer": "",
+    "cookies": null,
+    "exit_node": "qguvgzjxzsgb3vs"
+   },
+   "detection": {
+    "ids": [],
+    "analyzer": [],
+    "urlquery": []
+   },
+   "summary": [],
+   "hosts": [
+    {
+     "fqdn": "seite-1.example",
+     "ips": [
+      {
+       "addr": "203.0.113.2",
+       "asn": 15169,
+       "as": "GOOGLE",
+       "country": "United States",
+       "country_code": "US"
+      }
+     ],
+     "domain_rank": 0,
+     "domain_registered": "",
+     "first_seen": "2026-11-16T10:09:32.42095Z",
+     "last_seen": "2026-11-16T10:09:32.42095Z",
+     "request_count": 1,
+     "sent_data": 717,
+     "received_data": 344,
+     "fingerprints": [
+      {
+       "name": "Google Cloud Load Balancing",
+       "description": "Google Cloud Load Balancing is a scalable, fully managed global load balancing service using Google Frontend.",
+       "website": "https://seite-5.example/pfad",
+       "common_platform_enumeration": "",
+       "icon": "Google Cloud.svg",
+       "categories": [
+        "Load balancers"
+       ]
+      },
+      {
+       "name": "Google Cloud",
+       "description": "Google Cloud is a suite of cloud computing services.",
+       "website": "https://seite-5.example/",
+       "common_platform_enumeration": "cpe:2.3:a:google:cloud_platform:*:*:*:*:*:*:*:*",
+       "icon": "Google Cloud.svg",
+       "categories": [
+        "IaaS"
+       ]
+      }
+     ]
+    },
+    {
+     "fqdn": "seite-3.example",
+     "ips": [
+      {
+       "addr": "203.0.113.3",
+       "asn": 32934,
+       "as": "FACEBOOK",
+       "country": "Sweden",
+       "country_code": "SE"
+      }
+     ],
+     "domain_rank": 3,
+     "domain_registered": "1997-03-29",
+     "first_seen": "2012-05-21T02:23:41Z",
+     "last_seen": "2026-11-16T09:59:09Z",
+     "request_count": 22,
+     "sent_data": 21967,
+     "received_data": 1815959,
+     "fingerprints": [
+      {
+       "name": "HSTS",
+       "description": "HTTP Strict Transport Security (HSTS) informs browsers that the site should only be accessed using HTTPS.",
+       "website": "https://seite-6.example/pfad",
+       "common_platform_enumeration": "",
+       "icon": "",
+       "categories": [
+        "Security"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "report_id": "00000000-0000-4000-8000-000000000002",
+   "version": 0,
+   "status": "done",
+   "tags": [],
+   "date": "2026-11-16T10:07:59Z",
+   "url": {
+    "schema": "http",
+    "addr": "seite-7.example/",
+    "fqdn": "seite-7.example",
+    "domain": "seite-7.example",
+    "tld": "express"
+   },
+   "ip": {
+    "addr": "203.0.113.4",
+    "asn": 13335,
+    "as": "Cloudflare, Inc.",
+    "country": "",
+    "country_code": "zz"
+   },
+   "final": {
+    "url": {
+     "schema": "https",
+     "addr": "seite-7.example/",
+     "fqdn": "seite-7.example",
+     "domain": "seite-7.example",
+     "tld": "express"
+    },
+    "title": "Titel der Seite (für die Vorlage ersetzt)"
+   },
+   "submit": {
+    "url": {
+     "schema": "http",
+     "addr": "seite-7.example/",
+     "fqdn": "seite-7.example",
+     "domain": "seite-7.example",
+     "tld": "express"
+    },
+    "ip": {
+     "addr": "203.0.113.4",
+     "asn": 13335,
+     "as": "Cloudflare, Inc.",
+     "country": "",
+     "country_code": "zz"
+    },
+    "tags": [],
+    "meta": null
+   },
+   "settings": {
+    "access": "public",
+    "device_type": "desktop",
+    "expires_at": "2027-12-21T10:07:59Z",
+    "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+    "referer": "",
+    "cookies": null,
+    "exit_node": "qguvgzjxzsgb3vs"
+   },
+   "detection": {
+    "ids": [],
+    "analyzer": [],
+    "urlquery": []
+   },
+   "summary": [],
+   "hosts": [
+    {
+     "fqdn": "seite-7.example",
+     "ips": [
+      {
+       "addr": "203.0.113.5",
+       "asn": 13335,
+       "as": "CLOUDFLARENET",
+       "country": "",
+       "country_code": "zz"
+      }
+     ],
+     "domain_rank": 0,
+     "domain_registered": "2017-07-09",
+     "first_seen": "2025-06-04T09:04:43.469637Z",
+     "last_seen": "2025-11-27T10:05:37.967125Z",
+     "request_count": 90,
+     "sent_data": 59229,
+     "received_data": 7525776,
+     "fingerprints": [
+      {
+       "name": "Cloudflare",
+       "description": "Cloudflare is a web-infrastructure and website-security company, providing content-delivery-network services, DDoS mitigation, Internet security, and distributed domain-name-server services.",
+       "website": "https://seite-8.example/",
+       "common_platform_enumeration": "",
+       "icon": "CloudFlare.svg",
+       "categories": [
+        "CDN"
+       ]
+      },
+      {
+       "name": "Google Cloud",
+       "description": "Google Cloud is a suite of cloud computing services.",
+       "website": "https://seite-5.example/",
+       "common_platform_enumeration": "cpe:2.3:a:google:cloud_platform:*:*:*:*:*:*:*:*",
+       "icon": "Google Cloud.svg",
+       "categories": [
+        "IaaS"
+       ]
+      }
+     ]
+    },
+    {
+     "fqdn": "seite-9.example",
+     "ips": [
+      {
+       "addr": "203.0.113.6",
+       "asn": 205722,
+       "as": "Binotel LLC",
+       "country": "Ukraine",
+       "country_code": "UA"
+      }
+     ],
+     "domain_rank": 45458,
+     "domain_registered": "2011-09-19",
+     "first_seen": "2017-02-01T11:32:52Z",
+     "last_seen": "2026-11-13T14:17:29Z",
+     "request_count": 21,
+     "sent_data": 10813,
+     "received_data": 1097666,
+     "fingerprints": [
+      {
+       "name": "Nginx",
+       "description": "Nginx is a web server that can also be used as a reverse proxy, load balancer, mail proxy and HTTP cache.",
+       "website": "https://seite-10.example/pfad",
+       "common_platform_enumeration": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+       "icon": "Nginx.svg",
+       "categories": [
+        "Web servers",
+        "Reverse proxies"
+       ]
+      },
+      {
+       "name": "Vue.js",
+       "description": "Vue.js is an open-source model–view–viewmodel JavaScript framework for building user interfaces and single-page applications.",
+       "website": "https://seite-11.example/",
+       "common_platform_enumeration": "",
+       "icon": "vue.svg",
+       "categories": [
+        "JavaScript frameworks"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

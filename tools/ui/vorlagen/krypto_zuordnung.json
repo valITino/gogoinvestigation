@@ -1,0 +1,63 @@
+{
+ "werkzeug": "krypto_zuordnung",
+ "parameter": {
+  "adressen": [
+   "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"
+  ],
+  "kette": null,
+  "meldungen": false,
+  "quellen": null
+ },
+ "grundlage": [
+  "P-0047",
+  "P-0048"
+ ],
+ "befund": {
+  "adressen": [
+   {
+    "adresse": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+    "kette": "bitcoin",
+    "etiketten": [
+     {
+      "quelle": "Ransomwhere",
+      "art": "ransomware",
+      "name": "WannaCry",
+      "detail": "234 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
+      "beleg": "P-0049"
+     }
+    ],
+    "auffaellig": [
+     "ransomware"
+    ]
+   }
+  ],
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0047",
+    "adressen_in_liste": 1064
+   },
+   "Ransomwhere": {
+    "ergebnis": "ok",
+    "beleg": "P-0049",
+    "adressen_in_liste": 11186
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0050"
+   },
+   "WalletExplorer": {
+    "ergebnis": "ok",
+    "beleg": "P-0051"
+   },
+   "Iknaio": {
+    "ergebnis": "aus",
+    "hinweis": "IKNAIO_API_KEY fehlt."
+   }
+  },
+  "geprueft": [
+   "OFAC",
+   "Ransomwhere"
+  ]
+ }
+}

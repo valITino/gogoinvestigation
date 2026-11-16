@@ -1,0 +1,17 @@
+{
+ "art": "von Hand erfasst",
+ "indikator": "203.0.113.30",
+ "indikator_typ": "ip",
+ "quelle": "Beispiel-Dienst (Oberfläche im Browser)",
+ "abgeklaert_am": "2026-11-16T09:30:00Z",
+ "erfasst_am": "2026-11-16T09:41:00Z",
+ "erfasst_durch": "MUS",
+ "wortlaut": "Residential Proxy, Anbieter Beispielnetz, zuletzt gesehen am 15.11.2026",
+ "tatzeit": "2026-09-29T07:14:00Z",
+ "anonymisierung": {
+  "wert": "ja",
+  "art": "Proxy",
+  "dienst": "Beispielnetz",
+  "residential": true
+ }
+}

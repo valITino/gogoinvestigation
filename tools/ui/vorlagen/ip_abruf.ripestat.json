@@ -1,0 +1,74 @@
+{
+ "messages": [
+  [
+   "info",
+   "IP address has been converted to a prefix"
+  ]
+ ],
+ "see_also": [],
+ "version": "4.1",
+ "data_call_name": "whois",
+ "data_call_status": "supported",
+ "cached": false,
+ "query_id": "20261116112129-cbccdeba-a58c-4ff1-8b46-d16ad0ef4e33",
+ "process_time": 353,
+ "server_id": "app171",
+ "build_version": "v0.12.2-2026.10.23",
+ "pipeline": "1478200",
+ "status": "ok",
+ "status_code": 200,
+ "time": "2026-11-16T11:21:29.850425",
+ "data": {
+  "records": [
+   [
+    {
+     "key": "inetnum",
+     "value": "1.1.1.0/24",
+     "comment": null,
+     "details_link": "https://stat.ripe.net/1.1.1.0/24"
+    },
+    {
+     "key": "netname",
+     "value": "APNIC-LABS",
+     "comment": null,
+     "details_link": null
+    }
+   ]
+  ],
+  "irr_records": [
+   [
+    {
+     "key": "route",
+     "value": "1.1.1.0/24",
+     "comment": null,
+     "details_link": "https://stat.ripe.net/1.1.1.0/24"
+    },
+    {
+     "key": "descr",
+     "value": "QRATOR via EMIX",
+     "comment": null,
+     "details_link": null
+    }
+   ],
+   [
+    {
+     "key": "route",
+     "value": "1.1.1.0/24",
+     "comment": null,
+     "details_link": "https://stat.ripe.net/1.1.1.0/24"
+    },
+    {
+     "key": "origin",
+     "value": "13335",
+     "comment": null,
+     "details_link": "https://stat.ripe.net/AS13335"
+    }
+   ]
+  ],
+  "authorities": [
+   "apnic"
+  ],
+  "resource": "1.1.1.1",
+  "query_time": "2026-11-16T11:21:00"
+ }
+}

@@ -65,7 +65,7 @@ und Einrichtung ruht, damit das Projekt weitergebaut werden kann. Daraus folgt:
 | `faelle/<Fall-ID>/rohdaten/` | Unveränderte Antworten der Quellen, je Abfrage eine Datei. |
 | `faelle/<Fall-ID>/arbeitsstand/` | Indikatorliste, Plan, Befundmeldungen des Teams. |
 | `faelle/<Fall-ID>/befunde.json` | Strukturierte Befunde. Grundlage des Rapports. |
-| `faelle/<Fall-ID>/rapport/` | Abschlussrapport, Ermittlungsprotokoll, Indikatorliste. |
+| `faelle/<Fall-ID>/rapport/` | Abschlussrapport, Ermittlungsprotokoll, Indikatorliste, Datenblätter. |
 | `gateway/` | MCP-Server mit allen Quellen. `tools/` Werkzeuge für Fall, Rapport, Protokoll. |
 
 ## Ablauf
@@ -89,6 +89,8 @@ python3 tools/fall.py status <Fall-ID>                              Stand und Fr
 python3 tools/rapport.py <Fall-ID> [--nur-pruefen|--entwurf]        Befunde prüfen, Rapport erzeugen
 python3 tools/protokoll.py <Fall-ID>                                Ermittlungsprotokoll erzeugen
 python3 tools/pdf.py <Fall-ID>                                      Rapport und Protokoll als PDF (A4)
+python3 tools/anhang.py <Fall-ID>                                   Datenblätter aller Indikatoren als HTML und PDF
+python3 tools/oberflaeche.py [Fall-ID]                              Oberfläche im Browser: zeigt die Fallakte, schreibt nie
 python3 tools/audit_pruefen.py <Fall-ID>                            Protokollkette prüfen
 python3 tools/pruefen.py                                            Einrichtung prüfen
 ```

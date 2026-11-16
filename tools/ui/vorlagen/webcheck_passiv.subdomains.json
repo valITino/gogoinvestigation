@@ -1,0 +1,10 @@
+{
+ "domain": "example.org",
+ "count": 2,
+ "truncated": false,
+ "subdomains": [
+  "labor.example.org",
+  "www.example.org"
+ ],
+ "source": "certSpotter"
+}

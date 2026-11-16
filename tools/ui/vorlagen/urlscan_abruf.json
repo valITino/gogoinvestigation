@@ -1,0 +1,758 @@
+{
+ "data": {
+  "requests": [
+   {
+    "request": {
+     "requestId": "469D3CA74FA278027450F54F4FD886AA",
+     "loaderId": "469D3CA74FA278027450F54F4FD886AA",
+     "documentURL": "https://example.com/",
+     "request": {
+      "url": "https://example.com/",
+      "method": "GET",
+      "headers": {
+       "Upgrade-Insecure-Requests": "1",
+       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+      },
+      "mixedContentType": "none",
+      "initialPriority": "VeryHigh",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "isSameSite": true
+     },
+     "timestamp": 52642233.146514,
+     "wallTime": 1794828702.022448,
+     "initiator": {
+      "type": "other"
+     },
+     "redirectHasExtraInfo": false,
+     "redirectResponse": {
+      "url": "http://example.com/",
+      "status": 307,
+      "statusText": "Temporary Redirect",
+      "headers": {
+       "Location": "https://example.com/",
+       "Non-Authoritative-Reason": "HttpsUpgrades"
+      },
+      "mimeType": "",
+      "charset": "",
+      "remoteIPAddress": "",
+      "remotePort": 0,
+      "encodedDataLength": 0,
+      "protocol": "http/1.1",
+      "alternateProtocolUsage": "alternativeJobWonWithoutRace",
+      "securityState": "insecure"
+     },
+     "type": "Document",
+     "frameId": "6E57F28167E831F7636F4EB3761922FA",
+     "hasUserGesture": false,
+     "primaryRequest": true
+    },
+    "requests": [
+     {
+      "requestId": "469D3CA74FA278027450F54F4FD886AA",
+      "loaderId": "469D3CA74FA278027450F54F4FD886AA",
+      "documentURL": "http://example.com/",
+      "request": {
+       "url": "http://example.com/",
+       "method": "GET",
+       "headers": {
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+       },
+       "mixedContentType": "none",
+       "initialPriority": "VeryHigh",
+       "referrerPolicy": "strict-origin-when-cross-origin",
+       "isSameSite": true
+      },
+      "timestamp": 52642233.142028,
+      "wallTime": 1794828702.017957,
+      "initiator": {
+       "type": "other"
+      },
+      "redirectHasExtraInfo": false,
+      "type": "Document",
+      "frameId": "6E57F28167E831F7636F4EB3761922FA",
+      "hasUserGesture": false
+     },
+     {
+      "requestId": "469D3CA74FA278027450F54F4FD886AA",
+      "loaderId": "469D3CA74FA278027450F54F4FD886AA",
+      "documentURL": "https://example.com/",
+      "request": {
+       "url": "https://example.com/",
+       "method": "GET",
+       "headers": {
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36"
+       },
+       "mixedContentType": "none",
+       "initialPriority": "VeryHigh",
+       "referrerPolicy": "strict-origin-when-cross-origin",
+       "isSameSite": true
+      },
+      "timestamp": 52642233.146514,
+      "wallTime": 1794828702.022448,
+      "initiator": {
+       "type": "other"
+      },
+      "redirectHasExtraInfo": false,
+      "redirectResponse": {
+       "url": "http://example.com/",
+       "status": 307,
+       "statusText": "Temporary Redirect",
+       "headers": {
+        "Location": "https://example.com/",
+        "Non-Authoritative-Reason": "HttpsUpgrades"
+       },
+       "mimeType": "",
+       "charset": "",
+       "remoteIPAddress": "",
+       "remotePort": 0,
+       "encodedDataLength": 0,
+       "protocol": "http/1.1",
+       "alternateProtocolUsage": "alternativeJobWonWithoutRace",
+       "securityState": "insecure"
+      },
+      "type": "Document",
+      "frameId": "6E57F28167E831F7636F4EB3761922FA",
+      "hasUserGesture": false
+     }
+    ],
+    "response": {
+     "encodedDataLength": 548,
+     "dataLength": 577,
+     "requestId": "469D3CA74FA278027450F54F4FD886AA",
+     "type": "Document",
+     "response": {
+      "url": "https://example.com/",
+      "status": 200,
+      "statusText": "",
+      "headers": {
+       "age": "9046",
+       "allow": "GET, HEAD",
+       "alt-svc": "h3=\":443\"; ma=86400",
+       "cf-cache-status": "HIT",
+       "cf-ray": "a5b62bbc38d34afd-LIS",
+       "content-encoding": "br",
+       "content-type": "text/html; charset=utf-8",
+       "date": "Mon, 16 Nov 2026 11:31:42 GMT",
+       "last-modified": "Mon, 16 Nov 2026 00:30:20 GMT",
+       "priority": "u=0,i",
+       "server": "cloudflare",
+       "server-timing": "cfExtPri"
+      },
+      "mimeType": "text/html",
+      "charset": "utf-8",
+      "remoteIPAddress": "104.20.23.154",
+      "remotePort": 443,
+      "encodedDataLength": 212,
+      "timing": {
+       "requestTime": 52642233.147121,
+       "proxyStart": -1,
+       "proxyEnd": -1,
+       "dnsStart": 0.134,
+       "dnsEnd": 6.026,
+       "connectStart": 6.161,
+       "connectEnd": 67.137,
+       "sslStart": 6.161,
+       "sslEnd": 67.137,
+       "workerStart": -1,
+       "workerReady": -1,
+       "workerFetchStart": -1,
+       "workerRespondWithSettled": -1,
+       "sendStart": 67.195,
+       "sendEnd": 67.243,
+       "pushStart": 0,
+       "pushEnd": 0,
+       "receiveHeadersStart": 119.681,
+       "receiveHeadersEnd": 120.293
+      },
+      "responseTime": 1794828702142.736,
+      "protocol": "h3",
+      "alternateProtocolUsage": "dnsAlpnH3JobWonRace",
+      "securityState": "secure",
+      "securityDetails": {
+       "protocol": "QUIC",
+       "keyExchange": "",
+       "keyExchangeGroup": "X25519MLKEM768",
+       "cipher": "AES_128_GCM",
+       "certificateId": 0,
+       "subjectName": "example.com",
+       "sanList": [
+        "example.com",
+        "*.example.com"
+       ],
+       "issuer": "Cloudflare TLS Issuing ECC CA 3",
+       "validFrom": 1790462951,
+       "validTo": 1798239395,
+       "signedCertificateTimestampList": [
+        {
+         "status": "Verified",
+         "origin": "Embedded in certificate",
+         "logDescription": "DigiCert Sphinx2026h2",
+         "logId": "944E4387FAECC1EF81F3192426A8186501C7D35F3802013F72677D55372E19D8",
+         "timestamp": 1790463552866,
+         "hashAlgorithm": "SHA-256",
+         "signatureAlgorithm": "ECDSA",
+         "signatureData": "3045022100AE0946A145ACF039CAA3DC0EFBCBC7977500692E51828EFF43FF1BD77775FB8402206DCD0A312F8CB00358E562C6A478139375319348355564D007BF2F6113206B51"
+        },
+        {
+         "status": "Verified",
+         "origin": "Embedded in certificate",
+         "logDescription": "Cloudflare Nimbus2026",
+         "logId": "CB38F715897C84A1445F5BC1DDFBC96EF29A59CD470A690585B0CB14C31458E7",
+         "timestamp": 1790463552894,
+         "hashAlgorithm": "SHA-256",
+         "signatureAlgorithm": "ECDSA",
+         "signatureData": "304502201D9837F9593FA79204CB55D014EB183ECA4B2295BBF8BAF19CDAF7B962F7A15C022100D66B6F4E733CCDB34A8FA02B5295A68134544430E0382E11D42D96E5C48AE9F2"
+        }
+       ],
+       "certificateTransparencyCompliance": "compliant",
+       "serverSignatureAlgorithm": 1027,
+       "encryptedClientHello": false
+      }
+     },
+     "hasExtraInfo": true,
+     "hash": "25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484",
+     "size": 577,
+     "asn": {
+      "ip": "104.20.23.154",
+      "asn": "13335",
+      "country": "US",
+      "description": "CLOUDFLARENET - Cloudflare, Inc., US",
+      "name": "Cloudflare",
+      "route": "104.20.0.0/18"
+     },
+     "geoip": {
+      "country": "",
+      "region": "",
+      "timezone": "",
+      "city": "",
+      "ll": [
+       null,
+       null
+      ],
+      "country_name": "Ascension Island"
+     }
+    }
+   },
+   {
+    "request": {
+     "requestId": "354736.2",
+     "loaderId": "469D3CA74FA278027450F54F4FD886AA",
+     "documentURL": "https://example.com/",
+     "request": {
+      "url": "https://example.com/s.js",
+      "method": "GET",
+      "headers": {
+       "sec-ch-ua-platform": "\"Linux\"",
+       "Referer": "https://example.com/",
+       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+       "sec-ch-ua": "\"Not-A.Brand\";v=\"99\", \"Google Chrome\";v=\"157\", \"Chromium\";v=\"157\"",
+       "sec-ch-ua-mobile": "?0"
+      },
+      "mixedContentType": "none",
+      "initialPriority": "High",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "isSameSite": true
+     },
+     "timestamp": 52642233.271878,
+     "wallTime": 1794828702.147834,
+     "initiator": {
+      "type": "parser",
+      "url": "https://example.com/",
+      "lineNumber": 0,
+      "columnNumber": 553
+     },
+     "redirectHasExtraInfo": false,
+     "type": "Script",
+     "frameId": "6E57F28167E831F7636F4EB3761922FA",
+     "hasUserGesture": false,
+     "renderBlockingBehavior": "InBodyParserBlocking"
+    },
+    "response": {
+     "encodedDataLength": 1599,
+     "dataLength": 1963,
+     "requestId": "354736.2",
+     "type": "Script",
+     "response": {
+      "url": "https://example.com/s.js",
+      "status": 200,
+      "statusText": "",
+      "headers": {
+       "content-encoding": "br",
+       "cf-cache-status": "HIT",
+       "etag": "W/\"6afa4e9c-7ab\"",
+       "age": "7639",
+       "allow": "GET, HEAD",
+       "cf-ray": "a5b62bbc98ee4afd-LIS",
+       "alt-svc": "h3=\":443\"; ma=86400",
+       "server-timing": "cfExtPri",
+       "date": "Mon, 16 Nov 2026 11:31:42 GMT",
+       "content-type": "text/javascript; charset=utf-8",
+       "last-modified": "Mon, 16 Nov 2026 00:30:20 GMT",
+       "server": "cloudflare",
+       "priority": "u=1,i=?0"
+      },
+      "mimeType": "text/javascript",
+      "charset": "utf-8",
+      "remoteIPAddress": "104.20.23.154",
+      "remotePort": 443,
+      "encodedDataLength": 218,
+      "timing": {
+       "requestTime": 52642233.27501,
+       "proxyStart": -1,
+       "proxyEnd": -1,
+       "dnsStart": -1,
+       "dnsEnd": -1,
+       "connectStart": -1,
+       "connectEnd": -1,
+       "sslStart": -1,
+       "sslEnd": -1,
+       "workerStart": -1,
+       "workerReady": -1,
+       "workerFetchStart": -1,
+       "workerRespondWithSettled": -1,
+       "sendStart": 0.366,
+       "sendEnd": 0.441,
+       "pushStart": 0,
+       "pushEnd": 0,
+       "receiveHeadersStart": 51.359,
+       "receiveHeadersEnd": 51.904
+      },
+      "responseTime": 1794828702202.304,
+      "protocol": "h3",
+      "alternateProtocolUsage": "dnsAlpnH3JobWonWithoutRace",
+      "securityState": "secure",
+      "securityDetails": {
+       "protocol": "QUIC",
+       "keyExchange": "",
+       "keyExchangeGroup": "X25519MLKEM768",
+       "cipher": "AES_128_GCM",
+       "certificateId": 0,
+       "subjectName": "example.com",
+       "sanList": [
+        "example.com",
+        "*.example.com"
+       ],
+       "issuer": "Cloudflare TLS Issuing ECC CA 3",
+       "validFrom": 1790462951,
+       "validTo": 1798239395,
+       "signedCertificateTimestampList": [
+        {
+         "status": "Verified",
+         "origin": "Embedded in certificate",
+         "logDescription": "DigiCert Sphinx2026h2",
+         "logId": "944E4387FAECC1EF81F3192426A8186501C7D35F3802013F72677D55372E19D8",
+         "timestamp": 1790463552866,
+         "hashAlgorithm": "SHA-256",
+         "signatureAlgorithm": "ECDSA",
+         "signatureData": "3045022100AE0946A145ACF039CAA3DC0EFBCBC7977500692E51828EFF43FF1BD77775FB8402206DCD0A312F8CB00358E562C6A478139375319348355564D007BF2F6113206B51"
+        },
+        {
+         "status": "Verified",
+         "origin": "Embedded in certificate",
+         "logDescription": "Cloudflare Nimbus2026",
+         "logId": "CB38F715897C84A1445F5BC1DDFBC96EF29A59CD470A690585B0CB14C31458E7",
+         "timestamp": 1790463552894,
+         "hashAlgorithm": "SHA-256",
+         "signatureAlgorithm": "ECDSA",
+         "signatureData": "304502201D9837F9593FA79204CB55D014EB183ECA4B2295BBF8BAF19CDAF7B962F7A15C022100D66B6F4E733CCDB34A8FA02B5295A68134544430E0382E11D42D96E5C48AE9F2"
+        }
+       ],
+       "certificateTransparencyCompliance": "compliant",
+       "serverSignatureAlgorithm": 1027,
+       "encryptedClientHello": false
+      }
+     },
+     "hasExtraInfo": true,
+     "hash": "535ef2c3425a9d1214bcd1a8d5430d904444135e48a4f113ba1e6f6e29925b0a",
+     "size": 1579,
+     "asn": {
+      "ip": "104.20.23.154",
+      "asn": "13335",
+      "country": "US",
+      "description": "CLOUDFLARENET - Cloudflare, Inc., US",
+      "name": "Cloudflare",
+      "route": "104.20.0.0/18"
+     },
+     "geoip": {
+      "country": "",
+      "region": "",
+      "timezone": "",
+      "city": "",
+      "ll": [
+       null,
+       null
+      ],
+      "country_name": "Ascension Island"
+     }
+    },
+    "initiatorInfo": {
+     "url": "https://example.com/",
+     "host": "example.com",
+     "type": "parser"
+    }
+   }
+  ],
+  "cookies": [],
+  "console": [],
+  "links": [
+   {
+    "href": "https://iana.org/help/example-domains",
+    "text": "Learn more",
+    "frameId": "6E57F28167E831F7636F4EB3761922FA"
+   }
+  ],
+  "timing": {
+   "beginNavigation": "2026-11-16T11:31:42.015Z",
+   "frameStartedLoading": "2026-11-16T11:31:42.017Z",
+   "frameNavigated": "2026-11-16T11:31:42.148Z",
+   "domContentEventFired": "2026-11-16T11:31:42.214Z",
+   "frameStoppedLoading": "2026-11-16T11:31:42.215Z"
+  },
+  "globals": [
+   {
+    "prop": "B",
+    "type": "object"
+   },
+   {
+    "prop": "P",
+    "type": "object"
+   }
+  ],
+  "storages": [],
+  "websockets": [],
+  "clipboard": [],
+  "redirects": [
+   {
+    "from": "http://example.com/",
+    "to": "https://example.com/",
+    "status": 307
+   }
+  ],
+  "identifiers": [
+   "html-id",
+   "html-id.q"
+  ],
+  "inputNames": [],
+  "inputTypes": []
+ },
+ "labels": [],
+ "lists": {
+  "ips": [
+   "104.20.23.154"
+  ],
+  "countries": [],
+  "asns": [
+   "13335"
+  ],
+  "domains": [
+   "example.com"
+  ],
+  "servers": [
+   "cloudflare"
+  ],
+  "urls": [
+   "https://example.com/",
+   "https://example.com/s.js"
+  ],
+  "linkDomains": [
+   "iana.org"
+  ],
+  "certificates": [
+   {
+    "subjectName": "example.com",
+    "issuer": "Cloudflare TLS Issuing ECC CA 3",
+    "validFrom": 1790462951,
+    "validTo": 1798239395
+   }
+  ],
+  "hashes": [
+   "25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484",
+   "535ef2c3425a9d1214bcd1a8d5430d904444135e48a4f113ba1e6f6e29925b0a"
+  ]
+ },
+ "meta": {
+  "processors": {
+   "umbrella": {
+    "data": [
+     {
+      "hostname": "example.com",
+      "rank": 3654
+     }
+    ]
+   },
+   "geoip": {
+    "data": [
+     {
+      "ip": "104.20.23.154",
+      "geoip": {
+       "country": "",
+       "region": "",
+       "timezone": "",
+       "city": "",
+       "ll": [
+        null,
+        null
+       ],
+       "country_name": "Ascension Island"
+      }
+     }
+    ]
+   },
+   "asn": {
+    "data": [
+     {
+      "ip": "104.20.23.154",
+      "asn": "13335",
+      "country": "US",
+      "description": "CLOUDFLARENET - Cloudflare, Inc., US",
+      "name": "Cloudflare",
+      "route": "104.20.0.0/18"
+     }
+    ]
+   },
+   "rdns": {
+    "data": []
+   },
+   "wappa": {
+    "data": []
+   }
+  }
+ },
+ "page": {
+  "asn": "AS13335",
+  "asnname": "CLOUDFLARENET - Cloudflare, Inc., US",
+  "city": "",
+  "country": "",
+  "domain": "example.com",
+  "ip": "104.20.23.154",
+  "server": "cloudflare",
+  "url": "https://example.com/",
+  "redirected": "https-only",
+  "apexDomainAgeDays": 4357,
+  "mimeType": "text/html",
+  "title": "Example Domain",
+  "tlsValidDays": 90,
+  "tlsAgeDays": 50,
+  "domainAgeDays": 4357,
+  "tlsValidFrom": "2026-09-26T22:49:11.000Z",
+  "umbrellaRank": 3654,
+  "apexDomain": "example.com",
+  "tlsIssuer": "Cloudflare TLS Issuing ECC CA 3",
+  "status": "200"
+ },
+ "scanner": {
+  "country": "pt"
+ },
+ "stats": {
+  "IPv6Percentage": 0,
+  "adBlocked": 0,
+  "domainStats": [
+   {
+    "count": 2,
+    "ips": [
+     "104.20.23.154"
+    ],
+    "domain": "example.com",
+    "size": 2540,
+    "encodedSize": 2147,
+    "countries": [],
+    "index": 0,
+    "initiators": [
+     "example.com"
+    ],
+    "redirects": 0
+   }
+  ],
+  "ipStats": [
+   {
+    "requests": 2,
+    "domains": [
+     "example.com"
+    ],
+    "ip": "104.20.23.154",
+    "asn": {
+     "ip": "104.20.23.154",
+     "asn": "13335",
+     "country": "US",
+     "description": "CLOUDFLARENET - Cloudflare, Inc., US",
+     "name": "Cloudflare",
+     "route": "104.20.0.0/18"
+    },
+    "dns": {},
+    "geoip": {
+     "country": "",
+     "region": "",
+     "timezone": "",
+     "city": "",
+     "ll": [
+      null,
+      null
+     ],
+     "country_name": "Ascension Island"
+    },
+    "size": 2540,
+    "encodedSize": 2147,
+    "countries": [],
+    "index": 0,
+    "ipv6": false,
+    "redirects": 0,
+    "count": null
+   }
+  ],
+  "malicious": 0,
+  "protocolStats": [
+   {
+    "count": 2,
+    "size": 2540,
+    "encodedSize": 2147,
+    "ips": [
+     "104.20.23.154"
+    ],
+    "countries": [],
+    "securityState": {},
+    "protocol": "h3"
+   }
+  ],
+  "regDomainStats": [
+   {
+    "count": 2,
+    "ips": [
+     "104.20.23.154"
+    ],
+    "regDomain": "example.com",
+    "size": 2540,
+    "encodedSize": 2147,
+    "countries": [],
+    "index": 0,
+    "subDomains": [
+     {
+      "domain": "",
+      "country": ""
+     }
+    ],
+    "redirects": 0
+   }
+  ],
+  "resourceStats": [
+   {
+    "count": 1,
+    "size": 1963,
+    "encodedSize": 1599,
+    "latency": 0,
+    "countries": [],
+    "ips": [
+     "104.20.23.154"
+    ],
+    "type": "Script",
+    "compression": "1.2",
+    "percentage": 50
+   },
+   {
+    "count": 1,
+    "size": 577,
+    "encodedSize": 548,
+    "latency": 0,
+    "countries": [],
+    "ips": [
+     "104.20.23.154"
+    ],
+    "type": "Document",
+    "compression": "1.1",
+    "percentage": 50
+   }
+  ],
+  "securePercentage": 100,
+  "secureRequests": 2,
+  "serverStats": [
+   {
+    "count": 2,
+    "size": 2540,
+    "encodedSize": 2147,
+    "ips": [
+     "104.20.23.154"
+    ],
+    "countries": [],
+    "server": "cloudflare"
+   }
+  ],
+  "tlsStats": [
+   {
+    "count": 2,
+    "size": 2540,
+    "encodedSize": 2147,
+    "ips": [
+     "104.20.23.154"
+    ],
+    "countries": [],
+    "protocols": {
+     "QUIC /  / AES_128_GCM": 2
+    },
+    "securityState": "secure"
+   }
+  ],
+  "totalLinks": 1,
+  "uniqCountries": 1
+ },
+ "submitter": {
+  "country": "KE"
+ },
+ "task": {
+  "method": "manual",
+  "source": "web",
+  "tags": [],
+  "time": "2026-11-16T11:32:10.568Z",
+  "url": "http://example.com/",
+  "uuid": "01a1e420-90e4-774e-a77b-64d38407fe8c",
+  "visibility": "public",
+  "reportURL": "https://urlscan.io/result/01a1e420-90e4-774e-a77b-64d38407fe8c/",
+  "screenshotURL": "https://urlscan.io/screenshots/01a1e420-90e4-774e-a77b-64d38407fe8c.png",
+  "domURL": "https://urlscan.io/dom/01a1e420-90e4-774e-a77b-64d38407fe8c/",
+  "domain": "example.com",
+  "apexDomain": "example.com"
+ },
+ "verdicts": {
+  "overall": {
+   "score": 0,
+   "categories": [],
+   "brands": [],
+   "tags": [],
+   "malicious": false,
+   "hasVerdicts": true
+  },
+  "urlscan": {
+   "score": 0,
+   "categories": [],
+   "brands": [],
+   "tags": [],
+   "malicious": false,
+   "hasVerdicts": false
+  },
+  "engines": {
+   "score": -99,
+   "malicious": false,
+   "categories": [],
+   "enginesTotal": 0,
+   "maliciousTotal": 0,
+   "benignTotal": 0,
+   "maliciousVerdicts": [],
+   "benignVerdicts": [],
+   "hasVerdicts": true,
+   "tags": [
+    "urlscan-ml",
+    "urlscan-ml-2aab354"
+   ]
+  },
+  "community": {
+   "score": 0,
+   "categories": [],
+   "brands": [],
+   "votesTotal": 0,
+   "votesMalicious": 0,
+   "votesBenign": 0,
+   "malicious": false,
+   "hasVerdicts": false
+  }
+ }
+}

@@ -1,0 +1,14 @@
+{
+ "firstScan": "2002-01-20T14:25:10.000Z",
+ "lastScan": "2026-11-16T01:07:23.000Z",
+ "daysArchived": 6846,
+ "changeCount": 494,
+ "averagePageSize": 660,
+ "scanFrequency": {
+  "daysBetweenScans": 1.32,
+  "daysBetweenChanges": 18.35,
+  "scansPerDay": 0.76,
+  "changesPerDay": 0.05
+ },
+ "scanUrl": "https://example.org"
+}

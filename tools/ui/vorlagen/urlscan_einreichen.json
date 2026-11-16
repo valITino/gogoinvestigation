@@ -1,0 +1,20 @@
+{
+ "werkzeug": "urlscan_einreichen",
+ "parameter": {
+  "url": "https://example.org/login",
+  "trotz_vorhandener": false
+ },
+ "grundlage": [
+  "P-0003"
+ ],
+ "befund": {
+  "uuid": "01a1e500-0000-7000-8000-00000000beef",
+  "sichtbarkeit": "private",
+  "url": "https://example.org/login",
+  "meldung": "Submission successful",
+  "ergebnis": "https://urlscan.io/api/v1/result/01a1e500-0000-7000-8000-00000000beef/",
+  "hinweise": [
+   "Der Scan dauert in der Regel unter einer Minute."
+  ]
+ }
+}

@@ -1,0 +1,116 @@
+{
+ "data": {
+  "id": "0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7",
+  "type": "url",
+  "links": {
+   "self": "https://www.virustotal.com/api/v3/urls/0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7"
+  },
+  "attributes": {
+   "last_final_url": "https://example.com/",
+   "categories": {
+    "alphaMountain.ai": "Information Technology (alphaMountain.ai)",
+    "BitDefender": "computersandsoftware",
+    "Sophos": "information technology",
+    "Forcepoint ThreatSeeker": "information technology",
+    "Google": "domain_parking"
+   },
+   "url": "https://example.com/",
+   "targeted_brand": {
+    "SafeToOpen": ""
+   },
+   "first_submission_date": 1334845943,
+   "last_http_response_headers": {
+    "age": "1",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "date": "Mon, 16 Nov 2026 10:08:46 GMT",
+    "cf-ray": "a5b5b241982d5d06-DFW",
+    "content-encoding": "br",
+    "last-modified": "Mon, 16 Nov 2026 00:30:20 GMT",
+    "content-type": "text/html; charset=utf-8",
+    "server": "cloudflare",
+    "cf-cache-status": "HIT",
+    "allow": "GET, HEAD"
+   },
+   "total_votes": {
+    "harmless": 18,
+    "malicious": 23
+   },
+   "proxy_country": "US",
+   "crowdsourced_context": [
+    {
+     "source": "ArcSight Threat Intelligence",
+     "timestamp": 1692891969,
+     "details": "Contextual Indicators: The domain’s Cisco Umbrella rank is 8898\n\nContextual Indicators: The URL is known benign by Check Point's Threat Cloud\n\nContextual Indicators: The domain is popular among websites with good reputation\n\nContextual Indicators: The domain is popular in the world\n\nCreated On: 1995:08:14 04:00:00\n\nVirusTotal Link: https://www.virustotal.com/gui/domain/a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce1947/detection\n\nClassification Description: Legitimate website which does not serve any malicious purpose.",
+     "severity": "low",
+     "title": "Backdoor via XFF – Mysterious Threat Actor Under Radar"
+    }
+   ],
+   "last_modification_date": 1794823744,
+   "threat_names": [],
+   "web_category": "domain_parking",
+   "javascript_variables": [
+    {
+     "name": "onpagereveal",
+     "type": "JS_TYPE_OBJECT",
+     "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+     "value": null
+    },
+    {
+     "name": "event",
+     "type": null,
+     "sha256": "eb045d78d273107348b0300c01d29b7552d622abbc6faf81b3ec55359aa9950c",
+     "value": null
+    }
+   ],
+   "last_analysis_date": 1794823725,
+   "last_http_response_cookies_extended": [],
+   "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:156.0) Gecko/20100101 Firefox/156.0",
+   "last_http_response_code": 200,
+   "tags": [],
+   "outgoing_links": [
+    "https://iana.org/help/example-domains"
+   ],
+   "reputation": -346,
+   "console_messages": [],
+   "title": "Example Domain",
+   "last_analysis_results": {
+    "Acronis": {
+     "method": "blacklist",
+     "engine_name": "Acronis",
+     "category": "harmless",
+     "result": "clean"
+    },
+    "Abusix": {
+     "method": "blacklist",
+     "engine_name": "Abusix",
+     "category": "harmless",
+     "result": "clean"
+    },
+    "ADMINUSLabs": {
+     "method": "blacklist",
+     "engine_name": "ADMINUSLabs",
+     "category": "harmless",
+     "result": "clean"
+    }
+   },
+   "last_http_response_content_sha256": "25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484",
+   "last_http_response_cookies": {},
+   "last_http_response_content_length": 577,
+   "last_submission_date": 1794823725,
+   "tld": "com",
+   "last_analysis_stats": {
+    "malicious": 0,
+    "suspicious": 0,
+    "undetected": 31,
+    "harmless": 62,
+    "timeout": 0
+   },
+   "html_meta": {
+    "viewport": [
+     "width=device-width,initial-scale=1"
+    ]
+   },
+   "times_submitted": 33915
+  }
+ }
+}

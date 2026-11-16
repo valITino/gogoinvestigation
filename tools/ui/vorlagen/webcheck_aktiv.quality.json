@@ -1,0 +1,24 @@
+{
+ "categories": {
+  "performance": {
+   "id": "performance",
+   "title": "Performance",
+   "score": 0.92
+  },
+  "accessibility": {
+   "id": "accessibility",
+   "title": "Accessibility",
+   "score": 0.81
+  },
+  "best-practices": {
+   "id": "best-practices",
+   "title": "Best Practices",
+   "score": 0.75
+  },
+  "seo": {
+   "id": "seo",
+   "title": "SEO",
+   "score": 0.6
+  }
+ }
+}

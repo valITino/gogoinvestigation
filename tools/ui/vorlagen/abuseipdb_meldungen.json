@@ -1,0 +1,33 @@
+{
+ "data": {
+  "total": 123,
+  "page": 1,
+  "count": 50,
+  "perPage": 50,
+  "lastPage": 3,
+  "nextPageUrl": "https://api.abuseipdb.com/api/v2/reports?ipAddress=1.1.1.1&maxAgeInDays=30&perPage=50&page=2",
+  "previousPageUrl": null,
+  "results": [
+   {
+    "reportedAt": "2026-11-16T09:43:02+00:00",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "categories": [
+     15
+    ],
+    "reporterId": 145424,
+    "reporterCountryCode": "DE",
+    "reporterCountryName": "Germany"
+   },
+   {
+    "reportedAt": "2026-11-16T03:26:25+00:00",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "categories": [
+     14
+    ],
+    "reporterId": 123046,
+    "reporterCountryCode": "DE",
+    "reporterCountryName": "Germany"
+   }
+  ]
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "blocklists": [
+  {
+   "server": "AdGuard",
+   "serverIp": "176.103.130.130",
+   "isBlocked": false
+  },
+  {
+   "server": "CloudFlare",
+   "serverIp": "1.1.1.1",
+   "isBlocked": false
+  },
+  {
+   "server": "Quad9",
+   "serverIp": "9.9.9.9",
+   "isBlocked": true
+  }
+ ]
+}

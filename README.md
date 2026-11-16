@@ -21,8 +21,9 @@ darüber, wann was wo und wozu abgefragt wurde.
 
 ![Abschlussrapport des Musterfalls](docs/bilder/abschlussrapport.png)
 
-**Muster ansehen:** [Abschlussrapport (PDF, 20 Seiten)](muster/Abschlussrapport.pdf) ·
-[Ermittlungsprotokoll (PDF, 27 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+**Muster ansehen:** [Abschlussrapport (PDF, 21 Seiten)](muster/Abschlussrapport.pdf) ·
+[Ermittlungsprotokoll (PDF, 28 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+[Datenblätter (PDF, 94 Seiten)](muster/Datenblaetter.pdf) ·
 [was der Musterfall zeigt](muster/README.md). Der Fall ist frei erfunden.
 
 ## Inhalt
@@ -31,6 +32,7 @@ darüber, wann was wo und wozu abgefragt wurde.
 - [Einrichten](#einrichten)
 - [Schlüssel](#schlüssel)
 - [Eine Ermittlung durchführen](#eine-ermittlung-durchführen)
+- [Oberfläche](#oberfläche)
 - [Pseudonymisieren ohne LLM: der Rückfall](#pseudonymisieren-ohne-llm-der-rückfall)
 - [Das Ermittler-Team](#das-ermittler-team)
 - [Blockchain-Analyse](#blockchain-analyse)
@@ -168,7 +170,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 57 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 82 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -356,6 +358,8 @@ es für Agenten ab, und die PII-Prüfung liest den Wortlaut mit.
 python3 tools/pdf.py 2026-0412
 ```
 
+Alles an einem Ort, vom Rapport bis zur Rohdatei, zeigt die [Oberfläche](#oberfläche): `python3 tools/oberflaeche.py 2026-0412`.
+
 **5. Zurückführen, im Haus.** Die Platzhalter im fertigen Rapport ersetzt ihr ausserhalb von Claude Code:
 
 ```bash
@@ -371,11 +375,92 @@ python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
 python3 tools/rapport.py 2026-0412             # Rapport neu erzeugen (--entwurf, --nur-pruefen)
 python3 tools/protokoll.py 2026-0412           # Protokoll neu erzeugen
 python3 tools/pdf.py 2026-0412                 # beide Dokumente als PDF (A4)
+python3 tools/oberflaeche.py 2026-0412         # Oberfläche: alle Ergebnisse des Falls im Browser, nur lesend
+python3 tools/anhang.py 2026-0412              # Datenblätter aller Indikatoren als HTML und PDF
 python3 tools/audit_pruefen.py 2026-0412       # Protokollkette prüfen
 python3 tools/musterfall.py                    # Musterfall neu bauen
 ```
 
 In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>`, `/protokoll <Fall-ID>`.
+
+## Oberfläche
+
+Alle Ergebnisse eines Falls an einem Ort: der Rapport zum Durchklicken, ein Datenblatt je Indikator, jeder Beleg
+und jede Rohdatei. Die Oberfläche **liest** die Fallakte und schreibt nie. Abschlussrapport und Ermittlungsprotokoll
+bleiben die Dokumente für die Akte.
+
+```bash
+python3 tools/oberflaeche.py                     # startet den Server und öffnet den Browser (Windows: python tools\oberflaeche.py)
+python3 tools/oberflaeche.py MUSTER-2026-001     # öffnet gleich diesen Fall
+```
+
+Ein Befehl, auf Linux, macOS und Windows. Dahinter steht ein kleiner Server in Python, der nur die
+Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C.
+
+![Fallübersicht mit Kennzahlen, Schritten und Arbeitsspur](docs/bilder/oberflaeche-uebersicht.png)
+
+Links die Navigation, oben der Kopf des Falls mit Freigaben und Schrittleiste, rechts die Arbeitsspur: das
+Abfrageprotokoll, laufend nachgeführt, filterbar nach Abfragen, «kein Treffer», Fehlschlägen, Auswertungen und Freigaben.
+
+**Fallübersicht.** Kennzahlen aus denselben Funktionen wie im Abschlussrapport, offene Punkte und die Abdeckung
+Indikator × Quelle. «Kein Treffer», Fehlschlag und «nicht abgefragt» sind so sichtbar wie ein Treffer:
+
+![Abdeckung: welche Quelle zu welchem Indikator gefragt wurde](docs/bilder/oberflaeche-abdeckung.png)
+
+**Rapport.** Derselbe Inhalt, dieselbe Reihenfolge und derselbe Wortlaut wie der Abschlussrapport, weil er aus
+demselben Generator kommt. Dazu: Befunde filtern (Sicherheit, Art, Indikator, Analyst), jeden Beleg bis zur
+Rohdatei aufklappen, den Graf verschieben und vergrössern, die Zeitachse einengen, die Stationen im Geldfluss anklicken.
+
+![Rapport: Befunde mit Filter](docs/bilder/oberflaeche-rapport.png)
+
+![Rapport: Beziehungsgraf zum Verschieben und Vergrössern](docs/bilder/oberflaeche-graf.png)
+
+**Datenblatt je Indikator.** Alles, was irgendeine Quelle geliefert hat, in festen Abschnitten je Art des
+Indikators. Jede Angabe nennt Quelle, Abfragezeit, Beleg und Stelle in der Rohdatei. Hat keine Quelle etwas
+geliefert, steht «keine Angabe» und wer gefragt wurde. Nennen zwei Quellen Verschiedenes, steht «Widerspruch» dabei.
+
+![Datenblatt einer Domain, mit einem Widerspruch zwischen zwei Quellen](docs/bilder/oberflaeche-datenblatt.png)
+
+**Beleg und Rohdatei.** Je Abfrage der Protokolleintrag und die Antwort der Quelle, geordnet von einem
+Darsteller: benannte Felder in festen Abschnitten, alles Übrige unter «Weitere Angaben der Quelle». Keine Angabe
+geht verloren. Die Rohdatei steht daneben, mit Prüfsumme und der Auskunft, ob sie noch zur Protokollkette passt.
+
+![Beleg: die Antwort von Shodan, geordnet vom Darsteller](docs/bilder/oberflaeche-beleg.png)
+
+![Rohdatei mit Prüfsumme und Kettenprüfung](docs/bilder/oberflaeche-rohdatei.png)
+
+**Suche und Dokumente.** Die Suche geht über den ganzen Fall, samt Rohdaten. Unter «Dokumente» stehen
+Abschlussrapport, Ermittlungsprotokoll und Datenblätter, als HTML und PDF, mit dem Vermerk, ob sie noch zum Stand
+der Daten passen. Jede Tabelle lässt sich sortieren, filtern und als CSV ausgeben, jede Ansicht hat eine feste
+Adresse und lässt sich drucken. Die Oberfläche folgt der hellen oder dunklen Einstellung des Systems:
+
+![Datenblatt einer Wallet-Adresse in der dunklen Darstellung](docs/bilder/oberflaeche-dunkel.png)
+
+**Anhang für die Akte.** Die Datenblätter gibt es auch ohne laufende Oberfläche, als ein Dokument:
+
+```bash
+python3 tools/anhang.py 2026-0412                # rapport/Datenblaetter.html und rapport/Datenblaetter.pdf
+```
+
+Das HTML steht für sich allein: keine Skripte, keine Verweise nach aussen, Bilder aus den Rohdaten eingebettet.
+Muster: [Datenblätter des Musterfalls (PDF)](muster/Datenblaetter.pdf).
+
+**Schutz.**
+
+- Der Server hört nur auf 127.0.0.1 und weist Anfragen mit fremdem Host-Kopf oder fremder Herkunft ab.
+- Er kennt nur GET und HEAD. Fallakte, Protokoll und Rohdaten kann er nicht verändern.
+- Was aus einer Quelle stammt, erscheint als Text und wird nie als HTML ausgeführt. Rohdateien liefert er als Text oder Bild.
+- Bilder kommen nur aus den Rohdaten des gezeigten Falls. Eine Content-Security-Policy verbietet alles von aussen.
+- Adressen aus dem Fall (URLs, Domains, Onion-Adressen) sind nie anklickbar. Platzhalter bleiben Platzhalter.
+
+**Grenzen.** Die Oberfläche hat keine Anmeldung und gehört auf den Arbeitsplatz des Sachbearbeiters, nicht auf
+einen geteilten Server. Dieser erste Teil liest nur: Fall anlegen, Freigaben und der Start der Ermittlung bleiben
+am Terminal. Rohdateien über 3 MB zeigt sie nur im Anfang und durchsucht sie nicht. Für Werkzeuge, zu denen keine
+echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Telegram über RapidAPI, Shodan-DNS, Robin), ist nicht
+geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
+
+Alle Einzelheiten, die Abschnitte je Art des Indikators, die Regeln der Darstellung und die Tabelle der
+Darsteller: [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md).
 
 ## Pseudonymisieren ohne LLM: der Rückfall
 
@@ -771,6 +856,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Klartext bleibt beim Sachbearbeiter | `tools/pseudonymisieren.py` und `tools/reidentifizieren.py` laufen nur an einem Terminal und nicht aus Claude Code heraus. Wächter und Berechtigungen sperren beide für Agenten, in jeder Phase. Dokument, Zuordnungstabelle und Ausgabe müssen ausserhalb des Projektordners liegen. Das Pseudonymisieren sperrt sich selbst jede Netzverbindung. | Wächter, `tools/pseudonymisieren.py` |
 | Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten unveränderbar für Agenten | Schreibschutz über Berechtigungen und Wächter. | beide |
+| Die Oberfläche liest nur und führt nichts Fremdes aus | Der Server hört nur auf 127.0.0.1, weist fremde Host-Köpfe ab und kennt nur GET und HEAD. Inhalte aus Quellen erscheinen als Text, Rohdateien als Text oder Bild, eine Content-Security-Policy verbietet alles von aussen. Adressen aus dem Fall sind nie anklickbar. | `tools/ui/server.py`, `tools/ui/seiten.py` |
 | Agenten stellen die Einrichtung nicht um | `setup.sh`, `setup.cmd` und `tools/einrichten.py` sind für Agenten gesperrt, ebenso das Schreiben an Gateway, Hooks und Einstellungen. | Wächter |
 | Fällt der Wächter aus, läuft nichts | Kann der Wächter nicht starten oder seine Eingabe nicht lesen, sperrt Claude Code den Werkzeugaufruf (`onFailure: block`, ab Claude Code 2.1.295). | `.claude/settings.json`, `.claude/hooks/start.sh` |
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
@@ -854,7 +940,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 71 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 82 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -874,6 +960,23 @@ PowerShell 7:
   Messung an 45 Rapporten. Ein eigener Schritt der CI prüft, dass die Tabellen im README zum Stand des Codes
   passen (`python3 tools/pseudo_messen.py --pruefen`). Nicht geprüft: echte Rapporte, die Liste eurer
   Feldmarken, die Tabellen des BFS und der Dialog in einer Windows-Konsole.
+- Elf gelten der Oberfläche (`tools/oberflaeche.py`, `tools/ui/`, `tools/anhang.py`), Stand 16.11.2026: Für jedes Werkzeug
+  liegt eine Rohantwort als Vorlage im Repo, und keine ihrer Angaben geht verloren (105 Vorlagen, 4431 Angaben, jede
+  zugeordnet oder unter «Weitere Angaben»). Jeder gezeigte Wert steht an der genannten Stelle der Rohdatei, in den
+  Vorlagen, in jedem Datenblatt des Musterfalls und im Anhang. Zahlen ohne Rundung, Zeiten mit Original, Einheiten,
+  gekürzt nur in der Anzeige. Feste Abschnitte je Art des Indikators, Widerspruch und «keine Angabe». «Kein Treffer»,
+  Fehlschlag, Ablehnung und Fall-Cache mit der ursprünglichen Abfragezeit. Ein Fall voller Markup (Skripte, Ereignis-
+  Attribute, `javascript:`-Adressen in Werten, Schlüsseln, Zielen und Befunden): In keiner Ansicht entsteht daraus ein
+  ausführbares Element, ein Verweis nach aussen oder ein fremdes Bild. Der Server: über 600 Adressen zweier Fälle
+  antworten, fremder Host-Kopf und fremde Herkunft werden abgewiesen, es gibt nur GET und HEAD, Pfade aus den
+  Rohdaten hinaus enden bei 404, und die Fallakten sind nach dem Lauf Byte für Byte unverändert. Kennzahlen und
+  Wortlaut entsprechen dem Abschlussrapport des Musterfalls. Dazu ein Durchgang im Browser (Chromium, ohne Fenster,
+  16.11.2026) am Musterfall: 206 Ansichten geöffnet, 219 Tabellen sortierbar, Filter, CSV, Graf, Geldfluss, Zeitachse,
+  Arbeitsspur, Tastatur, Druckansicht und dunkle Darstellung bedient, kein Fehler in der Konsole, keine Anfrage nach
+  aussen. Die CI startet die Oberfläche auf Linux, macOS und Windows (`python3 tools/oberflaeche.py --selbstpruefung`).
+  Nicht geprüft: Firefox und Safari, ein Bildschirmleser, Fälle mit mehr als rund tausend Protokolleinträgen
+  (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
+  zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den

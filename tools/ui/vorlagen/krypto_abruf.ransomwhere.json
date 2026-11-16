@@ -1,0 +1,50 @@
+{
+ "result": [
+  {
+   "address": "1H2Spjde9d6YaoBfJ4LYmFWxDsgmxf92Ln",
+   "balance": 6640021546,
+   "blockchain": "bitcoin",
+   "createdAt": "2021-07-08T06:43:11.008Z",
+   "transactions": [
+    {
+     "hash": "6a04e8bddb9a644a98312f9ef5487b8818e1ac9650da462bdf18faae16e0d4c2",
+     "time": 1590166805,
+     "amount": 6640010546,
+     "amountUSD": 609724.0910217861
+    },
+    {
+     "hash": "baf261b627319512dde1e3c864b711bc5d18ef7b809d3ed328092ba9159a61da",
+     "time": 1590164903,
+     "amount": 11000,
+     "amountUSD": 1.01008348628
+    }
+   ],
+   "updatedAt": "2021-09-22T20:54:02.648Z",
+   "family": "Netwalker (Mailto)",
+   "balanceUSD": 609725.1011052724
+  },
+  {
+   "address": "3FvLioiqF2TrQgZ9zRMdd7QUfc2hTjKZfL",
+   "balance": 19945862,
+   "blockchain": "bitcoin",
+   "createdAt": "2021-07-08T06:43:11.168Z",
+   "transactions": [
+    {
+     "hash": "e469671e2507b0e50400c5d4a0fe4fe4cc39829e64e46fb346b2feb4320347c1",
+     "time": 1620217325,
+     "amount": 1000000,
+     "amountUSD": 574.24007813
+    },
+    {
+     "hash": "08efeef85693b7524f9c888d1fb7bb4b3f7c011fffeb219e94ecec546a0a3cd8",
+     "time": 1620195585,
+     "amount": 1000000,
+     "amountUSD": 574.24007813
+    }
+   ],
+   "updatedAt": "2021-09-22T20:54:03.527Z",
+   "family": "Qlocker",
+   "balanceUSD": 10507.693833739399
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+{
+ "count": 1,
+ "trackers": [
+  {
+   "name": "Beispiel-Analyse",
+   "category": "Analytics",
+   "url": "https://sammler.example.net/z.js"
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "safeBrowsing": {
+  "skipped": "Google Safe Browsing requires GOOGLE_CLOUD_API_KEY to be set"
+ },
+ "urlHaus": {
+  "error": "URLhaus blocked (HTTP 401)"
+ },
+ "phishTank": {
+  "url0": {
+   "url": "https://example.org",
+   "in_database": "true",
+   "phish_id": "7366538",
+   "phish_detail_page": "https://www.phishtank.com/phish_detail.php?phish_id=7366538",
+   "verified": "false"
+  }
+ },
+ "cloudmersive": {
+  "skipped": "Cloudmersive requires CLOUDMERSIVE_API_KEY to be set"
+ },
+ "netApi": {
+  "value": "example.org",
+  "type": "domain",
+  "listed_now": false,
+  "listed_ever": false,
+  "matched_value": null,
+  "first_seen": null,
+  "last_seen": null,
+  "block_reason": null,
+  "registrar": null,
+  "note": "Not in the current or historical compromised feed.",
+  "lists": {
+   "page": "https://netapi.com/compromised-urls/",
+   "current": "https://netapi.com/api2/?method=compromised&dataset_type=url",
+   "all_time": "https://netapi.com/api2/?method=compromised&dataset_type=url-all"
+  },
+  "source": "NetAPI compromised feed, updated daily (CC BY 4.0)"
+ }
+}

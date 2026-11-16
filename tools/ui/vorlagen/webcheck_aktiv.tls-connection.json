@@ -1,0 +1,19 @@
+{
+ "protocol": "TLSv1.3",
+ "cipher": {
+  "name": "TLS_AES_256_GCM_SHA384",
+  "standardName": "TLS_AES_256_GCM_SHA384",
+  "version": "TLSv1.3"
+ },
+ "certificate": {
+  "subject": {
+   "CN": "example.org"
+  },
+  "issuer": {
+   "O": "Let's Encrypt",
+   "CN": "R11"
+  },
+  "valid_from": "Sep 26 07:41:00 2026 GMT",
+  "valid_to": "Dec 25 07:40:59 2026 GMT"
+ }
+}

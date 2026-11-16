@@ -2981,6 +2981,757 @@ def _():
         datei.unlink()
 
 
+# --------------------------------------------------------------------------- Oberfläche (tools/oberflaeche.py, tools/ui)
+
+import http.client  # noqa: E402
+import struct  # noqa: E402
+import threading  # noqa: E402
+import zlib  # noqa: E402
+from datetime import timedelta  # noqa: E402
+from html import escape as html_escape, unescape as html_unescape  # noqa: E402
+from html.parser import HTMLParser  # noqa: E402
+from urllib.parse import quote as urllib_quote  # noqa: E402
+
+from tools import anhang as anhang_werkzeug  # noqa: E402
+from tools.ui import (blaetter as ui_blaetter, darsteller as ui_ds, daten as ui_daten, pruefstand, seiten as ui_seiten,  # noqa: E402
+                      server as ui_server)
+
+OBERFL, MUSTER = "OBERFL-0001", "MUSTER-2026-001"
+BOESE = '<script>alert(1)</script>"><img src=x onerror=alert(2)>'
+VERBOTEN = {"script", "object", "embed", "base", "meta", "link", "style", "frame", "frameset", "applet", "audio", "video", "source", "portal"}
+UI: dict = {}
+
+
+class Seite(HTMLParser):
+    """Liest eine Ansicht so, wie ein Browser sie läse: Welche Elemente entstehen wirklich, und welcher Wert steht an welcher Stelle?"""
+    OHNE_ENDE = {"br", "img", "input", "hr", "meta", "link", "base", "line", "path", "rect", "circle", "polygon", "polyline", "ellipse", "use"}
+
+    def __init__(self, text: str):
+        super().__init__(convert_charrefs=True)
+        self.elemente: list[tuple[str, dict]] = []
+        self.werte: list[dict] = []
+        self.text = ""
+        self._stapel: list[tuple[str, str | None]] = []
+        self._offen: dict | None = None
+        self.feed(text)
+        self.close()
+
+    def handle_starttag(self, tag, attrs):
+        a = {k: (v or "") for k, v in attrs}
+        self.elemente.append((tag, a))
+        if tag in self.OHNE_ENDE:
+            return
+        self._stapel.append((tag, a.get("data-beleg")))
+        if tag == "span" and "w" in a.get("class", "").split() and "data-stelle" in a:
+            self._offen = {"stelle": a["data-stelle"], "roh": a.get("data-roh"), "gekuerzt": a.get("data-gekuerzt"), "text": "",
+                           "beleg": next((b for _, b in reversed(self._stapel) if b), None), "tiefe": len(self._stapel)}
+
+    def handle_startendtag(self, tag, attrs):
+        self.elemente.append((tag, {k: (v or "") for k, v in attrs}))
+
+    def handle_endtag(self, tag):
+        if tag in self.OHNE_ENDE or tag not in [t for t, _ in self._stapel]:
+            return
+        while self._stapel.pop()[0] != tag:
+            pass
+        if self._offen is not None and len(self._stapel) < self._offen["tiefe"]:
+            self.werte.append(self._offen)
+            self._offen = None
+
+    def handle_data(self, data):
+        self.text += data
+        if self._offen is not None:
+            self._offen["text"] += data
+
+    def namen(self) -> set[str]:
+        return {t for t, _ in self.elemente}
+
+
+def _j(wert: object) -> str:
+    return json.dumps(wert, sort_keys=True, ensure_ascii=False)
+
+
+def abweichung(w: dict, roh: object) -> str | None:
+    """Vergleicht einen gezeigten Wert mit dem Wert an der genannten Stelle der Rohdatei. None heisst: Er stimmt."""
+    try:
+        echt = ui_ds.an_stelle(roh, w["stelle"])
+    except (KeyError, IndexError, ValueError, TypeError):
+        return f"die Stelle «{w['stelle']}» gibt es in der Rohdatei nicht"
+    if w["roh"] is not None:
+        gezeigt = json.loads(w["roh"])
+        if _j(gezeigt) == _j(echt):
+            return None
+        if isinstance(gezeigt, list) and isinstance(echt, (dict, list)):      # mehrere Werte einer Zeile in einer Zelle
+            darunter = {_j(x) for _, x in ui_ds.angaben_zaehlen(echt)}
+            if all(_j(x) in darunter for x in gezeigt):
+                return None
+        return f"an «{w['stelle']}» steht {str(echt)[:60]!r}, gezeigt wird {str(gezeigt)[:60]!r}"
+    if not isinstance(echt, str):
+        return f"an «{w['stelle']}» steht kein Text ({type(echt).__name__}), und der genaue Wert fehlt in der Anzeige"
+    if w["gekuerzt"]:
+        stimmt = int(w["gekuerzt"]) == len(echt) and w["text"] == echt[:ui_seiten.SEHR_LANG]
+    else:
+        stimmt = w["text"] == echt or (echt == "" and w["text"] == "leer")
+    return None if stimmt else f"an «{w['stelle']}» steht {echt[:60]!r}, gezeigt wird {w['text'][:60]!r}"
+
+
+def fehlende(werte: list[dict], roh: object) -> list[str]:
+    """Die Angaben der Rohantwort, die in der Ansicht nicht vorkommen: weder an ihrer Stelle noch in einer Zelle, die sie nennt."""
+    genau = {w["stelle"] for w in werte}
+    mengen = [(w["stelle"] + "/", {_j(x) for x in json.loads(w["roh"])}) for w in werte if w["roh"] is not None and isinstance(json.loads(w["roh"]), list)]
+    return [s for s, x in ui_ds.angaben_zaehlen(roh) if s not in genau and not any(s.startswith(p) and _j(x) in m for p, m in mengen)]
+
+
+def verstoesse(text: str, fall_id: str, rahmen: bool = False) -> list[str]:
+    """Was in einer Ansicht nicht vorkommen darf: ausführbare Elemente, Ereignis-Attribute, Verweise und Bilder nach aussen."""
+    s = Seite(text)
+    aus = [f"Element <{t}>" for t in sorted(s.namen() & VERBOTEN)]
+    rahmen_da = [a for t, a in s.elemente if t == "iframe"]
+    if rahmen_da and not (rahmen and len(rahmen_da) == 1 and "sandbox" in rahmen_da[0] and "allow-scripts" not in rahmen_da[0]["sandbox"]
+                          and rahmen_da[0].get("src", "").startswith(f"/fall/{fall_id}/dokument/")):
+        aus.append("Rahmen (iframe) ohne Sandbox oder mit fremder Adresse")
+    for tag, a in s.elemente:
+        for name, wert in a.items():
+            if name.startswith("on") or name in ("srcdoc", "formaction", "action", "srcset", "ping", "background", "poster"):
+                aus.append(f"<{tag} {name}=…>")
+            if name in ("href", "xlink:href") and not (wert.startswith("#/") or wert.startswith(f"/fall/{fall_id}/")):
+                aus.append(f"Verweis nach «{wert[:60]}»")
+            if name == "src" and not wert.startswith(f"/fall/{fall_id}/") and not (tag == "img" and wert.startswith("data:image/")):
+                aus.append(f"<{tag}> lädt «{wert[:60]}»")
+            if name == "style" and re.search(r"url\(|expression|@import", wert, re.I):
+                aus.append(f"<{tag} style=…> lädt etwas nach")
+    return aus
+
+
+def png(breite: int = 4, hoehe: int = 4) -> bytes:
+    def stueck(art: bytes, inhalt: bytes) -> bytes:
+        return struct.pack(">I", len(inhalt)) + art + inhalt + struct.pack(">I", zlib.crc32(art + inhalt) & 0xFFFFFFFF)
+    zeilen = b"".join(b"\x00" + b"\x40\x80\xc0" * breite for _ in range(hoehe))
+    return b"\x89PNG\r\n\x1a\n" + stueck(b"IHDR", struct.pack(">IIBBBBB", breite, hoehe, 8, 2, 0, 0, 0)) + stueck(b"IDAT", zlib.compress(zeilen)) + stueck(b"IEND", b"")
+
+
+def ui_eintrag(akte, werkzeug: str, quelle: str, ziel: str, roh: object = None, endung: str = "json", status: int = 200, **felder) -> dict:
+    """Ein Protokolleintrag samt Rohdatei, geschrieben vom Gateway selbst (kern.protokollieren): Die Kette stimmt wie im Betrieb."""
+    inhalt = roh if isinstance(roh, bytes) or roh is None else (roh if isinstance(roh, str) else json.dumps(roh, ensure_ascii=False, indent=1)).encode("utf-8")
+    basis = {"werkzeug": werkzeug, "quelle": quelle, "art": "passiv", "freigabe": None, "ziel": ziel, "ziel_typ": "sonstiges", "zweck": ZWECK,
+             "anfrage": {"methode": "GET", "url": "https://quelle.example/abfrage", "proxy": False},
+             "antwort": {"status": status, "bytes": len(inhalt or b""), "sha256": hashlib.sha256(inhalt).hexdigest() if inhalt else None, "rohdaten": None,
+                         "dauer_ms": 7, "aus_cache": None},
+             "ergebnis": "ok", "fehler": None, "schluessel": None}
+    return kern.protokollieren(akte, {**basis, **felder}, inhalt, endung)
+
+
+def ui_vorbereiten() -> dict:
+    """Zwei Fallakten für die Oberfläche: der Musterfall (Kopie aus dem Repo) und ein Fall, der je Vorlage einen Eintrag hat,
+    dazu «kein Treffer», Fehlschlag, Ablehnung, eine Antwort aus dem Fall-Cache, Bild, CSV, HTML und Antworten voller Markup."""
+    if UI:
+        return UI
+    shutil.copytree(REPO / "faelle" / MUSTER, PROJEKT / "faelle" / MUSTER)
+    pfad = PROJEKT / "faelle" / OBERFL
+    for ordner in fallwerkzeug.UNTERORDNER:
+        (pfad / ordner).mkdir(parents=True)
+    fallwerkzeug.schreiben(pfad / "fall.json", {"fall_id": OBERFL, "titel": "Oberfläche " + BOESE, "auftrag": "Auftrag " + BOESE, "freigaben": {}})
+    akte = kern.fall_laden(OBERFL)
+    ids: dict[str, str] = {}
+    uhr_vorher = kern.uhr
+    kern.uhr = lambda: datetime(2026, 11, 14, 8, 30, 0, tzinfo=timezone.utc)
+    try:
+        for v in pruefstand.vorlagen():
+            endung = "json" if v["datei"].endswith(".json") else "html" if v["datei"].endswith(".html.txt") else "txt"
+            ids[v["name"]] = ui_eintrag(akte, v["werkzeug"], v["quelle"], v["ziel"], (pruefstand.ORT / v["datei"]).read_bytes(), endung,
+                                        art=pruefstand.eintrag(v)["art"])["id"]
+        boese = {"ip": "203.0.113.66", "ports": [443], "hostnames": [BOESE, "javascript:alert(3)"], "tags": ["</td></tr></table><script>alert(4)</script>"], "vulns": [],
+                 "cpes": [], BOESE: {"<b>fett</b>": "</pre></details><iframe src=//boese.example></iframe>"}, "lang": "x" * 300 + BOESE, "sehr_lang": "y" * 5000 + BOESE}
+        ids["boese"] = ui_eintrag(akte, "shodan_internetdb", "Shodan InternetDB", "203.0.113.66", boese, zweck="Zweck mit Markup: " + BOESE)["id"]
+        ids["allgemein"] = ui_eintrag(akte, "neues_werkzeug", "Neue Quelle " + BOESE, "203.0.113.66 " + BOESE,
+                                      {"feld": BOESE, "liste": [1, 2.5, None, True], "leer": {}, "auch_leer": [], "zahl": 12345678901234567890, "bruch": 0.1 + 0.2})["id"]
+        ids["html"] = ui_eintrag(akte, "wayback_abruf", "Wayback Machine", "https://boese.example/ @ 20261116",
+                                 "<html><body><h1>Fremd</h1>" + BOESE + "<a href='https://boese.example/'>klick</a></body></html>", "html")["id"]
+        ids["csv"] = ui_eintrag(akte, "krypto_abruf", "OFAC", "SDN-Liste",
+                                'nr,formel,text\n1,"=HYPERLINK(""https://boese.example"")","' + BOESE.replace('"', '""') + '"\n2,@SUM(1),x\n', "csv")["id"]
+        bild = ui_eintrag(akte, "urlscan_abruf", "urlscan.io", "01a1e420-0000-7000-8000-000000000009 (Bildschirmfoto)", png(), "png")
+        ids["bild"], UI["bild"] = bild["id"], bild["antwort"]["rohdaten"]
+
+        def scan(adresse: str, foto: str) -> str:
+            roh = {"werkzeug": "urlscan_ergebnis", "parameter": {}, "grundlage": [ids["bild"]],
+                   "befund": {"uuid": "01a1e420-0000-7000-8000-000000000009", "zeit": "2026-11-13T09:00:00Z",
+                              "seite": {"url": adresse, "domain": "kundenportal.example", "titel": "Anmeldung " + BOESE},
+                              "bildschirmfoto": {"rohdaten": foto, "beleg": ids["bild"]}}}
+            return ui_eintrag(akte, "urlscan_ergebnis", "Gateway", "01a1e420-0000-7000-8000-000000000009", roh, art="auswertung", anfrage=None,
+                              grundlage=[ids["bild"]], quellen=["urlscan.io"])["id"]
+        ids["scan"] = scan("https://kundenportal.example/login", f"faelle/{OBERFL}/{UI['bild']}")
+        ids["scan_fremd"] = scan("https://kundenportal.example/zwei", "https://boese.example/bild.png")
+        ids["kein"] = ui_eintrag(akte, "shodan_host", "Shodan", "203.0.113.50", {"error": "No information available for that IP."}, status=404, ergebnis="kein_treffer")["id"]
+        ids["fehler"] = ui_eintrag(akte, "virustotal_ip", "VirusTotal", "203.0.113.50", None, status=500, ergebnis="fehler",
+                                   fehler="VirusTotal antwortet mit HTTP 500. Die Quelle meldet: «" + BOESE + "»")["id"]
+        ids["abgelehnt"] = ui_eintrag(akte, "webcheck_aktiv", "Web-Check", "kundenportal.example (ssl)", None, art="aktiv", freigabe="aktiv", antwort=None,
+                                      ergebnis="abgelehnt", fehler="Freigabe 'aktiv' fehlt")["id"]
+        spur = ui_eintrag(akte, "spur_kontext", "Spur", "203.0.113.50",
+                          {"ip": "203.0.113.50", "as": {"number": 64500, "organization": "Beispiel Hosting AG"}, "infrastructure": "DATACENTER",
+                           "location": {"country": "NL", "city": "Amsterdam"}})
+        ids["spur"] = spur["id"]
+        ids["abuse"] = ui_eintrag(akte, "abuseipdb_pruefen", "AbuseIPDB", "203.0.113.50",
+                                  {"data": {"ipAddress": "203.0.113.50", "countryCode": "DE", "abuseConfidenceScore": 3, "totalReports": 1,
+                                            "isp": "BEISPIEL-HOSTING - Beispiel Hosting AG, NL", "lastReportedAt": "2026-11-13T22:10:00+00:00"}})["id"]
+        kern.uhr = lambda: datetime(2026, 11, 16, 15, 45, 0, tzinfo=timezone.utc)       # zwei Tage später: dieselbe Frage, die Antwort kommt aus der Fallakte
+        ids["cache"] = kern.protokollieren(akte, {**{k: spur[k] for k in ("werkzeug", "quelle", "art", "freigabe", "ziel", "ziel_typ", "zweck", "anfrage", "ergebnis",
+                                                                        "fehler", "schluessel")},
+                                                  "antwort": {**spur["antwort"], "dauer_ms": 0, "aus_cache": spur["id"]}})["id"]
+    finally:
+        kern.uhr = uhr_vorher
+    befunde = {
+        "fall_id": OBERFL, "stand": "2026-11-16T16:00:00Z", "zusammenfassung": ["Zusammenfassung mit Markup: " + BOESE],
+        "kernaussagen": [{"text": "Kernaussage " + BOESE, "sicherheit": "hoch", "befunde": ["B-01"]}],
+        "indikatoren": [
+            {"id": "I-01", "typ": "ip", "wert": "203.0.113.50", "herkunft": "Rapport Ziff. 1", "rolle": "Server", "bewertung": "verdaechtig",
+             "belege": [ids["spur"], ids["abuse"]]},
+            {"id": "I-02", "typ": "ip", "wert": "203.0.113.66", "herkunft": "Rapport Ziff. 2 " + BOESE, "rolle": "Rolle " + BOESE, "bewertung": "unbekannt",
+             "belege": [ids["boese"]]},
+            {"id": "I-03", "typ": "domain", "wert": 'boese.example"><script>alert(5)</script>', "herkunft": "Rapport Ziff. 3", "rolle": "Domain", "bewertung": "boesartig", "belege": []},
+            {"id": "I-04", "typ": "url", "wert": "javascript:alert(6)", "herkunft": "Rapport Ziff. 4", "rolle": "Adresse", "bewertung": "unauffaellig", "belege": []},
+            {"id": "I-05", "typ": "url", "wert": "https://kundenportal.example/login", "herkunft": "Rapport Ziff. 5", "rolle": "Phishing-Seite", "bewertung": "boesartig",
+             "belege": [ids["scan"]]},
+            {"id": "I-06", "typ": "onion", "wert": vorlagen.ONION, "herkunft": "Rapport Ziff. 6", "rolle": "Leak-Seite", "bewertung": "verdaechtig", "belege": []}],
+        "befunde": [
+            {"id": "B-01", "titel": "Feststellung " + BOESE, "art": "feststellung", "sicherheit": "hoch", "quellenbewertung": "B2", "text": "Text " + BOESE,
+             "erlaeuterung": "Erklärung " + BOESE, "indikatoren": ["I-01"], "belege": [ids["spur"], ids["abuse"]], "gegenpruefung": "bestaetigt"},
+            {"id": "B-02", "titel": "Bewertung des Teams", "art": "bewertung", "sicherheit": "mittel", "quellenbewertung": "B3", "text": "Die Adresse ist auffällig.",
+             "erlaeuterung": "In einfachen Worten.", "indikatoren": ["I-02"], "belege": [ids["boese"]], "gegenpruefung": "eingeschraenkt"},
+            {"id": "B-03", "titel": "Hypothese ohne Beleg", "art": "hypothese", "sicherheit": "tief", "text": "Vermutung " + BOESE, "erlaeuterung": "Nicht belegt.",
+             "indikatoren": ["I-03"], "belege": []}],
+        "beziehungen": [{"von": "I-01", "nach": "I-02", "art": "Beziehung " + BOESE, "sicherheit": "tief"}], "geldfluesse": [],
+        "zeitachse": [{"zeit": "2026-11-14T08:30:00Z", "ereignis": "Ereignis " + BOESE, "belege": [ids["spur"]]}],
+        "luecken": ["Lücke " + BOESE], "empfehlungen": [{"text": "Empfehlung " + BOESE, "prioritaet": "hoch"}],
+        "glossar": [{"begriff": "Begriff " + BOESE, "erklaerung": "Erklärung " + BOESE}]}
+    plattform.text_schreiben(pfad / "befunde.json", json.dumps(befunde, ensure_ascii=False, indent=1))
+    assert kette_pruefen(OBERFL)["ok"], kette_pruefen(OBERFL)["fehler"]
+    UI.update(ids=ids, pfad=pfad, fall=ui_daten.Fall(OBERFL), muster=ui_daten.Fall(MUSTER))
+    return UI
+
+
+def ui_ansichten(fall: "ui_daten.Fall") -> list[tuple[str, str]]:
+    """Jede Ansicht eines Falls mit jedem Argument: alle Indikatoren, alle Belege, alle Rohdateien."""
+    wege = [("uebersicht", ""), ("rapport", ""), ("indikatoren", ""), ("rohdaten", ""), ("dokumente", ""), ("suche", ""), ("suche", "alert"), ("suche", BOESE)]
+    wege += [("indikator", i["id"]) for i in fall.indikatoren()]
+    wege += [(a, e["id"]) for e in fall.eintraege() for a in ("beleg", "roh")]
+    wege += [("dokument", d["name"]) for d in fall.dokumente() if d["html"]]
+    return wege
+
+
+def akte_abdruck(pfad: Path) -> dict:
+    """Jede Datei einer Fallakte mit Grösse, Änderungszeit und Prüfsumme. Vor und nach einem Lauf muss das gleich sein."""
+    return {str(p.relative_to(pfad)): (p.stat().st_size, p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "")
+            for p in sorted(pfad.rglob("*"))}
+
+
+@test("Oberfläche, Darsteller: Für jedes Werkzeug liegt eine Vorlage im Repo, und keine Angabe der Rohantwort geht verloren")
+def _():
+    vz = pruefstand.vorlagen()
+    je_werkzeug = {v["werkzeug"].rsplit("__", 1)[-1] for v in vz}
+    ohne = (alle_werkzeuge() | {"robin_search", "robin_scrape", "abklaerung_von_hand"}) - je_werkzeug
+    assert not ohne, f"Werkzeuge ohne Vorlage: {sorted(ohne)}"
+    namen = {v["name"] for v in vz}
+    ohne = [p for p in ui_ds._WC if f"webcheck_{'passiv' if p in ui_ds.WEBCHECK_PASSIV else 'aktiv'}.{p}" not in namen]
+    assert not ohne, f"Web-Check-Prüfungen ohne Vorlage: {ohne}"
+    ohne = [k for k in ui_ds._TEIL if not any((v["werkzeug"], v["quelle"]) == k for v in vz)]
+    assert not ohne, f"Teilabfragen mit eigenem Darsteller, aber ohne Vorlage: {ohne}"
+    assert {p.name for p in pruefstand.ORT.iterdir()} == {v["datei"] for v in vz} | {"verzeichnis.json"}, "Verzeichnis und Ordner der Vorlagen passen nicht zusammen"
+    assert all(v["art"] in pruefstand.ARTEN and len(v["herkunft"]) > 20 for v in vz), "Jede Vorlage nennt, woher sie stammt und ob sie echt ist"
+    assert sum(1 for v in vz if v["art"] == "echt") >= 40, "zu wenige echte Antworten unter den Vorlagen"
+    angaben = 0
+    for v in vz:
+        roh, form = pruefstand.lesen(v)
+        blatt = ui_ds.darstellen(pruefstand.eintrag(v), roh, form)
+        seite = Seite(ui_seiten.blatt_html(blatt, ui_daten.Rohdatei(pruefstand.ORT / v["datei"], "rohdaten/" + v["datei"], form, roh, 1), "VORLAGEN", "P-0001"))
+        if form != "json":
+            assert isinstance(roh, str) and roh[:3000] in seite.text, f"{v['name']}: Der Text der Rohdatei steht nicht unverändert in der Ansicht"
+            continue
+        alle = list(ui_ds.angaben_zaehlen(roh))
+        assert blatt.gesamt == len(alle) == blatt.zugeordnet + len(blatt.weitere), f"{v['name']}: Die Zählung geht nicht auf"
+        fehlt = fehlende(seite.werte, roh)
+        assert not fehlt, f"{v['name']}: {len(fehlt)} von {len(alle)} Angaben erscheinen nicht, zum Beispiel {fehlt[:3]}"
+        assert f'data-gesamt="{len(alle)}"' in ui_seiten.blatt_html(blatt, ui_daten.Rohdatei(Path("x"), "rohdaten/x.json", form, roh, 1), "VORLAGEN", "P-0001")
+        if blatt.eigen:
+            assert blatt.zugeordnet > 0, f"{v['name']}: Der Darsteller ordnet der Antwort nichts zu. Passt er noch zur Form der Quelle?"
+        angaben += len(alle)
+    assert angaben > 4000, angaben
+    tabelle = pruefstand.tabelle(kurz=True)
+    assert all(f"`{w}`" in tabelle for w in alle_werkzeuge() - {"webcheck_passiv", "webcheck_aktiv"}) and "allgemeiner" in tabelle
+    # Ein Werkzeug ohne eigenen Darsteller: Die ganze Antwort steht unter «Weitere Angaben»
+    blatt = ui_ds.darstellen({"werkzeug": "ganz_neu", "quelle": "Neu", "ziel": "x"}, {"a": [1, {"b": None}], "c": {}}, "json")
+    assert not blatt.eigen and blatt.gesamt == 3 == len(blatt.weitere) and blatt.zugeordnet == 0
+
+
+@test("Oberfläche, Genauigkeit: Jeder gezeigte Wert steht an der genannten Stelle der Rohdatei. Zahlen ohne Rundung, Zeiten mit Original, gekürzt wird nur die Anzeige")
+def _():
+    geprueft = 0
+    for v in pruefstand.vorlagen():
+        roh, form = pruefstand.lesen(v)
+        if form != "json":
+            continue
+        blatt = ui_ds.darstellen(pruefstand.eintrag(v), roh, form)
+        seite = Seite(ui_seiten.blatt_html(blatt, ui_daten.Rohdatei(pruefstand.ORT / v["datei"], "rohdaten/" + v["datei"], form, roh, 1), "VORLAGEN", "P-0001"))
+        falsch = [a for a in (abweichung(w, roh) for w in seite.werte) if a]
+        assert not falsch, f"{v['name']}: {len(falsch)} Werte weichen von der Rohdatei ab, zum Beispiel: {falsch[0]}"
+        geprueft += len(seite.werte)
+    assert geprueft > 4000, geprueft
+    # Zahlen: kein Rundungsverlust, auch nicht bei sehr grossen und sehr genauen Werten
+    assert ui_ds.zahl(0.9998445054499999) == "0.9998445054499999" and ui_ds.zahl(0.1 + 0.2) == "0.30000000000000004"
+    assert ui_ds.zahl(12345678901234567890) == "12'345'678'901'234'567'890" and ui_ds.zahl(1234) == "1234" and ui_ds.zahl(1e-7) == "1e-07"
+    kurs = next(v for v in pruefstand.vorlagen() if v["name"] == "krypto_abruf.defillama")
+    roh, _form = pruefstand.lesen(kurs)
+    seite = Seite(ui_seiten.blatt_html(ui_ds.darstellen(pruefstand.eintrag(kurs), roh), ui_daten.Rohdatei(Path("x"), "rohdaten/x.json", "json", roh, 1), "V", "P-0001"))
+    preise = [w for w in seite.werte if w["stelle"].endswith("/price")]
+    assert preise and all(w["text"] == f"{json.loads(w['roh'])!r} USD" and json.loads(w["roh"]) == ui_ds.an_stelle(roh, w["stelle"]) for w in preise), preise[:2]
+    # Zeiten: in der Zeitzone des Arbeitsplatzes, der Wert der Quelle steht daneben
+    zone, ui_ds.ZONE = ui_ds.ZONE, timezone(timedelta(hours=1))
+    try:
+        assert ui_ds.zeit("2026-11-16T10:00:00Z") == ("16.11.2026 11:00:00", "2026-11-16T10:00:00Z")
+        assert ui_ds.zeit(1794825576, "zeit_s") == ("16.11.2026 11:39:36", "1794825576") and ui_ds.zeit(1794825576000, "zeit_ms")[0] == "16.11.2026 11:39:36"
+        assert ui_ds.zeit("2026-11-16") == ("16.11.2026", "2026-11-16") and ui_ds.zeit("irgendwann") == ("irgendwann", "")
+        zeit_html = ui_seiten.wert_html(ui_ds._angabe(ui_ds.F("Zeit", "x", "zeit"), "/x", "2026-11-16T10:00:00Z"))
+        assert "16.11.2026 11:00:00" in zeit_html and "Original: 2026-11-16T10:00:00Z" in zeit_html and 'data-stelle="/x"' in zeit_html
+    finally:
+        ui_ds.ZONE = zone
+    # Lange Werte: eingeklappt, aber ganz da. Sehr lange: Anfang, Länge und Verweis auf die Rohdatei
+    lang, sehr_lang = "a" * 300, "b" * (ui_seiten.SEHR_LANG + 700)
+    w = Seite(ui_seiten.wert_html(ui_ds.Angabe("Text", lang, lang, "/t"))).werte[0]
+    assert w["text"] == lang and not w["gekuerzt"], "ein langer Wert muss ganz in der Seite stehen"
+    w = Seite(ui_seiten.wert_html(ui_ds.Angabe("Text", sehr_lang, sehr_lang, "/t"))).werte[0]
+    assert w["gekuerzt"] == str(len(sehr_lang)) and w["text"] == sehr_lang[:ui_seiten.SEHR_LANG]
+    assert "der Rest steht in der Rohdatei" in ui_seiten.wert_html(ui_ds.Angabe("Text", sehr_lang, sehr_lang, "/t"))
+    # Einheiten stehen dabei, leere Werte sind als leer erkennbar
+    assert ui_ds.anzeigen(1356, "bytes")[0] == "1356 Bytes (1.3 kB)" and ui_ds.anzeigen(87, "zahl", "von 100")[0] == "87 von 100"
+    assert "leer" in ui_ds.anzeigen(None, "text")[0] and ui_ds.anzeigen([], "liste")[0] == "keine Einträge" and ui_ds.anzeigen(False, "ja_nein")[0] == "nein"
+
+
+@test("Oberfläche, Datenblatt: feste Abschnitte je Typ, jeder Wert mit Quelle, Abfragezeit, Beleg und Stelle, Widersprüche markiert, «keine Angabe» nennt die Gefragten")
+def _():
+    u = ui_vorbereiten()
+    fall, ids = u["fall"], u["ids"]
+    fest = ["Befragte Quellen", "Befunde, die den Indikator nennen"]
+    for f in (fall, u["muster"]):
+        for i in f.indikatoren():
+            text = ui_seiten.datenblatt(f, i["id"])
+            typ = i["typ"] if i["typ"] in ui_blaetter.ABSCHNITTE else "sonstiges"
+            titel = re.findall(r"<h2>(.*?)</h2>", text)
+            soll = [html_escape(t) for t, _ in ui_blaetter.ABSCHNITTE[typ]] + fest
+            assert titel[:len(soll)] == soll, f"{f.id} {i['id']}: Abschnitte {titel} statt {soll}"
+            seite = Seite(text)
+            for w in seite.werte:
+                assert w["beleg"], f"{f.id} {i['id']}: Ein Wert an «{w['stelle']}» nennt keinen Beleg"
+                roh = f.roh_zu(f.eintrag(w["beleg"]))
+                a = abweichung(w, roh.inhalt)
+                assert a is None, f"{f.id} {i['id']} {w['beleg']}: {a}"
+    blatt = ui_seiten.datenblatt(fall, "I-01")
+    assert "Widerspruch" in blatt, "Spur nennt NL, AbuseIPDB nennt DE: Das muss als Widerspruch markiert sein"
+    d = fall.datenblatt("I-01")
+    felder = {f.schluessel: f for _, fs in d["abschnitte"] for f in fs}
+    assert felder["ort.land_code"].widerspruch and {w.beleg for w in felder["ort.land_code"].werte} == {ids["spur"], ids["abuse"]}
+    for w in felder["ort.land_code"].werte:
+        assert w.quelle in ("Spur", "AbuseIPDB") and w.zeit == "2026-11-14T08:30:00Z" and w.angabe.stelle in ("/location/country", "/data/countryCode")
+    assert not any(f.widerspruch for k, f in felder.items() if k != "ort.land_code"), [k for k, f in felder.items() if f.widerspruch]
+    # Was kein Widerspruch ist: dieselbe Zahl in anderer Schreibweise, derselbe Name ausführlicher, Listen, eigene Beobachtungszeiten
+    assert not ui_blaetter.widerspruch("netz.as", [("A", "AS64500", "text"), ("B", 64500, "zahl")])
+    assert not ui_blaetter.widerspruch("netz.inhaber", [("A", "Beispiel Hosting AG", "text"), ("B", "BEISPIEL-HOSTING - Beispiel Hosting AG, NL", "text")])
+    assert not ui_blaetter.widerspruch("reg.erstellt", [("A", 1790408460, "zeit_s"), ("B", "2026-09-26T07:41:00.000Z", "zeit")])
+    assert ui_blaetter.widerspruch("reg.erstellt", [("A", 1790408460, "zeit_s"), ("B", "2026-09-26T07:12:44.000Z", "zeit")])
+    assert not ui_blaetter.widerspruch("namen.hostnamen", [("A", ["a.example"], "liste"), ("B", ["b.example"], "liste")])
+    assert not ui_blaetter.widerspruch("zeit.geprueft", [("A", "2026-09-30T06:18:00Z", "zeit"), ("B", "2026-09-30T11:32:10Z", "zeit")])
+    assert ui_blaetter.widerspruch("reg.registrar", [("A", "Beispiel Registrar Ltd.", "text"), ("B", "Beispiel Registrar AG", "text")])
+    assert not ui_blaetter.widerspruch("ort.land_code", [("A", "NL", "text"), ("A", "DE", "text")]), "eine Quelle widerspricht sich nicht selbst"
+    # Leerer Abschnitt: «keine Angabe», und wer gefragt wurde, mit Ergebnis und Beleg
+    assert re.search(r"<h2>Zertifikate</h2>\s*<p class=\"keine\">keine Angabe\.", blatt), "ein leerer Abschnitt muss «keine Angabe» sagen"
+    gefragt = re.search(r"Gefragt wurden: (.*?)</span>", blatt).group(1)
+    for teil in (f"Spur (Treffer, {ids['spur']})", f"AbuseIPDB (Treffer, {ids['abuse']})", f"Shodan (kein Treffer, {ids['kein']})", f"VirusTotal (Fehlschlag, {ids['fehler']})"):
+        assert teil in gefragt, f"«{teil}» fehlt in: {gefragt}"
+    assert "B-01" in blatt and "Beziehungen laut Team" in blatt, "Befunde und Beziehungen, die den Indikator nennen, gehören ins Datenblatt"
+    # Die Abschnitte sind dokumentiert
+    doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
+    for typ, abschnitte in ui_blaetter.ABSCHNITTE.items():
+        for titel, _ in abschnitte:
+            assert titel in doku, f"Abschnitt «{titel}» ({typ}) steht nicht in docs/OBERFLAECHE.md"
+
+
+@test("Oberfläche, Zustände: «kein Treffer», Fehlschläge und nicht Geprüftes sind so sichtbar wie Treffer, der Fall-Cache nennt die ursprüngliche Abfragezeit")
+def _():
+    u = ui_vorbereiten()
+    fall, ids = u["fall"], u["ids"]
+    a = fall.abdeckung()
+    zeile = next(z for z in a["zeilen"] if z["indikator"]["id"] == "I-01")
+    je_quelle = dict(zip(a["spalten"], zeile["zellen"]))
+    assert je_quelle["Spur"]["zustand"] == "Treffer" and je_quelle["Shodan"]["zustand"] == "kein Treffer" and je_quelle["VirusTotal"]["zustand"] == "Fehlschlag", je_quelle
+    assert je_quelle["urlquery"]["zustand"] == "passt nicht" and any(z["zustand"] in ("nicht abgefragt", "Quelle nicht eingerichtet") for z in zeile["zellen"])
+    assert je_quelle["Shodan"]["beleg"] == ids["kein"] and je_quelle["VirusTotal"]["beleg"] == ids["fehler"], "auch «kein Treffer» und Fehlschlag führen zum Beleg"
+    ueber = ui_seiten.uebersicht(fall)
+    legende = Seite(re.search(r'<p class="legende">.*?</p>', ueber, re.S).group(0)).text
+    for zustand in ("Treffer", "kein Treffer", "Fehlschlag", "abgelehnt", "nicht abgefragt", "Quelle nicht eingerichtet", "passt nicht"):
+        assert zustand in ui_seiten.ZELLE and zustand in legende, f"Zustand «{zustand}» fehlt in der Legende"
+    for zustand in ("Treffer", "kein Treffer", "Fehlschlag", "nicht abgefragt", "passt nicht"):
+        assert f'<span class="nur-text">{zustand}</span>' in ueber, f"Zustand «{zustand}» steht in keiner Zelle als Wort"
+    assert {wort for _, wort, _ in ui_seiten.ERGEBNIS.values()} == set(ui_daten.ZUSTAND.values()), "dieselben Wörter in jeder Ansicht"
+    assert ids["fehler"] in ueber and ids["abgelehnt"] in ueber, "Fehlschläge und Ablehnungen gehören zu den offenen Punkten der Übersicht"
+    spur = {e["id"]: e for e in fall.spur()["eintraege"]}
+    assert spur[ids["kein"]]["klasse"] == "kein_treffer" and spur[ids["fehler"]]["klasse"] == "fehlschlag" == spur[ids["abgelehnt"]]["klasse"]
+    assert spur[ids["scan"]]["klasse"] == "auswertung" and spur[ids["spur"]]["klasse"] == "abfrage" and spur[ids["cache"]]["aus_cache"] == ids["spur"]
+    assert fall.spur()["anzahl"] == len(fall.eintraege()) and fall.spur()["kette_ok"] is True and fall.spur(len(spur) - 2)["eintraege"][0]["stelle"] == len(spur) - 1
+    # Fall-Cache: gekennzeichnet, mit Beleg und Zeit der ursprünglichen Abfrage (14.11.), nicht der Wiederholung (16.11.)
+    beleg = ui_seiten.beleg_seite(fall, ids["cache"])
+    ursprung = ui_ds.zeit("2026-11-14T08:30:00Z")[0]
+    assert "Fall-Cache" in beleg and ids["spur"] in beleg and ursprung in beleg, "Der Beleg aus dem Cache nennt die ursprüngliche Abfrage nicht"
+    blatt = ui_seiten.datenblatt(fall, "I-01")
+    assert re.search(r"aus dem Fall-Cache</span> <span class=\"klein\">ursprünglich .*?" + re.escape(ids["spur"]) + r".*?" + re.escape(ursprung), blatt, re.S), \
+        "Im Datenblatt fehlt beim Cache-Eintrag die ursprüngliche Abfrage"
+    assert len([w for w in Seite(blatt).werte if w["beleg"] == ids["cache"]]) == 0, "Werte aus dem Cache stehen nicht doppelt im Datenblatt"
+    # Feststellung, Bewertung und Hypothese sehen verschieden aus und sind benannt
+    karten = {art: ui_seiten.befund_karte(f, fall.id) for f in fall.befunde()["befunde"] for art in [f["art"]]}
+    assert set(karten) == {"feststellung", "bewertung", "hypothese"}
+    for art, wort in ui_seiten.ART.items():
+        assert f"art-{art}" in karten[art] and f">{wort}<" in karten[art], f"{art}: Klasse oder Wort fehlt in der Karte"
+    stil = lesen(PROJEKT / "tools" / "ui" / "app.css")
+    regeln = [re.search(r"\.art-" + art + r"\b[^{]*\{([^}]*)\}", stil) for art in ui_seiten.ART]
+    assert all(regeln) and len({r.group(1) for r in regeln}) == 3, "Die drei Arten brauchen je eine eigene Darstellung in app.css"
+    rapport_ansicht = ui_seiten.rapport_seite(fall)
+    for f in fall.befunde()["befunde"]:
+        assert f'data-art="{f["art"]}"' in rapport_ansicht and f'data-sicherheit="{f["sicherheit"]}"' in rapport_ansicht
+    # Begriffe: überall dieselben, mit Erklärung in einfachen Worten
+    begriffe = ui_seiten.begriffe()
+    assert all(html_escape(b) in begriffe and html_escape(e) in begriffe for b, e in ui_blaetter.BEGRIFFE.items())
+    assert "Fall-Cache" in ui_blaetter.BEGRIFFE and "Beleg" in ui_blaetter.BEGRIFFE and "Rohdatei" in ui_blaetter.BEGRIFFE
+
+
+@test("Oberfläche, Fremdinhalte: Markup aus Quellen erscheint als Text und wird nie ausgeführt, Adressen aus dem Fall sind nie anklickbar, Bilder kommen nur aus den Rohdaten")
+def _():
+    u = ui_vorbereiten()
+    fall, ids = u["fall"], u["ids"]
+    gesehen = 0
+    for ansicht, arg in ui_ansichten(fall):
+        text = ui_server.ANSICHTEN[ansicht][1](fall, arg)
+        v = verstoesse(text, fall.id, rahmen=ansicht == "dokument")
+        assert not v, f"{ansicht} {arg[:20]}: {v[:4]}"
+        gesehen += "<script>alert(1)</script>" in Seite(text).text
+    assert gesehen >= 12, f"Das Markup der Quelle muss als lesbarer Text dastehen, gefunden in {gesehen} Ansichten"
+    for text in (ui_seiten.kopf(fall), ui_seiten.faelle_seite(), ui_seiten.quellen_seite(), ui_seiten.begriffe()):
+        assert not verstoesse(text, fall.id), verstoesse(text, fall.id)[:3]
+    assert "<script>alert(1)</script>" in Seite(ui_seiten.kopf(fall)).text and "<script>alert(1)</script>" in Seite(ui_seiten.faelle_seite()).text
+    # Schlüssel, Werte, lange Werte, Ziel, Zweck, Fehlermeldung: alles Text
+    beleg = Seite(ui_seiten.beleg_seite(fall, ids["boese"]))
+    for stueck in (BOESE, "javascript:alert(3)", "</td></tr></table><script>alert(4)</script>", "<b>fett</b>", "<iframe src=//boese.example></iframe>", "Zweck mit Markup"):
+        assert stueck in beleg.text, f"«{stueck[:30]}» steht nicht als Text im Beleg"
+    assert "die Quelle meldet".casefold() in Seite(ui_seiten.beleg_seite(fall, ids["fehler"])).text.casefold() and BOESE in Seite(ui_seiten.beleg_seite(fall, ids["fehler"])).text
+    # HTML einer fremden Seite: als Text, CSV: als Tabelle mit Text, auch in der Ansicht der Rohdatei
+    for kennung, stueck in ((ids["html"], "<h1>Fremd</h1>"), (ids["csv"], '=HYPERLINK("https://boese.example")'), (ids["telegram_kanal"], "<")):
+        for bauen in (ui_seiten.beleg_seite, ui_seiten.roh_seite):
+            s = Seite(bauen(fall, kennung))
+            assert stueck in s.text and not verstoesse(bauen(fall, kennung), fall.id), f"{kennung}: fremder Inhalt nicht als Text"
+    assert "h1" not in {t for t, _ in Seite(ui_seiten.roh_seite(fall, ids["html"])).elemente[1:]} or Seite(ui_seiten.roh_seite(fall, ids["html"])).text.count("Fremd") >= 1
+    # Bilder: nur aus den Rohdaten des Falls. Eine fremde Adresse im selben Feld ergibt kein Bild
+    eigen, fremd = Seite(ui_seiten.beleg_seite(fall, ids["scan"])), Seite(ui_seiten.beleg_seite(fall, ids["scan_fremd"]))
+    bilder = [a["src"] for t, a in eigen.elemente if t == "img"]
+    assert bilder == [f"/fall/{OBERFL}/datei/{u['bild']}"], bilder
+    assert not [a for t, a in fremd.elemente if t == "img"] and "https://boese.example/bild.png" in fremd.text, "eine fremde Bildadresse darf nicht geladen werden"
+    for pfad_ in ("faelle/ANDERER-FALL/rohdaten/../../x.png", f"faelle/{OBERFL}/eingang/x.png", f"faelle/{OBERFL}/rohdaten/../fall.json", "//boese.example/x.png", "data:image/png;base64,AAAA"):
+        assert ui_seiten.bild_html(pfad_, OBERFL) == "", f"«{pfad_}» darf kein Bild ergeben"
+    assert ui_seiten.bild_html(f"faelle/{MUSTER}/rohdaten/P-0090_urlscan_abruf.png", OBERFL) == "", "kein Bild aus der Akte eines anderen Falls"
+    assert "<img" in ui_seiten.bild_html(f"faelle/{OBERFL}/{u['bild']}", OBERFL)
+    # Adressen aus dem Fall (URL, Domain, Onion) stehen da, aber nie als Verweis
+    for kennung in ("I-03", "I-04", "I-05", "I-06"):
+        s = Seite(ui_seiten.datenblatt(fall, kennung))
+        wert = fall.indikator(kennung)["wert"]
+        assert wert in s.text and not any(wert in a.get("href", "") or a.get("href", "").startswith(("http", "javascript", "//")) for t, a in s.elemente), kennung
+    liste = Seite(ui_seiten.indikatoren_seite(fall))
+    assert vorlagen.ONION in liste.text and all(a["href"].startswith("#/") for t, a in liste.elemente if t == "a")
+    # Das Skript der Oberfläche setzt nur das HTML des eigenen Servers ein und lädt nichts von aussen
+    skript, seite_ = lesen(PROJEKT / "tools" / "ui" / "app.js"), ui_server.SEITE
+    assert set(re.findall(r"\.innerHTML\s*=\s*([^;]+);", skript)) == {"daten.html"}, "innerHTML nur für das HTML des eigenen Servers"
+    assert not re.search(r"insertAdjacentHTML|document\.write|\beval\(|new Function|outerHTML\s*=|srcdoc", skript)
+    fremd_ = [a for a in re.findall(r"https?://[^\s\"'`)]+", skript + lesen(PROJEKT / "tools" / "ui" / "app.css") + seite_) if not a.startswith("http://www.w3.org/")]
+    assert not fremd_, f"Die Oberfläche nennt fremde Adressen: {fremd_[:3]}"
+    assert re.findall(r"<script[^>]*>", seite_) == ['<script src="/app.js">'] and "csvSicher" in skript and "[=+\\-@" in skript
+
+
+@test("Oberfläche, Server: nur 127.0.0.1, fremder Host-Kopf und fremde Herkunft abgewiesen, nur GET und HEAD, jede Adresse antwortet, nichts wird geschrieben")
+def _():
+    u = ui_vorbereiten()
+    vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)}
+    dateien_vorher = sorted(str(p) for p in (PROJEKT / "faelle").rglob("*"))
+    server = ui_server.starten(0)
+    port = server.server_address[1]
+    assert server.server_address[0] == "127.0.0.1", "Der Server darf nur auf 127.0.0.1 hören"
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def holen(weg: str, methode: str = "GET", **kopf) -> tuple[int, dict, bytes]:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+        try:
+            c.putrequest(methode, weg, skip_host=True)
+            for name, wert in {"Host": f"127.0.0.1:{port}", **{k.replace("_", "-"): w for k, w in kopf.items()}}.items():
+                c.putheader(name, wert)
+            c.endheaders()
+            r = c.getresponse()
+            return r.status, {k.lower(): w for k, w in r.getheaders()}, r.read()
+        finally:
+            c.close()
+    try:
+        gezaehlt = 0
+        for weg, typ in (("/", "text/html"), ("/basis.css", "text/css"), ("/app.js", "text/javascript"), ("/app.css", "text/css"), ("/api/faelle", "application/json"),
+                         ("/api/quellen", "application/json")):
+            status, kopf, inhalt = holen(weg)
+            assert status == 200 and kopf["content-type"].startswith(typ) and inhalt, f"{weg}: {status} {kopf.get('content-type')}"
+            assert "default-src 'none'" in kopf["content-security-policy"] and kopf["x-content-type-options"] == "nosniff" and kopf["cache-control"] == "no-store", weg
+            gezaehlt += 1
+        csp = holen("/")[1]["content-security-policy"]
+        assert "script-src 'self'" in csp and "unsafe-eval" not in csp and "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0] and "connect-src 'self'" in csp \
+            and "img-src 'self'" in csp and "form-action 'none'" in csp and "http" not in csp, csp
+        liste = json.loads(holen("/api/faelle")[2])
+        assert {f["id"] for f in liste["faelle"]} >= {OBERFL, MUSTER, FALL} and not verstoesse(liste["html"], "x")
+        for fall in (u["fall"], u["muster"]):
+            q = urllib_quote(fall.id)
+            for name in ("kopf", "spur", "spur?ab=3", "spur?ab=unsinn"):
+                status, kopf, inhalt = holen(f"/api/fall/{q}/{name}")
+                assert status == 200 and json.loads(inhalt), f"{fall.id} {name}: {status}"
+                gezaehlt += 1
+            for ansicht, arg in ui_ansichten(fall):
+                status, kopf, inhalt = holen(f"/api/fall/{q}/{ansicht}" + (f"/{urllib_quote(arg, safe='')}" if arg else ""))
+                antwort = json.loads(inhalt)
+                assert status == 200 and antwort.get("html") and antwort.get("titel"), f"{fall.id} {ansicht} {arg[:20]}: {status} {str(antwort)[:120]}"
+                assert not verstoesse(antwort["html"], fall.id, rahmen=ansicht == "dokument"), f"{fall.id} {ansicht} {arg[:20]}"
+                gezaehlt += 1
+            for e in fall.eintraege():
+                name = (e.get("antwort") or {}).get("rohdaten")
+                if not name:
+                    continue
+                for weg in (f"/fall/{q}/datei/{name}", f"/fall/{q}/{name}"):
+                    status, kopf, inhalt = holen(weg)
+                    assert status == 200 and inhalt == (fall.pfad / name).read_bytes(), f"{weg}: {status}"
+                    assert kopf["content-type"].startswith(("text/plain", "image/")) and "sandbox" in kopf["content-security-policy"], f"{weg}: {kopf['content-type']}"
+                    gezaehlt += 1
+        for name, typ in (("Abschlussrapport.html", "text/html"), ("Ermittlungsprotokoll.html", "text/html"), ("Ermittlungsprotokoll.csv", "text/csv"), ("indikatoren.csv", "text/csv")):
+            status, kopf, inhalt = holen(f"/fall/{MUSTER}/dokument/{name}")
+            assert status == 200 and kopf["content-type"].startswith(typ) and "sandbox" in kopf["content-security-policy"] and inhalt, f"{name}: {status}"
+            assert "script-src" not in kopf["content-security-policy"], "gespeicherte Dokumente laufen ohne Skripte"
+            gezaehlt += 1
+        assert gezaehlt > 600, gezaehlt
+        assert holen("/api/faelle", "HEAD")[0] == 200 and holen("/api/faelle", "HEAD")[2] == b""
+        # Was es nicht gibt, gibt es nicht: fremde Pfade, Dateien ausserhalb der Rohdaten, unbekannte Fälle und Ansichten
+        geheim = lesen(u["pfad"] / "fall.json")[:40].encode("utf-8")
+        for weg in (f"/fall/{OBERFL}/datei/fall.json", f"/fall/{OBERFL}/datei/rohdaten/../fall.json", f"/fall/{OBERFL}/datei/rohdaten/..%2Ffall.json",
+                    f"/fall/{OBERFL}/datei/protokoll/abfragen.jsonl", f"/fall/{OBERFL}/datei/eingang/x", f"/fall/{OBERFL}/rohdaten/..%2F..%2F{FALL}%2Ffall.json",
+                    f"/fall/{OBERFL}/dokument/..%2Ffall.json", f"/fall/{OBERFL}/dokument/fall.json", f"/fall/{OBERFL}/dokument/Abschlussrapport.html",
+                    "/fall/..%2F..%2Ftools/datei/rohdaten/x", "/fall/GIBT-ES-NICHT/datei/rohdaten/x", "/api/fall/GIBT-ES-NICHT/uebersicht", f"/api/fall/{OBERFL}/gibtesnicht",
+                    f"/api/fall/{OBERFL}/beleg/P-9999", f"/api/fall/{OBERFL}/indikator/I-99", f"/api/fall/{OBERFL}/dokument/..%2Ffall", "/tools/ui/server.py", "/.env",
+                    "/api/unbekannt", f"/fall/{OBERFL}"):
+            status, kopf, inhalt = holen(weg)
+            assert status == 404 and geheim not in inhalt and b"Traceback" not in inhalt, f"{weg}: {status} {inhalt[:80]!r}"
+        # Fremder Host-Kopf (DNS-Rebinding), fremde Herkunft, Anfrage von einer fremden Seite
+        for kopf in ({"Host": "boese.example"}, {"Host": f"boese.example:{port}"}, {"Host": "127.0.0.1"}, {"Host": f"127.0.0.1:{port + 1}"}, {"Host": ""},
+                     {"Origin": "https://boese.example"}, {"Origin": "null"}, {"Sec_Fetch_Site": "cross-site"}):
+            for weg in ("/", "/api/faelle", f"/api/fall/{OBERFL}/uebersicht", f"/fall/{OBERFL}/datei/{u['bild']}"):
+                status, _kopf, inhalt = holen(weg, **kopf)
+                assert status == 403 and b"OBERFL" not in inhalt, f"{kopf} {weg}: {status}"
+        assert holen("/api/faelle", Host=f"localhost:{port}")[0] == 200 and holen("/api/faelle", Origin=f"http://127.0.0.1:{port}", Sec_Fetch_Site="same-origin")[0] == 200
+        # Es gibt keinen Weg, über den Server zu schreiben
+        for methode in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
+            status, kopf, _inhalt = holen(f"/api/fall/{OBERFL}/uebersicht", methode, Content_Length="0")
+            assert status == 405 and kopf.get("allow") == "GET, HEAD", f"{methode}: {status}"
+    finally:
+        server.shutdown()
+        server.server_close()
+    for f in (OBERFL, MUSTER):
+        nachher = akte_abdruck(PROJEKT / "faelle" / f)
+        assert nachher == vorher[f], f"{f}: Die Oberfläche hat die Fallakte verändert: {[k for k in set(vorher[f]) | set(nachher) if vorher[f].get(k) != nachher.get(k)][:5]}"
+    assert sorted(str(p) for p in (PROJEKT / "faelle").rglob("*")) == dateien_vorher, "Die Oberfläche hat unter faelle/ etwas angelegt"
+    # Im Quelltext der Oberfläche steht kein Aufruf, der eine Datei anlegt, verändert oder löscht
+    for datei in sorted((PROJEKT / "tools" / "ui").glob("*.py")) + [PROJEKT / "tools" / "oberflaeche.py"]:
+        treffer = re.findall(r"write_text|write_bytes|text_schreiben|zeile_anhaengen|\.unlink\(|\.mkdir\(|\.rename\(|\.replace\(\s*Path|os\.remove|shutil\.|open\([^)]*[\"'][wax]b?\+?[\"']|\.touch\(",
+                             lesen(datei))
+        assert not treffer, f"{datei.name}: {treffer}"
+
+
+@test("Oberfläche, Kennzahlen und Rapport: dieselben Zahlen, dieselbe Reihenfolge und derselbe Wortlaut wie im Abschlussrapport, und ob das gespeicherte Dokument noch passt")
+def _():
+    u = ui_vorbereiten()
+    muster = u["muster"]
+    b, eintraege = muster.befunde(), muster.eintraege()
+    k = muster.kennzahlen()
+    assert k["rapport"] == rapport.kennzahlen(b, eintraege) and k["protokoll"] == protokollwerkzeug.kennzahlen([e for e in eintraege if e["id"].startswith("P-")])
+    r = k["rapport"]
+    ueber = Seite(ui_seiten.uebersicht(muster)).text
+    for zahl_, name in ((r["indikatoren"], "Indikatoren"), (len(r["abfragen"]), "Abfragen"), (len(r["quellen"]), "Quellen genutzt"), (r["befunde"], "Befunde")):
+        assert f"{zahl_}{name}" in ueber.replace("\n", ""), f"Kachel «{name}» zeigt nicht {zahl_}"
+    assert f"{r['ohne_treffer']} ohne Treffer, {r['fehlgeschlagen']} fehlgeschlagen" in ueber and f"{r['gegengeprueft']} gegengeprüft" in ueber
+    # Der Rapport der Oberfläche kommt aus demselben Generator: Der Text ist der des gespeicherten Abschlussrapports
+    frisch = muster.rapport_html()
+    gespeichert = lesen(muster.pfad / "rapport" / "Abschlussrapport.html")
+    koerper = re.sub(r"<div class='fuss'>.*?</div>\s*$", "", re.search(r"<main>\n(.*)\n</main>", gespeichert, re.S).group(1), flags=re.S)
+    assert frisch["html"] == koerper and not frisch["maengel"], "Der Rapport der Oberfläche weicht vom Abschlussrapport des Musterfalls ab"
+    ansicht = ui_seiten.rapport_seite(muster)
+    stellen = [ansicht.index(f" id='{f['id']}'") for f in b["befunde"]]
+    assert stellen == sorted(stellen) and all(html_escape(f["titel"]) in ansicht for f in b["befunde"]), "Befunde fehlen oder stehen in anderer Reihenfolge"
+    text_frisch, text_ansicht = Seite(frisch["html"]).text, Seite(ansicht).text
+    assert text_frisch in text_ansicht, "Die Oberfläche darf am Wortlaut des Rapports nichts ändern, nur Verweise und Merkmale ergänzen"
+    for f in b["befunde"]:
+        assert f'data-belege="{" ".join(f["belege"])}"' in ansicht and f'data-indikatoren="{" ".join(f["indikatoren"])}"' in ansicht, f["id"]
+    assert "Abschlussrapport der Akte: entspricht dem Stand der Daten" in ansicht and json.loads(html_unescape(re.search(r'data-fluesse="([^"]*)"', ansicht).group(1))) == \
+        [g["beleg"] for g in b["geldfluesse"]]
+    assert not verstoesse(ansicht, muster.id), verstoesse(ansicht, muster.id)[:3]
+    # Schrittleiste: Was erledigt ist, woran man es erkennt, und was nicht abgelegt wurde
+    schritte = {s["name"]: s for s in muster.schritte()}
+    assert list(schritte) == list(ui_daten.SCHRITTE) == ["Fall angelegt", "Indikatoren", "Plan", "Abfragen", "Gegenprüfung", "Rapport"]
+    assert schritte["Rapport"]["erledigt"] and schritte["Rapport"]["aktuell"] and schritte["Gegenprüfung"]["woran"] == f"{r['gegengeprueft']} von {r['befunde']} Befunden gegengeprüft"
+    assert not schritte["Plan"]["erledigt"] and schritte["Plan"]["uebersprungen"], "Der Musterfall hat keinen abgelegten Plan: Das muss als «nicht abgelegt» dastehen"
+    leer = PROJEKT / "faelle" / "LEER-0001"       # eine frisch angelegte Fallakte: nur der erste Schritt ist getan
+    for ordner in fallwerkzeug.UNTERORDNER:
+        (leer / ordner).mkdir(parents=True)
+    fallwerkzeug.schreiben(leer / "fall.json", {"fall_id": "LEER-0001", "titel": "Leerer Fall", "freigaben": {}})
+    neu = {s["name"]: s for s in ui_daten.Fall("LEER-0001").schritte()}
+    assert neu["Fall angelegt"]["erledigt"] and neu["Fall angelegt"]["aktuell"], neu["Fall angelegt"]
+    assert not any(s["erledigt"] for name, s in neu.items() if name != "Fall angelegt"), [name for name, s in neu.items() if s["erledigt"]]
+    for ansicht_ in ("uebersicht", "rapport", "indikatoren", "rohdaten", "dokumente"):       # auch ein leerer Fall lässt sich ansehen
+        assert ui_server.ANSICHTEN[ansicht_][1](ui_daten.Fall("LEER-0001"), ""), ansicht_
+    plattform.baum_loeschen(leer)
+    kopf = Seite(ui_seiten.kopf(muster)).text
+    assert MUSTER in kopf and all(s in kopf for s in ui_daten.SCHRITTE) and all(f["name"] in kopf for f in muster.freigaben()), "Kopf: Fall-ID, Freigaben und Schritte"
+    # Passt das gespeicherte Dokument noch zu den Daten?
+    assert all(d["aktuell"] for d in muster.dokumente() if d["html"]) and [d["name"] for d in muster.dokumente()] == ["Abschlussrapport", "Ermittlungsprotokoll", "Datenblaetter"]
+    kopie = PROJEKT / "faelle" / "KOPIE-2026-001"
+    shutil.copytree(muster.pfad, kopie)
+    try:
+        daten_ = json.loads(lesen(kopie / "fall.json"))
+        fallwerkzeug.schreiben(kopie / "fall.json", {**daten_, "fall_id": "KOPIE-2026-001"})
+        os.chmod(kopie / "befunde.json", 0o644)
+        plattform.text_schreiben(kopie / "befunde.json", lesen(kopie / "befunde.json") + "\n")
+        stand = {d["name"]: d for d in ui_daten.Fall("KOPIE-2026-001").dokumente()}
+        assert stand["Abschlussrapport"]["aktuell"] is False and "befunde.json wurde seit der Erzeugung geändert" in stand["Abschlussrapport"]["vermerk"], stand["Abschlussrapport"]
+        assert stand["Ermittlungsprotokoll"]["aktuell"] is True
+        assert "älter als die Daten" in ui_seiten.dokumente_seite(ui_daten.Fall("KOPIE-2026-001")) and "älter als die Daten" in ui_seiten.uebersicht(ui_daten.Fall("KOPIE-2026-001"))
+    finally:
+        plattform.baum_loeschen(kopie)
+
+
+@test("Oberfläche, Rohdaten und Suche: JSON als Baum, HTML als Text, Bild als Bild, CSV als Tabelle, je mit Protokolleintrag, Prüfsumme und Kettenprüfung")
+def _():
+    u = ui_vorbereiten()
+    fall, ids = u["fall"], u["ids"]
+    roh = ui_seiten.roh_seite(fall, ids["boese"])
+    s = Seite(roh)
+    eintrag = fall.eintrag(ids["boese"])
+    assert "ul" in s.namen() and "details" in s.namen() and eintrag["antwort"]["sha256"] in roh and "passt zur Kette" in roh and eintrag["antwort"]["rohdaten"] in roh
+    inhalt = fall.roh_zu(eintrag).inhalt
+    assert not fehlende(s.werte, inhalt) and not [a for a in (abweichung(w, inhalt) for w in s.werte) if a], "Die Ansicht der Rohdatei zeigt nicht jede Angabe genau"
+    assert "pre" in Seite(ui_seiten.roh_seite(fall, ids["html"])).namen() and "<h1>Fremd</h1>" in Seite(ui_seiten.roh_seite(fall, ids["html"])).text
+    bild = [a for t, a in Seite(ui_seiten.roh_seite(fall, ids["bild"])).elemente if t == "img"]
+    assert len(bild) == 1 and bild[0]["src"] == f"/fall/{OBERFL}/datei/{u['bild']}" and bild[0].get("alt")
+    tabelle = Seite(ui_seiten.roh_seite(fall, ids["csv"]))
+    assert "table" in tabelle.namen() and "formel" in tabelle.text and "@SUM(1)" in tabelle.text
+    liste = ui_seiten.rohdaten_seite(fall)
+    dateien = {e["antwort"]["rohdaten"] for e in fall.eintraege() if (e.get("antwort") or {}).get("rohdaten")}
+    assert all(d.split("/", 1)[1] in liste for d in dateien) and len(dateien) > 100
+    # Eine nachträglich veränderte Rohdatei fällt auf: in der Ansicht, in der Übersicht und in der Arbeitsspur
+    kopie = PROJEKT / "faelle" / "KOPIE-2026-002"
+    shutil.copytree(fall.pfad, kopie)
+    try:
+        fallwerkzeug.schreiben(kopie / "fall.json", {**json.loads(lesen(kopie / "fall.json")), "fall_id": "KOPIE-2026-002"})
+        ziel = kopie / fall.eintrag(ids["spur"])["antwort"]["rohdaten"]
+        os.chmod(ziel, 0o644)
+        ziel.write_text(lesen(ziel).replace('"NL"', '"CH"'), encoding="utf-8")
+        veraendert = ui_daten.Fall("KOPIE-2026-002")
+        assert "passt nicht zur Kette" in ui_seiten.roh_seite(veraendert, ids["spur"]) and "nach der Abfrage verändert" in ui_seiten.beleg_seite(veraendert, ids["spur"])
+        assert veraendert.spur()["kette_ok"] is False and "Die Protokollkette ist nicht unversehrt" in ui_seiten.uebersicht(veraendert)
+        ziel.unlink()
+        assert "fehlt in der Fallakte" in ui_seiten.beleg_seite(ui_daten.Fall("KOPIE-2026-002"), ids["spur"])
+    finally:
+        plattform.baum_loeschen(kopie)
+    # Suche über den ganzen Fall: Indikatoren, Befunde, Protokoll, Rohdaten
+    wo = {t["wo"] for t in fall.suche("203.0.113.50")}
+    assert wo == {"Indikator", "Protokoll", "Rohdaten"}, wo
+    assert {t["wo"] for t in fall.suche("vermutung")} == {"Befund"} and any(t["ziel"] == f"beleg/{ids['boese']}" for t in fall.suche("JAVASCRIPT:alert(3)"))
+    assert fall.suche("x") == [] and fall.suche("gibt-es-ganz-sicher-nicht-4711") == []
+    ansicht = ui_seiten.suche_seite(fall, BOESE)
+    assert not verstoesse(ansicht, fall.id) and BOESE in Seite(ansicht).text and f'value="{html_escape(BOESE)}"' in ansicht
+    assert all(a["href"].startswith(f"#/fall/{OBERFL}/") for t, a in Seite(ui_seiten.suche_seite(fall, "203.0.113.50")).elemente if t == "a")
+    # Jede Tabelle hat eine Kopfzeile: Daran hängt das Skript Sortieren, Filtern und CSV, für jede Tabelle der Ansicht
+    for f in (fall, u["muster"]):
+        for ansicht_, arg in (("uebersicht", ""), ("rapport", ""), ("indikatoren", ""), ("rohdaten", ""), ("dokumente", ""), ("suche", "example"),
+                              ("indikator", f.indikatoren()[0]["id"]), ("beleg", f.eintraege()[0]["id"])):
+            for tabelle_ in re.findall(r"<table[^>]*>\s*(.{0,40})", ui_server.ANSICHTEN[ansicht_][1](f, arg), re.S):
+                assert tabelle_.startswith(("<thead><tr><th", "<tr><th")), f"{f.id} {ansicht_}: Tabelle ohne Kopfzeile: {tabelle_}"
+    skript = lesen(PROJEKT / "tools" / "ui" / "app.js")
+    assert '$$("table", wurzel).forEach(tabelleEinrichten)' in skript and "createTHead" in skript and "text/csv" in skript and "aria-sort" in skript
+    stil = lesen(PROJEKT / "tools" / "ui" / "app.css")
+    assert "@media print" in stil and "#nav,#spur" in stil.split("@media print")[1] and "prefers-color-scheme" in stil and "prefers-color-scheme" in lesen(PROJEKT / "tools" / "_html.py"), \
+        "Druck und dunkle Darstellung"
+
+
+@test("Oberfläche startet mit einem Befehl und prüft sich selbst: Seiten antworten, ein fremder Host-Kopf wird abgewiesen")
+def _():
+    ui_vorbereiten()
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "oberflaeche.py"), "--selbstpruefung"], capture_output=True, text=True, encoding="utf-8",
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, timeout=180)
+    assert r.returncode == 0 and "Seiten antworten" in r.stdout and "abgewiesen" in r.stdout, (r.stdout + r.stderr)[-600:]
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "oberflaeche.py"), "GIBT-ES-NICHT", "--ohne-browser"], capture_output=True, text=True, encoding="utf-8",
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, timeout=60)
+    assert r.returncode == 2 and "gibt es nicht" in r.stderr, r.stderr[-300:]
+    # Nur Standardbibliothek: Die Oberfläche lädt kein Paket, das die Einrichtung nicht ohnehin braucht
+    probe = ("import sys; sys.path.insert(0, sys.argv[1]); vorher = set(sys.modules); from tools.ui import server, seiten, daten, darsteller, blaetter, pruefstand; "
+             "neu = {m.split('.')[0] for m in set(sys.modules) - vorher}; print(sorted(neu & {'flask', 'jinja2', 'fastapi', 'starlette', 'uvicorn', 'aiohttp', 'tornado', 'django', 'bottle', 'requests'}))")
+    r = subprocess.run([sys.executable, "-c", probe, str(PROJEKT)], capture_output=True, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"}, timeout=60)
+    assert r.returncode == 0 and r.stdout.strip() == "[]", r.stdout + r.stderr[-300:]
+
+
+@test("Anhang: tools/anhang.py schreibt alle Datenblätter als ein eigenständiges Dokument, ohne Skripte, ohne Verweise nach aussen, Bilder eingebettet")
+def _():
+    u = ui_vorbereiten()
+    fall, ids = u["fall"], u["ids"]
+    assert anhang_werkzeug.bauen(MUSTER) == lesen(REPO / "faelle" / MUSTER / "rapport" / "Datenblaetter.html"), \
+        "Die Datenblätter des Musterfalls im Repo entsprechen nicht dem Stand. Neu erzeugen: python3 tools/musterfall.py"
+    text = anhang_werkzeug.bauen(OBERFL)
+    s = Seite(text)
+    assert not s.namen() & {"script", "iframe", "object", "embed", "link", "base", "form", "input", "button"}, s.namen() & {"script", "iframe", "link", "form"}
+    kennungen = {a["id"] for _, a in s.elemente if "id" in a}
+    for tag, a in s.elemente:
+        assert not any(k.startswith("on") for k in a), (tag, a)
+        if "href" in a:
+            assert a["href"].startswith("#") and a["href"][1:] in kennungen, f"Verweis «{a['href']}» führt nicht zu einem Datenblatt im Dokument"
+        if "src" in a:
+            assert tag == "img" and a["src"].startswith("data:image/png;base64,"), f"<{tag}> lädt «{a['src'][:50]}»"
+    assert kennungen >= {i["id"] for i in fall.indikatoren()} and text.count('<section class="blatt">') == len(fall.indikatoren())
+    assert len([1 for t, _ in s.elemente if t == "img"]) == 1, "Das Bildschirmfoto aus den Rohdaten gehört eingebettet ins Datenblatt von I-05"
+    assert "<script>alert(1)</script>" in s.text and 'boese.example"><script>alert(5)</script>' in s.text, "Markup aus dem Fall steht als Text da"
+    assert '<details class="lang">' not in text and 'class="hilfe"' not in text, "In der Akte steht jeder Wert ausgeschrieben da"
+    for w in s.werte:
+        assert w["beleg"], f"Ein Wert an «{w['stelle']}» nennt keinen Beleg"
+        a = abweichung(w, fall.roh_zu(fall.eintrag(w["beleg"])).inhalt)
+        assert a is None, f"{w['beleg']}: {a}"
+    assert len(s.werte) > 10 and "Widerspruch" in s.text and "keine Angabe" in s.text and "Befragte Quellen" in s.text and ids["kein"] in s.text
+    assert kette_pruefen(OBERFL)["letzter_hash"] in text and fall.befunde()["_sha256"] in text and "Erzeugt am" not in text, "Stand der Daten statt Erzeugungszeit"
+    # Das Werkzeug: schreibt in die Fallakte, die Oberfläche erkennt Stand und Alter
+    ausgabe = io.StringIO()
+    with contextlib.redirect_stdout(ausgabe), contextlib.redirect_stderr(ausgabe):
+        assert anhang_werkzeug.main([OBERFL, "--ohne-pdf"]) == 0 and anhang_werkzeug.main(["GIBT-ES-NICHT", "--ohne-pdf"]) == 2 and anhang_werkzeug.main([]) == 2
+    assert lesen(u["pfad"] / "rapport" / "Datenblaetter.html") == text and "Datenblätter erzeugt" in ausgabe.getvalue()
+    stand = {d["name"]: d for d in ui_daten.Fall(OBERFL).dokumente()}
+    assert stand["Datenblaetter"]["html"] and stand["Datenblaetter"]["aktuell"] is True, stand["Datenblaetter"]
+    ui_eintrag(kern.fall_laden(OBERFL), "shodan_internetdb", "Shodan InternetDB", "203.0.113.50", {"ip": "203.0.113.50", "ports": [22]})
+    stand = {d["name"]: d for d in ui_daten.Fall(OBERFL).dokumente()}
+    assert stand["Datenblaetter"]["aktuell"] is False and "seit der Erzeugung kamen 1 Protokolleinträge dazu" in stand["Datenblaetter"]["vermerk"], stand["Datenblaetter"]
+
+
+@test("Oberfläche, Dokumentation: Die Tabelle der Darsteller in docs/OBERFLAECHE.md entspricht der Messung, das README zeigt Start, Ansichten, Schutz und Grenzen")
+def _():
+    doku, readme = lesen(REPO / "docs" / "OBERFLAECHE.md"), lesen(REPO / "README.md")
+    assert pruefstand.ANFANG in doku and pruefstand.ENDE in doku, "In docs/OBERFLAECHE.md fehlt die Tabelle der Darsteller"
+    tabelle = doku.split(pruefstand.ANFANG)[1].split(pruefstand.ENDE)[0].strip()
+    assert tabelle == pruefstand.tabelle(kurz=True).strip(), "Die Tabelle der Darsteller ist veraltet. Neu: python3 tools/ui/pruefstand.py --kurz, das Ergebnis zwischen die Marken setzen"
+    assert "## Oberfläche" in readme and "tools/oberflaeche.py" in readme and "docs/OBERFLAECHE.md" in readme
+    abschnitt = readme.split("## Oberfläche")[1].split("\n## ")[0]
+    for wort in ("127.0.0.1", "Grenzen", "liest", "tools/anhang.py"):
+        assert wort in abschnitt, f"Im Abschnitt «Oberfläche» des README fehlt: {wort}"
+    bilder = re.findall(r"\]\((docs/bilder/[^)]+)\)", abschnitt)
+    assert len(bilder) >= 4 and all((REPO / b).is_file() for b in bilder), f"Bilder der Ansichten fehlen: {[b for b in bilder if not (REPO / b).is_file()]}"
+    for wort in ("Host-Kopf", "Content-Security-Policy", "nie anklickbar", "Weitere Angaben der Quelle", "nicht geprüft"):
+        assert wort in doku, f"In docs/OBERFLAECHE.md fehlt: {wort}"
+
+
 # --------------------------------------------------------------------------- Ausgabe
 
 for ok, name, grund in ergebnisse:

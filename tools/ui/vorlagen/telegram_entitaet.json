@@ -1,0 +1,9 @@
+{
+ "type": "channel",
+ "id": "1000000001",
+ "title": "Musterkanal",
+ "username": "musterkanal",
+ "about": "Erfundener Kanal für die Vorlage.",
+ "verified": false,
+ "scam": false
+}

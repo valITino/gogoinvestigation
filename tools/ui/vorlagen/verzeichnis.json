@@ -1,0 +1,947 @@
+[
+ {
+  "name": "abklaerung_von_hand",
+  "werkzeug": "abklaerung_von_hand",
+  "quelle": "Beispiel-Dienst (von Hand erfasst)",
+  "ziel": "203.0.113.30",
+  "datei": "abklaerung_von_hand.json",
+  "herkunft": "Form von tools/beleg.py, Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "abuseipdb_meldungen",
+  "werkzeug": "abuseipdb_meldungen",
+  "quelle": "AbuseIPDB",
+  "ziel": "1.1.1.1",
+  "datei": "abuseipdb_meldungen.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "abuseipdb_pruefen",
+  "werkzeug": "abuseipdb_pruefen",
+  "quelle": "AbuseIPDB",
+  "ziel": "8.8.8.8",
+  "datei": "abuseipdb_pruefen.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "chan_katalog",
+  "werkzeug": "chan_katalog",
+  "quelle": "4chan",
+  "ziel": "/g/ / Stichwort 'linux' lokal gefiltert",
+  "datei": "chan_katalog.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "chan_thread",
+  "werkzeug": "chan_thread",
+  "quelle": "4chan",
+  "ziel": "/g/thread/110348819",
+  "datei": "chan_thread.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "ip_abruf.abuseipdb",
+  "werkzeug": "ip_abruf",
+  "quelle": "AbuseIPDB",
+  "ziel": "185.220.101.1",
+  "datei": "ip_abruf.abuseipdb.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "ip_abruf.ipapi",
+  "werkzeug": "ip_abruf",
+  "quelle": "ipapi.is",
+  "ziel": "185.220.101.1",
+  "datei": "ip_abruf.ipapi.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt; Name und Anschrift der Meldestelle ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "ip_abruf.proxycheck",
+  "werkzeug": "ip_abruf",
+  "quelle": "proxycheck.io",
+  "ziel": "185.220.101.1 (30 Tage, Historie)",
+  "datei": "ip_abruf.proxycheck.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "ip_abruf.ripestat",
+  "werkzeug": "ip_abruf",
+  "quelle": "RIPEstat",
+  "ziel": "1.1.1.1 (whois)",
+  "datei": "ip_abruf.ripestat.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "ip_abruf.spur",
+  "werkzeug": "ip_abruf",
+  "quelle": "Spur",
+  "ziel": "198.51.100.23",
+  "datei": "ip_abruf.spur.json",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "ip_einordnung",
+  "werkzeug": "ip_einordnung",
+  "quelle": "Gateway",
+  "ziel": "185.220.101.1",
+  "datei": "ip_einordnung.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.blockscout",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Blockscout",
+  "ziel": "3 Adresse(n)",
+  "datei": "krypto_abruf.blockscout.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.blockstream",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Blockstream",
+  "ziel": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
+  "datei": "krypto_abruf.blockstream.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.chainabuse",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Chainabuse",
+  "ziel": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+  "datei": "krypto_abruf.chainabuse.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.defillama",
+  "werkzeug": "krypto_abruf",
+  "quelle": "DefiLlama",
+  "ziel": "eingebaute Tokenliste",
+  "datei": "krypto_abruf.defillama.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.etherscan",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Etherscan",
+  "ziel": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "datei": "krypto_abruf.etherscan.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.mempool",
+  "werkzeug": "krypto_abruf",
+  "quelle": "mempool.space",
+  "ziel": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
+  "datei": "krypto_abruf.mempool.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.ransomwhere",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Ransomwhere",
+  "ziel": "Datensatz",
+  "datei": "krypto_abruf.ransomwhere.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.trm",
+  "werkzeug": "krypto_abruf",
+  "quelle": "TRM Labs",
+  "ziel": "17 Adresse(n)",
+  "datei": "krypto_abruf.trm.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.trongrid",
+  "werkzeug": "krypto_abruf",
+  "quelle": "TronGrid",
+  "ziel": "TKjrTpnN7LTSjEEVzdkwDHFzt8hTPTyVxz",
+  "datei": "krypto_abruf.trongrid.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.tronscan",
+  "werkzeug": "krypto_abruf",
+  "quelle": "Tronscan",
+  "ziel": "TEzYAc2DrDbxbjDJsRtaVLKkGhTBWxRScV",
+  "datei": "krypto_abruf.tronscan.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_abruf.walletexplorer",
+  "werkzeug": "krypto_abruf",
+  "quelle": "WalletExplorer",
+  "ziel": "1ETWkyQUY9nRpVMyGwha4vRhwKgMbomMQe",
+  "datei": "krypto_abruf.walletexplorer.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_adresse",
+  "werkzeug": "krypto_adresse",
+  "quelle": "Gateway",
+  "ziel": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+  "datei": "krypto_adresse.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_adresse_pruefen",
+  "werkzeug": "krypto_adresse_pruefen",
+  "quelle": "Gateway",
+  "ziel": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "datei": "krypto_adresse_pruefen.json",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "krypto_geldfluss",
+  "werkzeug": "krypto_geldfluss",
+  "quelle": "Gateway",
+  "ziel": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "datei": "krypto_geldfluss.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_kurs",
+  "werkzeug": "krypto_kurs",
+  "quelle": "Gateway",
+  "ziel": "BTC 2024-01-15T12:00:00Z",
+  "datei": "krypto_kurs.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_transaktion",
+  "werkzeug": "krypto_transaktion",
+  "quelle": "Gateway",
+  "ziel": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "datei": "krypto_transaktion.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_transaktionen",
+  "werkzeug": "krypto_transaktionen",
+  "quelle": "Gateway",
+  "ziel": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+  "datei": "krypto_transaktionen.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "krypto_zuordnung",
+  "werkzeug": "krypto_zuordnung",
+  "quelle": "Gateway",
+  "ziel": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+  "datei": "krypto_zuordnung.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "mastodon_instanz",
+  "werkzeug": "mastodon_instanz",
+  "quelle": "Mastodon",
+  "ziel": "mastodon.social",
+  "datei": "mastodon_instanz.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "mastodon_konto",
+  "werkzeug": "mastodon_konto",
+  "quelle": "Mastodon",
+  "ziel": "musterkonto@instanz.example",
+  "datei": "mastodon_konto.json",
+  "herkunft": "erfunden nach der Dokumentation der Mastodon-API (Personenbezug: in der Prüfung nie abgefragt)",
+  "art": "erfunden"
+ },
+ {
+  "name": "onion_sperrliste",
+  "werkzeug": "onion_sperrliste",
+  "quelle": "Ahmia",
+  "ziel": "o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion",
+  "datei": "onion_sperrliste.txt",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "ransomware_aktuell",
+  "werkzeug": "ransomware_aktuell",
+  "quelle": "ransomware.live",
+  "ziel": "neueste Opfer",
+  "datei": "ransomware_aktuell.json",
+  "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
+  "art": "erfunden"
+ },
+ {
+  "name": "ransomware_gruppe",
+  "werkzeug": "ransomware_gruppe",
+  "quelle": "ransomware.live",
+  "ziel": "musterlocker",
+  "datei": "ransomware_gruppe.json",
+  "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
+  "art": "erfunden"
+ },
+ {
+  "name": "ransomware_iocs",
+  "werkzeug": "ransomware_iocs",
+  "quelle": "ransomware.live",
+  "ziel": "musterlocker",
+  "datei": "ransomware_iocs.json",
+  "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
+  "art": "erfunden"
+ },
+ {
+  "name": "ransomware_opfer",
+  "werkzeug": "ransomware_opfer",
+  "quelle": "ransomware.live",
+  "ziel": "musterlocker",
+  "datei": "ransomware_opfer.json",
+  "herkunft": "erfunden, in der Form der echten Antwort (tools/_vorlagen.py)",
+  "art": "erfunden"
+ },
+ {
+  "name": "robin_scrape",
+  "werkzeug": "mcp__robin__robin_scrape",
+  "quelle": "Robin",
+  "ziel": "musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+  "datei": "robin_scrape.json",
+  "herkunft": "erfunden: Dark-Web-Recherche war in der Prüfung nicht erlaubt, die Form von Robin ist nicht gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "robin_search",
+  "werkzeug": "mcp__robin__robin_search",
+  "quelle": "Robin",
+  "ziel": "musterlocker",
+  "datei": "robin_search.json",
+  "herkunft": "erfunden: Dark-Web-Recherche war in der Prüfung nicht erlaubt, die Form von Robin ist nicht gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "shodan_dns",
+  "werkzeug": "shodan_dns",
+  "quelle": "Shodan",
+  "ziel": "example.org",
+  "datei": "shodan_dns.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (das kostenlose Konto bekommt HTTP 403)",
+  "art": "erfunden"
+ },
+ {
+  "name": "shodan_host",
+  "werkzeug": "shodan_host",
+  "quelle": "Shodan",
+  "ziel": "8.8.8.8",
+  "datei": "shodan_host.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "shodan_internetdb",
+  "werkzeug": "shodan_internetdb",
+  "quelle": "Shodan InternetDB",
+  "ziel": "8.8.8.8",
+  "datei": "shodan_internetdb.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "shodan_suche",
+  "werkzeug": "shodan_suche",
+  "quelle": "Shodan",
+  "ziel": "hostname:example.com",
+  "datei": "shodan_suche.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "spur_kontext",
+  "werkzeug": "spur_kontext",
+  "quelle": "Spur",
+  "ziel": "198.51.100.23",
+  "datei": "spur_kontext.json",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "telegram_entitaet",
+  "werkzeug": "telegram_entitaet",
+  "quelle": "RapidAPI Telegram",
+  "ziel": "@musterkanal",
+  "datei": "telegram_entitaet.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (kein Schlüssel vorhanden, Personenbezug)",
+  "art": "erfunden"
+ },
+ {
+  "name": "telegram_kanal",
+  "werkzeug": "telegram_kanal",
+  "quelle": "Telegram (Web-Vorschau)",
+  "ziel": "@breachdetect / Stichwort 'kundenportal' lokal gefiltert",
+  "datei": "telegram_kanal.html.txt",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "telegram_kanalinfo",
+  "werkzeug": "telegram_kanalinfo",
+  "quelle": "RapidAPI Telegram",
+  "ziel": "@musterkanal",
+  "datei": "telegram_kanalinfo.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (kein Schlüssel vorhanden)",
+  "art": "erfunden"
+ },
+ {
+  "name": "telegram_suche",
+  "werkzeug": "telegram_suche",
+  "quelle": "RapidAPI Telegram",
+  "ziel": "musterkanal",
+  "datei": "telegram_suche.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (kein Schlüssel vorhanden, Personenbezug)",
+  "art": "erfunden"
+ },
+ {
+  "name": "urlquery_bericht",
+  "werkzeug": "urlquery_bericht",
+  "quelle": "urlquery",
+  "ziel": "00000000-0000-4000-8000-000000000001",
+  "datei": "urlquery_bericht.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt; Hostnamen, IP-Adressen, Kennungen und Titel der Seiten Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlquery_einreichen",
+  "werkzeug": "urlquery_einreichen",
+  "quelle": "urlquery",
+  "ziel": "https://example.org/login",
+  "datei": "urlquery_einreichen.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (aktive Massnahme, in der Prüfung nie ausgelöst)",
+  "art": "erfunden"
+ },
+ {
+  "name": "urlquery_reputation",
+  "werkzeug": "urlquery_reputation",
+  "quelle": "urlquery",
+  "ziel": "https://example.com/",
+  "datei": "urlquery_reputation.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlquery_status",
+  "werkzeug": "urlquery_status",
+  "quelle": "urlquery",
+  "ziel": "5e0c1f6a-0000-4000-8000-000000000001",
+  "datei": "urlquery_status.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "urlquery_suche",
+  "werkzeug": "urlquery_suche",
+  "quelle": "urlquery",
+  "ziel": "example.com",
+  "datei": "urlquery_suche.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt; Hostnamen, IP-Adressen, Kennungen und Titel der Seiten Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlscan_abruf",
+  "werkzeug": "urlscan_abruf",
+  "quelle": "urlscan.io",
+  "ziel": "01a1e420-90e4-774e-a77b-64d38407fe8c",
+  "datei": "urlscan_abruf.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlscan_einreichen",
+  "werkzeug": "urlscan_einreichen",
+  "quelle": "Gateway",
+  "ziel": "https://example.org/login",
+  "datei": "urlscan_einreichen.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (aktive Massnahme, in der Prüfung nie ausgelöst)",
+  "art": "erfunden"
+ },
+ {
+  "name": "urlscan_ergebnis",
+  "werkzeug": "urlscan_ergebnis",
+  "quelle": "Gateway",
+  "ziel": "01a1e420-90e4-774e-a77b-64d38407fe8c",
+  "datei": "urlscan_ergebnis.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlscan_kontingent",
+  "werkzeug": "urlscan_kontingent",
+  "quelle": "Gateway",
+  "ziel": "Kontingent",
+  "datei": "urlscan_kontingent.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "urlscan_suche",
+  "werkzeug": "urlscan_suche",
+  "quelle": "urlscan.io",
+  "ziel": "example.com",
+  "datei": "urlscan_suche.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt; Hostnamen, IP-Adressen, Kennungen und Titel der Seiten Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "virustotal_beziehungen",
+  "werkzeug": "virustotal_beziehungen",
+  "quelle": "VirusTotal",
+  "ziel": "example.com → resolutions",
+  "datei": "virustotal_beziehungen.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "virustotal_datei",
+  "werkzeug": "virustotal_datei",
+  "quelle": "VirusTotal",
+  "ziel": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+  "datei": "virustotal_datei.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "virustotal_domain",
+  "werkzeug": "virustotal_domain",
+  "quelle": "VirusTotal",
+  "ziel": "example.com",
+  "datei": "virustotal_domain.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "virustotal_ip",
+  "werkzeug": "virustotal_ip",
+  "quelle": "VirusTotal",
+  "ziel": "8.8.8.8",
+  "datei": "virustotal_ip.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "virustotal_url",
+  "werkzeug": "virustotal_url",
+  "quelle": "VirusTotal",
+  "ziel": "https://example.com/",
+  "datei": "virustotal_url.json",
+  "herkunft": "echte Antwort der Quelle zu einem öffentlich bekannten Testwert, abgefragt am 16.11.2026; Listen auf zwei Einträge gekürzt, E-Mail-Adressen, Telefonnummern und freie Texte Dritter ersetzt",
+  "art": "echt"
+ },
+ {
+  "name": "wayback_abruf",
+  "werkzeug": "wayback_abruf",
+  "quelle": "Wayback Machine",
+  "ziel": "https://example.org/login @ 20260927101500",
+  "datei": "wayback_abruf.html.txt",
+  "herkunft": "erfundene Seite: Das Archiv liefert den gespeicherten Stand als HTML, die Fallakte legt ihn als Text ab",
+  "art": "erfunden"
+ },
+ {
+  "name": "wayback_sichern",
+  "werkzeug": "wayback_sichern",
+  "quelle": "Wayback Machine",
+  "ziel": "https://example.org/",
+  "datei": "wayback_sichern.json",
+  "herkunft": "erfunden nach der Dokumentation der Quelle; keine echte Antwort gesehen (aktive und öffentliche Massnahme, in der Prüfung nie ausgelöst)",
+  "art": "erfunden"
+ },
+ {
+  "name": "wayback_verlauf",
+  "werkzeug": "wayback_verlauf",
+  "quelle": "Wayback Machine",
+  "ziel": "https://kundenportal-sicher.example/login",
+  "datei": "wayback_verlauf.json",
+  "herkunft": "aus dem Musterfall: erfunden, in der Form der echten Antwort",
+  "art": "muster"
+ },
+ {
+  "name": "webcheck_aktiv.carbon",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (carbon)",
+  "datei": "webcheck_aktiv.carbon.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.cookies",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (cookies)",
+  "datei": "webcheck_aktiv.cookies.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.dns-server",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (dns-server)",
+  "datei": "webcheck_aktiv.dns-server.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.firewall",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (firewall)",
+  "datei": "webcheck_aktiv.firewall.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.headers",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (headers)",
+  "datei": "webcheck_aktiv.headers.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.hsts",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (hsts)",
+  "datei": "webcheck_aktiv.hsts.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.http-security",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (http-security)",
+  "datei": "webcheck_aktiv.http-security.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.linked-pages",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (linked-pages)",
+  "datei": "webcheck_aktiv.linked-pages.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.location",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (location)",
+  "datei": "webcheck_aktiv.location.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.mail-config",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (mail-config)",
+  "datei": "webcheck_aktiv.mail-config.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.mixed-content",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (mixed-content)",
+  "datei": "webcheck_aktiv.mixed-content.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.ports",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (ports)",
+  "datei": "webcheck_aktiv.ports.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.quality",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (quality)",
+  "datei": "webcheck_aktiv.quality.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.redirects",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (redirects)",
+  "datei": "webcheck_aktiv.redirects.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.robots-txt",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (robots-txt)",
+  "datei": "webcheck_aktiv.robots-txt.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.screenshot",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (screenshot)",
+  "datei": "webcheck_aktiv.screenshot.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.security-txt",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (security-txt)",
+  "datei": "webcheck_aktiv.security-txt.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.sitemap",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (sitemap)",
+  "datei": "webcheck_aktiv.sitemap.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.social-presence",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (social-presence)",
+  "datei": "webcheck_aktiv.social-presence.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.social-tags",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (social-tags)",
+  "datei": "webcheck_aktiv.social-tags.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.ssl",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (ssl)",
+  "datei": "webcheck_aktiv.ssl.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.status",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (status)",
+  "datei": "webcheck_aktiv.status.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.tech-stack",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (tech-stack)",
+  "datei": "webcheck_aktiv.tech-stack.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.tls-connection",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (tls-connection)",
+  "datei": "webcheck_aktiv.tls-connection.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.tls-labs",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (tls-labs)",
+  "datei": "webcheck_aktiv.tls-labs.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.trace-route",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (trace-route)",
+  "datei": "webcheck_aktiv.trace-route.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_aktiv.trackers",
+  "werkzeug": "webcheck_aktiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (trackers)",
+  "datei": "webcheck_aktiv.trackers.json",
+  "herkunft": "erfunden nach dem Quelltext und der Doku von Web-Check; aktive Prüfungen waren nicht erlaubt, keine echte Antwort gesehen",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.archives",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (archives)",
+  "datei": "webcheck_passiv.archives.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.block-lists",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (block-lists)",
+  "datei": "webcheck_passiv.block-lists.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.breaches",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (breaches)",
+  "datei": "webcheck_passiv.breaches.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.caa-records",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (caa-records)",
+  "datei": "webcheck_passiv.caa-records.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.dns",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (dns)",
+  "datei": "webcheck_passiv.dns.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.dnssec",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (dnssec)",
+  "datei": "webcheck_passiv.dnssec.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.get-ip",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (get-ip)",
+  "datei": "webcheck_passiv.get-ip.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.rank",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (rank)",
+  "datei": "webcheck_passiv.rank.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.shodan",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (shodan)",
+  "datei": "webcheck_passiv.shodan.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.subdomains",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (subdomains)",
+  "datei": "webcheck_passiv.subdomains.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.threats",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (threats)",
+  "datei": "webcheck_passiv.threats.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.txt-records",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (txt-records)",
+  "datei": "webcheck_passiv.txt-records.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ },
+ {
+  "name": "webcheck_passiv.whois",
+  "werkzeug": "webcheck_passiv",
+  "quelle": "Web-Check",
+  "ziel": "example.org (whois)",
+  "datei": "webcheck_passiv.whois.json",
+  "herkunft": "Form der echten Antwort aus dem Workflow «Web-Check live» vom 16.11.2026 (tools/_vorlagen.py), Inhalt erfunden",
+  "art": "erfunden"
+ }
+]

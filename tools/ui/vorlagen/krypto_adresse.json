@@ -1,0 +1,69 @@
+{
+ "werkzeug": "krypto_adresse",
+ "parameter": {
+  "adresse": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+  "kette": "bitcoin"
+ },
+ "grundlage": [
+  "P-0012",
+  "P-0013"
+ ],
+ "befund": {
+  "adresse": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw",
+  "kette": "bitcoin",
+  "guthaben": {
+   "betrag": "1.92242576",
+   "einheit": "BTC",
+   "gegenwert_heute": {
+    "chf": "103724.40",
+    "eur": "111940.86",
+    "usd": "123717.04"
+   }
+  },
+  "erhalten": "19.69355613",
+  "ausgegeben": "17.77113037",
+  "transaktionen": 250,
+  "zahlungseingaenge": 248,
+  "davon_ausgegeben": 112,
+  "letzte_bewegung": "2024-10-03T11:37:09Z",
+  "etiketten": [
+   {
+    "quelle": "Ransomwhere",
+    "art": "ransomware",
+    "name": "WannaCry",
+    "detail": "234 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
+    "beleg": "P-0018"
+   }
+  ],
+  "auffaellig": [
+   "ransomware"
+  ],
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0016",
+    "adressen_in_liste": 1064
+   },
+   "Ransomwhere": {
+    "ergebnis": "ok",
+    "beleg": "P-0018",
+    "adressen_in_liste": 11186
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0019"
+   },
+   "WalletExplorer": {
+    "ergebnis": "ok",
+    "beleg": "P-0020"
+   },
+   "Iknaio": {
+    "ergebnis": "aus",
+    "hinweis": "IKNAIO_API_KEY fehlt."
+   }
+  },
+  "hinweise": [
+   "Erste Bewegung nicht bestimmt: Die Quelle liefert die 50 jüngsten von 250 Transaktionen, die älteste davon ist vom 2020-08-02T03:17:19Z."
+  ]
+ }
+}

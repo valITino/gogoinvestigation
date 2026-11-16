@@ -1,0 +1,98 @@
+{
+ "werkzeug": "urlscan_kontingent",
+ "parameter": {},
+ "grundlage": [
+  "P-1031"
+ ],
+ "befund": {
+  "geltung": "user",
+  "stand": {
+   "Suchen": {
+    "heute": {
+     "limit": 1000,
+     "used": 0,
+     "remaining": 1000
+    },
+    "diese Stunde": {
+     "limit": 1000,
+     "used": 0,
+     "remaining": 1000
+    },
+    "diese Minute": {
+     "limit": 120,
+     "used": 0,
+     "remaining": 120
+    }
+   },
+   "Abrufe": {
+    "heute": {
+     "limit": 10000,
+     "used": 0,
+     "remaining": 10000
+    },
+    "diese Stunde": {
+     "limit": 5000,
+     "used": 0,
+     "remaining": 5000
+    },
+    "diese Minute": {
+     "limit": 120,
+     "used": 0,
+     "remaining": 120
+    }
+   },
+   "private Scans": {
+    "heute": {
+     "limit": 50,
+     "used": 0,
+     "remaining": 50
+    },
+    "diese Stunde": {
+     "limit": 50,
+     "used": 0,
+     "remaining": 50
+    },
+    "diese Minute": {
+     "limit": 5,
+     "used": 0,
+     "remaining": 5
+    }
+   },
+   "nicht gelistete Scans": {
+    "heute": {
+     "limit": 1000,
+     "used": 0,
+     "remaining": 1000
+    },
+    "diese Stunde": {
+     "limit": 100,
+     "used": 0,
+     "remaining": 100
+    },
+    "diese Minute": {
+     "limit": 60,
+     "used": 0,
+     "remaining": 60
+    }
+   },
+   "öffentliche Scans": {
+    "heute": {
+     "limit": 5000,
+     "used": 0,
+     "remaining": 5000
+    },
+    "diese Stunde": {
+     "limit": 500,
+     "used": 0,
+     "remaining": 500
+    },
+    "diese Minute": {
+     "limit": 60,
+     "used": 0,
+     "remaining": 60
+    }
+   }
+  },
+  "kurz": "Suchen heute 0 von 1000, Abrufe heute 0 von 10000, private Scans heute 0 von 50, nicht gelistete Scans heute 0 von 1000, öffentliche Scans heute 0 von 5000"
+ }
+}

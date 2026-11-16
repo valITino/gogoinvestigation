@@ -1,0 +1,6 @@
+{
+ "redirects": [
+  "http://example.org/login",
+  "https://example.org/login"
+ ]
+}

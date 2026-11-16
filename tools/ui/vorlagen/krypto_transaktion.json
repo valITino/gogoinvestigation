@@ -1,0 +1,62 @@
+{
+ "werkzeug": "krypto_transaktion",
+ "parameter": {
+  "tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "kette": "ethereum",
+  "gegenpruefen": false
+ },
+ "grundlage": [
+  "P-0022",
+  "P-0023"
+ ],
+ "befund": {
+  "tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "kette": "ethereum",
+  "zeit": "2022-03-23T13:54:53Z",
+  "block": 14442948,
+  "erfolgreich": true,
+  "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+  "an": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "gebuehr": {
+   "betrag": "0.0065625",
+   "einheit": "ETH"
+  },
+  "an_ist_programm": true,
+  "an_name": "USDC",
+  "aufruf": "transfer",
+  "zahlungen": [
+   {
+    "zeit": "2022-03-23T13:54:53Z",
+    "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+    "an": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+    "betrag": "1000000",
+    "einheit": "USDC",
+    "tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+    "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    "gegenwert": {
+     "chf": "934961.29",
+     "eur": "910469.66",
+     "usd": "1000150.92"
+    }
+   }
+  ],
+  "etiketten": {
+   "0x098B716B8Aaf21512996dC57EB0615e2383E2f96": [
+    "Ronin Bridge Exploiter (Blockscout)",
+    "Sanktioniert (Blockscout)"
+   ],
+   "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": [
+    "USDC Token (Blockscout)",
+    "Token Contract (Blockscout)"
+   ]
+  },
+  "kurs_am_tag": {
+   "stand": "2022-03-23T13:54:32Z",
+   "wechselkurs_vom": "2022-03-23",
+   "quellen": [
+    "DefiLlama",
+    "EZB"
+   ]
+  }
+ }
+}

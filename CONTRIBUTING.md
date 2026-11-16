@@ -19,7 +19,9 @@ python3 tools/pseudo_messen.py --pruefen   # nur nach Änderungen an der lokalen
 
 Die CI baut den Musterfall auf drei Systemen und vergleicht ihn Byte für Byte. Ändert er sich gewollt, gehören
 die neuen Dateien unter `faelle/MUSTER-2026-001/` und die PDFs unter `muster/` in denselben Pull Request
-(`python3 tools/pdf.py MUSTER-2026-001 --nach muster`).
+(`python3 tools/pdf.py MUSTER-2026-001 --nach muster` und `python3 tools/anhang.py MUSTER-2026-001 --nach muster`).
+Zum Musterfall gehören auch die Datenblätter (`rapport/Datenblaetter.html`). Sie tragen den Stil der Oberfläche in sich:
+Nach einer Änderung an `tools/ui/app.css` oder an einem Darsteller also `python3 tools/musterfall.py` laufen lassen.
 
 ## Eine Quelle hinzufügen
 
@@ -31,6 +33,13 @@ die neuen Dateien unter `faelle/MUSTER-2026-001/` und die PDFs unter `muster/` i
 4. Die echte Antwort ansehen (Fallakte `SELBSTTEST`), ihre Form als Vorlage in `tools/_vorlagen.py` ablegen, mit
    erfundenem Inhalt, und einen Selbsttest dagegen schreiben. Eine frei erfundene Form findet die Fehler nicht.
 5. `docs/QUELLEN.md`: Endpunkt, Stand der Prüfung mit Datum, Betreiber und Sitz, was der Anbieter erfährt.
+
+## Einen Darsteller der Oberfläche ergänzen
+
+Wie eine Rohantwort in der Oberfläche erscheint, beschreibt je Werkzeug ein Darsteller in `tools/ui/darsteller.py`.
+Zu jedem gehört eine Rohantwort als Vorlage unter `tools/ui/vorlagen/`, ohne Angaben zu Personen und mit Herkunft in
+`verzeichnis.json`. Die Selbsttests prüfen an den Vorlagen, dass keine Angabe verloren geht und jeder gezeigte Wert an
+der genannten Stelle der Rohdatei steht. Die Schritte stehen in [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md).
 
 ## Schreibweise
 

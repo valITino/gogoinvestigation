@@ -119,6 +119,18 @@ def eingabe_kurz(eingabe: object, n: int = 160) -> str:
     return kuerzen(str(eingabe or ""), n)
 
 
+def kennzahlen(abfragen: list[dict]) -> dict:
+    """Die Zahlen im Kopf des Ermittlungsprotokolls. Auch die Oberfläche nimmt sie von hier."""
+    auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
+    echte = [e for e in abfragen if e.get("art") not in ("auswertung", "lokal")]      # Abfragen bei Quellen, ohne lokal befragte Listen
+    return {"auswertungen": auswertungen, "echte": echte,
+            "teil_von": {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []},
+            "ergebnis": Counter(e.get("ergebnis") for e in echte),
+            "cache": sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache")),
+            "aktiv": sum(1 for e in echte if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt"),
+            "je_quelle": Counter(e.get("quelle") for e in echte)}
+
+
 def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], stand: dict,
           sitzungsmeldungen: list[str], akteure: dict[str, dict], extern: list[dict]) -> str:
     h: list[str] = []
@@ -139,12 +151,8 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         h.append("<div class='banner'>✕ Die Integritätsprüfung hat Abweichungen ergeben:<ul>"
                  + "".join(f"<li>{esc(f)}</li>" for f in stand["fehler"] + sitzungsmeldungen) + "</ul></div>")
 
-    auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
-    echte = [e for e in abfragen if e.get("art") not in ("auswertung", "lokal")]      # Abfragen bei Quellen, ohne lokal befragte Listen
-    teil_von = {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []}
-    zaehler = Counter(e.get("ergebnis") for e in echte)
-    cache = sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache"))
-    aktiv = sum(1 for e in echte if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt")
+    k = kennzahlen(abfragen)
+    auswertungen, echte, teil_von, zaehler, cache, aktiv = k["auswertungen"], k["echte"], k["teil_von"], k["ergebnis"], k["cache"], k["aktiv"]
     h.append("<div class='kacheln'>")
     h.append(kachel(len(echte), "Abfragen", f"{cache} davon aus dem Fall-Cache"))
     h.append(kachel(zaehler["ok"], "mit Treffer"))
@@ -155,7 +163,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     if auswertungen:
         h.append(kachel(len(auswertungen), "Auswertungen", "aus mehreren Abfragen errechnet"))
     h.append("</div>")
-    je_quelle = Counter(e.get("quelle") for e in echte)
+    je_quelle = k["je_quelle"]
     if je_quelle:
         h.append("<figure>" + balken([{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in je_quelle.most_common()],
                                      beschriftung="Abfragen je Quelle") +

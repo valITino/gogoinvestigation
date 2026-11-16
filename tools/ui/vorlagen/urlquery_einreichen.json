@@ -1,0 +1,11 @@
+{
+ "queue_id": "5e0c1f6a-0000-4000-8000-000000000001",
+ "status": "queued",
+ "report_id": null,
+ "url": {
+  "addr": "https://example.org/login"
+ },
+ "settings": {
+  "access": "private"
+ }
+}

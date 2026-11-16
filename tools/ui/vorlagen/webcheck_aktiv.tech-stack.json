@@ -1,0 +1,19 @@
+{
+ "technologies": [
+  {
+   "slug": "nginx",
+   "name": "Nginx",
+   "description": "Nginx is a web server.",
+   "confidence": 100,
+   "version": "1.24.0",
+   "website": "http://nginx.org/en",
+   "categories": [
+    {
+     "id": 22,
+     "slug": "web-servers",
+     "name": "Web servers"
+    }
+   ]
+  }
+ ]
+}

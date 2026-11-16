@@ -524,6 +524,25 @@ def ip_abschnitt(indikatoren: list[dict], protokoll: dict[str, dict], pfad: Path
     return "".join(h)
 
 
+def kennzahlen(b: dict, eintraege: list[dict]) -> dict:
+    """Die Zahlen aus Abschnitt 3 des Rapports. Auch die Oberfläche nimmt sie von hier, damit beide nie voneinander abweichen.
+    «Abfragen» sind Anfragen bei Quellen. Auswertungen des Gateways und lokal befragte Listen zählen nicht dazu."""
+    indikatoren = b.get("indikatoren") or []
+    befunde = b.get("befunde") or []
+    abfragen = [e for e in eintraege if e.get("art") not in ("auswertung", "lokal")]
+    return {"indikatoren": len(indikatoren),
+            "bewertung": Counter((i.get("bewertung") or "unbekannt") for i in indikatoren),
+            "abfragen": abfragen,
+            "auswertungen": [e for e in eintraege if e.get("art") == "auswertung"],
+            "listen": [e for e in eintraege if e.get("art") == "lokal"],          # lokal befragte Listen: keine Anfrage nach aussen
+            "quellen": Counter(e.get("quelle") for e in abfragen if e.get("ergebnis") in BRAUCHBAR),
+            "ohne_treffer": sum(1 for e in abfragen if e.get("ergebnis") == "kein_treffer"),
+            "fehlgeschlagen": sum(1 for e in abfragen if e.get("ergebnis") == "fehler"),
+            "abgelehnt": sum(1 for e in abfragen if e.get("ergebnis") == "abgelehnt"),
+            "befunde": len(befunde),
+            "gegengeprueft": sum(1 for f in befunde if f.get("gegenpruefung") in ("bestaetigt", "eingeschraenkt"))}
+
+
 def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand: dict,
           maengel: list[str], hinweise: list[str], entwurf: bool) -> str:
     protokoll = {e["id"]: e for e in eintraege}
@@ -570,15 +589,10 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
         h.append("</table>")
 
     # ---- 3 Überblick in Zahlen
-    zaehler = Counter((i.get("bewertung") or "unbekannt") for i in indikatoren)
-    auswertungen = [e for e in eintraege if e.get("art") == "auswertung"]
-    listen = [e for e in eintraege if e.get("art") == "lokal"]               # lokal befragte Listen: keine Anfrage nach aussen
-    eintraege = [e for e in eintraege if e.get("art") not in ("auswertung", "lokal")]       # ab hier: nur Abfragen bei Quellen
-    quellen = Counter(e.get("quelle") for e in eintraege if e.get("ergebnis") in BRAUCHBAR)
-    ohne_treffer = sum(1 for e in eintraege if e.get("ergebnis") == "kein_treffer")
-    fehlgeschlagen = sum(1 for e in eintraege if e.get("ergebnis") == "fehler")
-    abgelehnt = sum(1 for e in eintraege if e.get("ergebnis") == "abgelehnt")
-    geprueft = sum(1 for f in befunde if f.get("gegenpruefung") in ("bestaetigt", "eingeschraenkt"))
+    k = kennzahlen(b, eintraege)
+    zaehler, auswertungen, listen, quellen = k["bewertung"], k["auswertungen"], k["listen"], k["quellen"]
+    eintraege = k["abfragen"]                                               # ab hier: nur Abfragen bei Quellen
+    ohne_treffer, fehlgeschlagen, abgelehnt, geprueft = k["ohne_treffer"], k["fehlgeschlagen"], k["abgelehnt"], k["gegengeprueft"]
     h.append("<h2>3 Überblick in Zahlen</h2><div class='kacheln'>")
     h.append(kachel(len(indikatoren), "Indikatoren", f"{zaehler['boesartig']} bösartig, {zaehler['verdaechtig']} verdächtig"))
     h.append(kachel(len(eintraege), "Abfragen", f"{ohne_treffer} ohne Treffer, {fehlgeschlagen} fehlgeschlagen" + (f", {abgelehnt} abgelehnt" if abgelehnt else "")))

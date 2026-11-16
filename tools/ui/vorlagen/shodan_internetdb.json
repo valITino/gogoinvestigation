@@ -1,0 +1,16 @@
+{
+ "cpes": [],
+ "hostnames": [
+  "dns.google",
+  "jadbsi.com"
+ ],
+ "ip": "8.8.8.8",
+ "ports": [
+  53,
+  443
+ ],
+ "tags": [
+  "pqc"
+ ],
+ "vulns": []
+}

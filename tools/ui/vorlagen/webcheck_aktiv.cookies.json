@@ -1,0 +1,19 @@
+{
+ "headerCookies": [
+  "sitzung=abc123; Path=/; HttpOnly; Secure"
+ ],
+ "clientCookies": [
+  {
+   "name": "sitzung",
+   "value": "abc123",
+   "domain": "example.org",
+   "path": "/",
+   "expires": 1797000000,
+   "size": 13,
+   "httpOnly": true,
+   "secure": true,
+   "session": false,
+   "sameSite": "Lax"
+  }
+ ]
+}

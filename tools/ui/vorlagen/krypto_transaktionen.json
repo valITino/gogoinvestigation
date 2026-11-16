@@ -1,0 +1,79 @@
+{
+ "werkzeug": "krypto_transaktionen",
+ "parameter": {
+  "adresse": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+  "kette": "ethereum",
+  "wert": "USDC",
+  "richtung": "aus",
+  "limit": 20,
+  "aelteste_zuerst": false
+ },
+ "grundlage": [
+  "P-0169",
+  "P-0170"
+ ],
+ "befund": {
+  "adresse": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+  "kette": "ethereum",
+  "wert": {
+   "symbol": "USDC",
+   "kette": "ethereum",
+   "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+   "echt": true,
+   "emittent": "Circle"
+  },
+  "zahlungen": [
+   {
+    "zeit": "2022-03-23T14:05:33Z",
+    "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+    "an": "0x665660F65e94454A64b96693a67a41D440155617",
+    "betrag": "3500000",
+    "einheit": "USDC",
+    "tx": "0x287dad48bfea44fcd5e180a9109e51e56bda64504d3242879c2575d83265c538",
+    "richtung": "aus",
+    "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+   },
+   {
+    "zeit": "2022-03-23T14:02:51Z",
+    "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+    "an": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+    "betrag": "10000000",
+    "einheit": "USDC",
+    "tx": "0xbb0c1380942c22799dea1df70cca4b4640f1f38760cb9dac9900d0d8099af7c1",
+    "richtung": "aus",
+    "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+   }
+  ],
+  "gegenparteien": [
+   {
+    "adresse": "0x665660F65e94454A64b96693a67a41D440155617",
+    "eingang": "0",
+    "abgang": "14500000",
+    "einheit": "USDC",
+    "zahlungen": 3
+   },
+   {
+    "adresse": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+    "eingang": "0",
+    "abgang": "11000000",
+    "einheit": "USDC",
+    "zahlungen": 2
+   }
+  ],
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0170",
+    "adressen_in_liste": 1064
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0172"
+   },
+   "Blockscout (Etiketten)": {
+    "ergebnis": "ok",
+    "beleg": "P-0173"
+   }
+  }
+ }
+}

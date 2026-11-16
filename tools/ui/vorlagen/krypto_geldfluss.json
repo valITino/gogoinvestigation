@@ -1,0 +1,252 @@
+{
+ "werkzeug": "krypto_geldfluss",
+ "parameter": {
+  "start": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+  "kette": "ethereum",
+  "adresse": null,
+  "wert": "USDC",
+  "tiefe": 3,
+  "min_anteil_prozent": 2.0,
+  "max_abfragen": 60
+ },
+ "grundlage": [
+  "P-0175",
+  "P-0177"
+ ],
+ "befund": {
+  "start": {
+   "art": "zahlung",
+   "tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+   "adresse": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+   "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+   "zeit": "2022-03-23T13:54:53Z",
+   "betrag": "1000000",
+   "einheit": "USDC",
+   "gegenwert": {
+    "chf": "934961.29",
+    "eur": "910469.66",
+    "usd": "1000150.92"
+   },
+   "kurs": {
+    "chf": "0.934961",
+    "eur": "0.910470",
+    "usd": "1.00",
+    "stand": "2022-03-23T13:54:32Z",
+    "wechselkurs_vom": "2022-03-23",
+    "quellen": [
+     "DefiLlama",
+     "EZB"
+    ]
+   },
+   "gegenwert_hinweis": "Gegenwerte zum Kurs am Tag der Startzahlung."
+  },
+  "kette": "ethereum",
+  "wert": {
+   "symbol": "USDC",
+   "kette": "ethereum",
+   "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+   "echt": true,
+   "emittent": "Circle"
+  },
+  "startbetrag": "1000000",
+  "einheit": "USDC",
+  "verteilung": [
+   {
+    "art": "vertrag",
+    "bezeichnung": "An Programm auf der Kette",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "gegenwert": {
+     "chf": "934961.29",
+     "eur": "910469.66",
+     "usd": "1000150.92"
+    }
+   }
+  ],
+  "stationen": [
+   {
+    "nr": 1,
+    "adresse": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+    "tiefe": 0,
+    "art": "start",
+    "betrag": "1000000",
+    "anteil": 100.0
+   },
+   {
+    "nr": 2,
+    "adresse": "0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4",
+    "tiefe": 1,
+    "art": "vertrag",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "etiketten": [
+     "1inch: Aggregation Executor 1 (Blockscout)",
+     "1inch (Blockscout)"
+    ],
+    "programm": true
+   }
+  ],
+  "fluesse": [
+   {
+    "von": 1,
+    "nach": 2,
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "tx": [
+     "0x7f7a65ee49c3c390d77fa5852280c75d6b4a345f1d8102b43aa6073fafa5cbb0"
+    ],
+    "zeit": "2022-03-23T13:58:22Z",
+    "passgenau": true
+   }
+  ],
+  "enden": [
+   {
+    "art": "vertrag",
+    "bezeichnung": "An Programm auf der Kette",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "station": 2,
+    "adresse": "0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4",
+    "grund": "Programm auf der Kette mit über 200 Abgängen seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
+   }
+  ],
+  "ansatzpunkte": [
+   "1000000 USDC gingen an das Programm 0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4. Die Transaktion mit krypto_transaktion ansehen: Dort stehen die Token, die im Gegenzug flossen."
+  ],
+  "methode": "Ethereum: Die Kette führt Kontostände. Ein Eingang wird den zeitlich nächsten Abgängen derselben Währung zugeordnet, bis er aufgebraucht ist (zuerst herein, zuerst hinaus). Lag auf der Adresse schon Guthaben, ist das eine Annahme. Adressen mit über 200 Abgängen seit dem Eingang gelten als Sammeladresse eines Dienstes. Zahlt eine Station Kleinbeträge an viele Adressen, stehen die 12 grössten Empfänger einzeln da und der Rest als Summe. Grenzen dieses Laufs: 3 Stationen ab Start, Teilbeträge unter 2% des Startbetrags und mehr als 60 Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind  … (für die Vorlage gekürzt)",
+  "summe_geht_auf": true,
+  "abfragen": {
+   "ausgefuehrt": 11,
+   "aus_fall_cache": 5,
+   "budget": 60,
+   "budget_aufgebraucht": false
+  },
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0180",
+    "adressen_in_liste": 1064
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0191"
+   },
+   "Blockscout (Etiketten)": {
+    "ergebnis": "ok",
+    "beleg": "P-0192"
+   }
+  }
+ },
+ "details": {
+  "stationen": [
+   {
+    "nr": 1,
+    "adresse": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+    "tiefe": 0,
+    "art": "start",
+    "betrag": "1000000",
+    "anteil": 100.0
+   },
+   {
+    "nr": 2,
+    "adresse": "0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4",
+    "tiefe": 1,
+    "art": "vertrag",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "etiketten": [
+     "1inch: Aggregation Executor 1 (Blockscout)",
+     "1inch (Blockscout)"
+    ],
+    "programm": true
+   }
+  ],
+  "fluesse": [
+   {
+    "von": 1,
+    "nach": 2,
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "tx": [
+     "0x7f7a65ee49c3c390d77fa5852280c75d6b4a345f1d8102b43aa6073fafa5cbb0"
+    ],
+    "zeit": "2022-03-23T13:58:22Z",
+    "passgenau": true
+   }
+  ],
+  "enden": [
+   {
+    "art": "vertrag",
+    "bezeichnung": "An Programm auf der Kette",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "station": 2,
+    "adresse": "0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4",
+    "grund": "Programm auf der Kette mit über 200 Abgängen seit dem Eingang (Tauschbörse, Brücke oder Ähnliches)"
+   }
+  ],
+  "verteilung": [
+   {
+    "art": "vertrag",
+    "bezeichnung": "An Programm auf der Kette",
+    "betrag": "1000000",
+    "anteil": 100.0,
+    "gegenwert": {
+     "chf": "934961.29",
+     "eur": "910469.66",
+     "usd": "1000150.92"
+    }
+   }
+  ],
+  "erklaerung": {
+   "dienst": "Börse oder Zahlungsdienst. Der Dienst weiss, welchem Kunden die Einzahlung gutgeschrieben wurde.",
+   "sammel": "Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt.",
+   "liegt": "Der Betrag wurde seit dem Eingang nicht weitergeleitet.",
+   "mischer": "Mischdienst laut Etikett, oder Transaktion mit dessen Muster: Viele Beteiligte legen gleiche Beträge zusammen, damit die Zuordnung verloren geht.",
+   "vertrag": "Tauschbörse, Brücke oder anderes Programm. Was dort geschah, zeigen die genutzten Quellen nicht.",
+   "grenze": "Verfolgung an dieser Stelle beendet: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht geantwortet.",
+   "gebuehr": "Anteil, der als Gebühr an die Betreiber des Netzes ging.",
+   "unklar": "Kein passender Abgang gefunden, oder eine Form, der sich nicht folgen lässt."
+  },
+  "start": {
+   "art": "zahlung",
+   "tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b",
+   "adresse": "0xe708f17240732bBfa1BaA8513F66b665Fbc7ce10",
+   "von": "0x098B716B8Aaf21512996dC57EB0615e2383E2f96",
+   "zeit": "2022-03-23T13:54:53Z",
+   "betrag": "1000000",
+   "einheit": "USDC",
+   "gegenwert": {
+    "chf": "934961.29",
+    "eur": "910469.66",
+    "usd": "1000150.92"
+   },
+   "kurs": {
+    "chf": "0.934961",
+    "eur": "0.910470",
+    "usd": "1.00",
+    "stand": "2022-03-23T13:54:32Z",
+    "wechselkurs_vom": "2022-03-23",
+    "quellen": [
+     "DefiLlama",
+     "EZB"
+    ]
+   },
+   "gegenwert_hinweis": "Gegenwerte zum Kurs am Tag der Startzahlung."
+  },
+  "kette": "ethereum",
+  "kette_anzeige": "Ethereum",
+  "wert": {
+   "symbol": "USDC",
+   "kette": "ethereum",
+   "vertrag": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+   "echt": true,
+   "emittent": "Circle"
+  },
+  "startbetrag": "1000000",
+  "methode": "Ethereum: Die Kette führt Kontostände. Ein Eingang wird den zeitlich nächsten Abgängen derselben Währung zugeordnet, bis er aufgebraucht ist (zuerst herein, zuerst hinaus). Lag auf der Adresse schon Guthaben, ist das eine Annahme. Adressen mit über 200 Abgängen seit dem Eingang gelten als Sammeladresse eines Dienstes. Zahlt eine Station Kleinbeträge an viele Adressen, stehen die 12 grössten Empfänger einzeln da und der Rest als Summe. Grenzen dieses Laufs: 3 Stationen ab Start, Teilbeträge unter 2% des Startbetrags und mehr als 60 Stationen werden nicht weiterverfolgt. Einzelne Zahlungen sind  … (für die Vorlage gekürzt)",
+  "ansatzpunkte": [
+   "1000000 USDC gingen an das Programm 0x220bdA5c8994804Ac96ebe4DF184d25e5c2196D4. Die Transaktion mit krypto_transaktion ansehen: Dort stehen die Token, die im Gegenzug flossen."
+  ]
+ }
+}

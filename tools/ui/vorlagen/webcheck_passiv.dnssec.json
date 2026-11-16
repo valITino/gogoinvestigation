@@ -1,0 +1,67 @@
+{
+ "DNSKEY": {
+  "isFound": true,
+  "answer": [
+   {
+    "name": "example.org.",
+    "type": 48,
+    "TTL": 3600,
+    "data": "256 3 13 MjyZielP0GqniI1+j+wAG/3t0ImDDIlj1CxR0oobkZQHSKH2Fqx6tm2NcYu57POJ83SzCWLkqIjZHS1mh5wbaw=="
+   }
+  ],
+  "response": [
+   {
+    "name": "example.org.",
+    "type": 48,
+    "TTL": 3600,
+    "data": "256 3 13 MjyZielP0GqniI1+j+wAG/3t0ImDDIlj1CxR0oobkZQHSKH2Fqx6tm2NcYu57POJ83SzCWLkqIjZHS1mh5wbaw=="
+   }
+  ]
+ },
+ "DS": {
+  "isFound": true,
+  "answer": [
+   {
+    "name": "example.org.",
+    "type": 43,
+    "TTL": 1082,
+    "data": "2371 13 2 C988EC423E3880EB8DD8A46FE06CA230EE23F35B578D64E78B29C3E1C83D245A"
+   }
+  ],
+  "response": [
+   {
+    "name": "example.org.",
+    "type": 43,
+    "TTL": 1082,
+    "data": "2371 13 2 C988EC423E3880EB8DD8A46FE06CA230EE23F35B578D64E78B29C3E1C83D245A"
+   }
+  ]
+ },
+ "RRSIG": {
+  "isFound": true,
+  "answer": null,
+  "response": {
+   "Status": 0,
+   "TC": false,
+   "RD": true,
+   "RA": true,
+   "AD": true,
+   "CD": false,
+   "Question": [
+    {
+     "name": "example.org.",
+     "type": 1
+    }
+   ],
+   "Answer": [
+    {
+     "name": "example.org.",
+     "type": 1,
+     "TTL": 300,
+     "data": "203.0.113.7"
+    }
+   ],
+   "Comment": "Response from 203.0.113.53."
+  }
+ }
+}

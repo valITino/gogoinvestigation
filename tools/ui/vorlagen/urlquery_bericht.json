@@ -1,0 +1,622 @@
+{
+ "report_id": "00000000-0000-4000-8000-000000000001",
+ "version": 0,
+ "status": "done",
+ "tags": [],
+ "date": "2026-11-16T02:30:18Z",
+ "url": {
+  "schema": "http",
+  "addr": "seite-1.example/pfad",
+  "fqdn": "seite-1.example",
+  "domain": "seite-1.example",
+  "tld": "xyz"
+ },
+ "ip": {
+  "addr": "203.0.113.1",
+  "asn": 13335,
+  "as": "Cloudflare, Inc.",
+  "country": "",
+  "country_code": "zz"
+ },
+ "final": {
+  "url": {
+   "schema": "https",
+   "addr": "seite-1.example/pfad",
+   "fqdn": "seite-1.example",
+   "domain": "seite-1.example",
+   "tld": "xyz"
+  },
+  "title": "Titel der Seite (für die Vorlage ersetzt)",
+  "dom": {
+   "size": 41727,
+   "mime_type": "text/html; charset=utf-8",
+   "magic": "JavaScript source, Unicode text, UTF-8 text, with very long lines (1562)",
+   "md5": "fa8c50ad6760522976eb402d67a5fa19",
+   "sha1": "c22aa3c8be0242babbaa9216f546a50729b198c5",
+   "sha256": "39604064e7a6054984c0a24f31198011dc07bdd5b236ca83fdd81d6a7d0b141c",
+   "sha512": "ca28588e34eab0819daba27e3ee109ff1c3b03f58dbd3df1de38ce558076cf02df2dfe1d801ee133aa47c30009a076b1e4ef4314896bfc5f0b06a9025264d3a9",
+   "ssdeep": "384:8WdQS3XdxOhA/0l3cnP9FfbNB2hfyEB+Tk7DHPQDhfyEB+ukf6IU0hvPhzqv6yqT:bW0Xfw5l3QFzNZk7DHPMkSIPvp7yqbf",
+   "tlshash": "30139622a2e9193e521343ccf250337e51626103e60f5c20f9be46b59f9ae89bd3f5d9",
+   "dom_hash": "domhash32d48cfd5a21a30d9c4fb88e91dacfc9",
+   "first_seen": "2026-11-16T02:30:23.90403Z",
+   "last_seen": "2026-11-16T02:30:23.90403Z",
+   "times_seen": 1,
+   "resource_available": false,
+   "data": null
+  }
+ },
+ "submit": {
+  "url": {
+   "schema": "http",
+   "addr": "seite-1.example/pfad",
+   "fqdn": "seite-1.example",
+   "domain": "seite-1.example",
+   "tld": "xyz"
+  },
+  "ip": {
+   "addr": "203.0.113.1",
+   "asn": 13335,
+   "as": "Cloudflare, Inc.",
+   "country": "",
+   "country_code": "zz"
+  },
+  "tags": [],
+  "meta": null
+ },
+ "settings": {
+  "access": "public",
+  "device_type": "desktop",
+  "expires_at": "2027-12-21T02:30:18Z",
+  "useragent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+  "referer": "",
+  "cookies": null,
+  "exit_node": "qguvgzjxzsgb3vs"
+ },
+ "detection": {
+  "ids": [],
+  "analyzer": [
+   {
+    "sensor_name": "cloudflare_dns",
+    "sensor_type": "DNS",
+    "title": "Titel der Seite (für die Vorlage ersetzt)",
+    "description": "Cloudflare DNS",
+    "scan_date": "2026-11-16",
+    "alert": "Sinkholed",
+    "trigger": "seite-2.example",
+    "verdict": "malicious",
+    "severity": "medium",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "link": "https://seite-3.example/pfad",
+    "meta": null
+   },
+   {
+    "sensor_name": "dns4eu",
+    "sensor_type": "DNS",
+    "title": "Titel der Seite (für die Vorlage ersetzt)",
+    "description": "DNS4EU",
+    "scan_date": "2026-11-16",
+    "alert": "Sinkholed",
+    "trigger": "seite-2.example",
+    "verdict": "malicious",
+    "severity": "medium",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "link": "https://seite-4.example/",
+    "meta": null
+   }
+  ],
+  "urlquery": []
+ },
+ "summary": [
+  {
+   "fqdn": "seite-1.example",
+   "ip": {
+    "addr": "203.0.113.2",
+    "port": 443,
+    "asn": 13335,
+    "as": "CLOUDFLARENET",
+    "country": "",
+    "country_code": "zz"
+   },
+   "domain_registered": "2026-01-11",
+   "domain_rank": 0,
+   "first_seen": "2026-10-11T04:04:23Z",
+   "last_seen": "2026-10-11T04:04:26Z",
+   "alert_count": 5,
+   "request_count": 5,
+   "received_data": 97104,
+   "sent_data": 2904,
+   "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+   "tags": [],
+   "fingerprints": [
+    {
+     "name": "jsDelivr",
+     "description": "JSDelivr is a free public CDN for open-source projects. It can serve web files directly from the npm registry and GitHub repositories without any configuration.",
+     "website": "https://seite-5.example/",
+     "common_platform_enumeration": "",
+     "icon": "jsdelivr-icon.svg",
+     "categories": [
+      "CDN"
+     ]
+    },
+    {
+     "name": "Cloudflare",
+     "description": "Cloudflare is a web-infrastructure and website-security company, providing content-delivery-network services, DDoS mitigation, Internet security, and distributed domain-name-server services.",
+     "website": "https://seite-3.example/",
+     "common_platform_enumeration": "",
+     "icon": "CloudFlare.svg",
+     "categories": [
+      "CDN"
+     ]
+    }
+   ]
+  },
+  {
+   "fqdn": "seite-6.example",
+   "ip": {
+    "addr": "203.0.113.3",
+    "port": 443,
+    "asn": 15169,
+    "as": "GOOGLE",
+    "country": "United States",
+    "country_code": "US"
+   },
+   "domain_registered": "2005-01-25",
+   "domain_rank": 313,
+   "first_seen": "2012-05-23T12:41:44Z",
+   "last_seen": "2026-11-16T02:30:12Z",
+   "alert_count": 0,
+   "request_count": 1,
+   "received_data": 8685,
+   "sent_data": 525,
+   "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+   "tags": [],
+   "fingerprints": [
+    {
+     "name": "HSTS",
+     "description": "HTTP Strict Transport Security (HSTS) informs browsers that the site should only be accessed using HTTPS.",
+     "website": "https://seite-7.example/pfad",
+     "common_platform_enumeration": "",
+     "icon": "",
+     "categories": [
+      "Security"
+     ]
+    }
+   ]
+  }
+ ],
+ "hosts": [
+  {
+   "fqdn": "seite-1.example",
+   "ips": [
+    {
+     "addr": "203.0.113.2",
+     "asn": 13335,
+     "as": "CLOUDFLARENET",
+     "country": "",
+     "country_code": "zz"
+    }
+   ],
+   "domain_rank": 0,
+   "domain_registered": "2026-01-11",
+   "first_seen": "2026-10-11T04:04:23Z",
+   "last_seen": "2026-10-11T04:04:26Z",
+   "request_count": 5,
+   "sent_data": 2904,
+   "received_data": 97104,
+   "fingerprints": [
+    {
+     "name": "jsDelivr",
+     "description": "JSDelivr is a free public CDN for open-source projects. It can serve web files directly from the npm registry and GitHub repositories without any configuration.",
+     "website": "https://seite-5.example/",
+     "common_platform_enumeration": "",
+     "icon": "jsdelivr-icon.svg",
+     "categories": [
+      "CDN"
+     ]
+    },
+    {
+     "name": "Cloudflare",
+     "description": "Cloudflare is a web-infrastructure and website-security company, providing content-delivery-network services, DDoS mitigation, Internet security, and distributed domain-name-server services.",
+     "website": "https://seite-3.example/",
+     "common_platform_enumeration": "",
+     "icon": "CloudFlare.svg",
+     "categories": [
+      "CDN"
+     ]
+    }
+   ]
+  },
+  {
+   "fqdn": "seite-6.example",
+   "ips": [
+    {
+     "addr": "203.0.113.3",
+     "asn": 15169,
+     "as": "GOOGLE",
+     "country": "United States",
+     "country_code": "US"
+    }
+   ],
+   "domain_rank": 313,
+   "domain_registered": "2005-01-25",
+   "first_seen": "2012-05-23T12:41:44Z",
+   "last_seen": "2026-11-16T02:30:12Z",
+   "request_count": 1,
+   "sent_data": 525,
+   "received_data": 8685,
+   "fingerprints": [
+    {
+     "name": "HSTS",
+     "description": "HTTP Strict Transport Security (HSTS) informs browsers that the site should only be accessed using HTTPS.",
+     "website": "https://seite-7.example/pfad",
+     "common_platform_enumeration": "",
+     "icon": "",
+     "categories": [
+      "Security"
+     ]
+    }
+   ]
+  }
+ ],
+ "artifacts": {
+  "windows_shortcuts": [],
+  "files": [],
+  "telegram": [],
+  "pdfs": [],
+  "clipboard": []
+ },
+ "javascript": {
+  "script": [
+   {
+    "url": {
+     "schema": "https",
+     "addr": "seite-1.example/pfad",
+     "fqdn": "seite-1.example",
+     "domain": "seite-1.example",
+     "tld": "xyz"
+    },
+    "ip": {
+     "addr": "203.0.113.2",
+     "port": 443,
+     "asn": 13335,
+     "as": "CLOUDFLARENET",
+     "country": "",
+     "country_code": "zz"
+    },
+    "introduction_type": "scriptElement",
+    "is_inline": true,
+    "md5": "a937b59edc1611a3b0a17d395a57b4df",
+    "sha1": "92a408a3aa1ffd2fbcb1445f0fd412e2241c0da1",
+    "sha256": "43ea2bb4fed03167d028f7d5b75654928b09ba976c1f8dcf5ddde518906758eb",
+    "sha512": "c4796daa1bbf1f43e99a4cf29ddb2aca865b19b705b7377a4f69aefaebd05a62846cb9f9842486b0bacab68303c159b2f5e9bb0de1e5f76f3bb3c2de851c4943",
+    "ssdeep": "",
+    "tlshash": "08d0c279701022334c290cbdb06c9aec3c33216027165a00e51dc4541469d891a53a88",
+    "size": 283,
+    "data": "",
+    "first_seen": "2026-10-11T02:35:53.180823Z",
+    "last_seen": "2026-11-16T09:43:59.380611Z",
+    "times_seen": 525,
+    "alerts": {
+     "ids": [],
+     "analyzer": [],
+     "urlquery": []
+    }
+   },
+   {
+    "url": {
+     "schema": "https",
+     "addr": "seite-1.example/pfad",
+     "fqdn": "seite-1.example",
+     "domain": "seite-1.example",
+     "tld": "xyz"
+    },
+    "ip": {
+     "addr": "203.0.113.2",
+     "port": 443,
+     "asn": 13335,
+     "as": "CLOUDFLARENET",
+     "country": "",
+     "country_code": "zz"
+    },
+    "introduction_type": "scriptElement",
+    "is_inline": true,
+    "md5": "e15765438dfc6bc31cb533cda2dc38f5",
+    "sha1": "c95fdc45a109a2965932932b7280be1d12436cc5",
+    "sha256": "23909695737219f88b57b7d43d71e5fc0394ad124b9a2cf3380f3039075d0ff5",
+    "sha512": "e2c15ec5bbdeb025b4d1e344bb0f83ca7536d9d04b2449f98de03f4bcb3f07cea62209d1c4f05aa892adf6b03e026729075b3f2a9bd0551b063b4025d0e34838",
+    "ssdeep": "",
+    "tlshash": "8ef04c3a31585937489180f7987aeb557122163d9e734c24ca65fd172008d8b7c7a0d0",
+    "size": 598,
+    "data": "",
+    "first_seen": "2026-10-11T02:35:53.185883Z",
+    "last_seen": "2026-11-16T09:43:59.381228Z",
+    "times_seen": 525,
+    "alerts": {
+     "ids": [],
+     "analyzer": [],
+     "urlquery": []
+    }
+   }
+  ],
+  "eval": [],
+  "write": [],
+  "console": []
+ },
+ "http": [
+  {
+   "url": {
+    "schema": "https",
+    "addr": "seite-2.example/pfad",
+    "fqdn": "seite-2.example",
+    "domain": "seite-8.example",
+    "tld": "com"
+   },
+   "ip": {
+    "addr": "203.0.113.4",
+    "port": 443,
+    "asn": 40021,
+    "as": "NL-811-40021",
+    "country": "United States",
+    "country_code": "US"
+   },
+   "is_navigation_request": false,
+   "resource_type": "img",
+   "requested_by": "https://seite-1.example/pfad",
+   "date": "2026-11-16T02:29:35.328Z",
+   "timestamp": 1794796175328,
+   "http_version": "HTTP/1.1",
+   "security_state": "secure",
+   "security_info": {
+    "cipher_suite": "TLS_AES_128_GCM_SHA256",
+    "key_group_name": "x25519",
+    "signature_name": "RSA-PSS-SHA256",
+    "protocol": "TLSv1.3",
+    "cert": {
+     "subject": {
+      "commonName": "seite-8.example",
+      "organization": ""
+     },
+     "issuer": {
+      "commonName": "ZeroSSL RSA DV SSL CA 2",
+      "organization": "ZeroSSL GmbH"
+     },
+     "validity": {
+      "start": "Sat, 24 Oct 2026 00:00:00 GMT",
+      "end": "Fri, 22 Jan 2027 23:59:59 GMT"
+     },
+     "fingerprint": {
+      "sha1": "2001:db8::1:2001:db8::1:2001:db8::1",
+      "sha256": "2001:db8::1:2001:db8::1:2001:db8::1:2001:db8::1"
+     }
+    }
+   },
+   "request": {
+    "raw": "GET /pfad HTTP/1.1\n(Kopfzeilen für die Vorlage entfernt)",
+    "headers": [],
+    "cookies": [],
+    "method": "GET"
+   },
+   "response": {
+    "raw": "HTTP/1.1 200 OK\n(Kopfzeilen für die Vorlage entfernt)",
+    "headers": [],
+    "cookies": [],
+    "status_code": "200",
+    "status_text": "OK",
+    "fingerprints": [
+     {
+      "name": "Nginx",
+      "description": "Nginx is a web server that can also be used as a reverse proxy, load balancer, mail proxy and HTTP cache.",
+      "website": "https://seite-9.example/pfad",
+      "common_platform_enumeration": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+      "icon": "Nginx.svg",
+      "categories": [
+       "Web servers",
+       "Reverse proxies"
+      ]
+     },
+     {
+      "name": "Amazon Web Services",
+      "description": "Amazon Web Services (AWS) is a comprehensive cloud services platform offering compute power, database storage, content delivery and other functionality.",
+      "website": "https://seite-10.example/",
+      "common_platform_enumeration": "",
+      "icon": "Amazon Web Services.svg",
+      "categories": [
+       "PaaS"
+      ]
+     }
+    ],
+    "data": {
+     "size": 84711,
+     "size_decoded": 85330,
+     "mime_type": "image/png",
+     "magic": "PNG image data, 500 x 500, 8-bit/color RGBA, non-interlaced",
+     "md5": "5b6aa154f1e11448400ac4ca74d616ca",
+     "sha1": "26fad341773f71d77872029e2baa5bd7c440e33a",
+     "sha256": "ebfe8d0b2b4fa009118401f29f2aaad5e77cf12f2503e56bbe92f4799a8b7906",
+     "sha512": "558e8bfa0ce3d1e12efc61ab753b5b58c801c61d83772a32203050db0301a4b2f7b26359d409d8314c37f28f3b7e25d252236bf5846475b42d315a1eaefd1001",
+     "ssdeep": "1536:oTY4nMNh4bWRkqK2bVagnNiUdto76XKDYb2Wr1JlnY2GWtMGcdqPrnbxdz:kcUbW2z2hfiUI3Dw1OucdqPrnbjz",
+     "tlshash": "7a83f12a73dee9f2d2e582dc5d4c3105dc772b1a23ce2e9729854e29c5187706bde384",
+     "first_seen": "2026-04-15T09:03:07.629032Z",
+     "last_seen": "2026-11-16T02:30:23.905597Z",
+     "times_seen": 7,
+     "resource_available": false,
+     "data": null
+    }
+   },
+   "time_used": 612,
+   "timings": {
+    "blocked": 0,
+    "dns": 0,
+    "connect": 120,
+    "send": 0,
+    "wait": 238,
+    "receive": 122,
+    "ssl": 133
+   },
+   "alerts": {
+    "ids": [],
+    "analyzer": [
+     {
+      "sensor_name": "cloudflare_dns",
+      "sensor_type": "DNS",
+      "title": "Titel der Seite (für die Vorlage ersetzt)",
+      "description": "Cloudflare DNS",
+      "scan_date": "2026-11-16",
+      "alert": "Sinkholed",
+      "trigger": "seite-2.example",
+      "verdict": "malicious",
+      "severity": "medium",
+      "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+      "link": "https://seite-3.example/pfad",
+      "meta": null
+     },
+     {
+      "sensor_name": "dns4eu",
+      "sensor_type": "DNS",
+      "title": "Titel der Seite (für die Vorlage ersetzt)",
+      "description": "DNS4EU",
+      "scan_date": "2026-11-16",
+      "alert": "Sinkholed",
+      "trigger": "seite-2.example",
+      "verdict": "malicious",
+      "severity": "medium",
+      "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+      "link": "https://seite-4.example/",
+      "meta": null
+     }
+    ],
+    "urlquery": []
+   }
+  },
+  {
+   "url": {
+    "schema": "https",
+    "addr": "seite-1.example/pfad",
+    "fqdn": "seite-1.example",
+    "domain": "seite-1.example",
+    "tld": "xyz"
+   },
+   "ip": {
+    "addr": "203.0.113.2",
+    "port": 443,
+    "asn": 13335,
+    "as": "CLOUDFLARENET",
+    "country": "",
+    "country_code": "zz"
+   },
+   "is_navigation_request": true,
+   "resource_type": "document",
+   "requested_by": "",
+   "date": "2026-11-16T02:29:33.918Z",
+   "timestamp": 1794796173918,
+   "http_version": "HTTP/3",
+   "security_state": "secure",
+   "security_info": {
+    "cipher_suite": "TLS_AES_128_GCM_SHA256",
+    "key_group_name": "mlkem768x25519",
+    "signature_name": "ECDSA-P256-SHA256",
+    "protocol": "TLSv1.3",
+    "cert": {
+     "subject": {
+      "commonName": "seite-1.example",
+      "organization": ""
+     },
+     "issuer": {
+      "commonName": "YE1",
+      "organization": "Let's Encrypt"
+     },
+     "validity": {
+      "start": "Fri, 02 Oct 2026 16:41:49 GMT",
+      "end": "Thu, 31 Dec 2026 16:41:48 GMT"
+     },
+     "fingerprint": {
+      "sha1": "2001:db8::1:2001:db8::1:2001:db8::1",
+      "sha256": "2001:db8::1:2001:db8::1:2001:db8::1:2001:db8::1"
+     }
+    }
+   },
+   "request": {
+    "raw": "GET /pfad HTTP/1.1\n(Kopfzeilen für die Vorlage entfernt)",
+    "headers": [],
+    "cookies": [],
+    "method": "GET"
+   },
+   "response": {
+    "raw": "HTTP/3 200 \n(Kopfzeilen für die Vorlage entfernt)",
+    "headers": [],
+    "cookies": [],
+    "status_code": "200",
+    "status_text": "OK",
+    "fingerprints": [
+     {
+      "name": "jsDelivr",
+      "description": "JSDelivr is a free public CDN for open-source projects. It can serve web files directly from the npm registry and GitHub repositories without any configuration.",
+      "website": "https://seite-5.example/",
+      "common_platform_enumeration": "",
+      "icon": "jsdelivr-icon.svg",
+      "categories": [
+       "CDN"
+      ]
+     },
+     {
+      "name": "Cloudflare",
+      "description": "Cloudflare is a web-infrastructure and website-security company, providing content-delivery-network services, DDoS mitigation, Internet security, and distributed domain-name-server services.",
+      "website": "https://seite-3.example/",
+      "common_platform_enumeration": "",
+      "icon": "CloudFlare.svg",
+      "categories": [
+       "CDN"
+      ]
+     }
+    ],
+    "data": {
+     "size": 40069,
+     "size_decoded": 11020,
+     "mime_type": "text/html; charset=utf-8",
+     "magic": "HTML document, Unicode text, UTF-8 text, with very long lines (1562)",
+     "md5": "a3a93e50656d1d86da5c9f4f29001320",
+     "sha1": "c21d1557ca8aced4f2da1ebb6b57f64c43881f44",
+     "sha256": "ad582fbd217a93eb2e6cbeb9b4e441c8e01711e682aa028fb7d653c2f855e9a1",
+     "sha512": "56595cdeb697b7faa253fb9ca1a550ea4539c83d98eb9ec8f75b460ef85e2f0975880a4ffa38c64630f7a5f54e4b97e312c82d66381fb359640eb571b8517aba",
+     "ssdeep": "384:Y8dAS3XdxOhA/0lBcnP9smNBDNXZHsRCG4HP+MNXZHsqkfHIUx4vPazq53Z3rSVd:JS0Xfw5lBQ5NkCG4HPjkvIdv+kZ32D",
+     "tlshash": "8103a522a2d9193e511343dce250337e51626103ea0f5d20f9be82758faae89fd3f5d9",
+     "first_seen": "2026-11-16T02:30:23.907174Z",
+     "last_seen": "2026-11-16T02:30:23.907174Z",
+     "times_seen": 1,
+     "resource_available": false,
+     "data": null
+    }
+   },
+   "time_used": 173,
+   "timings": {
+    "blocked": -1,
+    "dns": 0,
+    "connect": 0,
+    "send": 0,
+    "wait": 173,
+    "receive": 0,
+    "ssl": 0
+   },
+   "alerts": {
+    "ids": [],
+    "analyzer": [
+     {
+      "sensor_name": "dns4eu",
+      "sensor_type": "DNS",
+      "title": "Titel der Seite (für die Vorlage ersetzt)",
+      "description": "DNS4EU",
+      "scan_date": "2026-11-16",
+      "alert": "Sinkholed",
+      "trigger": "seite-1.example",
+      "verdict": "malicious",
+      "severity": "medium",
+      "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+      "link": "https://seite-4.example/",
+      "meta": null
+     }
+    ],
+    "urlquery": []
+   }
+  }
+ ]
+}

@@ -1,0 +1,234 @@
+{
+ "werkzeug": "ip_einordnung",
+ "parameter": {
+  "ip": "185.220.101.1",
+  "tatzeit": "2026-11-01T12:00:00Z",
+  "quellen": null
+ },
+ "grundlage": [
+  "P-0989",
+  "P-0990"
+ ],
+ "befund": {
+  "ip": "185.220.101.1",
+  "abfragezeit": "2026-11-16T11:20:34Z",
+  "tatzeit": "2026-11-01T12:00:00Z",
+  "netz": {
+   "praefix": "185.220.101.0/24",
+   "as": "AS60729",
+   "as_inhaber": "TORSERVERS-NET Stiftung Erneuerbare Freiheit",
+   "angekuendigt": true,
+   "bereich": "185.220.101.0/27",
+   "netzname": "ARTIKEL10",
+   "organisation": "ORG-AE101-RIPE",
+   "land": "DE",
+   "status": "ASSIGNED PA",
+   "registriert": "2021-08-19T08:09:49Z",
+   "geaendert": "2025-06-18T13:35:44Z",
+   "register": "RIPE",
+   "meldestelle": [
+    "kontakt@beispiel.example"
+   ],
+   "betreiber": "Stiftung Erneuerbare Freiheit",
+   "ort": "Berlin",
+   "hostname": "berlin01.tor-exit.artikel10.org",
+   "zur_tatzeit": {
+    "tatzeit": "2026-11-01T12:00:00Z",
+    "angekuendigt_von": [
+     {
+      "as": "AS60729",
+      "praefix": "185.220.101.0/24",
+      "von": "2026-11-01T00:00:00",
+      "bis": "2026-11-02T07:59:59"
+     }
+    ],
+    "zuteilung": {
+     "gueltig_von": "2025-06-18T13:35:44",
+     "gueltig_bis": "2026-11-16T11:03:00",
+     "fassung": 3,
+     "fassungen_gesamt": 3,
+     "netzname": "ARTIKEL10",
+     "organisation": "ORG-AE101-RIPE",
+     "land": "DE",
+     "status": "ASSIGNED PA"
+    }
+   }
+  },
+  "anschlussart": [
+   {
+    "quelle": "proxycheck.io",
+    "art": "Firma"
+   },
+   {
+    "quelle": "ipapi.is",
+    "art": "Firma",
+    "merkmale": [
+     "als missbräuchlich aufgefallen"
+    ]
+   }
+  ],
+  "anonymisierung": {
+   "wert": "ja",
+   "geantwortet": [
+    "proxycheck.io",
+    "ipapi.is"
+   ],
+   "nicht_geantwortet": [
+    {
+     "quelle": "Spur",
+     "grund": "SPUR_TOKEN fehlt"
+    }
+   ],
+   "aussagen": [
+    {
+     "quelle": "proxycheck.io",
+     "arten": [
+      "Tor",
+      "Proxy"
+     ],
+     "dienst": "TOR",
+     "angebote": [
+      "residential_proxies",
+      "wireless_proxies"
+     ],
+     "weitere_dienste": [
+      "PacketStream",
+      "ASocks"
+     ],
+     "zuerst": "2026-01-31T12:07:44Z",
+     "zuletzt": "2026-11-16T11:11:49Z",
+     "heute": "geführt",
+     "austrag_geplant": "2026-11-16T13:40:19Z",
+     "residential": false,
+     "hinweise": [
+      "Die Quelle nennt für diese Adresse Angebote von Residential Proxies, führt das Netz selbst aber als «Business»."
+     ],
+     "beleg": "P-0989"
+    },
+    {
+     "quelle": "ipapi.is",
+     "arten": [
+      "Tor",
+      "Proxy"
+     ],
+     "heute": "geführt",
+     "residential": false,
+     "beleg": "P-0990"
+    }
+   ],
+   "residential": false,
+   "dienste": [
+    "TOR"
+   ],
+   "arten": [
+    "Tor",
+    "Proxy"
+   ]
+  },
+  "erklaerung": "Die Adresse 185.220.101.1 ist laut proxycheck.io und ipapi.is und AbuseIPDB der Ausgang eines Anonymisierungsdienstes (Tor, Proxy, kompromittiertes Gerät). Als Dienst nennt die Quelle: TOR. Über einen solchen Ausgang gehen die Verbindungen vieler Unbekannter. Wer zur Tatzeit über diese Adresse kam, weiss nur der Betreiber des Dienstes, wenn überhaupt. Die Auskunft gilt für den Abfragezeitpunkt (16.11.2026, 12:20). Die Tat lag früher (01.11.2026, 13:00). Die Tatzeit liegt zwischen der ersten (2026-01-31T12:07:44Z) und der letzten Sichtung (2026-11-16T11:11:49Z): Die Adresse war zur Tatzeit gefü … (für die Vorlage gekürzt)",
+  "ansatzpunkt": "Zuerst an den Betreiber TOR: Nur er kann wissen, wer zur Tatzeit über die Adresse 185.220.101.1 kam. Ein Editionsbegehren an den Netzbetreiber (ORG-AE101-RIPE) nennt nur den Kunden, dem die Adresse zugeteilt ist: den Dienst.",
+  "quellenstand": {
+   "proxycheck.io": {
+    "ergebnis": "ok",
+    "beleg": "P-0989"
+   },
+   "ipapi.is": {
+    "ergebnis": "ok",
+    "beleg": "P-0990"
+   },
+   "RIPEstat": {
+    "ergebnis": "ok",
+    "beleg": "P-0991"
+   },
+   "AbuseIPDB": {
+    "ergebnis": "ok",
+    "beleg": "P-0997"
+   },
+   "Spur": {
+    "ergebnis": "aus",
+    "hinweis": "SPUR_TOKEN fehlt"
+   }
+  },
+  "hinweise": [
+   "proxycheck.io: Die Quelle nennt für diese Adresse Angebote von Residential Proxies, führt das Netz selbst aber als «Business»."
+  ]
+ },
+ "details": {
+  "stimmen": [
+   {
+    "quelle": "proxycheck.io",
+    "beleg": "P-0989",
+    "geantwortet": true,
+    "fuehrt": true,
+    "arten": [
+     "Tor",
+     "Proxy"
+    ],
+    "netz": {
+     "as": "AS60729",
+     "praefix": "185.220.101.1/28",
+     "betreiber": "Stiftung Erneuerbare Freiheit",
+     "organisation": "Artikel10 e.V",
+     "hostname": "berlin01.tor-exit.artikel10.org",
+     "land": "DE",
+     "ort": "Berlin"
+    },
+    "anschlussart": "Firma",
+    "dienst": "TOR",
+    "angebote": [
+     "residential_proxies",
+     "wireless_proxies"
+    ],
+    "weitere_dienste": [
+     "PacketStream",
+     "ASocks"
+    ],
+    "zuerst": "2026-01-31T12:07:44Z",
+    "zuletzt": "2026-11-16T11:11:49Z",
+    "risiko": 100,
+    "sicherheit_der_quelle": 100,
+    "residential": false,
+    "hinweise": [
+     "Die Quelle nennt für diese Adresse Angebote von Residential Proxies, führt das Netz selbst aber als «Business»."
+    ],
+    "heute": "geführt",
+    "austrag_geplant": "2026-11-16T13:40:19Z",
+    "angriffsmeldungen": {
+     "login_attempt": 8,
+     "vulnerability_probing": 2,
+     "comment_spam": 1
+    },
+    "zur_tatzeit": "Die Tatzeit liegt zwischen der ersten (2026-01-31T12:07:44Z) und der letzten Sichtung (2026-11-16T11:11:49Z): Die Adresse war zur Tatzeit geführt.",
+    "tatzeit_gedeckt": true
+   },
+   {
+    "quelle": "ipapi.is",
+    "beleg": "P-0990",
+    "geantwortet": true,
+    "fuehrt": true,
+    "arten": [
+     "Tor",
+     "Proxy"
+    ],
+    "netz": {
+     "as": "AS60729",
+     "praefix": "185.220.101.0/24",
+     "betreiber": "Stiftung Erneuerbare Freiheit",
+     "organisation": "Artikel10 e.V.",
+     "netzname": "ARTIKEL10",
+     "bereich": "185.220.101.0 - 185.220.101.31",
+     "land": "DE",
+     "ort": "Berlin",
+     "register": "RIPE",
+     "meldestelle": "kontakt@beispiel.example"
+    },
+    "anschlussart": "Firma",
+    "heute": "geführt",
+    "residential": false,
+    "merkmale": [
+     "als missbräuchlich aufgefallen"
+    ]
+   }
+  ]
+ }
+}

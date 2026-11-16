@@ -1,0 +1,19 @@
+{
+ "mxRecords": [
+  {
+   "exchange": "mail.example.org",
+   "priority": 10
+  }
+ ],
+ "txtRecords": [
+  [
+   "v=spf1 ip4:203.0.113.7 -all"
+  ]
+ ],
+ "mailServices": [
+  {
+   "provider": "Beispiel Mail",
+   "value": "v=spf1"
+  }
+ ]
+}
