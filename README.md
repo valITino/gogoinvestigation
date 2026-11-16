@@ -167,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 39 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 43 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -265,16 +265,16 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 
 | Quelle | Variable in `.env` | Woher | Hinweis |
 |---|---|---|---|
-| Shodan | `SHODAN_API_KEY` | [account.shodan.io](https://account.shodan.io) | DNS-Abfragen und Trefferlisten der Suche verbrauchen Query-Credits. |
+| Shodan | `SHODAN_API_KEY` | [account.shodan.io](https://account.shodan.io) | DNS-Abfragen und Trefferlisten der Suche verbrauchen Query-Credits. `shodan_dns` verlangt eine bezahlte Mitgliedschaft: Ein kostenloses Konto bekommt HTTP 403. |
 | VirusTotal | `VIRUSTOTAL_API_KEY` | [virustotal.com/gui/my-apikey](https://www.virustotal.com/gui/my-apikey) | Bedingungen des öffentlichen Schlüssels prüfen. Die Drossel ist auf ihn eingestellt (`VT_INTERVALL=15.5`), mit Premium auf `0` setzen. |
 | Spur | `SPUR_TOKEN` | Spur-App, Settings → API ([Doku](https://docs.spur.us/context-api)) | Kommerzieller Dienst. |
 | AbuseIPDB | `ABUSEIPDB_API_KEY` | [abuseipdb.com/account/api](https://www.abuseipdb.com/account/api) | |
 | urlquery | `URLQUERY_API_KEY` | Konto auf [urlquery.net](https://urlquery.net) | |
 | ransomware.live | `RANSOMWARE_LIVE_API_KEY` | [my.ransomware.live](https://my.ransomware.live) | API PRO. Die schlüssellose API v2 ist laut Anbieter nur für private Nutzung, darum hier nur mit `RANSOMWARE_LIVE_V2=1`. |
 | Telegram über RapidAPI | `RAPIDAPI_KEY` | [rapidapi.com](https://rapidapi.com), APIs «Telegram Channel» und «Telegram Scraper API» abonnieren | Nur für Kanal-Stammdaten und Kontoabfragen. Drittanbieter unbekannter Herkunft, vor dem Einsatz prüfen. |
-| Ethereum-Familie (Blockscout) | `BLOCKSCOUT_API_KEY` | [dev.blockscout.com](https://dev.blockscout.com), kostenlos | Ethereum läuft auch ohne, dann gedrosselt. Mit Schlüssel kommen Base, Arbitrum, Polygon und Gnosis verlässlich dazu. Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein: Der Schlüssel ist der Weg, den der Anbieter für Programme vorsieht. |
+| Ethereum-Familie (Blockscout) | `BLOCKSCOUT_API_KEY` | [dev.blockscout.com](https://dev.blockscout.com), kostenlos | Ethereum läuft auch ohne, dann gedrosselt. Mit dem kostenlosen Schlüssel kommen Arbitrum und Gnosis verlässlich dazu. Für Polygon und Base verlangt Blockscout ein bezahltes Paket (gesehen am 16.11.2026). Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein: Der Schlüssel ist der Weg, den der Anbieter für Programme vorsieht. |
 | TRON (TronGrid) | `TRONGRID_API_KEY` | [trongrid.io](https://www.trongrid.io), kostenlos | TRON läuft auch ohne, dann stark gedrosselt. Für Geldflüsse über viele Stationen lohnt sich der Schlüssel. |
-| Etherscan | `ETHERSCAN_API_KEY` | [etherscan.io/apidashboard](https://etherscan.io/apidashboard), kostenlos | Weitere Ketten (Polygon, Arbitrum, Gnosis) und die Gegenprüfung von Ethereum-Transaktionen. BNB Smart Chain, Base und Optimism verlangen dort ein bezahltes Abo. |
+| Etherscan | `ETHERSCAN_API_KEY` | [etherscan.io/apidashboard](https://etherscan.io/apidashboard), kostenlos | Weitere Ketten (Polygon, Arbitrum) und die Gegenprüfung von Ethereum-Transaktionen. Gnosis, Base, BNB Smart Chain und Optimism verlangen dort ein bezahltes Abo (Gnosis und Base so gesehen am 16.11.2026). |
 | Tronscan | `TRONSCAN_API_KEY` | [Anleitung von Tronscan](https://docs.tronscan.org/getting-started/api-keys), kostenlos | Namen von Börsen und Diensten für TRON-Adressen. Ohne ihn endet eine Verfolgung auf TRON bei «Sammeladresse, Dienst unbekannt». |
 | Chainabuse | `CHAINABUSE_API_KEY` | Profil auf [chainabuse.com](https://www.chainabuse.com) | Betrugsmeldungen Geschädigter. Das kostenlose Kontingent ist sehr klein, gefragt wird nur auf ausdrücklichen Wunsch. |
 | Iknaio GraphSense | `IKNAIO_API_KEY` | [ikna.io](https://www.ikna.io), Zugang für Behörden auf Anfrage | Etiketten und Cluster für Bitcoin, Ethereum, TRON. |
@@ -461,7 +461,8 @@ einem solchen Dienst ankommt, und nennt, was die fallführende Stelle dort verla
 |---|---|---|
 | Bitcoin | mempool.space, bei Störung Blockstream. Zuordnung über OFAC, TRM Labs, Ransomwhere, WalletExplorer. | Iknaio: Etiketten und Cluster |
 | Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken. Einzelne Abfragen sind ohne Schlüssel gedrosselt, siehe Grenzen. | Blockscout: Tageskontingent statt Drossel. Etherscan: Gegenprüfung von Transaktionen |
-| Polygon, Arbitrum, Gnosis, Base | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Blockscout: alle vier. Etherscan (Base nur mit bezahltem Abo) |
+| Arbitrum, Gnosis | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Blockscout mit kostenlosem Schlüssel. Etherscan: Arbitrum kostenlos, Gnosis nur mit bezahltem Abo |
+| Polygon, Base | wie oben | Blockscout nur mit bezahltem Paket. Etherscan: Polygon kostenlos, Base nur mit bezahltem Abo. Mit beiden kostenlosen Schlüsseln ist Base also nur über die öffentliche Instanz erreichbar, sofern sie den Anschluss zulässt. |
 | BNB Smart Chain | nicht abfragbar | Etherscan mit bezahltem Abo |
 | TRON | TronGrid: TRX, USDT, USDC und jeder andere Token, Sperrliste von Tether. Gedrosselt. | TronGrid: ohne Drossel. Tronscan: Namen von Börsen und Diensten |
 | Monero, Litecoin, Bitcoin Cash, Dogecoin, Solana | werden erkannt und als nicht abfragbar gemeldet. Monero lässt sich grundsätzlich nicht verfolgen. | |
@@ -558,7 +559,7 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | ransomware.live | Gateway: `ransomware_opfer`, `_gruppe`, `_iocs`, `_aktuell` | passiv |
 | urlquery | Gateway: `urlquery_suche`, `_bericht`, `_reputation`, `_status` und `urlquery_einreichen` | passiv, Einreichen aktiv |
 | Wayback Machine | Gateway: `wayback_verlauf`, `wayback_abruf` und `wayback_sichern` | passiv, Sichern aktiv |
-| Telegram Breach Monitor | Die Seite verweist auf den Kanal `breachdetect`. Gateway: `telegram_kanal` liest dessen öffentliche Web-Vorschau. | passiv |
+| Telegram Breach Monitor | Die Seite verweist auf den Kanal `breachdetect`. Gateway: `telegram_kanal` liest die öffentliche Web-Vorschau eines Kanals. Für `breachdetect` zeigte Telegram am 16.11.2026 keine Vorschau mehr, das Werkzeug meldet das. | passiv |
 | TeleGramSint | Menügesteuert. Drei seiner Abfragen sind nachgebaut: `telegram_kanalinfo`, `telegram_entitaet`, `telegram_suche`. Die Suche nach Telefonnummern ist bewusst weggelassen. | passiv, teils Personenbezug |
 | OSINT-Chan | Nachgebaut über die offizielle Lese-API: `chan_katalog`, `chan_thread`. Stichworte werden lokal gefiltert. | passiv |
 | Masto | Nachgebaut: `mastodon_instanz`, `mastodon_konto` | passiv, Konto mit Personenbezug |
@@ -665,7 +666,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 39 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 43 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -718,6 +719,35 @@ Selbsttest abgesichert: Blockscout vergibt Namen auch an sanktionierte Adressen 
 galten als «Dienst»), TRM Labs weist Anfragen über 1 KB ab, Blockscout drosselt die Listenform von Etherscan
 nach zehn Abfragen, und seine REST-Liste antwortet bei sehr grossen Adressen nicht.
 
+**Mit Schlüsseln geprüft**, am 16.11.2026 von einem Arbeitsplatz mit kostenlosen Schlüsseln, alles über das
+Gateway (Fallakte `SELBSTTEST`): `python3 tools/pruefen.py --live`, `python3 tools/krypto_live.py`, dazu jedes
+Werkzeug einzeln. Je Werkzeug wurde die gekürzte Antwort Feld für Feld mit der Rohdatei verglichen. Den Stand je
+Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
+
+- Shodan (`shodan_host`, Zählen in `shodan_suche`), Shodan InternetDB, VirusTotal (alle fünf Werkzeuge), AbuseIPDB
+  (beide), urlquery (Suche und Reputation), ransomware.live API PRO (alle sechs Pfade), Ahmia-Sperrliste (60'371
+  Einträge, jeder ein MD5-Wert), Telegram-Vorschau, 4chan (Katalog und Thread), Mastodon-Instanz.
+- Blockchain mit Schlüssel, 22 von 22 Prüfungen: Blockscout für Ethereum, Optimism, Arbitrum und Gnosis, TronGrid,
+  Etherscan (Gegenprüfung einer Ethereum-Transaktion, Polygon, Arbitrum), Tronscan (Etikett einer Börsen-Adresse,
+  Risikohinweise), Chainabuse.
+- Web-Check: Der Container startet, das Gateway erreicht die Instanz, alle 13 passiven Prüfungen gibt es unter
+  ihrem Namen. Die Prüfumgebung lag hinter einem HTTPS-Proxy, die Instanz erreichte dort die befragten Dienste
+  nicht. Gesehen sind damit die Fehlerbilder. Die Inhalte prüft der Workflow
+  [«Web-Check live»](.github/workflows/webcheck-live.yml) auf einem GitHub-Runner, jede Woche und bei Änderungen
+  (`python3 tools/webcheck_live.py`).
+- Ein Durchlauf von Anfang bis Ende mit einem synthetischen Rapport: Fall anlegen samt PII-Prüfung, 48 Abfragen,
+  `befunde.json`, Gegenprüfung durch den Agenten `gegenpruefer` in einer echten Claude-Code-Sitzung (ein Befund
+  bestätigt, fünf eingeschränkt, keiner widerlegt), Rapport, Protokoll, Kettenprüfung. Die Abfragen liefen über
+  die Funktionen des Gateways, nicht über `/ermittlung`: Der MCP-Server war in der Prüfsitzung nicht verbunden.
+- Die Protokollkette unter Last: 970 Einträge im Fall `SELBSTTEST`, geschrieben von mehreren Prozessen
+  gleichzeitig, Kette und Rohdaten unverändert.
+
+Auch diese Prüfung hat Fehler gezeigt, die an erfundenen Antworten nicht auffielen. Sie sind behoben und als
+Selbsttest abgesichert, gegen Vorlagen in der Form der echten Antworten (`tools/_vorlagen.py`): Das Gateway
+schrieb Adressen samt Schlüssel in sein Log, Web-Check meldet Fehlschläge mit HTTP 200 (sie galten als Treffer),
+ransomware.live nannte als Zahl der Opfer die Länge der gekürzten Liste und reichte die E-Mail-Adresse des
+eigenen Kontos an den Agenten weiter, und der kostenlose Blockscout-Schlüssel deckt Polygon und Base nicht.
+
 **Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
 
 - Claude Code verbindet sich mit dem Gateway (`claude mcp list`) und startet es mit dem Interpreter aus der
@@ -736,26 +766,28 @@ nach zehn Abfragen, und seine REST-Liste antwortet bei sehr grossen Adressen nic
 
 **Nicht geprüft:**
 
-- **Die Quellen mit Schlüssel und alle Quellen ausserhalb der Blockchain-Analyse.** Beim Bau standen keine
-  Schlüssel zur Verfügung. Die Endpunkte folgen den Dokumentationen und offiziellen Clients
-  (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
-  `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
-  sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
-- **Die Blockchain-Quellen mit Schlüssel:** Blockscout, Etherscan, Tronscan, Chainabuse, Iknaio und TronGrid mit
-  Schlüssel. Sie sind nach den Dokumentationen der Anbieter umgesetzt und nie gegen den echten Dienst gelaufen.
-  Wer einen `BLOCKSCOUT_API_KEY` oder `TRONGRID_API_KEY` hat, prüft diese beiden Zugänge selbst mit
-  `python3 tools/krypto_live.py`: Das Skript nimmt dann den Weg mit Schlüssel. Damit sind
-  auch alle Ketten ungeprüft, die nur über Etherscan erreichbar sind (BNB Smart Chain) oder die Blockscout aus dem
-  Rechenzentrum der Prüfung abwies (Polygon, Arbitrum, Gnosis, Base mit HTTP 403). Ob Blockscout diese Ketten von
-  einem Arbeitsplatz aus beantwortet, zeigt `python3 tools/pruefen.py --live` nicht von selbst: Dafür ein Werkzeug
-  mit `kette` aufrufen.
+- **Quellen, für die in der Prüfung kein Schlüssel vorlag:** Spur, Iknaio und RapidAPI (Telegram). Sie sind nach
+  den Dokumentationen der Anbieter gebaut und nie gegen den echten Dienst gelaufen.
+- **Die Wayback Machine.** Aus der Prüfumgebung vom 16.11.2026 kam keine Verbindung zu `web.archive.org` zustande.
+  Geprüft ist an Vorlagen, wie das Werkzeug «keine Aufnahme» und einen Verlauf liest.
+- **Was die kostenlosen Schlüssel nicht decken:** `shodan_dns` (Shodan verlangt eine Mitgliedschaft), die
+  Trefferliste von `shodan_suche` (kostet Query-Credits), Base und BNB Smart Chain (bei Blockscout und Etherscan
+  nur mit bezahltem Paket). Polygon lief nur über Etherscan, Gnosis nur über Blockscout.
+- **Alle aktiven Werkzeuge und alle Kontoabfragen:** `urlquery_einreichen` samt `urlquery_status`,
+  `wayback_sichern`, `webcheck_aktiv`, `mastodon_konto`, `telegram_entitaet`, `telegram_suche`.
+- **Ein Geldfluss, der bei einem von Tronscan benannten Dienst endet.** Das Etikett einer Börsen-Adresse liest das
+  Gateway richtig. In den geprüften Geldflüssen auf TRON endete aber kein Betrag bei einer benannten Adresse.
+- **Ob Blockscout Polygon, Arbitrum, Gnosis und Base ohne Schlüssel von einem Arbeitsplatz aus beantwortet.** Aus
+  den Rechenzentren der Prüfungen wies der Dienst diese Ketten mit HTTP 403 ab.
 - **Die Faustregeln der Geldfluss-Verfolgung an vielen echten Fällen.** Ab acht Absenderadressen gilt eine
   Bitcoin-Transaktion als Sammelbewegung eines Dienstes, ab fünf gleich hohen Ausgängen als Mischdienst, eine
   Adresse mit über 200 Abgängen seit dem Eingang als Sammeladresse. Gesehen sind sie an der erfundenen Kette und an
   den echten Läufen oben. Wo sie falsch liegen, nennt das Ergebnis den Grund des Endes, und die Verfolgung
   lässt sich von dort fortsetzen.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
-  Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
+  Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet. Gesehen
+  sind in einer echten Sitzung der Wächter (er hat Änderungen und Befehle abgelehnt, wie er soll) und der Agent
+  `gegenpruefer`. Die Analysten und `/ermittlung` sind es nicht.
 - **Die Umschaltung der Modelle in einer Sitzung.** Dass Claude Code den Wunsch nach Mythos übergeht, solange es
   nicht zugelassen ist, und umschaltet, sobald es das ist, steht so in der Dokumentation von Anthropic (Links
   unter [Modelle je Phase](#modelle-je-phase)). Gesehen ist es hier nicht: In der Bauumgebung liess sich aus
@@ -780,9 +812,8 @@ nach zehn Abfragen, und seine REST-Liste antwortet bei sehr grossen Adressen nic
 - **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie die Installation von
   Docker, ob über `--docker-installieren` oder über die Frage «Dienste».
   Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
-- **Robin und Web-Check im Betrieb.** Docker lief beim Bau nicht. Die Testabfragen am Ende der Einrichtung
-  liefen deshalb nur gegen eine gesperrte Leitung: Gesehen ist, wie die Einrichtung Fehlschläge meldet, nicht
-  wie eine Quelle antwortet.
+- **Robin im Betrieb und die Inhalte der Web-Check-Prüfungen von einem Arbeitsplatz aus.** Robin ist nie
+  gelaufen. Web-Check ist gestartet und angesprochen, seine Prüfungen laufen im Workflow «Web-Check live».
 
 **Grenzen:**
 
