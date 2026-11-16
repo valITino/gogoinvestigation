@@ -3593,6 +3593,10 @@ def _():
     assert MUSTER in kopf and all(s in kopf for s in ui_daten.SCHRITTE) and all(f["name"] in kopf for f in muster.freigaben()), "Kopf: Fall-ID, Freigaben und Schritte"
     # Passt das gespeicherte Dokument noch zu den Daten?
     assert all(d["aktuell"] for d in muster.dokumente() if d["html"]) and [d["name"] for d in muster.dokumente()] == ["Abschlussrapport", "Ermittlungsprotokoll", "Datenblaetter"]
+    letzter = kette_pruefen(MUSTER)["letzter_hash"]
+    for name in ("Abschlussrapport", "Ermittlungsprotokoll", "Datenblaetter"):
+        assert f"Letzter Kettenwert: <span class='mono'>{letzter}</span>" in lesen(muster.pfad / "rapport" / f"{name}.html"), \
+            f"{name}.html nennt den letzten Kettenwert des Protokolls nicht"
     kopie = PROJEKT / "faelle" / "KOPIE-2026-001"
     shutil.copytree(muster.pfad, kopie)
     try:
@@ -3603,6 +3607,16 @@ def _():
         stand = {d["name"]: d for d in ui_daten.Fall("KOPIE-2026-001").dokumente()}
         assert stand["Abschlussrapport"]["aktuell"] is False and "befunde.json wurde seit der Erzeugung geändert" in stand["Abschlussrapport"]["vermerk"], stand["Abschlussrapport"]
         assert stand["Ermittlungsprotokoll"]["aktuell"] is True
+        # Ein neuer Protokolleintrag: Alle drei Dokumente sind älter als die Daten, auch das Ermittlungsprotokoll
+        ui_eintrag(kern.fall_laden("KOPIE-2026-001"), "shodan_internetdb", "Shodan InternetDB", "203.0.113.7", {"ip": "203.0.113.7", "ports": [443]})
+        stand = {d["name"]: d for d in ui_daten.Fall("KOPIE-2026-001").dokumente()}
+        for name in ("Abschlussrapport", "Ermittlungsprotokoll", "Datenblaetter"):
+            assert stand[name]["aktuell"] is False and "kamen 1 Protokolleinträge dazu" in stand[name]["vermerk"], (name, stand[name])
+        # Ein Dokument, das keinen Kettenwert nennt, gilt nicht als aktuell: Sein Stand ist nicht feststellbar
+        datei = kopie / "rapport" / "Ermittlungsprotokoll.html"
+        plattform.text_schreiben(datei, re.sub(r"(Letzter Kettenwert: <span class='mono'>)[0-9a-f]{64}", r"\1–", lesen(datei)))
+        ohne = {d["name"]: d for d in ui_daten.Fall("KOPIE-2026-001").dokumente()}["Ermittlungsprotokoll"]
+        assert ohne["aktuell"] is None and "nicht feststellbar" in ohne["vermerk"], ohne
         assert "älter als die Daten" in ui_seiten.dokumente_seite(ui_daten.Fall("KOPIE-2026-001")) and "älter als die Daten" in ui_seiten.uebersicht(ui_daten.Fall("KOPIE-2026-001"))
     finally:
         plattform.baum_loeschen(kopie)

@@ -489,7 +489,7 @@ def dokumente_seite(fall: daten.Fall) -> str:
     zeilen = []
     for d in fall.dokumente():
         stand = '<span class="marke z-leer">noch nicht erzeugt</span>' if not d["html"] else \
-            f'<span class="marke z-{"gut" if d["aktuell"] else "warnung"}">{"✓" if d["aktuell"] else "!"} {esc(d["vermerk"])}</span>'
+            f'<span class="marke z-{"gut" if d["aktuell"] else "warnung"}">{"✓" if d["aktuell"] else "?" if d["aktuell"] is None else "!"} {esc(d["vermerk"])}</span>'
         ansehen = f'<a href="{pfad(fall.id, "dokument", d["name"])}">ansehen</a>' if d["html"] else "–"
         pdf = (f'<a href="/fall/{quote(fall.id)}/dokument/{d["name"]}.pdf" download>PDF holen</a>' if d["pdf"] else
                f'<span class="klein">noch kein PDF. Erzeugen: <code>python3 tools/{"anhang" if d["name"] == "Datenblaetter" else "pdf"}.py {esc(fall.id)}</code></span>')

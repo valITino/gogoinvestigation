@@ -401,6 +401,10 @@ class Fall:
                         gruende.append("befunde.json wurde seit der Erzeugung geändert")
                 eintrag["aktuell"] = not gruende
                 eintrag["vermerk"] = "entspricht dem Stand der Daten" if not gruende else "älter als die Daten: " + ", ".join(gruende)
+                if not gruende and not alt_kette and kette.get("letzter_hash"):
+                    # Ohne Kettenwert im Dokument lässt sich sein Stand nicht mit dem Protokoll vergleichen: Dann behauptet die Oberfläche nichts
+                    eintrag["aktuell"] = None
+                    eintrag["vermerk"] = "Stand nicht feststellbar: Das Dokument nennt keinen Kettenwert. Neu erzeugen."
             aus.append(eintrag)
         return aus
 

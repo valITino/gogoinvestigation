@@ -205,9 +205,9 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                            (f"Beruht auf {len(grundlage)} Abfrage(n): {verweise}" + (f" und {len(grundlage) - 60} weiteren" if len(grundlage) > 60 else ""))
                            if grundlage else "Ohne Abfrage nach aussen"]
             elif e.get("art") == "lokal":
-                stand = antwort.get("stand") or {}
-                technik = [esc(f"Lokale Liste, keine Anfrage nach aussen. Stand {stand.get('stand', '?')} vom {stand.get('datum', '?')}, "
-                               f"{stand.get('eintraege', '?')} Einträge ({stand.get('umfang', '?')}), SHA-256 der Liste: {antwort.get('sha256') or '?'}")]
+                liste = antwort.get("stand") or {}       # nicht «stand»: So heisst der Stand der Protokollkette, den Abschnitt 5 braucht
+                technik = [esc(f"Lokale Liste, keine Anfrage nach aussen. Stand {liste.get('stand', '?')} vom {liste.get('datum', '?')}, "
+                               f"{liste.get('eintraege', '?')} Einträge ({liste.get('umfang', '?')}), SHA-256 der Liste: {antwort.get('sha256') or '?'}")]
                 if e["id"] in teil_von:
                     technik.append(f"Teil der Auswertung <a href='#{esc(teil_von[e['id']])}'>{esc(teil_von[e['id']])}</a>")
             else:
