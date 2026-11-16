@@ -1,0 +1,92 @@
+{
+ "werkzeug": "krypto_transaktion",
+ "parameter": {
+  "tx": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+  "kette": "bitcoin",
+  "gegenpruefen": true
+ },
+ "grundlage": [
+  "P-0025",
+  "P-0026",
+  "P-0027",
+  "P-0028",
+  "P-0029",
+  "P-0030",
+  "P-0031",
+  "P-0032",
+  "P-0033"
+ ],
+ "befund": {
+  "tx": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
+  "kette": "bitcoin",
+  "zeit": "2026-10-03T13:42:00Z",
+  "block": 860000,
+  "bestaetigt": true,
+  "gebuehr": "0.0001",
+  "einheit": "BTC",
+  "summe": "0.5999",
+  "eingaenge": {
+   "anzahl": 1,
+   "adressen": 1,
+   "groesste": [
+    {
+     "adresse": "16nxDLUVosmxiRvgtxcSEjJBUKZxK9Tmmw",
+     "betrag": "0.6"
+    }
+   ]
+  },
+  "ausgaenge": [
+   {
+    "nr": 0,
+    "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+    "betrag": "0.5",
+    "verbleib": "weitergeleitet",
+    "weitergeleitet_in": "e3a37bb9e8892ddc53bdf3698679c713438baaa8cc9bb17def721c5df600ddf4",
+    "weitergeleitet_am": "2026-10-03T21:05:00Z",
+    "gegenwert": {
+     "chf": "42581.19",
+     "eur": "45241.38",
+     "usd": "49200.00"
+    }
+   },
+   {
+    "nr": 1,
+    "adresse": "1J7B6NEyYeu3MGe1Aew7axQqABGeApp5H6",
+    "betrag": "0.0999",
+    "verbleib": "liegt unbewegt",
+    "gegenwert": {
+     "chf": "8507.72",
+     "eur": "9039.23",
+     "usd": "9830.16"
+    }
+   }
+  ],
+  "etiketten": {
+   "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L": [
+    "MusterLocker (Ransomwhere)"
+   ]
+  },
+  "kurs_am_tag": {
+   "chf": "85162.37",
+   "eur": "90482.76",
+   "usd": "98400.00",
+   "stand": "2026-10-03T13:43:00Z",
+   "wechselkurs_vom": "2026-10-03",
+   "quellen": [
+    "DefiLlama",
+    "EZB"
+   ]
+  },
+  "gegenwert_summe": {
+   "chf": "51088.91",
+   "eur": "54280.61",
+   "usd": "59030.16"
+  },
+  "gegenpruefung": {
+   "quelle": "Blockstream",
+   "beleg": "P-0033",
+   "ergebnis": "stimmt überein",
+   "verglichen": "Block, Zeit, Gebühr, alle Eingänge und Ausgänge mit Adresse und Betrag"
+  }
+ }
+}

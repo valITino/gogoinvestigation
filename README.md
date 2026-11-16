@@ -1,21 +1,23 @@
 # gogoinvestigation
 
 **Ein OSINT-Ermittlungsarbeitsplatz für Claude Code.** Ein pseudonymisierter Rapport geht hinein. Ein
-Ermittler-Team aus KI-Agenten fragt Clearweb- und Dark-Web-Quellen ab, verknüpft die Ergebnisse und prüft sich
-gegenseitig. Heraus kommen ein verständlicher Abschlussrapport mit Diagrammen und ein lückenloses Protokoll
+Ermittler-Team aus KI-Agenten fragt Clearweb- und Dark-Web-Quellen ab, verfolgt Zahlungen in Kryptowährungen,
+verknüpft die Ergebnisse und prüft sich gegenseitig. Heraus kommen ein verständlicher Abschlussrapport mit Diagrammen und ein lückenloses Protokoll
 darüber, wann was wo und wozu abgefragt wurde.
 
 > *English summary:* A Claude Code workspace for CTI and law-enforcement OSINT. One MCP gateway wraps Shodan,
 > VirusTotal, Spur, AbuseIPDB, urlquery, Wayback Machine, Web-Check, ransomware.live, Telegram, 4chan and
-> Mastodon, logs every request in a hash-chained audit trail and stores every raw response. A team of
+> Mastodon, traces cryptocurrency payments on Bitcoin, Ethereum and TRON (multi-hop money flow, sanctions and
+> exchange attribution, fiat value on the day), logs every request in a hash-chained audit trail and stores
+> every raw response. A team of
 > subagents investigates, an independent agent cross-checks every finding against the raw data, and a
 > generator refuses to build the final report unless each statement is backed by evidence. Documentation is
 > in German.
 
 ![Abschlussrapport des Musterfalls](docs/bilder/abschlussrapport.png)
 
-**Muster ansehen:** [Abschlussrapport (PDF, 12 Seiten)](muster/Abschlussrapport.pdf) ·
-[Ermittlungsprotokoll (PDF, 7 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+**Muster ansehen:** [Abschlussrapport (PDF, 19 Seiten)](muster/Abschlussrapport.pdf) ·
+[Ermittlungsprotokoll (PDF, 19 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
 [was der Musterfall zeigt](muster/README.md). Der Fall ist frei erfunden.
 
 ## Inhalt
@@ -25,6 +27,7 @@ darüber, wann was wo und wozu abgefragt wurde.
 - [Schlüssel](#schlüssel)
 - [Eine Ermittlung durchführen](#eine-ermittlung-durchführen)
 - [Das Ermittler-Team](#das-ermittler-team)
+- [Blockchain-Analyse](#blockchain-analyse)
 - [Quellen](#quellen)
 - [Schutzmechanismen](#schutzmechanismen)
 - [Fehler beheben](#fehler-beheben)
@@ -39,10 +42,10 @@ flowchart LR
     A["Rapport, Nachtrag<br/>(Klartext)"] -->|"eigenes LLM<br/>im Haus"| B["pseudonymisiert<br/>mit Platzhaltern"]
     B -->|"tools/fall.py<br/>PII-Prüfung"| C[("Fallakte")]
     C --> D["Claude Code<br/>/ermittlung"]
-    D --> T["Ermittler-Team<br/>4 Analysten"]
+    D --> T["Ermittler-Team<br/>5 Analysten"]
     T --> G["OSINT-Gateway<br/>(MCP)"]
     T --> R["Robin<br/>(MCP, Tor)"]
-    G --> Q["Shodan · VirusTotal · Spur · AbuseIPDB<br/>urlquery · Wayback · Web-Check<br/>ransomware.live · Telegram · 4chan · Mastodon"]
+    G --> Q["Shodan · VirusTotal · Spur · AbuseIPDB<br/>urlquery · Wayback · Web-Check<br/>ransomware.live · Telegram · 4chan · Mastodon<br/>Bitcoin · Ethereum · TRON"]
     R --> O["Onion-Suchmaschinen"]
     G -->|"jede Abfrage"| P[("Protokoll + Rohdaten<br/>hash-verkettet")]
     R -->|"Sitzungs-Hook"| P
@@ -55,8 +58,9 @@ flowchart LR
 
 | Baustein | Aufgabe |
 |---|---|
-| **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 36 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
-| **Ermittler-Team** (`.claude/agents/`) | Sechs Subagenten: vier Analysten, ein unabhängiger Gegenprüfer, ein Rapportführer. |
+| **OSINT-Gateway** (`gateway/`) | Ein MCP-Server mit 43 Werkzeugen für alle Quellen. Protokolliert jede Abfrage, legt jede Antwort unverändert ab, hält Schlüssel aus Protokoll und Modell heraus, drosselt und cacht. |
+| **Ermittler-Team** (`.claude/agents/`) | Sieben Subagenten: fünf Analysten, ein unabhängiger Gegenprüfer, ein Rapportführer. |
+| **Blockchain-Analyse** (`gateway/krypto_*.py`) | Adressen prüfen und einordnen, Geldflüsse über mehrere Stationen verfolgen, Gegenwerte am Tag der Zahlung. Bitcoin, Ethereum und Verwandte, TRON samt USDT und USDC. Mehr unter [Blockchain-Analyse](#blockchain-analyse). |
 | **Skills** (`.claude/skills/`) | Die Methodik: Ablauf der Ermittlung, Indikatoren ziehen, Ermittlungsstandard, Rapport, Protokoll. |
 | **Wächter und Sitzungsprotokoll** (`.claude/hooks/`) | Sperren, was Agenten nicht dürfen, und halten fest, wer was getan hat und mit welchem Modell. |
 | **Werkzeuge** (`tools/`) | Einrichten, Fall anlegen, PII-Prüfung, Rapport und Protokoll erzeugen, Kette prüfen, Einrichtung prüfen. |
@@ -64,8 +68,8 @@ flowchart LR
 
 Die Ergebnisse einer Ermittlung:
 
-- `Abschlussrapport.html`: Zusammenfassung, Indikatoren, Befunde mit «Einfach erklärt», Beziehungsgraf, Zeitachse,
-  Lücken, Empfehlungen, Glossar. Eine Datei, ohne Abhängigkeiten, aus dem Browser als PDF druckbar.
+- `Abschlussrapport.html`: Zusammenfassung, Indikatoren, Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss
+  mit Flussbild, Zeitachse, Lücken, Empfehlungen, Glossar. Eine Datei, ohne Abhängigkeiten, aus dem Browser als PDF druckbar.
 - `Ermittlungsprotokoll.html` und `.csv`: jede Abfrage mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und Agent.
 - `indikatoren.csv`: die Indikatorliste zum Weitergeben.
 - Beide Dokumente als PDF im Format A4: `python3 tools/pdf.py <Fall-ID>`.
@@ -158,7 +162,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 27 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 38 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -251,8 +255,8 @@ Für Windows direkt gilt:
 
 Alle Schlüssel stehen in `.env`. Eintragen kann sie der Assistent der Einrichtung (`./setup.sh`, auf einem
 eingerichteten Arbeitsplatz «Einstellungen ändern»), von Hand in der Datei geht es genauso. Jede Quelle ist für
-sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Sieben Quellen brauchen gar keinen, eine
-davon (Web-Check) braucht Docker.
+sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Elf Quellen brauchen gar keinen, eine
+davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Ethereum und TRON ohne Schlüssel.
 
 | Quelle | Variable in `.env` | Woher | Hinweis |
 |---|---|---|---|
@@ -263,12 +267,20 @@ davon (Web-Check) braucht Docker.
 | urlquery | `URLQUERY_API_KEY` | Konto auf [urlquery.net](https://urlquery.net) | |
 | ransomware.live | `RANSOMWARE_LIVE_API_KEY` | [my.ransomware.live](https://my.ransomware.live) | API PRO. Die schlüssellose API v2 ist laut Anbieter nur für private Nutzung, darum hier nur mit `RANSOMWARE_LIVE_V2=1`. |
 | Telegram über RapidAPI | `RAPIDAPI_KEY` | [rapidapi.com](https://rapidapi.com), APIs «Telegram Channel» und «Telegram Scraper API» abonnieren | Nur für Kanal-Stammdaten und Kontoabfragen. Drittanbieter unbekannter Herkunft, vor dem Einsatz prüfen. |
+| Ethereum-Familie (Blockscout) | `BLOCKSCOUT_API_KEY` | [dev.blockscout.com](https://dev.blockscout.com), kostenlos | Ethereum läuft auch ohne, dann gedrosselt. Mit Schlüssel kommen Base, Arbitrum, Polygon und Gnosis verlässlich dazu. Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein: Der Schlüssel ist der Weg, den der Anbieter für Programme vorsieht. |
+| TRON (TronGrid) | `TRONGRID_API_KEY` | [trongrid.io](https://www.trongrid.io), kostenlos | TRON läuft auch ohne, dann stark gedrosselt. Für Geldflüsse über viele Stationen lohnt sich der Schlüssel. |
+| Etherscan | `ETHERSCAN_API_KEY` | [etherscan.io/apidashboard](https://etherscan.io/apidashboard), kostenlos | Weitere Ketten (Polygon, Arbitrum, Gnosis) und die Gegenprüfung von Ethereum-Transaktionen. BNB Smart Chain, Base und Optimism verlangen dort ein bezahltes Abo. |
+| Tronscan | `TRONSCAN_API_KEY` | [Anleitung von Tronscan](https://docs.tronscan.org/getting-started/api-keys), kostenlos | Namen von Börsen und Diensten für TRON-Adressen. Ohne ihn endet eine Verfolgung auf TRON bei «Sammeladresse, Dienst unbekannt». |
+| Chainabuse | `CHAINABUSE_API_KEY` | Profil auf [chainabuse.com](https://www.chainabuse.com) | Betrugsmeldungen Geschädigter. Das kostenlose Kontingent ist sehr klein, gefragt wird nur auf ausdrücklichen Wunsch. |
+| Iknaio GraphSense | `IKNAIO_API_KEY` | [ikna.io](https://www.ikna.io), Zugang für Behörden auf Anfrage | Etiketten und Cluster für Bitcoin, Ethereum, TRON. |
 | Shodan InternetDB, Wayback Machine, Ahmia-Sperrliste, Telegram-Kanalvorschau, 4chan, Mastodon | keine | | Laufen sofort. |
+| Bitcoin (mempool.space), Krypto-Zuordnung (OFAC, TRM Labs, Ransomwhere, WalletExplorer), Krypto-Kurse (DefiLlama, EZB) | keine | | Laufen sofort. |
 | Web-Check | keine | eigene Instanz, die Einrichtung startet sie | Adresse in `WEBCHECK_URL`. |
 | Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
-Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`.
+Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, und für eigene Instanzen der
+Block-Explorer `KRYPTO_BITCOIN_API`, `KRYPTO_ETHEREUM_API` (je Kette), `KRYPTO_TRON_API`.
 
 Die Schlüssel liest nur das Gateway. Claude Code darf `.env` nicht lesen, und im Protokoll erscheinen
 Schlüssel als `***`.
@@ -348,6 +360,7 @@ In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>
 | `malware-url-analyst` | Ist die Datei bekannt? Was tat die Seite beim Aufruf? Seit wann gibt es sie? | VirusTotal, urlquery, Wayback, Web-Check passiv |
 | `darkweb-analyst` | Ist die Gruppe bekannt? Passt die Leak-Seite? Taucht der Fall in Breach-Feeds oder im Dark Web auf? | ransomware.live, Ahmia-Sperrliste, Telegram, Robin |
 | `socmint-analyst` | Was wird in Foren und Kanälen zum Fall gesagt? Was zeigen Konten der Täterseite? | 4chan, Telegram, Mastodon |
+| `blockchain-analyst` | Stimmt die Zahlung? Wohin ging das Geld? Bei welcher Börse lässt sich ansetzen, wo liegt noch Guthaben? | Bitcoin, Ethereum und Verwandte, TRON: Explorer, Sanktionslisten, Etiketten, Kurse |
 | `gegenpruefer` | Steht das, was im Rapport stehen soll, wirklich in den Rohdaten? | nur Lesen. Kennt den Ermittlungsverlauf nicht. |
 | `rapportfuehrer` | Verdichtet die Meldungen zu `befunde.json`, arbeitet die Gegenprüfung ein, erzeugt Rapport und Protokoll. | Lesen, Schreiben, `tools/` |
 
@@ -360,7 +373,7 @@ Zwei Modelle teilen sich die Arbeit. Die Zuteilung steht fest in den Dateien des
 
 | Phase | Wer | Verlangt |
 |---|---|---|
-| **Ermittlung** | `/ermittlung` (Leitung, Indikatoren, Pivots, aktive Massnahmen) und die vier Analysten | `claude-mythos-5-2` |
+| **Ermittlung** | `/ermittlung` (Leitung, Indikatoren, Pivots, aktive Massnahmen) und die fünf Analysten | `claude-mythos-5-2` |
 | **Abschluss** | `gegenpruefer`, `rapportfuehrer` (Befunde, Rapport, Übergabe), `/abschlussrapport`, `/protokoll` | `claude-fable-5-2` |
 | alles andere | die Sitzung vor und nach der Ermittlung, etwa Rückfragen zum Rapport | `claude-fable-5-2` |
 
@@ -418,6 +431,112 @@ Skills und Subagenten ergänzen sich: Ein **Subagent** ist eine Rolle mit eigene
 Ein **Skill** ist Wissen, wie etwas zu tun ist. Der Skill `ermittlungsstandard` wird in jeden Analysten vorgeladen
 und regelt Zweckangabe, Sicherheitsstufen, Quellenbewertung und das Format der Rückmeldung.
 
+## Blockchain-Analyse
+
+Für Fälle, in denen Geld in Kryptowährungen floss: Online-Anlagebetrug, Lösegeld, Zahlungen an Betrüger. Eine
+Blockchain ist ein öffentliches Kassenbuch. Jede Zahlung steht für immer darin, aber ohne Namen. Namen kennt nur,
+wer Kunden hat: Börsen und Zahlungsdienste. Die Analyse folgt deshalb dem Geld bis zu der Stelle, an der es bei
+einem solchen Dienst ankommt, und nennt, was die fallführende Stelle dort verlangen kann.
+
+![Geldfluss im Abschlussrapport des Musterfalls](docs/bilder/geldfluss.png)
+
+| Frage | Werkzeug |
+|---|---|
+| Ist die Adresse richtig abgeschrieben? Welche Kette ist es? | `krypto_adresse_pruefen` prüft Format und Prüfsumme, ohne etwas abzufragen. Ein vertauschtes Zeichen fällt auf, bevor eine falsche Adresse in einen Rapport gerät. |
+| Was liegt auf der Adresse, was lief darüber, wer hat sie zuerst finanziert? | `krypto_adresse` |
+| Welche Zahlungen gingen ein und aus, mit wem? | `krypto_transaktionen`. Köderzahlungen über null und Token mit dem Namen einer bekannten Währung, aber fremdem Vertrag, sind gekennzeichnet. |
+| Stimmt die Zahlung des Geschädigten? Betrag, Zeit, Empfänger, Gegenwert in Franken am Tag der Zahlung | `krypto_transaktion`, auf Wunsch mit Gegenprüfung bei einer zweiten Quelle |
+| Wohin ging das Geld? | `krypto_geldfluss` folgt einer Zahlung über mehrere Stationen |
+| Wem lässt sich eine Adresse zuordnen? | `krypto_zuordnung`: Sanktionslisten, bekannte Lösegeld-Adressen, Etiketten von Börsen, gesperrte Adressen |
+| Was war ein Betrag am Stichtag wert? | `krypto_kurs` in CHF, EUR und USD |
+
+**Was abgedeckt ist**
+
+| Kette | Ohne Schlüssel | Mit Schlüssel |
+|---|---|---|
+| Bitcoin | mempool.space, bei Störung Blockstream. Zuordnung über OFAC, TRM Labs, Ransomwhere, WalletExplorer. | Iknaio: Etiketten und Cluster |
+| Ethereum, Optimism | Blockscout: ETH, USDT, USDC und jeder andere Token, Etiketten von Börsen und Brücken. Einzelne Abfragen sind ohne Schlüssel gedrosselt, siehe Grenzen. | Blockscout: Tageskontingent statt Drossel. Etherscan: Gegenprüfung von Transaktionen |
+| Polygon, Arbitrum, Gnosis, Base | Blockscout, sofern es den Anschluss zulässt. Aus Rechenzentren weist es diese Ketten oft ab. | Blockscout: alle vier. Etherscan (Base nur mit bezahltem Abo) |
+| BNB Smart Chain | nicht abfragbar | Etherscan mit bezahltem Abo |
+| TRON | TronGrid: TRX, USDT, USDC und jeder andere Token, Sperrliste von Tether. Gedrosselt. | TronGrid: ohne Drossel. Tronscan: Namen von Börsen und Diensten |
+| Monero, Litecoin, Bitcoin Cash, Dogecoin, Solana | werden erkannt und als nicht abfragbar gemeldet. Monero lässt sich grundsätzlich nicht verfolgen. | |
+
+**So folgt das Werkzeug dem Geld.** Ausgangspunkt ist eine Zahlung (die Transaktions-ID aus dem Rapport) oder eine
+Adresse (dann alles, was sie verlassen hat). Von dort geht es Station um Station weiter, bis das Geld an einem
+dieser Enden ankommt:
+
+| Ende | Bedeutung |
+|---|---|
+| Bei einem Dienst | Die Adresse gehört laut Etikett einer Börse, einem Zahlungsdienst oder einem Verwahrer. Dort ist ein Editionsbegehren möglich. Massgebend ist die Kategorie, die die Quelle vergibt. Ein Name allein genügt nicht: Namen tragen auch Adressen von Tätern und von Sanktionierten. |
+| Sammelbewegung | Muster eines Dienstes, der Kundengelder zusammenlegt. Der Name ist nicht bekannt. |
+| Liegt unbewegt | Der Betrag wurde seit dem Eingang nicht weitergeleitet. Bei USDT und USDC kann der Emittent ihn sperren. |
+| Mischdienst | Adresse eines Mischdienstes laut Etikett, oder Transaktion mit dessen Muster. Dahinter ist keine belastbare Zuordnung möglich. |
+| Programm auf der Kette | Tauschbörse oder Brücke. Was dort geschah, zeigen die genutzten Quellen nicht. |
+| Nicht weiterverfolgt | Grenze des Laufs: Tiefe, Kleinbetrag, Abfragebudget, oder die Quelle hat nicht geantwortet. Das Ergebnis nennt, wo es weitergeht. |
+
+Die Summe aller Enden ist der Startbetrag. Was nicht aufgeht, steht als «Verbleib unklar» da.
+
+Bitcoin kennt keine Kontostände, sondern einzelne Zahlungsausgänge, die genau einmal ausgegeben werden. Welcher
+Ausgang wohin ging, ist eine Tatsache der Kette. Legt eine Transaktion mehrere Eingänge zusammen, teilt das
+Werkzeug den verfolgten Betrag im Verhältnis der Ausgänge auf. Ethereum und TRON führen Kontostände. Dort ordnet
+es einen Eingang den zeitlich nächsten Abgängen derselben Währung zu. Beides sind anerkannte, aber nicht die
+einzig möglichen Verfahren. Deshalb gilt im Rapport: **Eine einzelne Zahlung ist eine Feststellung. Was über
+mehrere Stationen zugeordnet ist, ist eine Bewertung**, höchstens mit Sicherheit «mittel», und das Verfahren steht
+dabei.
+
+**Was am Ende im Rapport steht.** Das Flussbild oben, die Tabelle der Stationen und Enden, und Ansatzpunkte in
+dieser Art:
+
+- Editionsbegehren an die Börse: Welchem Kundenkonto ist die Einzahlungsadresse zugeordnet, auf der der Betrag
+  ankam? Mit Adresse, Betrag und Transaktion.
+- Sperrersuchen an den Emittenten, solange USDT oder USDC auf einer Adresse liegen.
+- Editionsbegehren an die Börse, von der die Täteradresse ihr erstes Geld für Gebühren bekam. Das ist in der
+  Regel eine Auszahlung aus einem Kundenkonto.
+
+Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der Rapport nie.
+
+**Grenzen, die ihr kennen solltet**
+
+- Etiketten sind Angaben Dritter und können alt oder falsch sein. Für TRON gibt es ohne Tronscan-Schlüssel keine
+  Namen: Die Verfolgung erkennt dann die Sammeladresse eines Dienstes, weiss aber nicht, welcher es ist.
+- Kommerzielle Analysewerkzeuge kennen ein Vielfaches an Adressen und verfolgen auch durch Tauschbörsen und
+  Brücken hindurch. Dieses Werkzeug endet dort und sagt es. Es ersetzt sie nicht, es zeigt, wo sich ihr Einsatz
+  oder ein Editionsbegehren lohnt.
+- Ein Lauf hat ein Abfragebudget (Standard 80 Abfragen, vier Stationen tief). Reicht es nicht, nennt das Ergebnis
+  die Stelle, an der sich die Verfolgung fortsetzen lässt.
+- Auf Ethereum fehlen in den Listen Eingänge, die ein Programm ausgelöst hat (interne Transaktionen).
+- Bei ETH und TRX stehen Zahlungen in der Liste einer Adresse zwischen Aufrufen von Programmen, die keinen Betrag
+  bewegen. Auf TRON ist jede USDT-Zahlung ein solcher Aufruf. Das Werkzeug liest deshalb je Station bis zu 600
+  Einträge auf TRON und 200 auf der Ethereum-Familie. Hat eine Adresse seit dem Eingang mehr, endet die
+  Verfolgung dort als Sammelbewegung.
+- Zahlt eine Station Kleinbeträge (unter 2 % des Startbetrags) an viele Adressen, stehen die zwölf grössten
+  Empfänger einzeln im Ergebnis und der Rest als Summe. Sonst verbrauchte eine Adresse, die an Hunderte zahlt,
+  alle 60 Stationen eines Laufs.
+- Blockscout drosselt ohne Schlüssel die Abfragen in der Listenform von Etherscan stark. In der Prüfung liess der
+  Dienst zehn davon zu, dann wies er rund 40 Minuten lang ab (HTTP 429). Das Werkzeug liest Zahlungen deshalb über
+  die REST-Schnittstelle des Dienstes, die nicht so eng begrenzt ist. Die Listenform braucht es noch in zwei
+  Fällen: für die ältesten Zahlungen einer Adresse mit über 200 Einträgen (Erstfinanzierung, Start ab einer
+  Adresse), und als zweiten Versuch, wenn die REST-Schnittstelle bei einer sehr grossen Adresse nicht antwortet.
+  Weist eine Quelle ab, wartet das Werkzeug einmal, so lange sie es verlangt, und fragt dann nicht weiter: Die
+  offenen Stationen stehen unter «Nicht weiterverfolgt», jede mit der Stelle, an der es weitergeht. Mit dem
+  kostenlosen `BLOCKSCOUT_API_KEY` gilt laut Anbieter ein Tageskontingent statt der Drossel (100'000 Credits,
+  20 bis 30 je Abfrage, also mehrere tausend Abfragen).
+- TRM Labs erlaubt ohne Schlüssel 100 Anfragen am Tag je Internetanschluss. Ein Geldfluss auf Bitcoin braucht
+  davon in der Regel eine, auf Ethereum und TRON eine je Stufe, bei vielen Stationen mehr. Ist das Kontingent
+  erschöpft, steht TRM im Ergebnis als «nicht geprüft». Die Sanktionsliste von OFAC lädt das Gateway selbst, sie
+  ist davon nicht betroffen.
+- Der Betreiber eines Explorers sieht, für welche Adressen ihr euch interessiert. Wer das vermeiden will, leitet
+  über `OSINT_PROXY` oder trägt eigene Instanzen ein (`KRYPTO_BITCOIN_API` und weitere, siehe `.env.example`).
+- Jede Abfrage eines Laufs steht einzeln im Ermittlungsprotokoll, das errechnete Ergebnis als «Auswertung» mit
+  Verweis auf diese Abfragen. Ein Geldfluss füllt das Protokoll deshalb mit einigen Dutzend Zeilen.
+
+**Ausprobieren.** Der [Musterfall](muster/README.md) enthält eine Lösegeldzahlung in einer erfundenen Kette.
+Gegen die echten Dienste, mit Adressen, die seit Jahren öffentlich bekannt sind:
+
+```bash
+python3 tools/krypto_live.py --ausfuehrlich
+```
+
 ## Quellen
 
 So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUELLEN.md](docs/QUELLEN.md).
@@ -438,6 +557,9 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | TeleGramSint | Menügesteuert. Drei seiner Abfragen sind nachgebaut: `telegram_kanalinfo`, `telegram_entitaet`, `telegram_suche`. Die Suche nach Telefonnummern ist bewusst weggelassen. | passiv, teils Personenbezug |
 | OSINT-Chan | Nachgebaut über die offizielle Lese-API: `chan_katalog`, `chan_thread`. Stichworte werden lokal gefiltert. | passiv |
 | Masto | Nachgebaut: `mastodon_instanz`, `mastodon_konto` | passiv, Konto mit Personenbezug |
+| Blockchain: mempool.space, Blockstream, Blockscout, Etherscan, TronGrid | Gateway: `krypto_adresse_pruefen`, `krypto_adresse`, `krypto_transaktionen`, `krypto_transaktion`, `krypto_geldfluss` | passiv |
+| Zuordnung: OFAC, TRM Labs, Ransomwhere, WalletExplorer, Blockscout, Tronscan, Chainabuse, Iknaio | Gateway: `krypto_zuordnung`, und eingebaut in die übrigen Krypto-Werkzeuge | passiv |
+| Kurse: DefiLlama, Europäische Zentralbank | Gateway: `krypto_kurs`, und eingebaut in die übrigen Krypto-Werkzeuge | passiv |
 
 **Passiv** heisst: Die Datenbank eines Dritten wird befragt, das Ziel merkt nichts. Der Anbieter sieht aber
 den Indikator. **Aktiv** heisst: Das Ziel wird aufgerufen und kann das bemerken.
@@ -528,11 +650,19 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 27 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 38 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
   Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
+- Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
+  (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
+  Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
+  Startbetrag), Börse, Sammeladresse, Mischdienst und gesperrtes Guthaben, eine Zahlung, die in der Liste hinter
+  200 Aufrufen ohne Betrag steht, ein Programm, das im selben Zug annimmt und weiterzahlt, eine sanktionierte
+  Adresse mit Namen, die kein Dienst ist, Kleinbeträge an viele Adressen, eine Quelle, die drosselt, Blockscout
+  mit Schlüssel (der Schlüssel steht nie im Protokoll), Ausfall einer Quelle samt Ausweichquelle, Gegenprüfung bei
+  zweiter Quelle, Kurs am Stichtag, die Fortsetzungsdatei der Sanktionsliste und das Flussbild im Rapport.
 - Der Assistent in einem echten Terminal. Unter Linux und macOS fährt ihn ein Selbsttest in einem
   Pseudo-Terminal, unter Windows in einer eigenen, unsichtbaren Konsole, deren Bildschirm er ausliest und in
   deren Eingabepuffer er Tasten legt. Geprüft ist jeweils: Pfeiltasten und Enter kommen an, die Steuerzeichen
@@ -543,6 +673,35 @@ PowerShell 7:
 - Der Klon ist danach unverändert (`git status` leer). Der Musterfall fällt also auf allen drei Systemen Byte für
   Byte gleich aus.
 - `claude doctor` beanstandet die Einstellungen nicht.
+
+**Gegen die echten Dienste geprüft**, in einem eigenen Lauf
+([`.github/workflows/blockchain-live.yml`](.github/workflows/blockchain-live.yml), `python3 tools/krypto_live.py`),
+zuletzt am 13.11.2026, ohne Schlüssel und mit Adressen, die seit Jahren öffentlich bekannt sind:
+
+- Bitcoin über mempool.space: Stand einer WannaCry-Adresse (250 Transaktionen), die erste Bitcoin-Zahlung von
+  2009 samt Gegenprüfung bei Blockstream, und ein Geldfluss ab der WannaCry-Adresse. Er führte über mehrere
+  Stationen zu Adressen, die WalletExplorer zwei Börsen zuordnet.
+- Ethereum über Blockscout: eine Transaktion mit einer Zahlung von 1 Mio. USDC, eine sanktionierte Adresse (von
+  OFAC, TRM Labs und Blockscout übereinstimmend gemeldet, Erstfinanzierung von einer Börse), ihre Abgänge in
+  USDC, eine Börsen-Adresse. Der Geldfluss der USDC-Zahlung endete bei einem Programm mit über 200 Abgängen. Ein
+  Geldfluss in ETH ab der sanktionierten Adresse führte über mehrere Stationen zu einer Adresse, die Blockscout
+  als Tornado Cash führt: Ende «Mischdienst laut Etikett». Dazu Optimism.
+- TRON über TronGrid: Adresse, Eingänge in USDT, eine Transaktion ohne Angabe der Kette, deren Geldfluss, ein
+  Geldfluss in TRX ab einer Adresse mit mehreren hundert ausgehenden Transaktionen, und die Sperrliste von Tether.
+- Sanktionsliste von OFAC (1064 Krypto-Adressen erkannt, samt Fortsetzungsdatei), TRM Labs, Ransomwhere,
+  WalletExplorer.
+- Kurse von DefiLlama und Referenzkurse der EZB, auch für einen Samstag.
+- Die eingebaute Liste von 15 Token-Verträgen (USDT, USDC, DAI, WETH auf sieben Ketten): Kürzel und
+  Dezimalstellen stimmen mit DefiLlama überein.
+
+Dieser Lauf wiederholt sich jede Woche und bei Änderungen am Gateway. Ändert ein Dienst seine Schnittstelle,
+fällt es dort auf und nicht erst in einem Fall. Hinterlegt ihr `BLOCKSCOUT_API_KEY` oder `TRONGRID_API_KEY` als
+Secrets des Repositorys, nimmt der Lauf den Zugang mit Schlüssel.
+
+Diese Läufe haben Fehler gezeigt, die an der erfundenen Kette nicht auffielen. Sie sind behoben und seither als
+Selbsttest abgesichert: Blockscout vergibt Namen auch an sanktionierte Adressen und an Adressen von Tätern (sie
+galten als «Dienst»), TRM Labs weist Anfragen über 1 KB ab, Blockscout drosselt die Listenform von Etherscan
+nach zehn Abfragen, und seine REST-Liste antwortet bei sehr grossen Adressen nicht.
 
 **Zusätzlich von Hand geprüft** (Linux, Claude Code 2.1.323):
 
@@ -562,10 +721,24 @@ PowerShell 7:
 
 **Nicht geprüft:**
 
-- **Die Quellen selbst.** Beim Bau standen weder Schlüssel noch Netzzugang zu den Diensten zur Verfügung. Die
-  Endpunkte folgen den Dokumentationen und offiziellen Clients (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
+- **Die Quellen mit Schlüssel und alle Quellen ausserhalb der Blockchain-Analyse.** Beim Bau standen keine
+  Schlüssel zur Verfügung. Die Endpunkte folgen den Dokumentationen und offiziellen Clients
+  (siehe [docs/QUELLEN.md](docs/QUELLEN.md)).
   `python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Am unsichersten
   sind die Pfade der ransomware.live API PRO und das Auslesen der Telegram-Vorschau.
+- **Die Blockchain-Quellen mit Schlüssel:** Blockscout, Etherscan, Tronscan, Chainabuse, Iknaio und TronGrid mit
+  Schlüssel. Sie sind nach den Dokumentationen der Anbieter umgesetzt und nie gegen den echten Dienst gelaufen.
+  Wer einen `BLOCKSCOUT_API_KEY` oder `TRONGRID_API_KEY` hat, prüft diese beiden Zugänge selbst mit
+  `python3 tools/krypto_live.py`: Das Skript nimmt dann den Weg mit Schlüssel. Damit sind
+  auch alle Ketten ungeprüft, die nur über Etherscan erreichbar sind (BNB Smart Chain) oder die Blockscout aus dem
+  Rechenzentrum der Prüfung abwies (Polygon, Arbitrum, Gnosis, Base mit HTTP 403). Ob Blockscout diese Ketten von
+  einem Arbeitsplatz aus beantwortet, zeigt `python3 tools/pruefen.py --live` nicht von selbst: Dafür ein Werkzeug
+  mit `kette` aufrufen.
+- **Die Faustregeln der Geldfluss-Verfolgung an vielen echten Fällen.** Ab acht Absenderadressen gilt eine
+  Bitcoin-Transaktion als Sammelbewegung eines Dienstes, ab fünf gleich hohen Ausgängen als Mischdienst, eine
+  Adresse mit über 200 Abgängen seit dem Eingang als Sammeladresse. Gesehen sind sie an der erfundenen Kette und an
+  den echten Läufen oben. Wo sie falsch liegen, nennt das Ergebnis den Grund des Endes, und die Verfolgung
+  lässt sich von dort fortsetzen.
 - **Eine vollständige Ermittlung in einer echten Claude-Code-Sitzung** mit Subagenten, Skills und Hooks im
   Zusammenspiel, auf keinem System. Die Hooks sind einzeln mit den dokumentierten Ereignisdaten getestet.
 - **Die Umschaltung der Modelle in einer Sitzung.** Dass Claude Code den Wunsch nach Mythos übergeht, solange es
@@ -611,6 +784,9 @@ Eine neue Quelle in vier Schritten:
 
 1. In `gateway/quellen_*.py` eine Funktion mit `@werkzeug` schreiben. Sie ruft `abfrage(...)` auf und gibt eine
    gekürzte Fassung der Antwort zurück. Protokoll, Rohdaten, Cache und Fehlerbehandlung kommen von `abfrage`.
+   Braucht ein Werkzeug mehrere Abfragen für ein Ergebnis, nimmt es einen `Vorgang` (siehe `gateway/kern.py` und
+   als Beispiel `gateway/quellen_krypto.py`): Jede Abfrage steht einzeln im Protokoll, das errechnete Ergebnis
+   als Auswertung mit Verweis darauf.
 2. Die Quelle in `gateway/quellen.py` eintragen (Name, Schlüsselvariable, Werkzeuge, Testabfrage).
 3. Das Werkzeug dem passenden Agenten unter `tools:` geben und in `.claude/settings.json` erlauben.
 4. `python3 tools/selbsttest.py`. Der Test schlägt an, wenn Agenten, Einstellungen und Gateway nicht zusammenpassen.
@@ -631,7 +807,8 @@ async def beispiel_abfrage(fall: Fall, zweck: Zweck, domain: str) -> dict:
 Das Projekt ist ein Werkzeug. Ob und wie ihr es einsetzen dürft, bestimmen euer Auftrag, eure Rechtsgrundlagen
 und die Bedingungen der Anbieter. Vor dem Einsatz mit echten Fällen mit Rechtsdienst und Datenschutz klären:
 
-- welche Indikatoren an Dritte und an Anthropic gehen dürfen,
+- welche Indikatoren an Dritte und an Anthropic gehen dürfen (auch Wallet-Adressen: Der Betreiber eines
+  Block-Explorers sieht, wonach ihr sucht),
 - unter welchen Voraussetzungen aktive Massnahmen, Dark-Web-Recherche und Kontoabfragen zulässig sind,
 - ob eure Abos die dienstliche Nutzung der Quellen decken,
 - wie Protokolle und Rohdaten aufbewahrt und gelöscht werden.
@@ -649,6 +826,8 @@ Die eingebundenen Projekte haben eigene Lizenzen: [Robin](https://github.com/apu
 [TeleGramSint](https://github.com/OSINTCabal/TeleGramSint), [OSINT-Chan](https://github.com/OSINTCabal/OSINT-Chan),
 [Masto](https://github.com/C3n7ral051nt4g3ncy/Masto). Aus ihnen wurde kein Code übernommen. Robin und Web-Check
 laufen als unveränderte Container, die übrigen Funktionen sind gegen die jeweiligen öffentlichen Schnittstellen neu geschrieben.
+Die Blockchain-Analyse fragt öffentliche Dienste ab (mempool.space, Blockstream, Blockscout, TronGrid, OFAC,
+TRM Labs, Ransomwhere, WalletExplorer, DefiLlama, EZB). Deren Nutzungsbedingungen gelten auch für euch.
 
 Beiträge sind willkommen, besonders neue Quellen und Rückmeldungen aus `pruefen.py --live`. Bitte keine
 Falldaten, Schlüssel oder echten Indikatoren in Issues und Pull Requests.

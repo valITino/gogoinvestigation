@@ -1,13 +1,14 @@
 # Muster: so sieht das Ergebnis aus
 
 Die beiden Dokumente, die am Ende jeder Ermittlung stehen, am Beispiel eines **frei erfundenen Falls**
-(Phishing gegen ein Kundenportal mit anschliessender Erpressung). Alle Namen, Adressen, Domains und
-Kennzahlen sind fiktiv: IP-Adressen aus den Dokumentationsbereichen, Domains unter `.example`.
+(Phishing gegen ein Kundenportal mit anschliessender Erpressung und Lösegeldzahlung). Alle Namen, Adressen,
+Domains und Kennzahlen sind fiktiv: IP-Adressen aus den Dokumentationsbereichen, Domains unter `.example`,
+Bitcoin-Adressen und Transaktionen aus einer erfundenen Kette. Sie haben gültige Prüfsummen, gehören aber niemandem.
 
 | Dokument | Inhalt |
 |---|---|
-| [Abschlussrapport.pdf](Abschlussrapport.pdf) | Zusammenfassung, Indikatoren, neun Befunde mit «Einfach erklärt», Beziehungsgraf, Zeitachse, Lücken, Empfehlungen, Glossar. 12 Seiten A4. |
-| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 23 Abfragen mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu Sitzungsverlauf und Integritätsprüfung. 7 Seiten A4. |
+| [Abschlussrapport.pdf](Abschlussrapport.pdf) | Zusammenfassung, Indikatoren, zwölf Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss der Lösegeldzahlung mit Flussbild, Zeitachse, Lücken, Empfehlungen, Glossar. 19 Seiten A4. |
+| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 55 Abfragen und 4 Auswertungen mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu Sitzungsverlauf und Integritätsprüfung. 19 Seiten A4. |
 
 GitHub zeigt PDF direkt an. Die Originale sind HTML-Dateien, in denen jeder Beleg im Rapport auf seinen Eintrag
 im Protokoll verlinkt. Sie liegen mit der ganzen Fallakte unter
@@ -23,14 +24,19 @@ im Protokoll verlinkt. Sie liegen mit der ganzen Fallakte unter
 
 ## Was der Musterfall zeigt
 
-- Drei Analysten arbeiten 23 Abfragen bei 11 Quellen ab. Die Antworten der Quellen sind vorgefertigt, alles
+- Vier Analysten arbeiten 55 Abfragen bei 19 Quellen ab. Die Antworten der Quellen sind vorgefertigt, alles
   andere läuft durch dieselben Werkzeuge wie eine echte Ermittlung.
+- Der Blockchain-Analyst prüft die Lösegeldzahlung bei zwei Quellen, folgt dem Betrag über zwei Stationen und
+  findet drei Enden: eine Börse (60 %), eine Adresse, auf der Geld liegt (20 %), einen Mischdienst (20 %). Der
+  Rapport zeigt das als Flussbild und nennt das Editionsbegehren an die Börse als Empfehlung. Die 32 Abfragen
+  dahinter stehen einzeln im Protokoll, die vier errechneten Ergebnisse als «Auswertung» mit Verweis darauf.
 - Ein Treffer bleibt aus (VirusTotal kennt die URL nicht), eine Abfrage scheitert am Kontingent, eine aktive
   Massnahme wird mangels Freigabe abgelehnt, eine Abfrage kommt aus dem Fall-Cache. Alle vier stehen im
   Protokoll. Die gescheiterte und die abgelehnte Abfrage nennt der Rapport unter «Lücken», den fehlenden
   Treffer im Befund B-06.
-- Sicherheit «hoch» tragen nur Befunde mit mindestens zwei verschiedenen Quellen. Eine Hypothese ist als solche
-  gekennzeichnet. Ein Befund ist nur «mit Einschränkung» gegengeprüft, mit Begründung.
+- Sicherheit «hoch» tragen nur Befunde mit mindestens zwei verschiedenen Quellen. Die Zahlung selbst ist «hoch»
+  (zwei Explorer zeigen dasselbe), ihr Weg über mehrere Stationen eine Bewertung mit «mittel». Eine Hypothese ist
+  als solche gekennzeichnet. Zwei Befunde sind nur «mit Einschränkung» gegengeprüft, mit Begründung.
 - Der Name der geschädigten Organisation bleibt ein Platzhalter. Was sich deshalb nicht prüfen liess, weist
   der Rapport als «im Haus nachzuholen» aus.
 

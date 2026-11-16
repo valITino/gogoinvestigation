@@ -249,10 +249,11 @@ def quellen(env: dict[str, str]) -> list:
         elif q.name == "Web-Check":
             ok = erreichbar(env.get("WEBCHECK_URL", "http://127.0.0.1:3000"))
         else:
-            ok = q.env is None or bool(env.get(q.env))
+            ok = q.env is None or q.auch_ohne or bool(env.get(q.env))
         if ok:
             bereit.append(q)
-            zeile(GUT, q.name, "bereit" + ("" if q.env else " (kein Schlüssel nötig)"))
+            zeile(GUT, q.name, "bereit" + (" (kein Schlüssel nötig)" if not q.env else "" if env.get(q.env)
+                                           else f" (ohne Schlüssel gedrosselt, mit {q.env} schneller)"))
         elif q.name == "Web-Check":
             zeile(AUS, q.name, "aus: Instanz läuft nicht")
         else:

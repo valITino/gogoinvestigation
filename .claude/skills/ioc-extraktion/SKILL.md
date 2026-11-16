@@ -1,6 +1,6 @@
 ---
 name: ioc-extraktion
-description: Zieht technische Indikatoren (IP-Adressen, Domains, URLs, Datei-Hashes, E-Mail-Adressen der Täterseite, Onion-Adressen, Wallets, Gruppennamen, Konten) aus pseudonymisierten Rapporten und Nachträgen und legt sie als indikatoren.json ab. Verwenden zu Beginn einer Ermittlung oder wenn ein weiteres Dokument in einen Fall aufgenommen wurde.
+description: Zieht technische Indikatoren (IP-Adressen, Domains, URLs, Datei-Hashes, E-Mail-Adressen der Täterseite, Onion-Adressen, Wallets, Transaktions-IDs, Gruppennamen, Konten) aus pseudonymisierten Rapporten und Nachträgen und legt sie als indikatoren.json ab. Verwenden zu Beginn einer Ermittlung oder wenn ein weiteres Dokument in einen Fall aufgenommen wurde.
 ---
 
 # Indikatoren aus Eingangsdokumenten ziehen
@@ -25,7 +25,8 @@ fehlt, wird nie abgefragt. Was hier falsch abgeschrieben ist, führt zu falschen
 | `hash` | 32, 40 oder 64 Hex-Zeichen | Kleinschreibung. Dateiname als Anmerkung |
 | `email` | Adressen der Täterseite (Absender, Kontaktadresse im Erpresserschreiben) | Kleinschreibung |
 | `onion` | 56 Zeichen (oder 16) plus `.onion` | Kleinschreibung |
-| `wallet` | Bitcoin-, Ethereum-, Monero-Adressen | unverändert, Gross- und Kleinschreibung zählt |
+| `wallet` | Adressen für Kryptowährungen: Bitcoin (`1…`, `3…`, `bc1…`), Ethereum und Verwandte (`0x` und 40 Zeichen), TRON (`T…`), Monero | unverändert, Gross- und Kleinschreibung zählt. Kette und Währung aus dem Dokument als Anmerkung |
+| `transaktion` | Transaktions-IDs von Zahlungen in Kryptowährungen: 64 Hex-Zeichen, bei Ethereum mit `0x` davor | unverändert. Kette, Betrag, Datum und Empfänger aus dem Dokument als Anmerkung |
 | `gruppe` | Namen von Tätergruppen, Malware-Familien, Kampagnen | Schreibweise des Dokuments |
 | `konto` | Benutzernamen, Kanäle, Handles der Täterseite | mit Plattform als Anmerkung |
 
@@ -45,6 +46,18 @@ fehlt, wird nie abgefragt. Was hier falsch abgeschrieben ist, führt zu falschen
   Dann: nicht weiterverarbeiten, die Stelle mit Zeilennummer melden, ohne den Wert zu wiederholen. Der Sachbearbeiter
   pseudonymisiert nach und nimmt das Dokument neu auf.
 - Ein Wert ist erkennbar verstümmelt (Hash mit 63 Zeichen, IP mit fünf Blöcken). Als `anmerkung` festhalten und nicht abfragen.
+
+## Wallets und Transaktionen
+
+Adressen für Kryptowährungen tragen eine Prüfsumme. Ein einziges falsch abgeschriebenes Zeichen macht sie ungültig,
+und das lässt sich prüfen, ohne etwas abzufragen: `mcp__osint__krypto_adresse_pruefen` für jede Adresse und jede
+Transaktions-ID. Meldet das Werkzeug «Prüfsumme stimmt nicht», nimm den Wert mit `abfragen: false` und der
+Anmerkung «Prüfsumme falsch, mit dem Original vergleichen» auf. Das Original liegt im Haus, nicht bei dir.
+
+Halte in der Anmerkung fest, was das Dokument zur Zahlung sagt: Währung und Kette («USDT auf TRON»), Betrag,
+Datum, und wessen Adresse es ist. Eine Adresse mit `0x` gibt es auf mehreren Ketten zugleich. Welche gemeint ist,
+steht nur im Dokument. Die Adresse, von der ein Geschädigter gezahlt hat, gehört zur Geschädigtenseite:
+aufnehmen mit `abfragen: false`. Abgefragt werden die Zahlung selbst und die Adresse des Empfängers.
 
 ## Format
 

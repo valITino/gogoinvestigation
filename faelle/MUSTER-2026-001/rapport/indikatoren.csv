@@ -8,3 +8,7 @@ I-06;email;rechnung@kundenportal-sicher.example;verdaechtig;Absender der Phishin
 I-07;gruppe;MusterLocker;boesartig;Unterzeichner des Erpresserschreibens;Rapport Ziff. 6;P-0020
 I-08;onion;o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion;verdaechtig;Im Erpresserschreiben genannte Adresse;Rapport Ziff. 6;P-0020 P-0022
 I-09;domain;rechnung-portal.example;verdaechtig;Weitere Domain auf demselben Server;Pivot aus P-0009 (frühere Namensauflösungen von I-03);P-0009
+I-10;wallet;17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L;boesartig;Zahlungsadresse aus dem Erpresserschreiben (Bitcoin);Rapport Ziff. 7;P-0024 P-0059
+I-11;transaktion;ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f;unauffaellig;Lösegeldzahlung der [ORG_01] (Bitcoin);Rapport Ziff. 7;P-0034
+I-12;wallet;1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg;verdaechtig;Mutmassliche Einzahlungsadresse bei einer Börse;Geldfluss P-0051 (erste Station nach der Zahlungsadresse);P-0051
+I-13;wallet;19uHVM1eMUHnmbudt5213JVgjZTVd5xHd;verdaechtig;Adresse, auf der ein Teil des Lösegelds unbewegt liegt;Geldfluss P-0051 (zweite Station);P-0051

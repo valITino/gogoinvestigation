@@ -12,7 +12,9 @@ Der Rapport wird nur erzeugt, wenn jede Aussage belegt ist. Geprüft wird unter 
   - Jeder Beleg (P-0001 … vom Gateway, X-0001 … von weiteren Werkzeugen wie Robin) existiert im
     Protokoll der Fallakte und war keine fehlgeschlagene Abfrage.
   - Feststellungen und Bewertungen haben mindestens einen Beleg.
-  - Sicherheit 'hoch' stützt sich auf mindestens zwei verschiedene Quellen.
+  - Sicherheit 'hoch' stützt sich auf mindestens zwei verschiedene Quellen. Bei einer Auswertung des Gateways
+    (Geldfluss, Zuordnung) zählen die Quellen, aus denen ihre Tatsachen stammen.
+  - Ein Geldfluss-Diagramm verweist auf eine Auswertung von krypto_geldfluss in der Fallakte.
   - Jeder Befund hat eine Erklärung in einfachen Worten und ist gegengeprüft.
   - Das Abfrageprotokoll ist unverändert (Hash-Kette).
 Rückgabewert 0: erzeugt. 1: Mängel, nichts erzeugt. 2: Fall oder befunde.json fehlt.
@@ -23,6 +25,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -36,7 +39,8 @@ if __name__ == "__main__":
     plattform.start()
 
 from gateway.akte import FREIGABE_TEXT, FREIGABEN, belege_lesen, fall_daten, fall_pfad, freigabe_erteilt, kette_pruefen  # noqa: E402
-from tools._html import STATUS, TYPEN, balken, esc, graf, graf_legende, kachel, kuerzen, seite  # noqa: E402
+from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, esc, geldfluss, graf, graf_legende,  # noqa: E402
+                         kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
 
 try:
     ZONE = plattform.zeitzone()
@@ -75,6 +79,8 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
                 maengel.append(f"{wo}: Beleg {pid} steht nicht im Abfrageprotokoll.")
             elif e.get("ergebnis") not in BRAUCHBAR:
                 maengel.append(f"{wo}: Beleg {pid} war eine {e.get('ergebnis')}e Abfrage und belegt nichts.")
+            elif e.get("art") == "auswertung":      # das Gateway hat gerechnet: Es zählen die Quellen der Tatsachen
+                quellen.update(e.get("quellen") or [])
             else:
                 quellen.add(e.get("quelle"))
         return quellen
@@ -154,9 +160,22 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
             maengel.append(f"Zeitachse {n}: 'zeit' nicht lesbar ({z.get('zeit')}). Format: 2026-10-02 oder 2026-10-02T14:10:00Z.")
         if not z.get("belege") and not str(z.get("quelle") or "").strip():
             maengel.append(f"Zeitachse {n}: braucht 'belege' oder 'quelle' (z. B. 'Rapport Ziff. 2').")
+    for n, g in enumerate(b.get("geldfluesse") or [], 1):
+        wo = f"Geldfluss {n}"
+        e = protokoll.get(g.get("beleg"))
+        if not str(g.get("titel") or "").strip():
+            maengel.append(f"{wo}: 'titel' fehlt (was wird verfolgt, in einem Satz).")
+        if not e:
+            maengel.append(f"{wo}: Beleg {g.get('beleg')} steht nicht im Abfrageprotokoll.")
+        elif e.get("werkzeug") != "krypto_geldfluss" or e.get("art") != "auswertung" or e.get("ergebnis") != "ok":
+            maengel.append(f"{wo}: Beleg {g.get('beleg')} ist keine Auswertung von krypto_geldfluss. Als 'beleg' gilt die "
+                           "protokoll_id, die das Werkzeug zurückgegeben hat.")
+        for bid in g.get("befunde") or []:
+            if bid not in {f.get("id") for f in befunde}:
+                maengel.append(f"{wo}: verweist auf unbekannten Befund {bid}.")
     if not b.get("luecken"):
         hinweise.append("'luecken' ist leer. Wirklich alles geklärt? Offene Punkte und Grenzen gehören in den Rapport.")
-    genutzt = verwendete_belege(b)
+    genutzt = verwendete_belege(b, protokoll)
     ungenutzt = [p for p, e in protokoll.items() if p not in genutzt and e.get("ergebnis") in BRAUCHBAR
                  and not (e.get("antwort") or {}).get("aus_cache")]
     if ungenutzt:
@@ -165,11 +184,15 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
     return maengel, hinweise
 
 
-def verwendete_belege(b: dict) -> set[str]:
+def verwendete_belege(b: dict, protokoll: dict[str, dict] | None = None) -> set[str]:
+    """Belege, auf die der Rapport verweist. Wer eine Auswertung zitiert, hat auch die Abfragen dahinter verwendet."""
     genutzt: set[str] = set()
     for liste in ("indikatoren", "befunde", "kernaussagen", "beziehungen", "zeitachse"):
         for x in b.get(liste) or []:
             genutzt.update(x.get("belege") or [])
+    genutzt.update(g.get("beleg") for g in b.get("geldfluesse") or [] if g.get("beleg"))
+    for pid in list(genutzt):
+        genutzt.update((protokoll or {}).get(pid, {}).get("grundlage") or [])
     return genutzt
 
 
@@ -233,6 +256,78 @@ def kennzahlen_text(k: dict | None) -> str:
     return "; ".join(teile)
 
 
+_UTC = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+
+def ortszeit(text: str) -> str:
+    """Zeitangaben in UTC, wie sie die Werkzeuge schreiben, in die Ortszeit des Rapports."""
+    return _UTC.sub(lambda m: zeit_zeigen(m.group(0)), text or "")
+
+
+def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
+    """Ein Geldfluss: Kopf, Verbleib als Balken, Flussbild, Tabellen, Ansatzpunkte und Verfahren.
+    Alles stammt aus der Rohdatei der Auswertung, nichts aus der Erinnerung."""
+    e = protokoll.get(g.get("beleg")) or {}
+    h = [f"<h3>Geldfluss: {esc(g.get('titel') or '')}</h3>" + absaetze(g.get("text"))]
+    try:
+        d = json.loads((pfad / e["antwort"]["rohdaten"]).read_text(encoding="utf-8"))["details"]
+    except (KeyError, OSError, ValueError, TypeError):
+        return h[0] + f"<p class='klein'>Die Auswertung {esc(str(g.get('beleg')))} liegt nicht lesbar in der Fallakte.</p>"
+    start, einheit = d.get("start") or {}, (d.get("wert") or {}).get("symbol") or ""
+    wert = start.get("gegenwert") or {}
+    womit = (f"Zahlung {start.get('tx', '')} an {start.get('adresse', '')}" if start.get("art") == "zahlung"
+             else f"alle Abgänge der Adresse {start.get('adresse', '')}")
+    h.append('<div class="kopf">'
+             f"<div style='grid-column:1/-1'><b>Verfolgt</b><span class='mono'>{esc(womit)}</span></div>"
+             f"<div><b>Startbetrag</b>{esc(zahl_ch(d.get('startbetrag', '')))} {esc(einheit)}"
+             + (f" (CHF {esc(zahl_ch(wert['chf']))})" if wert.get("chf") else "") + "</div>"
+             f"<div><b>Zeitpunkt</b>{esc(zeit_zeigen(start.get('zeit')) or '–')}</div>"
+             f"<div><b>Kette</b>{esc(d.get('kette_anzeige') or d.get('kette') or '')}</div>"
+             f"<div><b>Beleg</b>{beleg_links([g.get('beleg')], protokoll)}</div></div>")
+    if wert.get("chf"):
+        kurs = start.get("kurs") or {}
+        h.append(f"<p class='klein'>Gegenwerte zum Kurs am Tag der Startzahlung ({esc(' und '.join(kurs.get('quellen') or []))}"
+                 + (f", Wechselkurs vom {esc(zeit_zeigen(kurs['wechselkurs_vom']))}" if kurs.get("wechselkurs_vom") else "")
+                 + "). Ein Gegenwert ist eine Bewertung zum Tageskurs, kein ausbezahlter Betrag.</p>")
+    balken_ = verteilung(d)
+    if balken_:
+        h.append(f"<figure>{balken_}<figcaption>Verbleib des Startbetrags nach dem Ende der Verfolgung.</figcaption></figure>")
+    bild = geldfluss(d)
+    if bild:
+        h.append(f"<figure>{bild}<figcaption>Weg des Geldes von links nach rechts. Die Breite der Bänder entspricht dem Betrag, "
+                 "die Nummern verweisen auf die Tabelle der Stationen. Jede einzelne Zahlung ist eine Feststellung aus der "
+                 "Blockchain. Die Zuordnung über mehrere Stationen ist eine Bewertung nach dem unten genannten Verfahren.</figcaption></figure>")
+    enden = d.get("enden") or []
+    if enden:
+        h.append('<div class="tabelle-breit"><table><tr><th>Verbleib</th><th>Station</th><th class="zahl">Betrag</th>'
+                 '<th class="zahl">Anteil</th><th>Begründung</th></tr>')
+        for x in enden[:30]:
+            farbe = FLUSS_KLASSEN[_FLUSS_ART.get(x.get("art"), "offen")][1]
+            wer = f"{x['station']} · <span class='mono'>{esc(kurz_adresse(str(x.get('adresse', ''))))}</span>" if x.get("station") else "–"
+            h.append(f"<tr><td class='nw'>{marke(x.get('bezeichnung', ''), farbe)}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
+                     + f"</td><td class='nw'>{wer}</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td>"
+                     f"<td class='zahl nw'>{esc(str(x.get('anteil', '')))} %</td><td class='klein'>{esc(ortszeit(x.get('grund') or ''))}"
+                     + (f". Transaktion <span class='mono'>{esc(x['tx'])}</span>" if x.get("tx") else "") + "</td></tr>")
+        h.append("</table></div>")
+        if len(enden) > 30:
+            h.append(f"<p class='klein'>{len(enden) - 30} weitere, kleinere Enden stehen in der Rohdatei der Auswertung.</p>")
+    stationen = d.get("stationen") or []
+    if stationen:
+        h.append('<div class="tabelle-breit"><table><tr><th>Nr.</th><th>Adresse</th><th>Rolle</th><th class="zahl">Betrag</th><th>Etiketten und Hinweise</th></tr>')
+        for x in stationen[:60]:
+            zusatz = ortszeit("; ".join((x.get("etiketten") or []) + (x.get("hinweise") or [])))
+            h.append(f"<tr><td class='nw'>{x.get('nr')}</td><td class='mono'>{esc(str(x.get('adresse', '')))}</td>"
+                     f"<td class='nw'>{esc(_FLUSS_WORT.get(x.get('art'), str(x.get('art'))))}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
+                     + f"</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td><td class='klein'>{esc(zusatz)}</td></tr>")
+        h.append("</table></div>")
+    if d.get("ansatzpunkte"):
+        h.append("<p><b>Ansatzpunkte aus der Auswertung</b> <span class='klein'>(vom Werkzeug aus dem Geldfluss abgeleitet, durch die "
+                 "fallführende Stelle zu würdigen)</span></p><ul>" + "".join(f"<li>{esc(ortszeit(a))}</li>" for a in d["ansatzpunkte"]) + "</ul>")
+    if d.get("methode"):
+        h.append(f"<p class='klein'><b>Verfahren:</b> {esc(d['methode'])}</p>")
+    return "".join(h)
+
+
 def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand: dict,
           maengel: list[str], hinweise: list[str], entwurf: bool) -> str:
     protokoll = {e["id"]: e for e in eintraege}
@@ -280,6 +375,8 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
 
     # ---- 3 Überblick in Zahlen
     zaehler = Counter((i.get("bewertung") or "unbekannt") for i in indikatoren)
+    auswertungen = [e for e in eintraege if e.get("art") == "auswertung"]
+    eintraege = [e for e in eintraege if e.get("art") != "auswertung"]       # ab hier: nur Abfragen bei Quellen
     quellen = Counter(e.get("quelle") for e in eintraege if e.get("ergebnis") in BRAUCHBAR)
     ohne_treffer = sum(1 for e in eintraege if e.get("ergebnis") == "kein_treffer")
     fehlgeschlagen = sum(1 for e in eintraege if e.get("ergebnis") in ("fehler", "abgelehnt"))
@@ -287,7 +384,7 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
     h.append("<h2>3 Überblick in Zahlen</h2><div class='kacheln'>")
     h.append(kachel(len(indikatoren), "Indikatoren", f"{zaehler['boesartig']} bösartig, {zaehler['verdaechtig']} verdächtig"))
     h.append(kachel(len(eintraege), "Abfragen", f"{ohne_treffer} ohne Treffer, {fehlgeschlagen} nicht ausgeführt"))
-    h.append(kachel(len(quellen), "Quellen genutzt"))
+    h.append(kachel(len(quellen), "Quellen genutzt", f"{len(auswertungen)} Auswertungen daraus" if auswertungen else ""))
     h.append(kachel(len(befunde), "Befunde", f"{geprueft} gegengeprüft"))
     h.append("</div>")
     if indikatoren:
@@ -382,8 +479,10 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
                      f"<td class='nw'>{esc(SICHERHEIT.get(r.get('sicherheit'), '?'))}</td>"
                      f"<td>{beleg_links(r.get('belege'), protokoll) if r.get('belege') else esc(r.get('quelle') or 'ohne Beleg (Hypothese)')}</td></tr>")
         h.append("</table>")
-    else:
+    elif not b.get("geldfluesse"):
         h.append('<p class="klein">Keine Beziehungen zwischen Indikatoren festgestellt.</p>')
+    for g in b.get("geldfluesse") or []:
+        h.append(geldfluss_abschnitt(g, protokoll, fall_pfad(fall_id)))
 
     # ---- 8 Zeitachse
     h.append("<h2>8 Zeitachse</h2>")
@@ -426,6 +525,8 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
              "<tr><td>Quelle/Information (z. B. B2)</td><td>Buchstabe: Zuverlässigkeit der Quelle von A (zuverlässig) bis F (nicht beurteilbar). "
              "Ziffer: Glaubhaftigkeit der Information von 1 (bestätigt) bis 6 (nicht beurteilbar).</td></tr>"
              "<tr><td>Gegenprüfung</td><td>Eine zweite Instanz ohne Kenntnis des Ermittlungsverlaufs hat den Befund anhand der Rohdaten nachvollzogen.</td></tr>"
+             "<tr><td>Auswertung</td><td>Ergebnis, das das Gateway aus mehreren Abfragen errechnet hat, zum Beispiel ein Geldfluss. "
+             "Der Eintrag im Ermittlungsprotokoll nennt die Abfragen, auf denen es beruht.</td></tr>"
              "</table>")
     if b.get("glossar"):
         h.append("<h2>Anhang B: Glossar</h2><table><tr><th>Begriff</th><th>Erklärung</th></tr>")

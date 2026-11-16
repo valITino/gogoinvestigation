@@ -1,6 +1,6 @@
 ---
 name: abschlussrapport
-description: Schreibt befunde.json für einen Fall und erzeugt daraus den Abschlussrapport mit Diagrammen, Beziehungsgraf und Zeitachse. Enthält das Schema von befunde.json, die Prüfregeln und die Schreibregeln für verständliche Befunde. Verwenden, wenn Befundmeldungen zu einem Rapport verdichtet oder ein Rapport überarbeitet werden soll.
+description: Schreibt befunde.json für einen Fall und erzeugt daraus den Abschlussrapport mit Diagrammen, Beziehungsgraf, Geldfluss und Zeitachse. Enthält das Schema von befunde.json, die Prüfregeln und die Schreibregeln für verständliche Befunde. Verwenden, wenn Befundmeldungen zu einem Rapport verdichtet oder ein Rapport überarbeitet werden soll.
 argument-hint: "<Fall-ID>"
 model: claude-fable-5-2
 ---
@@ -53,6 +53,10 @@ Darstellung ist in jedem Fall dieselbe.
     {"von": "I-02", "nach": "I-01", "art": "zeigt auf", "sicherheit": "hoch", "belege": ["P-0011"]},
     {"von": "I-04", "nach": "I-02", "art": "Anmeldung nach Abgriff", "sicherheit": "mittel", "quelle": "Rapport Ziff. 3"}
   ],
+  "geldfluesse": [
+    {"beleg": "P-0042", "titel": "Verbleib der Lösegeldzahlung vom 10.09.2026",
+     "text": "Optional: ein bis zwei Sätze, was das Bild zeigt.", "befunde": ["B-06"]}
+  ],
   "zeitachse": [
     {"zeit": "2026-09-26T07:41:00Z", "ereignis": "Registrierung der Domain.", "belege": ["P-0011"]},
     {"zeit": "2026-10-01", "ereignis": "Erpresserschreiben trifft ein.", "quelle": "Rapport Ziff. 6"}
@@ -67,7 +71,7 @@ Erlaubte Werte:
 
 | Feld | Werte |
 |---|---|
-| `typ` | `ip` `domain` `url` `hash` `email` `onion` `wallet` `gruppe` `konto` `sonstiges` |
+| `typ` | `ip` `domain` `url` `hash` `email` `onion` `wallet` `transaktion` `gruppe` `konto` `sonstiges` |
 | `bewertung` | `boesartig` `verdaechtig` `unauffaellig` `unbekannt` |
 | `art` | `feststellung` `bewertung` `hypothese` |
 | `sicherheit` | `hoch` `mittel` `tief` |
@@ -87,6 +91,11 @@ Zeiten als UTC mit `Z` oder als reines Datum. Der Generator rechnet in Ortszeit 
 - Jeder Indikator hat `herkunft`. Wer als `boesartig` oder `verdaechtig` gilt, hat einen Beleg.
 - Beziehungen und Zeitpunkte stützen sich auf `belege` oder auf `quelle` (Fundstelle im Eingangsdokument).
 - Für den endgültigen Rapport ist jeder Befund gegengeprüft. `widerlegt` darf nicht stehen bleiben.
+- Bei einer Auswertung des Gateways (`krypto_…`) zählen für `hoch` die Quellen, aus denen ihre Tatsachen stammen
+  (Feld `quellen` im Protokolleintrag). Ein Geldfluss aus einer Quelle ist also höchstens `mittel`.
+- `geldfluesse`: `beleg` ist die `protokoll_id` eines Laufs von `krypto_geldfluss`, wie sie in der Befundmeldung des
+  Blockchain-Analysten steht. Das Flussbild, die Tabellen und die Ansatzpunkte darunter erzeugt der Generator aus der
+  Rohdatei dieser Auswertung. Du schreibst dazu nur Titel und einen kurzen Text.
 
 Meldet das Werkzeug einen Mangel, behebst du ihn an der Sache: Beleg nachtragen, Sicherheit senken, Aussage zur
 Hypothese machen oder streichen. Du erfindest keine P-Nummern und verbiegst keine Aussage, damit sie durchgeht.
@@ -118,6 +127,13 @@ mit Klarnamen zu klären wäre, steht unter `luecken`, mit dem Grund.
 
 **Empfehlungen sind konkrete nächste Schritte** für die fallführende Stelle: wer, was, bei wem. Rechtliche Schritte
 benennst du als Möglichkeit, die Würdigung liegt bei der Stelle.
+
+**Geldflüsse sind Bewertungen.** Eine einzelne Zahlung ist eine Feststellung («Am 10.09.2026 gingen 0.5 BTC von
+A an B»). Was über mehrere Stationen zugeordnet ist («60 % des Lösegelds landeten bei einer Börse»), ist eine
+Bewertung: `art: "bewertung"`, höchstens `mittel`, und der Text nennt das Verfahren in einem Satz. Beträge,
+Anteile und Gegenwerte übernimmst du wörtlich aus der Rohdatei der Auswertung. Gegenwerte immer mit dem Zusatz
+«zum Kurs am Tag der Zahlung». Ein Etikett («laut WalletExplorer eine Adresse von …») bleibt die Angabe eines
+Dritten. Empfehlungen nennen die Stelle, die den Kunden kennt oder sperren kann, nie eine Person.
 
 **Platzhalter bleiben stehen**, genau so wie im Eingangsdokument: `[PERSON_01]`. So lässt sich der Rapport im Haus
 wieder zuordnen.

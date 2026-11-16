@@ -7,6 +7,10 @@ Felder:
   werkzeuge  Werkzeugnamen des Gateways
   zweck      Wozu die Quelle dient, in einem Satz
   test       Harmlose Testabfrage für 'tools/pruefen.py --live': (werkzeug, argumente)
+  auch_ohne  Die Quelle läuft auch ohne Schlüssel, nur gedrosselt. Der Schlüssel ist eine Zugabe.
+
+Die Blockchain-Werkzeuge fragen je nach Kette verschiedene Dienste. Im Abfrageprotokoll steht der Dienst,
+der tatsächlich gefragt wurde (zum Beispiel mempool.space). Hier steht, wofür er gebraucht wird.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ class Quelle:
     test: tuple[str, dict] | None = None
     hinweis: str = ""
     freigabe: dict = field(default_factory=dict)   # werkzeug -> nötige Freigabe
+    auch_ohne: bool = False
 
 
 QUELLEN: tuple[Quelle, ...] = (
@@ -88,6 +93,44 @@ QUELLEN: tuple[Quelle, ...] = (
            "Instanzen und Konten im Fediverse (Funktionen aus Masto).",
            ("mastodon_instanz", {"instanz": "mastodon.social"}),
            freigabe={"mastodon_konto": "personenbezug"}),
+    # ----- Blockchain-Analyse. Testadressen: öffentlich bekannte Adressen (WannaCry, eine Börse, der USDT-Vertrag)
+    Quelle("Bitcoin (mempool.space)", None, "kein Schlüssel nötig",
+           ("krypto_adresse_pruefen", "krypto_adresse", "krypto_transaktionen", "krypto_transaktion", "krypto_geldfluss"),
+           "Bitcoin: Guthaben, Zahlungen und Geldfluss über mehrere Stationen. Ausweichquelle Blockstream.",
+           ("krypto_adresse", {"adresse": "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"}),
+           "Der Betreiber sieht, welche Adressen abgefragt werden. Eigene Instanz: KRYPTO_BITCOIN_API."),
+    Quelle("Ethereum (Blockscout)", "BLOCKSCOUT_API_KEY", "https://dev.blockscout.com (kostenlos)", (),
+           "Ethereum-Familie samt USDT und USDC: Guthaben, Zahlungen, Geldfluss, Etiketten von Börsen.",
+           ("krypto_transaktion", {"tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b", "kette": "ethereum"}),
+           "Läuft auch ohne Schlüssel, dann gedrosselt. Mit Schlüssel auch Base, Arbitrum, Polygon, Gnosis. "
+           "Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein.",
+           auch_ohne=True),
+    Quelle("TRON (TronGrid)", "TRONGRID_API_KEY", "https://www.trongrid.io (kostenlos)", (),
+           "TRON samt USDT: Guthaben, Zahlungen, Geldfluss, Sperrliste von Tether.",
+           ("krypto_adresse", {"adresse": "TJmmqjb1DK9TTZbQXzRQ2AuA94z4gKAPFh"}),
+           "Läuft auch ohne Schlüssel, dann stark gedrosselt. Für Geldflüsse über viele Stationen lohnt sich der Schlüssel.",
+           auch_ohne=True),
+    Quelle("Krypto-Zuordnung", None, "kein Schlüssel nötig", ("krypto_zuordnung",),
+           "Wem gehört eine Adresse? Sanktionslisten (OFAC, TRM Labs), Lösegeld-Adressen (Ransomwhere), WalletExplorer.",
+           ("krypto_zuordnung", {"adressen": ["12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"]})),
+    Quelle("Krypto-Kurse", None, "kein Schlüssel nötig", ("krypto_kurs",),
+           "Gegenwert in CHF, EUR und USD am Tag der Zahlung (DefiLlama, Referenzkurse der EZB).",
+           ("krypto_kurs", {"wert": "BTC", "datum": "2024-01-15", "betrag": "0.5"})),
+    Quelle("Etherscan", "ETHERSCAN_API_KEY", "https://etherscan.io/apidashboard (kostenlos)", (),
+           "Weitere Ketten der Ethereum-Familie (Polygon, Arbitrum, Gnosis) und Gegenprüfung von Ethereum-Transaktionen.",
+           ("krypto_adresse", {"adresse": "0x28C6c06298d514Db089934071355E5743bf21d60", "kette": "polygon"}),
+           "BNB Smart Chain, Base und Optimism verlangen bei Etherscan ein bezahltes Abo."),
+    Quelle("Tronscan", "TRONSCAN_API_KEY", "https://docs.tronscan.org/getting-started/api-keys (kostenlos)", (),
+           "Namen von Börsen und Diensten für TRON-Adressen, Risikohinweise.",
+           ("krypto_zuordnung", {"adressen": ["TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"], "quellen": ["tronscan"]}),
+           "Ohne diesen Schlüssel endet eine Verfolgung auf TRON bei «Sammeladresse, Dienst unbekannt»."),
+    Quelle("Chainabuse", "CHAINABUSE_API_KEY", "https://www.chainabuse.com (Profil, API-Schlüssel)", (),
+           "Betrugsmeldungen Geschädigter zu einer Adresse.",
+           ("krypto_zuordnung", {"adressen": ["12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"], "quellen": ["chainabuse"], "meldungen": True}),
+           "Das kostenlose Kontingent ist sehr klein (rund zehn Abfragen im Monat). Wird nur auf ausdrücklichen Wunsch gefragt."),
+    Quelle("Iknaio GraphSense", "IKNAIO_API_KEY", "https://www.ikna.io (Zugang für Behörden auf Anfrage)", (),
+           "Etiketten und Cluster für Bitcoin, Ethereum und TRON aus der Analyseplattform GraphSense.",
+           ("krypto_zuordnung", {"adressen": ["12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"], "quellen": ["iknaio"]})),
 )
 
 # Werkzeuge des separaten MCP-Servers Robin (Dark-Web-Suche über Tor im eigenen Container)

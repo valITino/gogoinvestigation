@@ -2,7 +2,7 @@
   "fall_id": "MUSTER-2026-001",
   "muster": true,
   "titel": "Phishing gegen Kundenportal mit anschliessender Erpressung (Musterfall)",
-  "auftrag": "Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen und prüfen, ob ein Bezug zur im Erpresserschreiben genannten Gruppe besteht.",
+  "auftrag": "Infrastruktur hinter der Phishing-Seite und der Anmeldung klären, die angehängte Datei einordnen, prüfen, ob ein Bezug zur im Erpresserschreiben genannten Gruppe besteht, und den Verbleib der Lösegeldzahlung klären.",
   "sachbearbeiter": "MUS",
   "klassifizierung": "MUSTER",
   "eroeffnet": "2026-11-12T08:55:00+01:00",

@@ -1,0 +1,20 @@
+{
+ "werkzeug": "krypto_adresse_pruefen",
+ "parameter": {
+  "wert": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L"
+ },
+ "grundlage": [],
+ "befund": {
+  "eingabe": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "art": "adresse",
+  "format": "Bitcoin P2PKH (beginnt mit 1)",
+  "familie": "bitcoin",
+  "pruefsumme": "stimmt",
+  "abfragbar": true,
+  "ketten": [
+   "bitcoin"
+  ],
+  "schreibweise": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "hinweise": []
+ }
+}
