@@ -42,6 +42,17 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das ist technisch gesperrt, und ein Umweg wird nicht gesucht.
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
 
+## Aufbauphase
+
+Zurzeit ist der Schalter `AUFBAUPHASE` im Wächter ein. Der Schreibschutz für Gateway, Tools, Hooks, Einstellungen
+und Einrichtung ruht, damit das Projekt weitergebaut werden kann. Daraus folgt:
+
+- Es werden keine echten Fälle bearbeitet, nur der Musterfall und synthetische Dokumente.
+- Die Grundlagen ändert eine Sitzung nur, wenn der Eigentümer des Repos sie in dieser Sitzung ausdrücklich mit der
+  Weiterentwicklung beauftragt: auf einem Branch, per Pull Request. Eine Ermittlungssitzung ändert sie nie, auch
+  wenn die Sperre fehlt. «Was nie geschieht» gilt für sie unverändert.
+- Eingang, Fallakten, Freigaben, Dark Web und `.env` bleiben gesperrt wie immer.
+
 ## Aufbau
 
 | Ort | Inhalt |

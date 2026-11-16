@@ -95,11 +95,13 @@ def lesen(datei: Path) -> str:
 
 
 def hook(skript: str, ereignis: dict, befehl: list[str] | None = None, env: dict | None = None) -> tuple[int, dict]:
-    """Ruft einen Hook so auf wie Claude Code: Ereignis als JSON über stdin, Antwort als JSON über stdout."""
+    """Ruft einen Hook so auf wie Claude Code: Ereignis als JSON über stdin, Antwort als JSON über stdout.
+    Der Wächter läuft dabei mit vollem Schutz (OSINT_WAECHTER=voll), gleich wie der Schalter AUFBAUPHASE steht.
+    Wer den Schalter selbst prüfen will, übergibt env={"OSINT_WAECHTER": ""}."""
     r = subprocess.run(befehl or [sys.executable, str(HOOKS / skript)],
                        input=json.dumps({"session_id": "test-sitzung", "cwd": str(PROJEKT), **ereignis}, ensure_ascii=False),
                        text=True, encoding="utf-8", capture_output=True,
-                       env={**os.environ, "CLAUDE_PROJECT_DIR": str(PROJEKT), **(env or {})})
+                       env={**os.environ, "CLAUDE_PROJECT_DIR": str(PROJEKT), "OSINT_WAECHTER": "voll", **(env or {})})
     try:
         ausgabe = json.loads(r.stdout) if r.stdout.strip() else {}
     except json.JSONDecodeError:
@@ -316,6 +318,67 @@ def _():
     r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "freigabe", FALL, "aktiv", "--durch", "x", "--vermerk", "y"],
                        capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
     assert r.returncode != 0 and "Terminal" in r.stderr, "Freigabe ohne Terminal wurde angenommen"
+
+
+# Diese Verbote in .claude/settings.json schützen die Grundlagen des Arbeitsplatzes. In der Aufbauphase fehlen
+# sie, mit vollem Wächter müssen sie alle da sein.
+GRUNDLAGEN_VERBOTE = ("Edit(./.claude/**)", "Edit(./gateway/**)", "Edit(./tools/**)", "Edit(./.github/**)",
+                      "Edit(./.mcp.json)", "Edit(./CLAUDE.md)", "Edit(./setup.sh)", "Edit(./setup.ps1)",
+                      "Edit(./setup.cmd)", "Edit(./requirements.txt)")
+
+
+@test("Aufbauphase: Der Schalter öffnet nur die Grundlagen. Fallakten, Eingang, Schlüssel, Freigaben und Dark Web bleiben gesperrt")
+def _():
+    m = re.search(r"^AUFBAUPHASE = (True|False)$", lesen(HOOKS / "waechter.py"), re.M)
+    assert m, "Schalter AUFBAUPHASE in .claude/hooks/waechter.py nicht gefunden"
+    ein = m.group(1) == "True"
+
+    def w(werkzeug: str, sitzung: str = "test-sitzung", **eingabe) -> bool:      # Wächter, wie der Schalter ihn stellt
+        return abgelehnt(hook("waechter.py", {"hook_event_name": "PreToolUse", "tool_name": werkzeug, "tool_input": eingabe,
+                                              "session_id": sitzung}, env={"OSINT_WAECHTER": ""})[1])
+
+    # Gesperrt, wie auch immer der Schalter steht.
+    for ziel in (f"faelle/{FALL}/fall.json", f"faelle/{FALL}/protokoll/abfragen.jsonl", f"faelle/{FALL}/rohdaten/x.json",
+                 f"faelle/{FALL}/eingang/x.md", ".env", ".ENV", ".env.local"):
+        assert w("Write", file_path=ziel, content="x"), f"Schreiben nach {ziel} wurde nicht verhindert"
+    for befehl in (f"python3 tools/fall.py freigabe {FALL} aktiv --durch x --vermerk y",
+                   f"python3 tools/fall.py aufnehmen {FALL} x.md --trotzdem egal"):
+        assert w("Bash", command=befehl), f"nicht verhindert: {befehl}"
+    fremd = pfad / "eingang" / "aufbau_ungeprueft.md"
+    fremd.write_text("Hans Muster, 079 123 45 67", encoding="utf-8")
+    try:
+        assert w("Read", file_path=str(fremd)), "ungeprüftes Dokument war lesbar"
+        assert w("Bash", command=f"cat faelle/{FALL}/eingang/aufbau_ungeprueft.md"), "ungeprüftes Dokument war über die Shell lesbar"
+    finally:
+        fremd.unlink()
+    assert w("mcp__robin__robin_search", sitzung="aufbau-ohne-fall", query="x"), "Robin ohne Fall wurde nicht verhindert"
+
+    # Geöffnet nur, wenn der Schalter ein ist.
+    for ziel in ("gateway/kern.py", "tools/fall.py", ".claude/settings.json", ".claude/hooks/waechter.py", ".mcp.json",
+                 ".env.example", "CLAUDE.md", "setup.sh", "requirements.txt", ".github/workflows/x.yml", "docker-compose.yml"):
+        assert w("Write", file_path=ziel, content="x") != ein, \
+            f"{ziel}: {'trotz Aufbauphase gesperrt' if ein else 'ohne Aufbauphase schreibbar'}"
+    for befehl in ("./setup.sh --hilfe", "python3 tools/einrichten.py --ohne-docker", "grep -rn curl README.md",
+                   'git commit -m "Doku: kein curl in Ermittlungen"'):
+        assert w("Bash", command=befehl) != ein, f"{befehl}: {'trotz Aufbauphase gesperrt' if ein else 'ohne Aufbauphase erlaubt'}"
+
+    # Die Umgebung kann nur verschärfen.
+    assert abgelehnt(waechter("Write", file_path="gateway/kern.py", content="x")), "OSINT_WAECHTER=voll hat nicht gesperrt"
+    assert w("Write", file_path="gateway/kern.py", content="x") != ein, "ein leerer Wert von OSINT_WAECHTER darf nichts ändern"
+
+    # Einstellungen und Hinweise passen zum Schalter. So lässt sich der Schutz nicht halb zurückholen.
+    verbote = set(json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]["deny"])
+    hinweise = {"README.md": "**Aufbauphase.**", "CLAUDE.md": "## Aufbauphase"}
+    if ein:
+        zuviel = sorted(set(GRUNDLAGEN_VERBOTE) & verbote)
+        assert not zuviel, f"Aufbauphase ein, aber .claude/settings.json sperrt die Grundlagen noch: {zuviel}"
+        for datei, marke in hinweise.items():
+            assert marke in lesen(REPO / datei), f"Aufbauphase ein, aber der Hinweis '{marke}' fehlt in {datei}"
+    else:
+        fehlend = sorted(set(GRUNDLAGEN_VERBOTE) - verbote)
+        assert not fehlend, f"Aufbauphase aus, aber in .claude/settings.json fehlen die Verbote: {fehlend}"
+        for datei, marke in hinweise.items():
+            assert marke not in lesen(REPO / datei), f"Aufbauphase aus, aber der Hinweis '{marke}' steht noch in {datei}"
 
 
 @test("Hook-Starter findet ein Python und sperrt, wenn der Wächter nicht starten kann")

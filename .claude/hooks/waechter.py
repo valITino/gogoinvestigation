@@ -13,6 +13,9 @@ Im Zweifel wird abgelehnt: Kann der Wächter nicht starten oder seine Eingabe ni
 
 Gilt für Bash ebenso wie für das PowerShell-Werkzeug unter Windows. Pfade werden unabhängig von
 Schrägstrich-Richtung und Gross-/Kleinschreibung geprüft.
+
+Aufbauphase: Der Schalter AUFBAUPHASE weiter unten nimmt Punkt 3 für die Grundlagen des Arbeitsplatzes
+zurück, damit sich das Projekt mit Claude Code weiterbauen lässt. Was dann gilt, steht beim Schalter.
 """
 from __future__ import annotations
 
@@ -40,8 +43,22 @@ try:
 except Exception as e:  # ohne seine Grundlagen kann der Wächter nichts beurteilen
     ablehnen(f"Der Wächter kann nicht starten ({type(e).__name__}: {e}). Aufruf vorsichtshalber abgelehnt.")
 
+# Aufbauphase. Solange hier True steht, dürfen Sitzungen die Grundlagen des Arbeitsplatzes ändern (Gateway,
+# Tools, Hooks, Einstellungen, Einrichtung, CI, Doku) und die Einrichtung ausführen, und der Filter für
+# Netzbefehle ruht (curl und wget bleiben über .claude/settings.json gesperrt).
+# Unverändert gilt: Eingang nur nach PII-Prüfung, Dark Web nur mit Freigabe, Fallakten schreibgeschützt,
+# keine Selbstfreigabe, .env gesperrt.
+# In dieser Zeit ist auch dieser Wächter änderbar. Die übrigen Sperren schützen dann vor Versehen, nicht
+# vor Manipulation. Deshalb: keine echten Fälle, solange hier True steht.
+# Wieder einschalten: hier False setzen, die Verbote für die Grundlagen in .claude/settings.json zurückholen
+# (Liste GRUNDLAGEN_VERBOTE in tools/selbsttest.py) und die Hinweise «Aufbauphase» in README.md und CLAUDE.md
+# entfernen. Der Selbsttest nennt, was noch fehlt.
+# OSINT_WAECHTER=voll in der Umgebung erzwingt den vollen Schutz, auch während der Aufbauphase.
+AUFBAUPHASE = True
+
 GESCHUETZT = (".claude/", "gateway/", "tools/", "protokoll/", ".github/", ".mcp.json", ".env", "claude.md",
               "setup.sh", "setup.ps1", "setup.cmd", "requirements.txt", "docker-compose.yml", ".gitattributes")
+SCHLUESSELDATEIEN = (".env", ".env.local")      # bleiben auch in der Aufbauphase gesperrt
 GESCHUETZT_IM_FALL = ("fall.json", "protokoll/", "rohdaten/", "eingang/")
 SHELLS = ("Bash", "PowerShell", "Monitor")
 EINGANG = re.compile(r"(?:^|/)faelle/([^/]+)/eingang(?:/(.+))?$", re.I)
@@ -49,6 +66,11 @@ FALLWERKZEUG = re.compile(r"\s*\S*py(thon[\d.]*)?(\.exe)?\s+\S*tools/fall\.py\s[
 NETZ = re.compile(r"(^|[\s;&|(`$'\"])(curl|wget|nc|ncat|ssh|scp|sftp|telnet|ftp|iwr|irm|invoke-webrequest|"
                   r"invoke-restmethod|start-bitstransfer|bitsadmin)(\.exe)?(\s|$)"
                   r"|net\.webclient|system\.net\.http|certutil(\.exe)?\s.*-urlcache", re.I)
+
+
+def aufbau() -> bool:
+    """Ob die Grundlagen des Arbeitsplatzes gerade änderbar sind. Die Umgebung kann nur verschärfen, nie lockern."""
+    return AUFBAUPHASE and os.environ.get("OSINT_WAECHTER", "").strip().lower() != "voll"
 
 
 def relativ(pfad: str, cwd: str) -> str | None:
@@ -111,7 +133,10 @@ def schreiben(pfad: str, cwd: str) -> None:
     if rel is None:
         return
     klein = rel.lower()     # macOS und Windows unterscheiden Gross- und Kleinschreibung nicht
-    if any(klein == g.rstrip("/") or klein.startswith(g) for g in GESCHUETZT):
+    if aufbau():
+        if klein in SCHLUESSELDATEIEN:
+            ablehnen(f"'{rel}' enthält die Schlüssel des Arbeitsplatzes und wird von Agenten nicht verändert.")
+    elif any(klein == g.rstrip("/") or klein.startswith(g) for g in GESCHUETZT):
         ablehnen(f"'{rel}' gehört zu den Grundlagen des Arbeitsplatzes und wird von Agenten nicht verändert.")
     m = re.match(r"faelle/([^/]+)/(.+)$", klein)
     if m and any(m.group(2) == g.rstrip("/") or m.group(2).startswith(g) for g in GESCHUETZT_IM_FALL):
@@ -124,10 +149,10 @@ def shell(befehl: str) -> None:
     if re.search(r"fall\.py\s+freigabe|--trotzdem", b, re.I):
         ablehnen("Freigaben und das Übersteuern der PII-Prüfung sind Entscheidungen des Sachbearbeiters. "
                  "Er führt den Befehl selbst am Terminal aus.")
-    if re.search(r"einrichten\.py|(^|[\s/;&|(])setup\.(sh|ps1|cmd)\b", b, re.I):
+    if not aufbau() and re.search(r"einrichten\.py|(^|[\s/;&|(])setup\.(sh|ps1|cmd)\b", b, re.I):
         ablehnen("Die Einrichtung des Arbeitsplatzes (Modelle, MCP-Server, Schlüsseldatei) ändert nur der "
                  "Sachbearbeiter am Terminal.")
-    if NETZ.search(b):
+    if not aufbau() and NETZ.search(b):
         ablehnen("Netzwerkzugriffe laufen nur über das OSINT-Gateway (Werkzeuge mcp__osint__…), "
                  "damit sie protokolliert und die Antworten gesichert werden.")
     # Wer in einem Befehl den Eingang anfasst, bekommt ihn nur, wenn jedes Dokument darin geprüft ist.

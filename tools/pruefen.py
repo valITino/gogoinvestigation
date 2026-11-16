@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -186,6 +187,14 @@ def konfiguration(env: dict[str, str]) -> None:
         if not datei.is_file():
             zeile(FEHLT, f"Hook {hook}", "fehlt")
             noetig_fehlt.append(hook)
+    waechter = PROJEKT / ".claude" / "hooks" / "waechter.py"
+    if waechter.is_file():
+        if re.search(r"^AUFBAUPHASE = True$", waechter.read_text(encoding="utf-8"), re.M):
+            zeile(AUS, "Wächter", "Aufbauphase: Gateway, Tools, Hooks und Einstellungen sind für Agenten änderbar")
+            schritte.append("Keine echten Fälle bearbeiten, solange die Aufbauphase läuft. Beenden: AUFBAUPHASE in "
+                            ".claude/hooks/waechter.py auf False setzen, der Selbsttest nennt den Rest (README, «Schutzmechanismen»).")
+        else:
+            zeile(GUT, "Wächter", "voller Schutz")
     lokal = PROJEKT / ".claude" / "settings.local.json"
     daten: dict = {}
     if lokal.is_file():
