@@ -83,6 +83,7 @@ def modell_aus(transkript: object) -> str | None:
 def fall_erkennen(ereignis: dict, text: str) -> str | None:
     eingabe = ereignis.get("tool_input") or {}
     kandidaten = [eingabe.get("fall")] if isinstance(eingabe, dict) else []
+    kandidaten.append(ereignis.get("fall"))         # Schritte aus der Oberfläche nennen ihren Fall selbst
     kandidaten += FALL_IM_BEFEHL.findall(ereignis.get("prompt") or "")
     kandidaten += FALL_IM_PFAD.findall(text)
     for k in kandidaten:
@@ -178,6 +179,11 @@ def main() -> int:
         eintrag["modell"] = modell
     if art == "UserPromptSubmit":
         eintrag["eingabe"] = kuerzen(ereignis.get("prompt") or "")
+    if art == "Oberflaeche":
+        # Ein Schritt des Sachbearbeiters in der Oberfläche (tools/ui): Freigabe, Antwort auf eine Rückfrage, Start der Ermittlung.
+        # Der Server der Oberfläche ruft dafür diesen Hook auf. So bleibt das Sitzungsprotokoll in einer Hand.
+        eintrag.update({"agent": "sachbearbeiter", "weg": "Oberfläche", "schritt": kuerzen(str(ereignis.get("schritt") or "")),
+                        "angabe": kuerzen(str(ereignis.get("angabe") or ""))})
     if ereignis.get("tool_name"):
         werkzeug = ereignis["tool_name"]
         eintrag.update({"werkzeug": werkzeug, "tool_use_id": ereignis.get("tool_use_id"),

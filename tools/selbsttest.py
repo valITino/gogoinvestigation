@@ -2983,9 +2983,11 @@ def _():
 
 # --------------------------------------------------------------------------- Oberfläche (tools/oberflaeche.py, tools/ui)
 
+import base64  # noqa: E402
 import http.client  # noqa: E402
 import struct  # noqa: E402
 import threading  # noqa: E402
+import time  # noqa: E402
 import zlib  # noqa: E402
 from datetime import timedelta  # noqa: E402
 from html import escape as html_escape, unescape as html_unescape  # noqa: E402
@@ -3474,7 +3476,7 @@ def _():
     try:
         gezaehlt = 0
         for weg, typ in (("/", "text/html"), ("/basis.css", "text/css"), ("/app.js", "text/javascript"), ("/app.css", "text/css"), ("/api/faelle", "application/json"),
-                         ("/api/quellen", "application/json")):
+                         ("/api/quellen", "application/json"), ("/api/neu", "application/json"), ("/api/bedienung", "application/json")):
             status, kopf, inhalt = holen(weg)
             assert status == 200 and kopf["content-type"].startswith(typ) and inhalt, f"{weg}: {status} {kopf.get('content-type')}"
             assert "default-src 'none'" in kopf["content-security-policy"] and kopf["x-content-type-options"] == "nosniff" and kopf["cache-control"] == "no-store", weg
@@ -3486,9 +3488,11 @@ def _():
         assert {f["id"] for f in liste["faelle"]} >= {OBERFL, MUSTER, FALL} and not verstoesse(liste["html"], "x")
         for fall in (u["fall"], u["muster"]):
             q = urllib_quote(fall.id)
-            for name in ("kopf", "spur", "spur?ab=3", "spur?ab=unsinn"):
+            for name in ("kopf", "spur", "spur?ab=3", "spur?ab=unsinn", "ermittlung", "bedienen", "zurueck"):
                 status, kopf, inhalt = holen(f"/api/fall/{q}/{name}")
                 assert status == 200 and json.loads(inhalt), f"{fall.id} {name}: {status}"
+                if name in ("ermittlung", "bedienen", "zurueck"):       # die Bildschirme der Bedienung: im Modus «nur lesen» ohne Formular
+                    assert not verstoesse(json.loads(inhalt)["html"], fall.id) and "form" not in Seite(json.loads(inhalt)["html"]).namen(), name
                 gezaehlt += 1
             for ansicht, arg in ui_ansichten(fall):
                 status, kopf, inhalt = holen(f"/api/fall/{q}/{ansicht}" + (f"/{urllib_quote(arg, safe='')}" if arg else ""))
@@ -3540,8 +3544,10 @@ def _():
         nachher = akte_abdruck(PROJEKT / "faelle" / f)
         assert nachher == vorher[f], f"{f}: Die Oberfläche hat die Fallakte verändert: {[k for k in set(vorher[f]) | set(nachher) if vorher[f].get(k) != nachher.get(k)][:5]}"
     assert sorted(str(p) for p in (PROJEKT / "faelle").rglob("*")) == dateien_vorher, "Die Oberfläche hat unter faelle/ etwas angelegt"
-    # Im Quelltext der Oberfläche steht kein Aufruf, der eine Datei anlegt, verändert oder löscht
-    for datei in sorted((PROJEKT / "tools" / "ui").glob("*.py")) + [PROJEKT / "tools" / "oberflaeche.py"]:
+    # Im Quelltext der Ansichten steht kein Aufruf, der eine Datei anlegt, verändert oder löscht. Was etwas ändert, steht in
+    # bedienung.py und sitzung.py, läuft nur mit Geheimnis und ruft dafür die bestehenden Werkzeuge auf (eigene Tests weiter unten)
+    for datei in [PROJEKT / "tools" / "ui" / n for n in ("daten.py", "seiten.py", "darsteller.py", "blaetter.py", "pruefstand.py", "formulare.py", "server.py",
+                                                         "rueckfrage.py")] + [PROJEKT / "tools" / "oberflaeche.py"]:
         treffer = re.findall(r"write_text|write_bytes|text_schreiben|zeile_anhaengen|\.unlink\(|\.mkdir\(|\.rename\(|\.replace\(\s*Path|os\.remove|shutil\.|open\([^)]*[\"'][wax]b?\+?[\"']|\.touch\(",
                              lesen(datei))
         assert not treffer, f"{datei.name}: {treffer}"
@@ -3730,7 +3736,7 @@ def _():
     assert stand["Datenblaetter"]["aktuell"] is False and "seit der Erzeugung kamen 1 Protokolleinträge dazu" in stand["Datenblaetter"]["vermerk"], stand["Datenblaetter"]
 
 
-@test("Oberfläche, Dokumentation: Die Tabelle der Darsteller in docs/OBERFLAECHE.md entspricht der Messung, das README zeigt Start, Ansichten, Schutz und Grenzen")
+@test("Oberfläche, Dokumentation: Die Tabelle der Darsteller in docs/OBERFLAECHE.md entspricht der Messung, das README zeigt Start, Ansichten, Bedienung, Schutz und Grenzen")
 def _():
     doku, readme = lesen(REPO / "docs" / "OBERFLAECHE.md"), lesen(REPO / "README.md")
     assert pruefstand.ANFANG in doku and pruefstand.ENDE in doku, "In docs/OBERFLAECHE.md fehlt die Tabelle der Darsteller"
@@ -3738,12 +3744,679 @@ def _():
     assert tabelle == pruefstand.tabelle(kurz=True).strip(), "Die Tabelle der Darsteller ist veraltet. Neu: python3 tools/ui/pruefstand.py --kurz, das Ergebnis zwischen die Marken setzen"
     assert "## Oberfläche" in readme and "tools/oberflaeche.py" in readme and "docs/OBERFLAECHE.md" in readme
     abschnitt = readme.split("## Oberfläche")[1].split("\n## ")[0]
-    for wort in ("127.0.0.1", "Grenzen", "liest", "tools/anhang.py"):
+    for wort in ("127.0.0.1", "Grenzen", "lesen", "tools/anhang.py", "Bedienen ohne Terminal", "Geheimnis", "«nur lesen»", "lokal, Klartext", "--sitzungsprobe",
+                 "Abrechnung: Abo oder API", "ANTHROPIC_API_KEY"):
         assert wort in abschnitt, f"Im Abschnitt «Oberfläche» des README fehlt: {wort}"
+    assert "Nicht geprüft: die Steuerung mit dem echten Claude Code" in readme, "Das README muss sagen, dass die Steuerung mit dem echten Claude Code nicht geprüft ist"
     bilder = re.findall(r"\]\((docs/bilder/[^)]+)\)", abschnitt)
-    assert len(bilder) >= 4 and all((REPO / b).is_file() for b in bilder), f"Bilder der Ansichten fehlen: {[b for b in bilder if not (REPO / b).is_file()]}"
-    for wort in ("Host-Kopf", "Content-Security-Policy", "nie anklickbar", "Weitere Angaben der Quelle", "nicht geprüft"):
+    assert len(bilder) >= 8 and all((REPO / b).is_file() for b in bilder), f"Bilder der Ansichten fehlen: {[b for b in bilder if not (REPO / b).is_file()]}"
+    assert {"docs/bilder/oberflaeche-neu.png", "docs/bilder/oberflaeche-klartext.png", "docs/bilder/oberflaeche-bedienen.png", "docs/bilder/oberflaeche-zurueck.png"} <= set(bilder)
+    for wort in ("Host-Kopf", "Content-Security-Policy", "nie anklickbar", "Weitere Angaben der Quelle", "nicht geprüft", "## Bedienung", "Startcode", "lokal, Klartext",
+                 "Abrechnung: Abo oder API", "--permission-prompt-tool", "--sitzungsprobe", "Grenzen dieses Schutzes", "nur gegen ein Programm geprüft, das Claude Code spielt"):
         assert wort in doku, f"In docs/OBERFLAECHE.md fehlt: {wort}"
+    assert "\nABRECHNUNG\n" not in doku + readme, "Platzhalter in der Dokumentation"
+    # Das README nennt die Zahl der ändernden Aktionen so, wie der Code sie hat
+    from tools.ui import bedienung as bedien_modul, sitzung as sitzung_modul
+    aktionen = len(bedien_modul.AKTIONEN) + len(sitzung_modul.AKTIONEN)
+    assert f"Jede der {aktionen} ändernden Aktionen" in " ".join(readme.split()), f"Das README nennt nicht {aktionen} ändernde Aktionen"
+
+
+# --------------------------------------------------------------------------- Oberfläche, Teil 2: Bedienung (tools/ui/bedienung.py, sitzung.py)
+
+import asyncio  # noqa: E402
+from collections import Counter  # noqa: E402
+
+from gateway.akte import freigabe_erteilt  # noqa: E402
+from tools import oberflaeche as oberflaeche_start  # noqa: E402
+from tools.ui import bedienung as ui_bedienung, rueckfrage as ui_rueckfrage, sitzung as ui_sitzung  # noqa: E402
+
+BEDIEN: dict = {}
+FALSCHER_CLAUDE = r'''
+"""Spielt die Kommandozeile von Claude Code für die Selbsttests: gibt Ereignisse als JSON-Zeilen aus, stellt eine Rückfrage
+über den MCP-Weg der Oberfläche und versucht als «Agent», sich selbst eine Freigabe zu erteilen."""
+import json, os, sys, time, urllib.request, urllib.error
+argv = sys.argv[1:]
+wert = lambda schalter: argv[argv.index(schalter) + 1] if schalter in argv else ""
+auftrag, konfiguration = wert("-p"), json.load(open(wert("--mcp-config"), encoding="utf-8"))
+umgebung = konfiguration["mcpServers"]["oberflaeche"]["env"]
+port, karte, fall = umgebung["OSINT_RUECKFRAGE_PORT"], umgebung["OSINT_RUECKFRAGE_KARTE"], umgebung["OSINT_RUECKFRAGE_FALL"]
+sitzung = wert("--resume") or "11111111-2222-4333-8444-555555555555"
+merk = {"argv": argv, "cwd": os.getcwd(), "umgebung": dict(os.environ), "konfiguration": konfiguration, "versuche": {}}
+def aus(e):
+    print(json.dumps(e), flush=True)
+def post(weg, angaben, geheimnis=None):
+    kopf = {"Content-Type": "application/json", "Host": f"127.0.0.1:{port}"}
+    if geheimnis is not None:
+        kopf["X-OSINT-Geheimnis"] = geheimnis
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+                urllib.request.Request(f"http://127.0.0.1:{port}{weg}", data=json.dumps(angaben).encode(), method="POST", headers=kopf), timeout=30) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+projekt_server = [] if os.environ.get("OSINT_FAKE_OHNE_PROJEKT") else [{"name": "osint", "status": "connected"}, {"name": "robin", "status": "failed"}]
+# Das Modell meldet das Programm so, wie die Einstellungen des Projekts es festlegen: Die Oberfläche stellt nichts um
+modell = os.environ.get("OSINT_FAKE_MODELL") or json.load(open(os.path.join(os.getcwd(), ".claude", "settings.json"), encoding="utf-8")).get("model", "")
+aus({"type": "system", "subtype": "init", "session_id": sitzung, "model": modell, "cwd": os.getcwd(),
+     "mcp_servers": [{"name": "oberflaeche", "status": "connected"}] + projekt_server})
+if os.environ.get("OSINT_FAKE_OHNE_PROJEKT"):
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Ich arbeite ohne Projekt."}]}})
+    json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
+    time.sleep(120)
+elif "--resume" in argv:
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Ich fahre fort: " + auftrag}]}})
+elif os.environ.get("OSINT_FAKE_LANG"):
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Das dauert."}]}})
+    json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
+    time.sleep(120)
+else:
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [
+        {"type": "text", "text": "Ich setze das Team ein."},
+        {"type": "tool_use", "id": "toolu_auftrag_1", "name": "Task", "input": {"subagent_type": "infrastruktur-analyst", "description": "Server klaeren"}}]}})
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": "toolu_auftrag_1", "message": {"content": [
+        {"type": "tool_use", "id": "toolu_2", "name": "mcp__osint__shodan_host", "input": {"fall": fall, "ip": "203.0.113.7", "zweck": "Test"}}]}})
+    # Der «Agent» versucht, sich ueber die Oberflaeche selbst eine Freigabe zu erteilen: ohne Geheimnis und mit der Karte fuer Rueckfragen
+    freigabe = {"fall": fall, "art": "aktiv", "durch": "agent", "vermerk": "selbst erteilt"}
+    merk["versuche"] = {"ohne": post("/api/aktion/freigabe", freigabe), "karte": post("/api/aktion/freigabe", freigabe, karte),
+                        "anmelden": post("/api/anmelden", {"startcode": karte}), "beleg": post("/api/aktion/beleg", {"fall": fall}, karte)}
+    sys.path.insert(0, os.getcwd())
+    os.environ.update(umgebung)
+    from tools.ui import rueckfrage
+    entscheid = rueckfrage.fragen("mcp__osint__urlquery_einreichen", {"fall": fall, "url": "https://kundenportal.example/login", "zweck": "aktueller Stand"}, "toolu_3")
+    merk["entscheid"] = entscheid
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Entscheid: " + entscheid["behavior"]}]}})
+    aus({"type": "user", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_auftrag_1", "content": "fertig"}]}})
+json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
+aus({"type": "result", "subtype": "success", "is_error": False, "session_id": sitzung, "result": "Ermittlung abgeschlossen.", "num_turns": 3})
+'''
+
+
+def ui_anfrage(port: int, weg: str, methode: str = "GET", koerper: object = None, **kopf) -> tuple[int, dict, bytes]:
+    """Eine Anfrage an die Oberfläche, mit frei wählbaren Kopfzeilen. `koerper` geht als JSON hinaus."""
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
+    try:
+        inhalt = json.dumps(koerper, ensure_ascii=False).encode("utf-8") if koerper is not None else None
+        c.putrequest(methode, weg, skip_host=True)
+        zeilen = {"Host": f"127.0.0.1:{port}", **({"Content-Type": "application/json", "Content-Length": str(len(inhalt))} if inhalt is not None else {}),
+                  **{k.replace("_", "-"): w for k, w in kopf.items()}}
+        for name, wert in zeilen.items():
+            c.putheader(name, wert)
+        c.endheaders(inhalt)
+        r = c.getresponse()
+        return r.status, {k.lower(): w for k, w in r.getheaders()}, r.read()
+    finally:
+        c.close()
+
+
+def bedien_vorbereiten() -> dict:
+    """Ein Server mit Bedienung, wie ihn der Sachbearbeiter am Terminal startet. Ablage und Programm «Claude Code» liegen ausserhalb des Projekts."""
+    if BEDIEN:
+        return BEDIEN
+    ui_vorbereiten()
+    aussen = Path(tempfile.mkdtemp(prefix="osint-bedien-"))
+    b = ui_bedienung.Bedienung(aussen / "ablage")
+    startcode = b.startcode
+    server = ui_server.starten(0, bedienung=b)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    skript = aussen / "falscher_claude.py"
+    skript.write_text(FALSCHER_CLAUDE, encoding="utf-8")
+    os.environ["OSINT_CLAUDE"] = json.dumps([sys.executable, str(skript)])
+    os.environ["OSINT_FAKE_MERKER"] = str(aussen / "merker.json")
+
+    def aktion(name: str, angaben: dict, geheimnis: str | None = "richtig", **kopf) -> tuple[int, dict]:
+        kopf = {**({"X_OSINT_Geheimnis": b.geheimnis if geheimnis == "richtig" else geheimnis} if geheimnis is not None else {}), **kopf}
+        status, _kopf, inhalt = ui_anfrage(port, f"/api/aktion/{name}", "POST", angaben, **kopf)
+        return status, json.loads(inhalt or b"{}")
+
+    def dokument(name: str, text: str) -> dict:
+        return {"name": name, "inhalt": base64.b64encode(text.encode("utf-8")).decode()}
+    BEDIEN.update(b=b, port=port, server=server, aussen=aussen, startcode=startcode, aktion=aktion, dokument=dokument, merker=aussen / "merker.json")
+    return BEDIEN
+
+
+def projekt_enthaelt(*stuecke: str, ordner: tuple = ("",)) -> list[str]:
+    """In welchen Dateien des Projekts eines der Stücke steht (Klartext, Geheimnis). Erwartet wird: in keiner.
+    `ordner` schränkt ein, etwa auf Fallakten und Protokolle: Der Prüfsatz in tools/ enthält den Wortschatz der erfundenen Namen."""
+    treffer = []
+    for datei in (d for o in ordner for d in (PROJEKT / o).rglob("*")):
+        if datei.is_file() and "__pycache__" not in datei.parts and datei.stat().st_size < 5_000_000:
+            inhalt = datei.read_bytes()
+            if any(s.encode("utf-8") in inhalt for s in stuecke if s):
+                treffer.append(str(datei.relative_to(PROJEKT)))
+    return treffer
+
+
+GESCHWAERZT = ("Rapport\n\n1. [PERSON_01] meldet am 02.10.2026 einen Vorfall bei der [ORG_01].\n2. Die Phishing-Mail verwies auf https://kundenportal.example/login.\n"
+               "3. Die Anmeldung kam von 198.51.100.23.\n")
+
+
+@test("Bedienung: Jede ändernde Anfrage verlangt das Geheimnis. Es entsteht beim Start, gilt aus einem Fenster und steht in keiner Datei")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion = u["b"], u["port"], u["aktion"]
+    vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)}
+    faelle_vorher = sorted(p.name for p in (PROJEKT / "faelle").iterdir())
+    alle = ui_bedienung.AKTIONEN + ui_sitzung.AKTIONEN
+    assert len(alle) >= 16 and all(callable(getattr(b, n, None) or getattr(ui_sitzung, n, None)) for n in alle)
+    angaben = {"fall": OBERFL, "art": "aktiv", "durch": "x", "vermerk": "y", "name": "a.txt", "inhalt": base64.b64encode(b"[PERSON_01]").decode(), "was": "kette",
+               "indikator": "203.0.113.50", "typ": "ip", "quelle": "Test", "abgeklaert": "16.11.2026 10:00", "wortlaut": "Rechenzentrum laut Auskunft", "frage": "x"}
+    for name in alle:
+        for geheimnis in (None, "", "falsch", b.startcode or "x", "A" * 43):
+            status, antwort = aktion(name, angaben, geheimnis)
+            assert status == 403 and "fehler" in antwort and "nichts geändert" in antwort["fehler"], f"{name} mit Geheimnis {geheimnis!r}: {status} {antwort}"
+    for weg in ("/api/klartext/pseudo", "/api/aktion/gibt_es_nicht", "/api/irgendwas"):
+        assert ui_anfrage(port, weg, "POST", {"vorgang": "x"})[0] == 403, weg
+    # Der Startcode: einmal gegen das Geheimnis, falsch und ein zweites Mal nie
+    assert ui_anfrage(port, "/api/anmelden", "POST", {"startcode": "falsch"})[0] == 403 and ui_anfrage(port, "/api/anmelden", "POST", {})[0] == 403
+    status, _kopf, inhalt = ui_anfrage(port, "/api/anmelden", "POST", {"startcode": u["startcode"]})
+    assert status == 200 and json.loads(inhalt)["geheimnis"] == b.geheimnis and len(b.geheimnis) >= 40
+    status, _kopf, inhalt = ui_anfrage(port, "/api/anmelden", "POST", {"startcode": u["startcode"]})
+    assert status == 403 and b"geheimnis" not in inhalt.lower().replace(b"geheimnis der", b""), "der Startcode darf nur einmal gelten"
+    # Mit Geheimnis, aber falscher Form, von fremder Seite oder mit fremdem Host-Kopf: nichts
+    for kopf in ({"Content_Type": "text/plain"}, {"Content_Type": "application/x-www-form-urlencoded"}, {"Host": "boese.example"}, {"Origin": "https://boese.example"},
+                 {"Sec_Fetch_Site": "cross-site"}):
+        status, _antwort = aktion("freigabe", angaben, "richtig", **kopf)
+        assert status in (400, 403), f"{kopf}: {status}"
+    assert ui_anfrage(port, "/api/aktion/freigabe")[0] == 404 and ui_anfrage(port, "/api/aktion/freigabe", "PUT")[0] == 405, "Ändern geht nur mit POST"
+    assert json.loads(ui_anfrage(port, "/api/bedienung")[2])["aktiv"] is True and b.geheimnis.encode() not in ui_anfrage(port, "/api/bedienung")[2]
+    for f in (OBERFL, MUSTER):
+        assert akte_abdruck(PROJEKT / "faelle" / f) == vorher[f], f"{f} wurde verändert, obwohl das Geheimnis fehlte"
+    assert sorted(p.name for p in (PROJEKT / "faelle").iterdir()) == faelle_vorher
+    assert not ui_daten.Fall(OBERFL).freigaben()[0]["erteilt"]
+    # Das Geheimnis steht in keiner Datei des Projekts, nicht in der Umgebung, und nicht in der Umgebung der Werkzeuge, die der Server startet
+    assert not projekt_enthaelt(b.geheimnis, u["startcode"]), projekt_enthaelt(b.geheimnis, u["startcode"])
+    assert all(b.geheimnis not in w for w in os.environ.values()) and all(b.geheimnis not in w for w in ui_bedienung.umgebung().values())
+    assert "CLAUDECODE" not in ui_bedienung.umgebung()
+    # Die Ablage für Klartext liegt nie im Projekt
+    try:
+        ui_bedienung.Bedienung(PROJEKT / "ablage")
+        raise AssertionError("eine Ablage im Projektordner wurde angenommen")
+    except ui_bedienung.Fehler:
+        pass
+    # Bedienbar nur, wenn ein Mensch am Terminal startet: nicht ohne Terminal, nicht aus Claude Code, nicht mit --nur-lesen
+    alt = {k: os.environ.pop(k, None) for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}       # der Selbsttest kann selbst in einer Sitzung laufen
+    try:
+        assert "ohne Terminal" in oberflaeche_start.nur_lesen_grund(False) and "--nur-lesen" in oberflaeche_start.nur_lesen_grund(True)
+        os.environ["CLAUDECODE"] = "1"
+        assert "Claude Code" in oberflaeche_start.nur_lesen_grund(False)
+        del os.environ["CLAUDECODE"]
+        os.environ["CLAUDE_CODE_ENTRYPOINT"] = "cli"
+        assert "Claude Code" in oberflaeche_start.nur_lesen_grund(False)
+    finally:
+        for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
+            os.environ.pop(k, None)
+        os.environ.update({k: w for k, w in alt.items() if w is not None})
+    p = subprocess.Popen([sys.executable, "-u", str(PROJEKT / "tools" / "oberflaeche.py"), "--ohne-browser", "--port", "0"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         stdin=subprocess.DEVNULL, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    try:
+        zeilen = [p.stdout.readline(), p.stdout.readline()]
+        m = re.search(r"127\.0\.0\.1:(\d+)/", zeilen[0])
+        assert m and "nur lesen" in zeilen[1] and "#start=" not in "".join(zeilen), zeilen
+        nur_lesen = int(m.group(1))
+        status, kopf, _inhalt = ui_anfrage(nur_lesen, "/api/aktion/freigabe", "POST", angaben, X_OSINT_Geheimnis=b.geheimnis)
+        assert status == 405 and kopf.get("allow") == "GET, HEAD", "im Modus «nur lesen» darf es kein POST geben"
+        assert ui_anfrage(nur_lesen, "/api/anmelden", "POST", {"startcode": "x"})[0] == 405
+        assert json.loads(ui_anfrage(nur_lesen, "/api/bedienung")[2])["aktiv"] is False
+        assert "nur lesen" in json.loads(ui_anfrage(nur_lesen, "/api/neu")[2])["html"] and "form" not in Seite(json.loads(ui_anfrage(nur_lesen, "/api/neu")[2])["html"]).namen()
+        assert "form" not in Seite(json.loads(ui_anfrage(nur_lesen, f"/api/fall/{MUSTER}/bedienen")[2])["html"]).namen()
+    finally:
+        p.terminate()
+        p.wait(timeout=20)
+
+
+@test("Bedienung, Weg «geschwärzt»: PII-Prüfung, dann tools/fall.py. Bei Sperrfunden entsteht nichts, und die Seite zeigt die Stellen maskiert")
+def _():
+    u = bedien_vorbereiten()
+    aktion, dokument = u["aktion"], u["dokument"]
+    zwischen_vorher = sorted(p.name for p in Path(tempfile.gettempdir()).glob("osint-oberflaeche-*"))
+    # Ein Dokument mit Personendaten: abgelehnt, maskiert gezeigt, kein Fall
+    unsauber = GESCHWAERZT + "4. Erreichbar unter 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7.\n"
+    status, antwort = aktion("fall_anlegen", {"fall": "BEDIEN-0001", "titel": "Test", **dokument("rapport.txt", unsauber)})
+    assert status == 200 and antwort["aufgenommen"] is False and "SPERRE" in antwort["ausgabe"] and "nichts angelegt" in antwort["meldung"], antwort
+    assert "079 123 45 67" not in antwort["ausgabe"] and "6238 5295" not in antwort["ausgabe"], "die Fundstellen müssen maskiert sein"
+    assert not (PROJEKT / "faelle" / "BEDIEN-0001").exists(), "bei Sperrfunden darf kein Fall entstehen"
+    status, antwort = aktion("dokument_pruefen", dokument("rapport.txt", unsauber))
+    assert status == 200 and antwort["sauber"] is False and antwort["sperren"] >= 2
+    # Ein geschwärztes Dokument: Der Fall entsteht über tools/fall.py, das Dokument liegt geprüft im Eingang
+    status, antwort = aktion("fall_anlegen", {"fall": "BEDIEN-0001", "titel": "Phishing Kundenportal", "kuerzel": "MUS", "auftrag": "Infrastruktur klären",
+                                             **dokument("../../rapport geschwärzt.txt", GESCHWAERZT)})
+    assert status == 200 and antwort["aufgenommen"] is True, antwort
+    pfad = PROJEKT / "faelle" / "BEDIEN-0001"
+    stamm = json.loads(lesen(pfad / "fall.json"))
+    assert stamm["titel"] == "Phishing Kundenportal" and stamm["sachbearbeiter"] == "MUS" and stamm["eroeffnet"] and not any(f["erteilt"] for f in stamm["freigaben"].values())
+    register = json.loads(lesen(pfad / "eingang" / ".freigabe.json"))["dateien"]
+    assert list(register) == ["rapport geschwärzt.txt"] and register["rapport geschwärzt.txt"]["ergebnis"] == "sauber", register
+    assert lesen(pfad / "eingang" / "rapport geschwärzt.txt") == GESCHWAERZT and not list(PROJEKT.glob("rapport*")), "der Name des Dokuments darf nicht aus dem Eingang hinausführen"
+    assert not abgelehnt(waechter("Read", file_path=f"faelle/BEDIEN-0001/eingang/rapport geschwärzt.txt")), "ein über die Oberfläche aufgenommenes Dokument ist für Agenten lesbar"
+    # Weiteres Dokument nachziehen, und was nicht geht
+    status, antwort = aktion("dokument_aufnehmen", {"fall": "BEDIEN-0001", **dokument("nachtrag.md", "Nachtrag: [PERSON_02] bestätigt die Angaben.\n")})
+    assert status == 200 and antwort["aufgenommen"] is True and (pfad / "eingang" / "nachtrag.md").is_file()
+    status, antwort = aktion("dokument_aufnehmen", {"fall": "BEDIEN-0001", **dokument("nachtrag2.md", "Tel. 079 123 45 67\n")})
+    assert antwort["aufgenommen"] is False and not (pfad / "eingang" / "nachtrag2.md").exists()
+    for angaben, grund in (({"fall": "BEDIEN-0001", "titel": "x", **dokument("a.txt", GESCHWAERZT)}, "gibt es schon"), ({"fall": "../x", **dokument("a.txt", GESCHWAERZT)}, "Fall-ID"),
+                           ({"fall": "BEDIEN-0002", **dokument("a.exe", GESCHWAERZT)}, "Format"), ({"fall": "BEDIEN-0002", "name": "a.txt", "inhalt": "kein base64 !"}, "beschädigt"),
+                           ({"fall": "BEDIEN-0002", "name": "a.txt", "inhalt": ""}, "leer")):
+        status, antwort = aktion("fall_anlegen", angaben)
+        assert status == 400 and grund in antwort["fehler"], (grund, status, antwort)
+    assert not (PROJEKT / "faelle" / "BEDIEN-0002").exists()
+    # Die Schritte stehen im Sitzungsprotokoll, mit Zeit und dem Vermerk «Oberfläche». Zwischendateien bleiben keine liegen
+    sitzung, _meldungen = protokollwerkzeug.sitzungen_laden("BEDIEN-0001")
+    schritte = [(z["schritt"], z["weg"], z["agent"]) for z in sitzung if z.get("ereignis") == "Oberflaeche"]
+    assert schritte == [("Fall angelegt", "Oberfläche", "sachbearbeiter"), ("Dokument aufgenommen", "Oberfläche", "sachbearbeiter")] and all(z["zeit_utc"] for z in sitzung), schritte
+    assert sorted(p.name for p in Path(tempfile.gettempdir()).glob("osint-oberflaeche-*")) == zwischen_vorher, "eine Zwischendatei blieb liegen"
+    for ansicht in ("bedienen", "zurueck"):
+        text = json.loads(ui_anfrage(u["port"], f"/api/fall/BEDIEN-0001/{ansicht}")[2])["html"]
+        assert not verstoesse(text, "BEDIEN-0001") and "form" in Seite(text).namen(), ansicht
+    neu = json.loads(ui_anfrage(u["port"], "/api/neu")[2])["html"]
+    assert not verstoesse(neu, "x") and "schon geschwärzt" in neu and "Klartext" in neu and str(u["b"].ablage) in Seite(neu).text
+
+
+@test("Bedienung, Weg «Klartext»: lokaler Bildschirm, Entscheide, Ergebnis in PII-Prüfung und Fall. Klartext und Zuordnung bleiben ausserhalb des Projekts")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion, dokument = u["b"], u["port"], u["aktion"], u["dokument"]
+    dok = pruefsatz.rapport(3)
+    person = next(wert for typ, wert in dok.namen.values() if typ == "PERSON")
+    alle_namen = [wert for _typ, wert in dok.namen.values()]
+    status, antwort = aktion("pseudo_beginnen", dokument("rapport klartext.txt", dok.text))
+    assert status == 200 and antwort["vorgang"] and antwort["bekannt"] == 0, antwort
+    vorgang = antwort["vorgang"]
+    # Der Bildschirm mit Klartext: nur gegen das Geheimnis, deutlich gekennzeichnet, Fundstellen markiert, technische Indikatoren eigens
+    assert ui_anfrage(port, "/api/klartext/pseudo", "POST", {"vorgang": vorgang})[0] == 403
+    assert ui_anfrage(port, f"/api/klartext/{vorgang}")[0] == 404 and ui_anfrage(port, f"/api/fall/{OBERFL}/pseudo/{vorgang}")[0] == 404
+    status, _kopf, inhalt = ui_anfrage(port, "/api/klartext/pseudo", "POST", {"vorgang": vorgang}, X_OSINT_Geheimnis=b.geheimnis)
+    bildschirm = json.loads(inhalt)["html"]
+    seite = Seite(bildschirm)
+    assert status == 200 and "lokal, Klartext" in seite.text and person in seite.text and not verstoesse(bildschirm, "x")
+    marken = [a for t, a in seite.elemente if t == "mark" and "fund" in a.get("class", "")]
+    assert len(marken) > 15 and any("s-ersetzen" in a["class"] for a in marken) and any("s-offen" in a["class"] for a in marken), len(marken)
+    assert any(t == "span" and a.get("class") == "technik" for t, a in seite.elemente), "technische Indikatoren müssen als solche zu sehen sein"
+    # Entscheide: verwerfen, annehmen, ergänzen. Jede Eingabe rechnet neu
+    kandidaten = b.pseudo_holen(vorgang).vorgang.kandidaten()
+    assert len(kandidaten) >= 2
+    assert aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "verwerfen", "fund": kandidaten[0].id})[0] == 200
+    assert aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "annehmen", "fund": kandidaten[1].id})[0] == 200
+    assert len(b.pseudo_holen(vorgang).vorgang.kandidaten()) <= len(kandidaten) - 2
+    status, antwort = aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "ergaenzen", "wert": "Kommt Nichtvor", "typ": "PERSON"})
+    assert status == 400 and "kommt im Dokument nicht vor" in antwort["fehler"]
+    assert aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "unsinn"})[0] == 400 and aktion("pseudo_entscheid", {"vorgang": "gibt-es-nicht", "art": "verwerfen"})[0] == 404
+    for offen in b.pseudo_holen(vorgang).vorgang.kandidaten():
+        aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "annehmen", "fund": offen.id})
+    # Abschliessen: Das Ergebnis besteht die PII-Prüfung und kommt über tools/fall.py in den Fall, die Zuordnung in die Ablage
+    status, antwort = aktion("pseudo_abschliessen", {"vorgang": vorgang, "fall": "BEDIEN-0003", "titel": "Klartext-Weg", "kuerzel": "MUS"})
+    assert status == 200 and antwort["aufgenommen"] is True and antwort["platzhalter"] >= 5 and antwort["ersetzt"] >= 20, antwort
+    pfad = PROJEKT / "faelle" / "BEDIEN-0003"
+    ergebnis = lesen(pfad / "eingang" / "rapport klartext_pseudonymisiert.txt")
+    assert "[PERSON_01]" in ergebnis and not any(name in ergebnis for name in alle_namen), [n for n in alle_namen if n in ergebnis]
+    assert not [f for f in pii_pruefen(ergebnis)[0] if f.stufe == "sperre"]
+    for start, ende, art in dok.technik:
+        assert dok.text[start:ende] in ergebnis, f"technischer Indikator ({art}) fehlt im Ergebnis"
+    tabelle = Path(antwort["zuordnung"])
+    assert tabelle == b.ablage / "BEDIEN-0003" / "zuordnung.csv" and tabelle.is_file() and not ui_bedienung.innerhalb(tabelle)
+    paare = dict(ps.zuordnung_lesen(tabelle))
+    assert person in paare.values() and (WINDOWS or (tabelle.stat().st_mode & 0o077) == 0), "Zuordnungstabelle: vollständig und nur für den Benutzer lesbar"
+    assert aktion("pseudo_abschliessen", {"vorgang": vorgang, "fall": "BEDIEN-0003"})[0] == 404, "nach dem Abschluss ist der Klartext aus dem Speicher"
+    # Nichts vom Klartext steht im Projekt: nicht im Fall, in keinem Protokoll, in keiner Zwischendatei
+    ahv = next(dok.text[x.start:x.ende] for x in dok.gold if x.typ == "AHV")
+    assert ahv in dok.text and not projekt_enthaelt(person, ahv, ordner=("faelle", "protokoll")), projekt_enthaelt(person, ahv, ordner=("faelle", "protokoll"))
+    sitzung, _m = protokollwerkzeug.sitzungen_laden("BEDIEN-0003")
+    assert [z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche"] == ["Fall angelegt"] and "lokal pseudonymisiert" in sitzung[-1]["angabe"]
+    # Weiteres Dokument zum selben Fall: gleiche Angabe, gleicher Platzhalter
+    status, antwort = aktion("pseudo_beginnen", {"fall": "BEDIEN-0003", **dokument("nachtrag.txt", f"Nachtrag\n\n{person} wurde erneut befragt.\n")})
+    assert antwort["bekannt"] == len(paare)
+    platzhalter = next(p for p, klar in paare.items() if klar == person)
+    assert aktion("pseudo_abschliessen", {"vorgang": antwort["vorgang"], "fall": "BEDIEN-0003"})[1]["aufgenommen"] is True
+    assert platzhalter in lesen(pfad / "eingang" / "nachtrag_pseudonymisiert.txt") and person not in lesen(pfad / "eingang" / "nachtrag_pseudonymisiert.txt")
+    # Ein Ergebnis, das die PII-Prüfung nicht besteht, wird nicht aufgenommen
+    status, antwort = aktion("pseudo_beginnen", dokument("rest.txt", "Notiz\n\nRückruf erbeten auf 079 123 45 67.\n"))
+    v = b.pseudo_holen(antwort["vorgang"]).vorgang
+    for f in v.erk.funde:
+        v.verwerfen(f)
+    status, abschluss = aktion("pseudo_abschliessen", {"vorgang": antwort["vorgang"], "fall": "BEDIEN-0004"})
+    assert abschluss["aufgenommen"] is False and "SPERRE" in abschluss["ausgabe"] and "079 123 45 67" not in abschluss["ausgabe"] and not (PROJEKT / "faelle" / "BEDIEN-0004").exists()
+    assert aktion("pseudo_verwerfen", {"vorgang": antwort["vorgang"]})[0] == 200 and antwort["vorgang"] not in b.pseudo
+    # Zurückführen: der Rapport mit echten Angaben, nur in der Ablage und nur auf dem Bildschirm «lokal, Klartext»
+    plattform.text_schreiben(pfad / "rapport" / "Abschlussrapport.html", f"<html><body><div><b>Fassung</b>pseudonymisiert</div><p>{platzhalter} meldet den Vorfall. [ORG_99] bleibt.</p></body></html>")
+    status, antwort = aktion("zurueckfuehren", {"fall": "BEDIEN-0003"})
+    assert status == 200 and antwort["ersetzt"] == 1 and antwort["offen"] == ["[ORG_99]"] and not ui_bedienung.innerhalb(Path(antwort["ordner"])), antwort
+    karte = antwort["dateien"][0]["ticket"]
+    status, kopf, inhalt = ui_anfrage(port, f"/klartext/{karte}")
+    assert status == 200 and person.encode("utf-8") in inhalt and b"mit echten Angaben" in inhalt and "sandbox" in kopf["content-security-policy"] and "script-src" not in kopf["content-security-policy"]
+    assert ui_anfrage(port, f"/klartext/{karte}")[0] == 404 and ui_anfrage(port, "/klartext/geraten")[0] == 404, "eine Karte gilt für genau einen Abruf"
+    assert "lokal, Klartext" in json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0003/zurueck")[2])["html"]
+    assert not projekt_enthaelt(person, ordner=("faelle", "protokoll")), "der zurückgeführte Rapport darf nicht im Projekt liegen"
+    status, antwort = aktion("zurueckfuehren", {"fall": "BEDIEN-0003", "zuordnung": str(PROJEKT / "zuordnung.csv")})
+    assert status == 400 and "ausserhalb des Projektordners" in antwort["fehler"]
+    # Der Wächter hält Agenten weiter von beiden Werkzeugen fern, auch von den neuen Funktionen
+    for befehl in ("python3 -c \"from tools import reidentifizieren as r; r.zurueckfuehren('X', 'a', 'b')\"", "python3 tools/reidentifizieren.py X --zuordnung a --ausgabe b"):
+        assert abgelehnt(waechter("Bash", command=befehl)), befehl
+
+
+@test("Bedienung: Freigabe und Beleg von Hand nur mit Geheimnis, über die bestehenden Werkzeuge, mit Zeit und Vermerk «Oberfläche» im Protokoll")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion = u["b"], u["port"], u["aktion"]
+    fall = "BEDIEN-0001"
+    pfad = PROJEKT / "faelle" / fall
+    for angaben in ({"fall": fall, "art": "aktiv", "durch": "", "vermerk": "Auftrag"}, {"fall": fall, "art": "aktiv", "durch": "MUS", "vermerk": " "},
+                    {"fall": fall, "art": "alles", "durch": "MUS", "vermerk": "x"}, {"fall": "GIBT-ES-NICHT", "art": "aktiv", "durch": "MUS", "vermerk": "x"}):
+        status, antwort = aktion("freigabe", angaben)
+        assert status in (400, 404) and "fehler" in antwort, (angaben, status, antwort)
+    assert not any(f["erteilt"] for f in ui_daten.Fall(fall).freigaben())
+    status, antwort = aktion("freigabe", {"fall": fall, "art": "aktiv", "durch": "MUS, Sachbearbeiter", "vermerk": "Auftrag der Staatsanwaltschaft vom 16.11.2026"})
+    assert status == 200 and "erteilt" in antwort["meldung"], antwort
+    eintrag = json.loads(lesen(pfad / "fall.json"))["freigaben"]["aktiv"]
+    assert eintrag["erteilt"] is True and eintrag["durch"] == "MUS, Sachbearbeiter" and eintrag["weg"] == "Oberfläche" and eintrag["am"], eintrag
+    assert freigabe_erteilt(json.loads(lesen(pfad / "fall.json")), "aktiv") and not freigabe_erteilt(json.loads(lesen(pfad / "fall.json")), "darkweb")
+    kopf = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/kopf")[2])["html"]).text
+    assert "aktiv: erteilt durch MUS, Sachbearbeiter" in kopf
+    assert aktion("freigabe", {"fall": fall, "art": "aktiv", "entziehen": "1"})[0] == 200 and not json.loads(lesen(pfad / "fall.json"))["freigaben"]["aktiv"]["erteilt"]
+    # Der Weg am Terminal bleibt, wie er war: ohne Terminal keine Freigabe, und fall.json trägt dort keinen Vermerk «Oberfläche»
+    try:
+        fallwerkzeug.cmd_freigabe(argparse.Namespace(fall=fall, art="darkweb", durch="x", vermerk="y", entziehen=False))
+        raise AssertionError("eine Freigabe ohne Terminal wurde angenommen")
+    except fallwerkzeug.Fehler:
+        pass
+    assert "weg" not in fallwerkzeug.freigabe_setzen(fall, "personenbezug", durch="MUS", vermerk="Test am Terminal")
+    fallwerkzeug.freigabe_setzen(fall, "personenbezug", entziehen=True)
+    # Für Agenten bleibt beides gesperrt, auch der Aufruf der Funktionen an der Kommandozeile vorbei
+    for befehl in (f"python3 tools/fall.py freigabe {fall} aktiv --durch x --vermerk y", "python3 -c \"from tools import fall; fall.freigabe_setzen('X', 'aktiv', durch='a', vermerk='b')\"",
+                   "python -c 'from tools.fall import freigabe_setzen as f; f()'", f"python3 tools/beleg.py erfassen {fall}", "python3 -c \"from tools import beleg; beleg.erfassen('X')\"",
+                   "python3 -c 'from tools.beleg import erfassen'"):
+        assert abgelehnt(waechter("Bash", command=befehl)), f"nicht abgelehnt: {befehl}"
+    assert not abgelehnt(waechter("Bash", command=f"python3 tools/beleg.py zeigen {fall}")) and not abgelehnt(waechter("Bash", command=f"python3 tools/fall.py status {fall}"))
+    # Die Bedienschicht der Oberfläche ruft kein Agent aus der Shell auf: Dort gäbe es kein Geheimnis, das ihn aufhält.
+    # Die Oberfläche selbst startet er höchstens so, dass sie nichts ändern kann
+    for befehl in ("python3 -c \"from tools.ui import bedienung as b; b.Bedienung().freigabe({'fall': 'X', 'art': 'aktiv'})\"",
+                   "python3 -c 'from tools.ui.bedienung import Bedienung; Bedienung()'", "python -c \"import tools.ui.sitzung\"", "python3 tools/ui/sitzung.py",
+                   "python3 -c 'from tools.ui import server, sitzung'", "python3 -c \"x.zurueckfuehren({'fall': 'X'})\"", "python3 -c 'b.pseudo_beginnen({})'",
+                   f"python3 tools/oberflaeche.py {fall}", "python3 tools/oberflaeche.py --ohne-browser", "env -u CLAUDECODE script -qc 'python3 tools/oberflaeche.py' /dev/null",
+                   "python tools\\oberflaeche.py --sitzungsprobe", "python3 -m tools.oberflaeche", "python3 -X utf8 tools/oberflaeche.py --ablage /tmp/x",
+                   "/usr/bin/python3 tools/oberflaeche.py", ".venv/bin/python tools/oberflaeche.py --port 8800", "py -3 tools\\oberflaeche.py"):
+        for werkzeug in ("Bash", "PowerShell"):
+            antwort = waechter(werkzeug, command=befehl)
+            assert abgelehnt(antwort) and "nur der Sachbearbeiter" in json.dumps(antwort, ensure_ascii=False), f"nicht abgelehnt: {werkzeug} {befehl}"
+    for befehl in ("python3 tools/oberflaeche.py --nur-lesen", f"python3 tools/oberflaeche.py {fall} --nur-lesen --ohne-browser", "python tools\\oberflaeche.py --selbstpruefung",
+                   "git diff tools/oberflaeche.py", "ls tools/ui", "grep -n nur_lesen tools/fall.py tools/oberflaeche.py", "wc -l tools/ui/*.py tools/oberflaeche.py"):
+        assert not abgelehnt(waechter("Bash", command=befehl)), f"zu Unrecht abgelehnt: {befehl}"
+    # Die Ablage des Sachbearbeiters (Klartext, Zuordnungstabellen, zurückgeführte Dokumente) liest und verändert kein Agent:
+    # erkannt am Namen und, liegt sie woanders, an der Variablen OSINT_ABLAGE, die die Oberfläche ihren Sitzungen mitgibt
+    heim = str(Path.home() / "OSINT-Ablage" / fall)
+    for werkzeug, eingabe in (("Read", {"file_path": f"{heim}/zuordnung.csv"}), ("Read", {"file_path": "~/OSINT-Ablage/x/zurueckgefuehrt/Abschlussrapport.html"}),
+                              ("Read", {"file_path": "/sicher/2026-0412_zuordnung.csv"}), ("Glob", {"pattern": "**/zuordnung*.csv", "path": "/"}),
+                              ("Grep", {"pattern": "PERSON_01", "path": heim}), ("Grep", {"pattern": "x", "glob": "zuordnung.csv"}),
+                              ("Write", {"file_path": f"{heim}/zuordnung.csv", "content": "x"}), ("Edit", {"file_path": "C:\\Users\\x\\OSINT-Ablage\\F\\zuordnung.csv"}),
+                              ("Bash", {"command": f"cat {heim}/zuordnung.csv"}), ("Bash", {"command": "ls ~/osint-ablage"}), ("PowerShell", {"command": "Get-Content $HOME\\OSINT-Ablage\\x.txt"})):
+        antwort = waechter(werkzeug, **eingabe)
+        assert abgelehnt(antwort) and "Ablage des Sachbearbeiters" in json.dumps(antwort, ensure_ascii=False), f"nicht abgelehnt: {werkzeug} {eingabe}"
+    for werkzeug, eingabe in (("Glob", {"pattern": "**/zuordnung*"}), ("Glob", {"pattern": "/sicher/*zuordnung*.csv"}), ("Grep", {"pattern": "x", "glob": "**/zuordnung.*"})):
+        assert abgelehnt(waechter(werkzeug, **eingabe)), f"nicht abgelehnt: {werkzeug} {eingabe}"
+    for werkzeug, eingabe in (("Glob", {"pattern": "gateway/krypto_zuordnung*.py"}), ("Grep", {"pattern": "zuordnung.csv", "path": "docs"}),
+                              ("Read", {"file_path": str(PROJEKT / "gateway" / "krypto_zuordnung.py")}), ("Bash", {"command": "ls gateway/krypto_zuordnung.py"})):
+        assert not abgelehnt(waechter(werkzeug, **eingabe)), f"zu Unrecht abgelehnt: {werkzeug} {eingabe}"
+    eigene = Path(tempfile.mkdtemp(prefix="osint-eigene-"))
+    (eigene / "F").mkdir()
+    (eigene / "F" / "tabelle.txt").write_text("x", encoding="utf-8")
+    ereignis = {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": str(eigene / "F" / "tabelle.txt")}}
+    assert not abgelehnt(hook("waechter.py", ereignis)[1]), "ohne OSINT_ABLAGE kennt der Wächter einen frei gewählten Ordner nicht"
+    assert abgelehnt(hook("waechter.py", ereignis, env={"OSINT_ABLAGE": str(eigene)})[1])
+    assert abgelehnt(hook("waechter.py", {**ereignis, "tool_name": "Bash", "tool_input": {"command": f"cat {eigene}/F/tabelle.txt"}}, env={"OSINT_ABLAGE": str(eigene)})[1])
+    assert not abgelehnt(hook("waechter.py", {**ereignis, "tool_input": {"file_path": str(PROJEKT / "README.md")}}, env={"OSINT_ABLAGE": str(eigene)})[1])
+    alt_ablage = os.environ.pop("OSINT_ABLAGE", None)
+    try:
+        os.environ["OSINT_ABLAGE"] = str(eigene)
+        assert ui_bedienung.Bedienung().ablage == eigene and ui_bedienung.Bedienung(eigene / "anders").ablage == eigene / "anders"
+    finally:
+        os.environ.pop("OSINT_ABLAGE")
+        if alt_ablage is not None:
+            os.environ["OSINT_ABLAGE"] = alt_ablage
+    shutil.rmtree(eigene, ignore_errors=True)
+    # Beleg von Hand: über tools/beleg.py in die Kette, als «von Hand erfasst» gekennzeichnet
+    beleg_angaben = {"fall": fall, "indikator": "198.51.100.23", "typ": "ip", "quelle": "Beispiel-Dienst, Weboberfläche", "abgeklaert": "15.11.2026 14:30", "durch": "MUS",
+                     "wortlaut": "VPN-Ausgang des Dienstes Beispielnetz, zuletzt gesehen am 14.11.2026", "anonymisierung": "ja", "anon_art": "VPN", "dienst": "Beispielnetz"}
+    status, antwort = aktion("beleg", beleg_angaben)
+    assert status == 200 and antwort["beleg"] == "X-0001", antwort
+    eintrag = jsonl_lesen(pfad / "protokoll" / "extern.jsonl")[0]
+    assert eintrag["art"] == "von_hand" and eintrag["zweck"].endswith("erfasst mit tools/beleg.py über die Oberfläche") and kette_pruefen(fall)["ok"], eintrag["zweck"]
+    assert "von Hand" in ui_seiten.beleg_seite(ui_daten.Fall(fall), "X-0001")
+    for aenderung, grund in (({"wortlaut": "Anschlussinhaber erreichbar unter 079 123 45 67"}, "Personendaten"), ({"indikator": "[PERSON_01]"}, "Platzhalter"),
+                             ({"abgeklaert": "irgendwann"}, ""), ({"anonymisierung": "nein"}, "nein"), ({"durch": ""}, "Durch")):
+        status, antwort = aktion("beleg", {**beleg_angaben, **aenderung})
+        assert status == 400 and grund in antwort["fehler"], (aenderung, status, antwort)
+    assert len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl")) == 1
+    # Dokumente erzeugen und Kette prüfen: Die Oberfläche ruft die Werkzeuge auf und zeigt ihre Ausgabe
+    status, antwort = aktion("dokumente", {"fall": fall, "was": "kette"})
+    assert status == 200 and antwort["gelungen"] is True and antwort["ausgabe"], antwort
+    status, antwort = aktion("dokumente", {"fall": fall, "was": "protokoll"})
+    assert antwort["gelungen"] is True and (pfad / "rapport" / "Ermittlungsprotokoll.html").is_file(), antwort
+    protokoll_html = lesen(pfad / "rapport" / "Ermittlungsprotokoll.html")
+    for stueck in ("Oberfläche: Freigabe erteilt: aktiv", "Oberfläche: Freigabe entzogen: aktiv", "Oberfläche: Beleg von Hand erfasst: X-0001", "über die Oberfläche", "sachbearbeiter"):
+        assert stueck in Seite(protokoll_html).text, f"im Ermittlungsprotokoll fehlt: {stueck}"
+    status, antwort = aktion("dokumente", {"fall": fall, "was": "rapport"})
+    assert status == 200 and antwort["gelungen"] is False and "befunde.json" in antwort["ausgabe"], "ohne Befunde gibt es keinen Rapport, und die Seite sagt warum"
+    status, antwort = aktion("dokumente", {"fall": fall, "was": "anhang"})
+    assert antwort["gelungen"] is True and (pfad / "rapport" / "Datenblaetter.html").is_file()
+    assert aktion("dokumente", {"fall": fall, "was": "loeschen"})[0] == 400
+    sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
+    schritte = [z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche"]
+    assert schritte[2:5] == ["Freigabe erteilt: aktiv", "Freigabe entzogen: aktiv", "Beleg von Hand erfasst: X-0001"] and "Protokollkette prüfen" in schritte, schritte
+    # Die Oberfläche selbst schreibt weder Protokoll noch Rohdaten noch fall.json: Im Quelltext der Bedienung kommen diese Dateien nicht als Ziel vor
+    for datei in ("bedienung.py", "sitzung.py", "formulare.py", "rueckfrage.py"):
+        quelltext = lesen(PROJEKT / "tools" / "ui" / datei)
+        assert "abfragen.jsonl" not in quelltext and "extern.jsonl" not in quelltext and not re.search(r"schreiben\(\s*[^)]*fall\.json", quelltext), datei
+        assert not re.search(r"(write_text|write_bytes|text_schreiben|zeile_anhaengen)\([^\n]*(faelle|FAELLE|fall_pfad|rohdaten|protokoll)", quelltext), datei
+
+
+@test("Bedienung, Ermittlung: Sitzung im Projektordner ohne abschaltende Schalter, Rückfrage als Dialog, Antwort im Protokoll, anhalten und fortsetzen")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion, merker = u["b"], u["port"], u["aktion"], u["merker"]
+    fall = "BEDIEN-0001"
+    pfad = PROJEKT / "faelle" / fall
+
+    def stand() -> dict:
+        return json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])
+
+    def warten(bedingung, sekunden: float = 30) -> dict:
+        ende = time.time() + sekunden
+        while time.time() < ende:
+            s = stand()
+            if bedingung(s):
+                return s
+            time.sleep(0.1)
+        raise AssertionError(f"Zustand nicht erreicht: {stand()['status']} {Seite(stand()['html']).text[:300]}")
+    assert stand()["status"] == "aus" and ui_sitzung.verfuegbar() == ""
+    status, antwort = aktion("ermittlung_starten", {"fall": fall})
+    assert status == 200, antwort
+    s = warten(lambda x: x["frage"])
+    dialog = Seite(s["html"])
+    assert s["status"] == "wartet" and "Claude Code fragt nach" in dialog.text and "mcp__osint__urlquery_einreichen" in dialog.text and "kundenportal.example/login" in dialog.text
+    assert not verstoesse(s["html"], fall) and not any(t == "a" and "kundenportal" in a.get("href", "") for t, a in dialog.elemente)
+    frage = next(a["value"] for t, a in dialog.elemente if t == "input" and a.get("name") == "frage")
+    # Beantworten kann nur, wer das Geheimnis hat. Die Karte der Sitzung taugt nur zum Fragen
+    karte = b.ermittlungen[fall].karte
+    for geheimnis in (None, karte, "falsch"):
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": frage, "erlauben": "1"}, geheimnis)[0] == 403
+    assert stand()["frage"], "eine Antwort ohne Geheimnis darf die Rückfrage nicht erledigen"
+    assert aktion("ermittlung_antworten", {"fall": fall, "frage": "andere", "erlauben": "1"})[0] == 404
+    status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": frage, "erlauben": "1"})
+    assert status == 200 and "Erlaubt" in antwort["meldung"], antwort
+    s = warten(lambda x: x["status"] == "beendet")
+    text = Seite(s["html"]).text
+    assert "infrastruktur-analyst" in text and "shodan_host 203.0.113.7" in text and "Entscheid: allow" in text and json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["model"] in text, text[:600]
+    merk = json.loads(lesen(merker))
+    # Die Sitzung lief im Projektordner, mit /ermittlung, ohne Schalter, die Einstellungen, Hooks, MCP-Server oder das Modell umstellen
+    argv = merk["argv"]
+    assert Path(merk["cwd"]).resolve() == PROJEKT.resolve() and argv[argv.index("-p") + 1] == f"/ermittlung {fall}", (merk["cwd"], argv[:3])
+    assert argv[argv.index("--output-format") + 1] == "stream-json" and argv[argv.index("--permission-prompt-tool") + 1] == "mcp__oberflaeche__rueckfrage"
+    verboten = {"--bare", "--safe-mode", "--restricted", "--setting-sources", "--strict-mcp-config", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+                "--model", "--fallback-model", "--permission-mode", "--disable-slash-commands", "--settings", "--allowedTools", "--allowed-tools", "--tools", "--agents", "--system-prompt"}
+    assert not verboten & set(argv), verboten & set(argv)
+    # Das Geheimnis steht nicht in der Umgebung der Sitzung, nicht in ihren Argumenten und nicht in der Konfiguration ihres MCP-Servers
+    alles = json.dumps(merk, ensure_ascii=False)
+    assert b.geheimnis not in alles and u["startcode"] not in alles and "CLAUDECODE" not in merk["umgebung"] and merk["umgebung"]["CLAUDE_PROJECT_DIR"] == str(PROJEKT)
+    assert merk["umgebung"]["OSINT_ABLAGE"] == str(b.ablage), "die Sitzung muss wissen, welchen Ordner ihr Wächter sperrt"
+    assert set(merk["konfiguration"]["mcpServers"]) == {"oberflaeche"} and not ui_bedienung.innerhalb(Path(argv[argv.index("--mcp-config") + 1]))
+    # Der «Agent» in der Sitzung hat versucht, sich selbst eine Freigabe zu erteilen und einen Beleg zu erfassen: abgewiesen, nichts geändert
+    assert merk["versuche"] == {"ohne": 403, "karte": 403, "anmelden": 403, "beleg": 403}, merk["versuche"]
+    assert not any(f["erteilt"] for f in ui_daten.Fall(fall).freigaben()) and len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl")) == 1
+    assert merk["entscheid"] == {"behavior": "allow", "updatedInput": {"fall": fall, "url": "https://kundenportal.example/login", "zweck": "aktueller Stand"}}
+    # Zweiter Lauf: ablehnen. Dritter: niemand antwortet, das gilt als abgelehnt
+    assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+    s = warten(lambda x: x["frage"])
+    frage = next(a["value"] for t, a in Seite(s["html"]).elemente if t == "input" and a.get("name") == "frage")
+    assert aktion("ermittlung_antworten", {"fall": fall, "frage": frage, "erlauben": ""})[0] == 200
+    warten(lambda x: x["status"] == "beendet")
+    assert json.loads(lesen(merker))["entscheid"]["behavior"] == "deny" and "abgelehnt" in json.loads(lesen(merker))["entscheid"]["message"]
+    wartezeit, ui_sitzung.WARTEZEIT = ui_sitzung.WARTEZEIT, 1
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        warten(lambda x: x["status"] == "beendet")
+        assert "nicht rechtzeitig" in json.loads(lesen(merker))["entscheid"]["message"]
+    finally:
+        ui_sitzung.WARTEZEIT = wartezeit
+    # Start, Rückfragen und Antworten stehen im Sitzungsprotokoll, mit Zeit und dem Vermerk «Oberfläche»
+    sitzung, meldungen = protokollwerkzeug.sitzungen_laden(fall)
+    schritte = Counter(z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche" and z.get("weg") == "Oberfläche"
+                       and (z["schritt"].startswith("Ermittlung ge") or "Rückfrage" in z["schritt"]))
+    assert schritte == {"Ermittlung gestartet": 3, "Rückfrage erlaubt": 1, "Rückfrage abgelehnt": 1} and not meldungen, (schritte, meldungen)
+    antwort_eintrag = next(z for z in sitzung if z.get("schritt") == "Rückfrage erlaubt")
+    assert "urlquery_einreichen" in str(antwort_eintrag["angabe"]) and antwort_eintrag["zeit_utc"] and antwort_eintrag["sitzung"] == "11111111-2222-4333-8444-555555555555"
+    # Anhalten und fortsetzen: dieselbe Sitzung geht weiter
+    os.environ["OSINT_FAKE_LANG"] = "1"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        warten(lambda x: x["status"] == "laeuft" and "Das dauert." in Seite(x["html"]).text)
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 400, "eine zweite Ermittlung zum selben Fall darf nicht nebenher starten"
+        assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 200 and warten(lambda x: x["status"] == "angehalten")
+    finally:
+        os.environ.pop("OSINT_FAKE_LANG")
+    assert aktion("ermittlung_fortsetzen", {"fall": fall})[0] == 200
+    s = warten(lambda x: x["status"] == "beendet")
+    argv = json.loads(lesen(merker))["argv"]
+    assert argv[argv.index("--resume") + 1] == "11111111-2222-4333-8444-555555555555" and "Ich fahre fort" in Seite(s["html"]).text
+    b.ermittlungen[fall].prozess.wait(timeout=20)       # das Ereignis «result» kommt kurz vor dem Ende des Prozesses
+    assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 400, "wo nichts läuft, gibt es nichts anzuhalten"
+    assert aktion("ermittlung_fortsetzen", {"fall": OBERFL})[0] == 400, "ohne frühere Sitzung gibt es nichts fortzusetzen"
+    # Der MCP-Server der Rückfrage: ohne erreichbare Oberfläche oder mit falscher Karte lehnt er ab
+    for umgebung in ({"OSINT_RUECKFRAGE_PORT": "1", "OSINT_RUECKFRAGE_KARTE": "x", "OSINT_RUECKFRAGE_FALL": fall},
+                     {"OSINT_RUECKFRAGE_PORT": str(port), "OSINT_RUECKFRAGE_KARTE": "falsch", "OSINT_RUECKFRAGE_FALL": fall}, {}):
+        alt = {k: os.environ.pop(k, None) for k in ("OSINT_RUECKFRAGE_PORT", "OSINT_RUECKFRAGE_KARTE", "OSINT_RUECKFRAGE_FALL")}
+        os.environ.update(umgebung)
+        try:
+            assert ui_rueckfrage.fragen("mcp__osint__wayback_sichern", {"url": "https://example.org/"})["behavior"] == "deny"
+        finally:
+            for k in umgebung:
+                os.environ.pop(k, None)
+            os.environ.update({k: w for k, w in alt.items() if w is not None})
+    # Die Antwort des MCP-Servers an Claude Code: genau ein Textblock mit JSON, kein «structuredContent» daneben (sonst verwirft Claude Code sie)
+    antwort = asyncio.run(ui_rueckfrage.bauen().call_tool("rueckfrage", {"tool_name": "mcp__osint__wayback_sichern", "input": {"url": "https://example.org/"}}))
+    assert not isinstance(antwort, tuple), "das MCP-SDK hängt der Antwort strukturierte Daten an"
+    bloecke = list(getattr(antwort, "content", antwort))
+    assert len(bloecke) == 1 and bloecke[0].type == "text" and json.loads(bloecke[0].text)["behavior"] == "deny", bloecke
+    assert getattr(antwort, "structured_content", None) is None and getattr(antwort, "structuredContent", None) is None
+    gross = {"text": "x" * (ui_rueckfrage.GROSSE_EINGABE + 10)}
+    assert len(json.dumps({"behavior": "allow"})) < 30 and ui_rueckfrage.GROSSE_EINGABE <= 20_000 and len(json.dumps(gross)) > ui_rueckfrage.GROSSE_EINGABE
+    # Meldet Claude Code beim Start, dass das Gateway des Projekts nicht geladen ist, beendet die Oberfläche die Sitzung sofort.
+    # (Die Dokumentation kündigt an, dass der Skriptbetrieb die Einstellungen des Projekts künftig von sich aus weglässt.)
+    assert ui_sitzung.pflicht_server() == ["osint"]
+    os.environ["OSINT_FAKE_OHNE_PROJEKT"] = "1"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["status"] == "fehler")
+        b.ermittlungen[fall].prozess.wait(timeout=20)
+        text = Seite(stand()["html"]).text
+        assert "nicht geladen" in text and "osint" in text and "am Terminal starten" in text and "Ich arbeite ohne Projekt." not in text, text[:500]
+        assert b.ermittlungen[fall].fragen("mcp__osint__wayback_sichern", {}, "x") == {"erlauben": False, "grund": "Die Oberfläche hat diese Sitzung beendet."}
+    finally:
+        os.environ.pop("OSINT_FAKE_OHNE_PROJEKT")
+    # Über welchen Zugang abgerechnet wird, sagt die Seite vor dem Start. Sie nennt nur den Namen der Variablen, nie einen Wert
+    wert = "sk-probe-" + "9" * 24
+    faelle = [({}, "anmeldung", ""), ({"ANTHROPIC_API_KEY": wert}, "api", "ANTHROPIC_API_KEY"), ({"ANTHROPIC_API_KEY": wert, "CLAUDE_CODE_USE_BEDROCK": "1"}, "cloud", "CLAUDE_CODE_USE_BEDROCK"),
+              ({"ANTHROPIC_AUTH_TOKEN": wert, "ANTHROPIC_API_KEY": wert}, "api", "ANTHROPIC_AUTH_TOKEN"), ({"CLAUDE_CODE_OAUTH_TOKEN": wert}, "abo", "CLAUDE_CODE_OAUTH_TOKEN"),
+              ({"ANTHROPIC_API_KEY": "  "}, "anmeldung", "")]
+    for umgebung, art, variable in faelle:
+        a = ui_sitzung.abrechnung(umgebung)
+        assert (a["art"], a["variable"]) == (art, variable) and wert not in json.dumps(a) and a["text"].startswith("Abrechnung: "), (umgebung.keys(), a)
+    assert "nach Verbrauch" in ui_sitzung.abrechnung({"ANTHROPIC_API_KEY": wert})["text"] and "Abo" in ui_sitzung.abrechnung({})["text"]
+    alt_schluessel = os.environ.pop("ANTHROPIC_API_KEY", None)
+    try:
+        os.environ["ANTHROPIC_API_KEY"] = wert
+        seite = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"])
+        assert "über die API, nach Verbrauch" in seite.text and "ANTHROPIC_API_KEY" in seite.text and wert not in json.dumps(seite.text)
+    finally:
+        os.environ.pop("ANTHROPIC_API_KEY")
+        if alt_schluessel is not None:
+            os.environ["ANTHROPIC_API_KEY"] = alt_schluessel
+    # Ohne Claude Code auf dem Rechner sagt die Seite das, statt zu scheitern
+    alt_programm = os.environ.pop("OSINT_CLAUDE")
+    weg, os.environ["PATH"] = os.environ["PATH"], ""
+    try:
+        assert "nicht gefunden" in ui_sitzung.verfuegbar() and aktion("ermittlung_starten", {"fall": OBERFL})[0] == 400
+        assert "nicht gefunden" in Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"]).text
+    finally:
+        os.environ["OSINT_CLAUDE"], os.environ["PATH"] = alt_programm, weg
+    # Die Probe für den eigenen Arbeitsplatz (--sitzungsprobe) liest aus den Ereignissen einer echten Sitzung, ob die Sperren gegriffen haben
+    def aufruf(kennung: str, name: str, eingabe: dict) -> dict:
+        return {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": kennung, "name": name, "input": eingabe}]}}
+
+    def ergebnis(kennung: str, text: str, fehler: bool) -> dict:
+        return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "content": text, "is_error": fehler}]}}
+    freigabe_befehl = {"command": f"python3 tools/fall.py freigabe {fall} aktiv --durch probe --vermerk probe"}
+    gesperrt = [aufruf("a", "Bash", freigabe_befehl), ergebnis("a", "Freigaben sind Entscheidungen des Sachbearbeiters.", True),
+                aufruf("b", "Bash", {"command": "ls -la .env"}), ergebnis("b", "Die Schlüsseldatei .env wird von Agenten weder gelesen noch verändert.", True)]
+    punkte = ui_sitzung.probe_auswerten("waechter", gesperrt, [], True)
+    assert [gut for gut, _ in punkte] == [True, True, True] and "abgelehnt" in punkte[0][1] and "Sachbearbeiters" in punkte[0][1], punkte
+    durchgelassen = [aufruf("a", "Bash", freigabe_befehl), ergebnis("a", "Freigabe 'aktiv' erteilt durch probe.", False)]
+    punkte = ui_sitzung.probe_auswerten("waechter", durchgelassen, [], False)
+    assert [gut for gut, _ in punkte] == [False, False, False] and "AUSGEFÜHRT" in punkte[0][1] and "nicht versucht" in punkte[1][1] and "VERÄNDERT" in punkte[2][1], punkte
+    ohne_ergebnis = [aufruf("a", "Bash", freigabe_befehl), aufruf("b", "Bash", {"command": "ls -la .env"}), {"type": "result", "permission_denials": [{"tool_use_id": "a"}, {"tool_use_id": "b"}]}]
+    assert all(gut for gut, _ in ui_sitzung.probe_auswerten("waechter", ohne_ergebnis, [], True))
+    assert [g for g, _ in ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "abgelehnt", True)], [{"werkzeug": "WebSearch"}], True)] == [True, True]
+    assert ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "Treffer …", False)], [], True) == \
+        [(False, "Bei der Oberfläche kam keine Rückfrage an."), (False, "Nach der Ablehnung in der Oberfläche: AUSGEFÜHRT. Meldung: Treffer …")]
+    ausgabe = io.StringIO()
+    with contextlib.redirect_stderr(ausgabe):
+        assert oberflaeche_start.sitzungsprobe(MUSTER, "ohne Terminal gestartet", None) == 2 and "nur, wenn ein Mensch" in ausgabe.getvalue()
+    # Die Einstellungen des Projekts verlangen für aktive Massnahmen weiter eine Rückfrage, und nichts in der Steuerung stellt ein Modell um
+    einstellungen = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))
+    assert {"mcp__osint__urlquery_einreichen", "mcp__osint__urlscan_einreichen", "mcp__osint__wayback_sichern", "mcp__osint__webcheck_aktiv"} <= set(einstellungen["permissions"]["ask"])
+    assert "--model" not in lesen(PROJEKT / "tools" / "ui" / "sitzung.py").replace('"--model", "--fallback-model"', "")
+
+
+@test("Bedienung, Quellen: Bereitschaft, Testabfrage je Quelle und Stand der Listen. Von Schlüsseln zeigt die Seite nur den Namen der Variablen")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion = u["b"], u["port"], u["aktion"]
+    seite_ = json.loads(ui_anfrage(port, "/api/quellen")[2])["html"]
+    text = Seite(seite_).text
+    assert "SHODAN_API_KEY" in text and "ABUSEIPDB_API_KEY" in text and os.environ["SHODAN_API_KEY"] not in seite_, "nur der Name der Variablen, nie der Schlüssel"
+    assert "Testabfrage" in text and "Lokale Listen" in text and "Prüfsumme" in text and not verstoesse(seite_, "x")
+    assert sum(1 for t, a in Seite(seite_).elemente if t == "form" and a.get("data-aktion") == "quelle_testen") >= 5
+    # Die Testabfrage läuft wie tools/pruefen.py --live: ein eigener Prozess, das Gateway, die Fallakte SELBSTTEST. Hier ohne Netz: Der Prozess ist gestellt
+    aufrufe = []
+
+    def gestellt(befehl, **kw):
+        aufrufe.append((befehl, kw))
+        plan = json.loads(befehl[-1])[0]
+        zeile = {"quelle": plan["quelle"], "werkzeug": plan["werkzeug"], "ergebnis": "ok", "fehler": None, "id": "P-0007", "kurz": "Suchen heute 0 von 1000" if plan["werkzeug"] == "urlscan_kontingent" else None}
+        return subprocess.CompletedProcess(befehl, 0, json.dumps(zeile) + "\n", "")
+    echt, ui_bedienung.subprocess.run = ui_bedienung.subprocess.run, gestellt
+    try:
+        status, antwort = aktion("quelle_testen", {"quelle": "Shodan InternetDB"})
+        assert status == 200 and antwort["gelungen"] is True and "P-0007" in antwort["meldung"] and "SELBSTTEST" in antwort["meldung"], antwort
+        befehl, kw = aufrufe[-1]
+        assert json.loads(befehl[-1]) == [{"quelle": "Shodan InternetDB", "werkzeug": "shodan_internetdb", "argumente": {"ip": "8.8.8.8"}}] and kw["cwd"] == str(PROJEKT)
+        assert b.geheimnis not in json.dumps(kw["env"]) and "from gateway import server, kern" in befehl[-3]
+        status, antwort = aktion("quelle_testen", {"quelle": "urlscan.io", "kontingent": "1"})
+        assert antwort["kurz"] == "Suchen heute 0 von 1000" and json.loads(aufrufe[-1][0][-1])[0]["werkzeug"] == "urlscan_kontingent"
+        assert aktion("quelle_testen", {"quelle": "Gibt es nicht"})[0] == 400
+    finally:
+        ui_bedienung.subprocess.run = echt
+    assert len(aufrufe) == 2
+    u["server"].shutdown()
+    u["server"].server_close()
 
 
 # --------------------------------------------------------------------------- Ausgabe

@@ -64,6 +64,15 @@ SHELLS = ("Bash", "PowerShell", "Monitor")
 EINGANG = re.compile(r"(?:^|/)faelle/([^/]+)/eingang(?:/(.+))?$", re.I)
 SCHLUESSEL_IM_BEFEHL = re.compile(r"(?<![\w-])\.env(\.local)?(?![\w.-])")       # .env und .env.local, nicht .env.example
 FALLWERKZEUG = re.compile(r"\s*\S*py(thon[\d.]*)?(\.exe)?\s+\S*tools/fall\.py\s[^;&|`$<>]*", re.I)
+# Die Bedienung der Oberfläche gehört dem Sachbearbeiter (tools/ui/bedienung.py, sitzung.py). Über sie gehen Freigaben, Belege von Hand,
+# Pseudonymisieren und Zurückführen, und die Oberfläche schützt sie mit einem Geheimnis. Ein Aufruf aus der Shell ginge daran vorbei.
+BEDIENSCHICHT = re.compile(r"tools[/.]ui[/.](bedienung|sitzung|rueckfrage)|import[^;\n]*\b(bedienung|sitzung|rueckfrage)\b"
+                           r"|\bBedienung\s*\(|zurueckfuehren|pseudo_(beginnen|entscheid|abschliessen)", re.I)
+OBERFLAECHE_START = re.compile(r"(^|[\s;&|(/'\"])py(thon[\d.]*)?(\.exe)?['\"]?\s[^;&|\n]*oberflaeche\.py|-m\s+tools[./]oberflaeche", re.I)
+OBERFLAECHE_LESEND = re.compile(r"--(nur-lesen|selbstpruefung)(\s|$)", re.I)
+# Die Ablage des Sachbearbeiters liegt ausserhalb des Projekts: Klartext, Zuordnungstabellen, zurückgeführte Dokumente.
+ABLAGE_NAME = re.compile(r"osint-ablage|zuordnung[\w.*?\[\]-]*\.csv", re.I)
+ABLAGE_MUSTER = re.compile(r"(^|[/*?])zuordnung([*?.\[]|$)", re.I)      # Suchmuster nach Dateinamen, die mit «zuordnung» beginnen
 NETZ = re.compile(r"(^|[\s;&|(`$'\"])(curl|wget|nc|ncat|ssh|scp|sftp|telnet|ftp|iwr|irm|invoke-webrequest|"
                   r"invoke-restmethod|start-bitstransfer|bitsadmin)(\.exe)?(\s|$)"
                   r"|net\.webclient|system\.net\.http|certutil(\.exe)?\s.*-urlcache", re.I)
@@ -90,6 +99,26 @@ def relativ(pfad: str, cwd: str) -> str | None:
         return None
 
 
+def ablage_pruefen(text: str, muster: bool = False) -> None:
+    """Lehnt ab, wenn ein Pfad, ein Suchmuster oder ein Befehl in die Ablage des Sachbearbeiters zeigt. Erkannt wird sie am Namen
+    (Ordner «OSINT-Ablage», Dateien «zuordnung….csv») und, liegt sie woanders, an der Variablen OSINT_ABLAGE."""
+    t = text.replace("\\", "/")
+    treffer = bool(ABLAGE_NAME.search(t)) or (muster and bool(ABLAGE_MUSTER.search(t)))
+    eigen = os.environ.get("OSINT_ABLAGE", "").strip()
+    if eigen and not treffer:
+        ordner = Path(eigen).expanduser()
+        treffer = ordner.as_posix().rstrip("/").lower() in t.lower()
+        if not treffer:
+            try:
+                Path(text.strip().strip("\"'")).expanduser().resolve().relative_to(ordner.resolve())
+                treffer = True
+            except (ValueError, OSError):
+                pass
+    if treffer:
+        ablehnen("Die Ablage des Sachbearbeiters (Klartext, Zuordnungstabellen, zurückgeführte Dokumente) liest und verändert kein "
+                 "Agent. Im Fall stehen Platzhalter, und dabei bleibt es.")
+
+
 def faelle_vorhanden() -> list[str]:
     return [p.name for p in FAELLE.iterdir() if p.is_dir()] if FAELLE.is_dir() else []
 
@@ -112,6 +141,7 @@ def eingang_pruefen(fall: str, nur_datei: str | None = None) -> None:
 
 
 def lesen(pfad: str, cwd: str, verzeichnis_erlaubt: bool) -> None:
+    ablage_pruefen(pfad)
     rel = relativ(pfad, cwd)
     if rel is None:
         # Der Pfad liess sich dem Projekt nicht zuordnen. Sieht er trotzdem nach einem Eingang aus, gilt die Prüfung.
@@ -130,6 +160,7 @@ def lesen(pfad: str, cwd: str, verzeichnis_erlaubt: bool) -> None:
 
 
 def schreiben(pfad: str, cwd: str) -> None:
+    ablage_pruefen(pfad)
     rel = relativ(pfad, cwd)
     if rel is None:
         return
@@ -147,7 +178,7 @@ def schreiben(pfad: str, cwd: str) -> None:
 
 def shell(befehl: str) -> None:
     b = befehl.replace("\\", "/")
-    if re.search(r"fall\.py\s+freigabe|--trotzdem", b, re.I):
+    if re.search(r"fall\.py\s+freigabe|--trotzdem|freigabe_setzen", b, re.I):
         ablehnen("Freigaben und das Übersteuern der PII-Prüfung sind Entscheidungen des Sachbearbeiters. "
                  "Er führt den Befehl selbst am Terminal aus.")
     if SCHLUESSEL_IM_BEFEHL.search(b):
@@ -159,7 +190,11 @@ def shell(befehl: str) -> None:
         ablehnen("Pseudonymisieren und Zurückführen macht der Sachbearbeiter selbst, an einem eigenen Terminal ausserhalb von "
                  "Claude Code (tools/pseudonymisieren.py, tools/reidentifizieren.py). Ein Agent führt sie nicht aus und liest "
                  "weder Klartext-Dokumente noch die Zuordnungstabelle.")
-    if re.search(r"beleg\.py\s+erfassen", b, re.I):
+    if BEDIENSCHICHT.search(b) or (OBERFLAECHE_START.search(b) and not OBERFLAECHE_LESEND.search(b)):
+        ablehnen("Die Oberfläche bedient nur der Sachbearbeiter, aus dem Fenster, das er selbst geöffnet hat. Ein Agent ruft ihre "
+                 f"Bedienschicht nicht auf und startet sie höchstens zum Ansehen: {plattform.PY} tools/oberflaeche.py --nur-lesen")
+    ablage_pruefen(b)
+    if re.search(r"beleg\.py\s+erfassen|\bbeleg\b.{0,60}\berfassen\b", b, re.I):
         ablehnen("Einen Beleg von Hand erfasst nur der Sachbearbeiter am Terminal (tools/beleg.py). Ein Agent schreibt sich "
                  "keinen Beleg selbst. Fehlt eine Abklärung, steht sie im Rapport als «nicht geprüft».")
     if not aufbau() and re.search(r"einrichten\.py|(^|[\s/;&|(])setup\.(sh|ps1|cmd)\b", b, re.I):
@@ -196,6 +231,8 @@ def main() -> None:
         lesen(str(eingabe.get("file_path") or ""), cwd, verzeichnis_erlaubt=False)
     elif werkzeug in ("Grep", "Glob"):
         # Auch eine Dateiliste verrät etwas: Der Name eines ungeprüften Dokuments kann eine Person nennen
+        # Auch ein Suchmuster für Dateinamen kann in die Ablage zeigen (bei Grep sucht «pattern» im Inhalt, nicht nach Namen)
+        ablage_pruefen(str(eingabe.get("pattern" if werkzeug == "Glob" else "glob") or ""), muster=True)
         lesen(str(eingabe.get("path") or "."), cwd, verzeichnis_erlaubt=True)
     elif werkzeug in ("Edit", "Write", "NotebookEdit"):
         schreiben(str(eingabe.get("file_path") or eingabe.get("notebook_path") or ""), cwd)

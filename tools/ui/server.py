@@ -3,7 +3,8 @@
 Schutz, nicht verhandelbar:
   - Der Server hört nur auf 127.0.0.1. Anfragen mit fremdem Host-Kopf weist er ab (Schutz vor DNS-Rebinding),
     ebenso Anfragen, die eine fremde Seite auslöst (Origin, Sec-Fetch-Site).
-  - Er kennt nur GET und HEAD. Es gibt keinen Weg, über ihn etwas zu schreiben.
+  - Lesen geht mit GET und HEAD. Ändern geht nur mit POST und nur mit dem Geheimnis, das beim Start entsteht
+    (tools/ui/bedienung.py). Läuft die Oberfläche im Modus «nur lesen», gibt es keinen Weg, über sie etwas zu ändern.
   - Die Seite lädt nichts von aussen (Content-Security-Policy). Skripte kommen nur aus der eigenen Datei app.js.
   - Rohdateien liefert er als Text oder als Bild aus, nie als HTML. Was aus einer Quelle stammt, wird nicht ausgeführt.
   - Gespeicherte Dokumente der Akte (Abschlussrapport.html) laufen in einem Rahmen ohne Skripte.
@@ -20,7 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from tools._html import STIL
-from tools.ui import daten, seiten
+from tools.ui import bedienung as bedienung_modul, daten, formulare, seiten, sitzung as sitzung_modul
 
 ORT = Path(__file__).resolve().parent
 STATISCH = {"/app.js": ("app.js", "text/javascript; charset=utf-8"), "/app.css": ("app.css", "text/css; charset=utf-8")}
@@ -59,12 +60,17 @@ class Zustand:
         return self.faelle[fall_id]
 
 
+KOERPER = 40 * 1024 * 1024      # grösste Anfrage: ein Dokument von 25 MB, als Text verpackt
+KLARTEXT_ANSICHTEN = ("pseudo",)        # Ansichten mit echten Angaben: nur per POST und nur mit Geheimnis
+
+
 class Bearbeiter(BaseHTTPRequestHandler):
     server_version = "OSINT-Oberflaeche"
     sys_version = ""
     protocol_version = "HTTP/1.1"
     zustand: Zustand
     erlaubt: set
+    bedienung: "bedienung_modul.Bedienung | None" = None
 
     def log_message(self, *args) -> None:       # keine Zugriffszeilen im Terminal
         pass
@@ -121,11 +127,71 @@ class Bearbeiter(BaseHTTPRequestHandler):
 
     def nicht_erlaubt(self) -> None:
         self.send_response(405)
-        self.send_header("Allow", "GET, HEAD")
+        self.send_header("Allow", "GET, HEAD, POST" if self.bedienung is not None else "GET, HEAD")
         self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
         self.end_headers()
+        self.close_connection = True
 
-    do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = nicht_erlaubt
+    do_PUT = do_DELETE = do_PATCH = do_OPTIONS = nicht_erlaubt
+
+    # ---- Ändern: nur mit POST, nur als JSON, nur mit dem Geheimnis des Starts
+    def do_POST(self) -> None:
+        if self.bedienung is None:
+            return self.nicht_erlaubt()
+        if not self.zulaessig():
+            self.close_connection = True
+            return
+        weg = [unquote(t) for t in urlsplit(self.path).path.split("/") if t]
+        try:
+            laenge = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            laenge = -1
+        if laenge < 0 or laenge > KOERPER or (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+            self.close_connection = True
+            return self.fehler_json(400, "Die Anfrage hat nicht die erwartete Form.")
+        try:
+            angaben = json.loads(self.rfile.read(laenge) or b"{}")
+            if not isinstance(angaben, dict):
+                raise ValueError
+        except (ValueError, UnicodeDecodeError):
+            return self.fehler_json(400, "Die Anfrage hat nicht die erwartete Form.")
+        b = self.bedienung
+        try:
+            if weg == ["api", "anmelden"]:      # der eine Weg ohne Geheimnis: Er gibt es heraus, genau einmal, gegen den Startcode
+                return self.json({"geheimnis": b.anmelden(str(angaben.get("startcode") or ""))})
+            if weg == ["api", "rueckfrage"]:    # die Frage einer gesteuerten Sitzung: Ihre Karte taugt nur zum Fragen, nie zum Erlauben
+                return self.json(sitzung_modul.rueckfrage(b, angaben))
+            if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
+                return self.fehler_json(403, "Diese Anfrage trägt das Geheimnis der Oberfläche nicht. Es wurde nichts geändert. "
+                                             "Bedienen lässt sich die Oberfläche nur aus dem Browserfenster, das sie beim Start geöffnet hat.")
+            if len(weg) == 3 and weg[:2] == ["api", "aktion"]:
+                return self.json(self.aktion(weg[2], angaben))
+            if len(weg) == 3 and weg[:2] == ["api", "klartext"] and weg[2] in KLARTEXT_ANSICHTEN:
+                pseudo = b.pseudo_holen(angaben.get("vorgang"))
+                return self.json({"titel": "Pseudonymisieren (lokal, Klartext)",
+                                  "html": formulare.klartext_seite(pseudo, str(angaben.get("vorgang")), [str(angaben["fall"])] if angaben.get("fall") else [])})
+            return self.fehler_json(404, "Diese Aktion gibt es nicht.")
+        except bedienung_modul.Fehler as e:
+            return self.fehler_json(e.status, str(e))
+        except (daten.NichtGefunden, FileNotFoundError) as e:
+            return self.fehler_json(404, str(e))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:      # eine Aktion darf scheitern, der Server läuft weiter. Die Meldung nennt nie Inhalte
+            traceback.print_exc(file=sys.stderr)
+            return self.fehler_json(500, f"Die Aktion ist gescheitert ({type(e).__name__}). Einzelheiten stehen im Terminal, in dem die Oberfläche läuft.")
+
+    def fehler_json(self, status: int, text: str) -> None:
+        self.json({"fehler": text}, status)
+
+    def aktion(self, name: str, angaben: dict) -> dict:
+        b = self.bedienung
+        if name in bedienung_modul.AKTIONEN:
+            return getattr(b, name)(angaben)
+        if name in sitzung_modul.AKTIONEN:
+            return getattr(sitzung_modul, name)(b, {**angaben, "_port": self.server.server_address[1]})
+        raise bedienung_modul.Fehler("Diese Aktion gibt es nicht.", 404)
 
     # ---- Wege
     def verteilen(self) -> None:
@@ -134,6 +200,14 @@ class Bearbeiter(BaseHTTPRequestHandler):
         frage = parse_qs(url.query)
         if url.path == "/":
             return self.senden(200, SEITE.encode("utf-8"), "text/html; charset=utf-8")
+        if len(weg) == 2 and weg[0] == "klartext" and self.bedienung is not None:
+            # Eine Datei aus der Ablage ausserhalb des Projekts, gegen eine Karte für genau einen Abruf. Skripte laufen darin nicht.
+            try:
+                pfad = self.bedienung.ticket_einloesen(weg[1])
+            except bedienung_modul.Fehler as e:
+                raise daten.NichtGefunden(str(e)) from e
+            typ = "text/html; charset=utf-8" if pfad.suffix == ".html" else "text/plain; charset=utf-8"
+            return self.senden(200, pfad.read_bytes(), typ, CSP_DOKUMENT)
         if url.path == "/basis.css":
             return self.senden(200, STIL.encode("utf-8"), "text/css; charset=utf-8")
         if url.path in STATISCH:
@@ -161,7 +235,11 @@ class Bearbeiter(BaseHTTPRequestHandler):
         if weg == ["faelle"]:
             return self.json({"titel": "Fälle", "html": seiten.faelle_seite(), "faelle": daten.faelle()})
         if weg == ["quellen"]:
-            return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + "<h2>Begriffe</h2>" + seiten.begriffe()})
+            return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + formulare.quellen_bedienung(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
+        if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt. Das Geheimnis steht hier nie
+            return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else ""})
+        if weg == ["neu"]:
+            return self.json({"titel": "Neuer Fall", "html": formulare.neu_seite(self.bedienung)})
         if len(weg) >= 3 and weg[0] == "fall":
             fall = self.zustand.fall(weg[1])
             ansicht, arg = weg[2], "/".join(weg[3:])
@@ -171,6 +249,17 @@ class Bearbeiter(BaseHTTPRequestHandler):
                 except ValueError:
                     ab = 0
                 return self.json(seiten.spur_daten(fall, ab))
+            if ansicht == "bedienen":
+                stand = sitzung_modul.stand(self.bedienung, fall.id) if self.bedienung is not None else None
+                return self.json({"titel": f"Bedienen · {fall.id}", "html": formulare.bedienen_seite(fall, self.bedienung, stand, sitzung_modul.verfuegbar(), sitzung_modul.abrechnung()["text"])})
+            if ansicht == "ermittlung":     # Stand der gesteuerten Sitzung, für die laufende Anzeige
+                if self.bedienung is None:      # im Modus «nur lesen» gibt es nichts zu steuern und kein Formular
+                    return self.json({"status": "aus", "frage": False, "html": formulare.NUR_LESEN})
+                stand = sitzung_modul.stand(self.bedienung, fall.id) if self.bedienung is not None else None
+                return self.json({"status": (stand or {}).get("status", "aus"), "frage": bool((stand or {}).get("frage")),
+                                  "html": formulare.ermittlung_feld(fall.id, stand, sitzung_modul.verfuegbar() if self.bedienung is not None else "")})
+            if ansicht == "zurueck":
+                return self.json({"titel": f"Zurückführen · {fall.id}", "html": formulare.zurueck_seite(fall, self.bedienung)})
             if ansicht == "kopf":
                 return self.json({"html": seiten.kopf(fall), "titel": fall.daten.get("titel") or "", "indikatoren": [{"id": i.get("id"), "wert": i.get("wert"), "typ": i.get("typ")} for i in fall.indikatoren()]})
             if ansicht in ANSICHTEN:
@@ -179,8 +268,9 @@ class Bearbeiter(BaseHTTPRequestHandler):
         raise daten.NichtGefunden("Diese Ansicht gibt es nicht.")
 
 
-def starten(port: int = 8765, versuche: int = 20) -> ThreadingHTTPServer:
-    """Startet den Server auf 127.0.0.1. Ist der Port belegt, nimmt er den nächsten freien. Port 0: irgendeinen freien."""
+def starten(port: int = 8765, versuche: int = 20, bedienung: "bedienung_modul.Bedienung | None" = None) -> ThreadingHTTPServer:
+    """Startet den Server auf 127.0.0.1. Ist der Port belegt, nimmt er den nächsten freien. Port 0: irgendeinen freien.
+    Ohne `bedienung` läuft er im Modus «nur lesen»: Dann gibt es kein POST und nichts, was sich ändern liesse."""
     mimetypes.init()
     letzter: OSError | None = None
     for p in ([0] if port == 0 else range(port, port + versuche)):
@@ -190,7 +280,7 @@ def starten(port: int = 8765, versuche: int = 20) -> ThreadingHTTPServer:
             letzter = e
             continue
         echt = server.server_address[1]
-        bearbeiter = type("Bearbeiter", (Bearbeiter,), {"zustand": Zustand(), "erlaubt": {f"127.0.0.1:{echt}", f"localhost:{echt}"}})
+        bearbeiter = type("Bearbeiter", (Bearbeiter,), {"zustand": Zustand(), "erlaubt": {f"127.0.0.1:{echt}", f"localhost:{echt}"}, "bedienung": bedienung})
         server.RequestHandlerClass = bearbeiter
         server.daemon_threads = True
         return server

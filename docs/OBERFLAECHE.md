@@ -1,10 +1,14 @@
 # Die Oberfläche
 
 Die Oberfläche zeigt alle Ergebnisse eines Falls an einem Ort: den Rapport, jedes Datenblatt, jeden Beleg und jede
-Rohdatei. Sie liest die Fallakte und schreibt nie. Abschlussrapport und Ermittlungsprotokoll bleiben die Dokumente
-für die Akte. Die Oberfläche ersetzt sie nicht, sie macht sie durchsuchbar und nachprüfbar.
+Rohdatei. Abschlussrapport und Ermittlungsprotokoll bleiben die Dokumente für die Akte. Die Oberfläche ersetzt sie
+nicht, sie macht sie durchsuchbar und nachprüfbar.
 
-Dieses Dokument beschreibt Teil 1 (nur lesen). Stand: 16.11.2026.
+Sie hat zwei Teile. Die **Ansichten** lesen die Fallakte und schreiben nie. Die **Bedienung** lässt den Sachbearbeiter
+ohne Terminal arbeiten: Fall anlegen, Ermittlung starten, freigeben, Dokumente erzeugen. Sie ändert nichts selbst,
+sondern ruft die bestehenden Werkzeuge auf, und nur für den, der die Oberfläche am Terminal gestartet hat.
+
+Stand: 16.11.2026.
 
 ## Start
 
@@ -280,7 +284,7 @@ Woher jede Vorlage stammt, steht in `tools/ui/vorlagen/verzeichnis.json`.
 | Schutz | Wie er umgesetzt ist |
 |---|---|
 | Nur dieser Rechner | Der Server hört nur auf 127.0.0.1. Anfragen mit fremdem Host-Kopf weist er ab (Schutz davor, dass eine fremde Website den Browser auf die Oberfläche lenkt), ebenso Anfragen fremder Herkunft. |
-| Nur lesen | Der Server kennt nur GET und HEAD. In der Datenschicht und im Server gibt es keinen Aufruf, der eine Datei anlegt, ändert oder löscht. Ein Selbsttest vergleicht die Fallakten vor und nach dem Abruf aller Adressen. |
+| Ansichten lesen nur | Lesen geht mit GET und HEAD. In der Datenschicht und in den Ansichten gibt es keinen Aufruf, der eine Datei anlegt, ändert oder löscht. Ein Selbsttest vergleicht die Fallakten vor und nach dem Abruf aller Adressen. Ändern geht nur über die Bedienung, siehe dort. |
 | Fremdinhalte sind Text | Alles, was aus einer Quelle stammt, wird als Text ausgegeben und nie als HTML ausgeführt: Werte, Schlüssel, Ziele, Zweck, Fehlermeldungen, Seitentexte. Rohdateien liefert der Server als `text/plain` oder als Bild, nie als HTML. |
 | Bilder nur aus den Rohdaten | Ein Bild erscheint nur, wenn es als Datei in den Rohdaten des gezeigten Falls liegt. Eine fremde Bildadresse in einer Antwort ergibt Text, kein Bild. |
 | Nichts von aussen | Eine Content-Security-Policy erlaubt Skripte, Stile, Bilder und Abrufe nur vom eigenen Server. Es gibt eine Skriptdatei (`app.js`), keine Bibliothek, keine Schrift und kein Bild von aussen. Die Oberfläche läuft ohne Internet. |
@@ -289,8 +293,152 @@ Woher jede Vorlage stammt, steht in `tools/ui/vorlagen/verzeichnis.json`.
 | Platzhalter | `[PERSON_01]` und die übrigen Platzhalter bleiben, wie sie sind. Die Oberfläche löst nichts auf und kennt keine Zuordnungstabelle. |
 | CSV | Beginnt eine Zelle mit `=`, `+`, `-` oder `@`, setzt die Ausgabe ein Hochkomma davor, damit eine Tabellenkalkulation sie nicht als Formel liest. |
 
-Die Oberfläche hat keine Anmeldung. Wer am Rechner angemeldet ist und den Port erreicht, sieht die Fälle. Sie gehört
-deshalb auf den Arbeitsplatz des Sachbearbeiters und nicht auf einen Server, den mehrere Personen teilen.
+Zum Lesen hat die Oberfläche keine Anmeldung. Wer am Rechner angemeldet ist und den Port erreicht, sieht die Fälle. Sie
+gehört deshalb auf den Arbeitsplatz des Sachbearbeiters und nicht auf einen Server, den mehrere Personen teilen.
+
+## Bedienung
+
+Mit der Bedienung arbeitet der Sachbearbeiter ohne Terminal: Dokument hineinziehen, Ermittlung starten, zusehen,
+freigeben, Rapport holen. Ein Terminal braucht es nur noch für den Start.
+
+### Wann die Oberfläche bedienbar ist
+
+```bash
+python3 tools/oberflaeche.py                  # am Terminal gestartet: bedienbar aus dem Fenster, das sich öffnet
+python3 tools/oberflaeche.py --nur-lesen      # nur ansehen
+python3 tools/oberflaeche.py --ablage /sicher/osint   # Ablage für Klartext und Zuordnungstabellen (Vorgabe: OSINT_ABLAGE, sonst OSINT-Ablage im Benutzerordner)
+```
+
+Beim Start entsteht ein **Geheimnis**. Es liegt nur im Speicher des Servers und im Browserfenster, das sich beim Start
+öffnet. Der Server gibt dem Fenster dafür einen Startcode in der Adresse mit. Das Fenster tauscht ihn sofort gegen das
+Geheimnis, danach gilt der Code nicht mehr und steht nicht mehr in der Adresse. Ohne das Geheimnis ändert keine Anfrage
+etwas. Es steht in keiner Datei des Projekts und nicht in der Umgebung der Sitzungen, die der Server startet.
+
+Die Oberfläche läuft im Modus **«nur lesen»**, wenn sie ohne Terminal gestartet wird, aus Claude Code heraus oder mit
+`--nur-lesen`. Dann gibt es kein POST, und die Seiten zeigen keine Formulare. Ein Agent, der die Oberfläche selbst
+startet, bekommt so kein Geheimnis in die Hand. Ein zweites Browserfenster kann lesen, aber nicht bedienen.
+
+### Was sich bedienen lässt
+
+| Funktion | Was geschieht | Womit |
+|---|---|---|
+| **Neuer Fall** | Dokument hineinziehen, Fall-ID und Titel. «Schon geschwärzt»: PII-Prüfung, dann in den Fall. «Klartext»: zuerst der lokale Bildschirm der Pseudonymisierung. Lehnt die PII-Prüfung ab, zeigt die Seite die Stellen maskiert, und es entsteht nichts. | `tools/fall.py neu`, `tools/pii_pruefung.py`, `tools/_pseudo.py` |
+| **Weiteres Dokument** | Dasselbe für einen bestehenden Fall. Bei Klartext gilt die Zuordnungstabelle des Falls weiter: gleiche Angabe, gleicher Platzhalter. | `tools/fall.py aufnehmen` |
+| **Ermittlung** | Starten, anhalten, fortsetzen. Sichtbar ist, welcher Analyst woran arbeitet. Neue Ergebnisse erscheinen laufend in Arbeitsspur und Ansichten. | Claude Code mit `/ermittlung <Fall-ID>` |
+| **Freigaben** | Aktive Massnahmen, Dark Web und Kontoabfragen per Klick, mit «Durch» und «Grundlage». Fragt Claude Code für eine einzelne aktive Massnahme nach, erscheint die Frage als Dialog. | `tools/fall.py` (Funktion `freigabe_setzen`) |
+| **Abklärung von Hand** | Formular für Indikator, Quelle, Zeit und Wortlaut. Der Eintrag geht in die Kette und ist als «von Hand erfasst» gekennzeichnet. | `tools/beleg.py` |
+| **Dokumente** | Abschlussrapport, Ermittlungsprotokoll, Datenblätter und PDF neu erzeugen, Kette prüfen. Die Seite zeigt die Ausgabe des Werkzeugs. | `tools/rapport.py`, `protokoll.py`, `anhang.py`, `pdf.py`, `audit_pruefen.py` |
+| **Zurückführen** | Der fertige Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. | `tools/reidentifizieren.py` |
+| **Quellen** | Welche bereit sind und welche fehlen, eine Testabfrage je Quelle, das Kontingent von urlscan.io, Stand der lokalen Listen. Von Schlüsseln nur der Name der Variablen. | wie `tools/pruefen.py --live` |
+
+Jeder dieser Schritte steht im Sitzungsprotokoll des Falls (`protokoll/sitzungen/`), mit Zeit und dem Vermerk
+«Oberfläche», und erscheint im Ermittlungsprotokoll unter «Sitzungsverlauf». Eine Freigabe trägt den Vermerk zusätzlich
+in `fall.json` (`"weg": "Oberfläche"`).
+
+### Der Weg des Klartexts
+
+Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung.
+
+1. Das Dokument geht vom Browser an den Server und liegt dort im Speicher. Word- und PDF-Dateien liegen für das Auslesen
+   kurz in einem Ordner ausserhalb des Projekts, der danach verschwindet.
+2. Der Bildschirm «Pseudonymisieren» zeigt den Text mit markierten Fundstellen: was ersetzt wird, was noch offen ist
+   (Kandidaten), was stehen bleibt. Technische Indikatoren sind eigens gekennzeichnet und bleiben immer stehen.
+   Annehmen, verwerfen, ergänzen: Jede Eingabe rechnet neu, damit sich eine Angabe im ganzen Dokument fortpflanzt.
+   Dahinter steht dieselbe Bibliothek wie hinter `tools/pseudonymisieren.py`, ohne Sprachmodell und ohne Netz.
+3. Erst das Ergebnis geht in die PII-Prüfung und über `tools/fall.py` in den Fall.
+4. Die Zuordnungstabelle geht in die Ablage ausserhalb des Projektordners (`<Ablage>/<Fall-ID>/zuordnung.csv`, nur für
+   den Benutzer lesbar). Sie steht in keinem Protokoll. Für Agenten sperrt der Wächter die Ablage.
+5. Zurückführen schreibt den Rapport mit echten Angaben ebenfalls in die Ablage und zeigt ihn nur auf dem Bildschirm
+   «Zurückführen».
+
+Echte Angaben zeigt die Oberfläche nur auf diesen zwei Bildschirmen. Beide tragen das Band **«lokal, Klartext»**, und
+ihren Inhalt gibt der Server nur gegen das Geheimnis heraus. Überall sonst stehen Platzhalter.
+
+### Claude Code steuern
+
+Die Oberfläche startet die Kommandozeile von Claude Code im Skriptbetrieb, mit fortlaufender JSON-Ausgabe:
+
+```
+claude -p "/ermittlung <Fall-ID>" --output-format stream-json --verbose
+       --permission-prompt-tool mcp__oberflaeche__rueckfrage --mcp-config <Datei ausserhalb des Projekts>
+```
+
+- **Im Projektordner, ohne abschaltende Schalter.** Die Sitzung läuft im Projektordner. Die Oberfläche setzt keinen
+  Schalter, der Einstellungen, Hooks oder MCP-Server des Projekts abschaltet (`--bare`, `--safe-mode`, `--restricted`,
+  `--setting-sources`, `--strict-mcp-config`, `--dangerously-skip-permissions`). Wächter, Verbotsregeln, `.mcp.json`
+  und die Protokoll-Hooks gelten also wie am Terminal.
+- **Abbruch ohne Einstellungen des Projekts.** Claude Code meldet beim Start, welche MCP-Server es geladen hat. Fehlt
+  darunter das Gateway des Projekts (`osint`), sind die Einstellungen des Projekts nicht geladen, und Wächter und
+  Protokoll gälten nicht. Die Oberfläche beendet die Sitzung dann sofort und sagt es.
+- **Modelle.** Kein Schalter für das Modell. Es bleibt, wie das Projekt es festlegt.
+- **Rückfragen.** Verlangen die Einstellungen für ein Werkzeug eine Rückfrage (aktive Massnahmen), ruft Claude Code das
+  Werkzeug `rueckfrage` eines kleinen MCP-Servers auf (`tools/ui/rueckfrage.py`). Der gibt die Frage an die Oberfläche
+  weiter, und sie erscheint im Browser als Dialog. Erlauben gilt für diesen einen Aufruf. Ohne Antwort innert
+  30 Minuten gilt die Frage als abgelehnt. Die Karte, mit der sich der MCP-Server bei der Oberfläche ausweist, taugt nur
+  zum Fragen: Erlauben kann nur das Browserfenster mit dem Geheimnis. Eine Rückfrage stellt Claude Code für jeden
+  Aufruf, den die Einstellungen des Projekts weder erlauben noch verbieten, nicht nur für aktive Massnahmen. Die
+  Antwort geht als ein Textblock mit JSON zurück, wie die Dokumentation es verlangt.
+- **Anhalten und fortsetzen.** Anhalten beendet den Prozess. Claude Code bricht dabei den laufenden Schritt ab. Was bis
+  dahin abgefragt wurde, steht im Protokoll. Fortsetzen nimmt dieselbe Sitzung wieder auf (`--resume`) und gibt ihr
+  den Auftrag weiterzumachen.
+- **Wer woran arbeitet** liest die Oberfläche aus der JSON-Ausgabe: je Analyst der letzte Werkzeugaufruf und die Zahl
+  der Schritte.
+
+**Abrechnung: Abo oder API.** Eine Sitzung aus der Oberfläche rechnet über denselben Zugang ab wie `claude` am Terminal
+desselben Benutzers. Einen eigenen API-Schlüssel braucht dieser Weg nicht. Stand: Dokumentation von Claude Code
+(code.claude.com/docs, Seiten «Authentication», «Manage costs effectively» und «Run Claude Code programmatically»,
+gelesen am 16.11.2026).
+
+- **Mit einem Abo angemeldet** (`/login` mit Pro, Max, Ultra, Team oder Enterprise): Die Ermittlung zählt gegen das
+  Kontingent des Abos, wie am Terminal. Sie verbraucht deutlich mehr als ein Gespräch, weil mehrere Analysten
+  nebeneinander arbeiten.
+- **Mit einem Console-Konto angemeldet oder `ANTHROPIC_API_KEY` gesetzt:** Abrechnung über die API, nach Verbrauch. Ist
+  die Variable gesetzt, nimmt Claude Code im Skriptbetrieb immer den Schlüssel, auch wenn ein Abo angemeldet ist.
+- Die Seite «Bedienen» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen ist.
+  Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
+- **Nicht gewählt: das Agent SDK für Python.** Seine Dokumentation verweist für die Anmeldung auf API-Schlüssel, also
+  Abrechnung nach Verbrauch, und es wäre eine neue Pflicht-Abhängigkeit. Es startet dieselbe Kommandozeile.
+
+Zwei Dinge sind offen. Erstens die Bedingungen: Die Dokumentation zum Agent SDK hält fest, dass Dritte in ihren Produkten
+ohne Zustimmung von Anthropic keine Anmeldung mit claude.ai anbieten dürfen. Die Oberfläche bietet keine Anmeldung an,
+sie startet das installierte Claude Code des Sachbearbeiters mit dessen eigener Anmeldung. Ob ein Abo den Betrieb in
+einer Dienststelle deckt, ist damit nicht gesagt. Die Bedingungen der Abos selbst sind nicht gelesen. Zweitens kündigt
+die Dokumentation an, dass der Skriptbetrieb künftig von sich aus ohne die Einstellungen des Projekts startet (`--bare`
+als Vorgabe) und dann nur noch mit API-Schlüssel läuft. Die Oberfläche merkt das am Start der Sitzung und beendet sie,
+statt ohne Wächter zu arbeiten.
+
+**Die Probe am eigenen Arbeitsplatz.** Dass eine aus der Oberfläche gestartete Sitzung wirklich unter Wächter und
+Verbotsregeln läuft, zeigt ein Befehl mit dem echten Claude Code:
+
+```bash
+python3 tools/oberflaeche.py --sitzungsprobe          # am Terminal, verbraucht etwas Kontingent
+```
+
+Er startet zwei kurze Sitzungen auf demselben Weg wie «Ermittlung starten». In der ersten soll Claude Code zwei
+gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei anfassen). In der zweiten soll es ein
+Werkzeug aufrufen, das eine Rückfrage verlangt, und die Probe lehnt ab. Erwartet wird: beide Befehle abgelehnt,
+`fall.json` unverändert, die Rückfrage kommt bei der Oberfläche an. Die Probe nennt dazu, über welchen Zugang
+abgerechnet wird und welche MCP-Server Claude Code geladen hat.
+
+### Schutz der Bedienung
+
+| Schutz | Wie er umgesetzt ist |
+|---|---|
+| Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST mit JSON und trägt das Geheimnis in einer Kopfzeile. Ohne es antwortet der Server mit 403 und ändert nichts. Host-Kopf und Herkunft prüft er wie beim Lesen. |
+| Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen und keinen Beleg erfassen. |
+| Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. |
+| Wächter | Für Agenten bleiben Freigabe, Beleg von Hand, Pseudonymisieren und Zurückführen gesperrt. Neu lehnt der Wächter auch ab: den Aufruf der Funktionen an der Kommandozeile vorbei (`freigabe_setzen`, `beleg … erfassen`), den Aufruf der Bedienschicht aus der Shell (`tools/ui/bedienung.py`, `sitzung.py`: dort gäbe es kein Geheimnis, das einen Agenten aufhält), den Start der Oberfläche ohne `--nur-lesen` und jeden Zugriff auf die Ablage. Eine Ausnahme im Wächter oder in den Einstellungen braucht die Oberfläche nicht, der Wächter ist nur strenger geworden. |
+| Die Ablage ist für Agenten gesperrt | Der Wächter lehnt Lesen, Suchen, Schreiben und Shell-Befehle ab, die in die Ablage zeigen. Er erkennt sie am Namen (Ordner `OSINT-Ablage`, Dateien `zuordnung….csv`) und an der Variablen `OSINT_ABLAGE`. Sitzungen, die die Oberfläche startet, bekommen die Variable mit. Wer eine eigene Ablage nimmt und Claude Code auch am Terminal startet, setzt `OSINT_ABLAGE` dauerhaft: Dann nimmt die Oberfläche diesen Ordner, und der Wächter kennt ihn in jeder Sitzung. |
+| Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
+
+**Grenzen dieses Schutzes.** Er hält Agenten auf, die über die Werkzeuge von Claude Code arbeiten und dabei dem Wächter
+unterliegen. Der Wächter prüft Shell-Befehle anhand ihres Textes: Er hält Versehen und fremdgesteuerte Agenten auf, keinen
+Befehl, der die gesperrten Namen gezielt verschleiert. Ein solcher Befehl steht aber nicht auf der Erlaubt-Liste des
+Projekts. In einer Sitzung aus der Oberfläche erscheint er deshalb als Rückfrage beim Sachbearbeiter, sofern dessen
+eigene Einstellungen von Claude Code nicht mehr erlauben. Eine frei gewählte Ablage ohne `OSINT_ABLAGE` erkennt der
+Wächter nur an den Namen der Dateien. Ein Programm mit den Rechten des Benutzers, das gezielt den Speicher des Servers ausliest oder den
+Startcode in der halben Sekunde zwischen Start und Browserfenster aus der Prozessliste fischt, hält er nicht auf. Der
+zweite Fall fiele auf: Das Browserfenster des Sachbearbeiters könnte dann nicht bedienen und sagt es.
 
 ## Anhang für die Akte
 
@@ -307,7 +455,16 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
 
 ## Grenzen
 
-- **Teil 1 liest nur.** Fall anlegen, Freigaben, Ermittlung starten und Dokumente erzeugen geschehen weiterhin am Terminal.
+- **Die Steuerung von Claude Code ist nur gegen ein Programm geprüft, das Claude Code spielt.** Mit dem echten Claude
+  Code ist weder die Form seiner JSON-Ausgabe noch der Weg der Rückfrage gesehen, und keine Ermittlung ist je aus der
+  Oberfläche gelaufen. Schalter, Antwortform der Rückfrage und die Meldung der MCP-Server beim Start folgen der
+  Dokumentation (gelesen am 16.11.2026). Nicht nachgelesen ist, ob die Variable `MCP_TOOL_TIMEOUT` eine Rückfrage
+  wirklich 30 Minuten warten lässt. Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
+- **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
+  dabei mit enden, ist nicht geprüft.
+- **Eine Rückfrage auf einmal.** Stellt Claude Code eine zweite, während die erste offen ist, gilt die zweite als abgelehnt.
+- **Ein Fenster.** Bedienen lässt sich die Oberfläche aus dem Fenster, das sie beim Start öffnet. Wer es schliesst und
+  die Sitzung des Browsers verliert, startet die Oberfläche neu.
 - **Grosse Rohdateien.** Rohdateien über 3 MB ordnet die Oberfläche nicht zu und durchsucht sie nicht. Sie zeigt den
   Anfang und verweist auf die Datei. Ein Baum zeigt höchstens 6000 Angaben, der Rest steht in der Rohdatei.
 - **Suche.** Höchstens 200 Treffer. Bilder werden nicht durchsucht.

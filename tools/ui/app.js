@@ -14,7 +14,8 @@ const el = (name, attribute = {}, ...kinder) => {
   for (const kind of kinder) e.append(kind);
   return e;
 };
-const zustand = { fall: null, ansicht: "", spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [] };
+const zustand = { fall: null, ansicht: "", spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
+  bedienung: false, geheimnis: "", vorhaben: {}, ermittlungTimer: null };
 
 async function holen(weg) {
   const antwort = await fetch(weg, { headers: { Accept: "application/json" } });
@@ -26,11 +27,151 @@ async function holen(weg) {
 
 function weg(...teile) { return "#/" + teile.map(encodeURIComponent).join("/"); }
 
+/* ---------- Bedienung: Ändern geht nur mit dem Geheimnis, das der Server beim Start vergeben hat ---------- */
+
+async function senden(pfad, angaben) {
+  const antwort = await fetch(pfad, { method: "POST", headers: { "Content-Type": "application/json", "X-OSINT-Geheimnis": zustand.geheimnis }, body: JSON.stringify(angaben || {}) });
+  let daten = null;
+  try { daten = await antwort.json(); } catch (e) { /* keine lesbare Antwort */ }
+  if (!antwort.ok || !daten) throw new Error((daten && daten.fehler) || `Der Server antwortet nicht wie erwartet (HTTP ${antwort.status}).`);
+  return daten;
+}
+
+async function anmelden() {
+  // Der Server öffnet den Browser mit einem Startcode in der Adresse. Er gilt einmal und wird sofort gegen das Geheimnis getauscht.
+  try { zustand.geheimnis = sessionStorage.getItem("geheimnis") || ""; } catch (e) { /* ohne Speicher gilt das Geheimnis bis zum Neuladen */ }
+  const m = location.hash.match(/^#start=([A-Za-z0-9_-]+)(?:&nach=(.*))?$/);
+  if (m) {
+    history.replaceState(null, "", location.pathname + (m[2] ? "#/fall/" + encodeURIComponent(decodeURIComponent(m[2])) : "#/"));
+    try {
+      const antwort = await fetch("/api/anmelden", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ startcode: m[1] }) });
+      const daten = await antwort.json();
+      if (antwort.ok && daten.geheimnis) {
+        zustand.geheimnis = daten.geheimnis;
+        try { sessionStorage.setItem("geheimnis", daten.geheimnis); } catch (e) { /* siehe oben */ }
+      } else zustand.anmeldefehler = (daten && daten.fehler) || "Die Anmeldung ist nicht gelungen.";
+    } catch (e) { zustand.anmeldefehler = e.message; }
+  }
+  try { const stand = await holen("/api/bedienung"); zustand.bedienung = Boolean(stand.aktiv); } catch (e) { zustand.bedienung = false; }
+}
+
+function dateiLesen(datei) {
+  return new Promise((gut, schlecht) => {
+    const leser = new FileReader();
+    leser.onload = () => gut(String(leser.result).split(",")[1] || "");
+    leser.onerror = () => schlecht(new Error("Das Dokument liess sich nicht lesen."));
+    leser.readAsDataURL(datei);
+  });
+}
+
+function ergebnisZeigen(feld, daten, fehler) {
+  feld.replaceChildren();
+  feld.className = "ergebnis " + (fehler ? "z-kritisch" : "");
+  feld.append(el("p", { klasse: fehler ? "banner" : "meldung", text: fehler || daten.meldung || "Erledigt." }));
+  if (daten && daten.ausgabe) feld.append(el("pre", { klasse: "rohtext", text: daten.ausgabe }));
+  if (daten && daten.zuordnung) feld.append(el("p", { klasse: "klein", text: "Zuordnungstabelle: " + daten.zuordnung + " (ausserhalb des Projektordners)" }));
+}
+
+async function formularSenden(form) {
+  const feld = $(".ergebnis", form) || form.appendChild(el("div", { klasse: "ergebnis" }));
+  if (form.dataset.frage && !confirm(form.dataset.frage)) return;
+  const angaben = {};
+  for (const [name, wert] of new FormData(form).entries()) if (!(wert instanceof File)) angaben[name] = wert;
+  for (const kasten of $$("input[type=checkbox]", form)) angaben[kasten.name] = kasten.checked ? "1" : "";
+  const knopf = $("button[type=submit]", form);
+  knopf.disabled = true;
+  ergebnisZeigen(feld, { meldung: "Läuft …" });
+  try {
+    let aktion = form.dataset.aktion;
+    const datei = $("input[type=file]", form);
+    if (datei) {
+      if (!datei.files.length) throw new Error("Bitte zuerst ein Dokument wählen.");
+      angaben.name = datei.files[0].name;
+      angaben.inhalt = await dateiLesen(datei.files[0]);
+    }
+    if (aktion === "neu") {         // der Weg hängt davon ab, ob das Dokument schon geschwärzt ist
+      if (angaben.weg === "klartext") {
+        const daten = await senden("/api/aktion/pseudo_beginnen", angaben);
+        zustand.vorhaben = { fall: angaben.fall || "", titel: angaben.titel || "", kuerzel: angaben.kuerzel || "", auftrag: angaben.auftrag || "" };
+        location.hash = weg("klartext", daten.vorgang);
+        return;
+      }
+      aktion = angaben.bestehend ? "dokument_aufnehmen" : "fall_anlegen";
+    }
+    const daten = await senden("/api/aktion/" + aktion, angaben);
+    ergebnisZeigen(feld, daten);
+    if (aktion === "zurueckfuehren") klartextZeigen(daten);
+    const gelungen = daten.aufgenommen !== false && daten.gelungen !== false;
+    const danach = form.dataset.danach || (form.dataset.aktion === "neu" && gelungen ? "fall" : "");
+    if (gelungen && danach === "fall" && daten.fall) setTimeout(() => { location.hash = weg("fall", daten.fall, "bedienen"); }, 900);
+    else if (gelungen && danach === "neu-laden") laden();
+    else if (gelungen && danach.startsWith("#/")) location.hash = danach;
+    if (zustand.fall) kopfLaden(zustand.fall).catch(() => {});
+  } catch (e) {
+    ergebnisZeigen(feld, null, e.message);
+  } finally { knopf.disabled = false; }
+}
+
+function klartextZeigen(daten) {
+  // Der zurückgeführte Rapport: echte Angaben, nur auf diesem Bildschirm, je Datei eine Karte für genau einen Abruf
+  const ziel = $("#klartext-ergebnis");
+  if (!ziel) return;
+  ziel.replaceChildren(el("p", { klasse: "klein", text: "Ablage: " + daten.ordner }));
+  for (const d of daten.dateien || []) {
+    ziel.append(el("h3", { text: d.name }));
+    if (d.name.endsWith(".html")) ziel.append(el("iframe", { klasse: "dokument", title: d.name, src: "/klartext/" + encodeURIComponent(d.ticket), sandbox: "allow-same-origin" }));
+    else ziel.append(el("p", {}, el("a", { href: "/klartext/" + encodeURIComponent(d.ticket), target: "_blank", rel: "noopener", text: "ansehen (einmal abrufbar)" })));
+  }
+}
+
+function bedienungEinrichten(wurzel) {
+  for (const form of $$("form.aktion", wurzel)) form.addEventListener("submit", (e) => { e.preventDefault(); formularSenden(form); });
+  for (const zone of $$("[data-ablegen]", wurzel)) {
+    const eingabe = $("input[type=file]", zone), name = $("[data-dateiname]", zone);
+    const zeigen = () => { name.textContent = eingabe.files.length ? eingabe.files[0].name + " (" + eingabe.files[0].size + " Bytes)" : "noch kein Dokument gewählt"; };
+    eingabe.addEventListener("change", zeigen);
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("ziel"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("ziel"));
+    zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("ziel"); if (e.dataTransfer.files.length) { eingabe.files = e.dataTransfer.files; zeigen(); } });
+  }
+  for (const verweis of $$("[data-zeigen]", wurzel)) verweis.addEventListener("click", (e) => {
+    e.preventDefault();
+    const ziel = document.getElementById(verweis.dataset.zeigen);
+    if (ziel) { ziel.scrollIntoView({ block: "center" }); ziel.classList.add("ziel"); setTimeout(() => ziel.classList.remove("ziel"), 1600); }
+  });
+  for (const [name, wert] of Object.entries(zustand.vorhaben)) {       // Angaben aus «Neuer Fall» im Abschluss der Pseudonymisierung vorbelegen
+    const eingabe = $(`form[data-aktion="pseudo_abschliessen"] [name="${name}"]`, wurzel);
+    if (eingabe && !eingabe.value) eingabe.value = wert;
+  }
+}
+
+async function ermittlungHolen() {
+  clearTimeout(zustand.ermittlungTimer);
+  const fall = zustand.fall;
+  if (!fall || !zustand.bedienung) return;
+  try {
+    const daten = await holen(`/api/fall/${encodeURIComponent(fall)}/ermittlung`);
+    if (fall !== zustand.fall) return;
+    const feld = $("#ermittlung");
+    if (feld && feld.dataset.stand !== daten.html) {
+      feld.dataset.stand = daten.html;
+      feld.innerHTML = daten.html;      // HTML des eigenen Servers
+      bedienungEinrichten(feld);
+    }
+    let hinweis = $("#rueckfrage-hinweis");
+    if (daten.frage && zustand.ansicht !== "bedienen") {
+      if (!hinweis) { hinweis = el("a", { id: "rueckfrage-hinweis", klasse: "banner", href: weg("fall", fall, "bedienen"), text: "Claude Code fragt nach: zur Rückfrage" }); $("#kopf").after(hinweis); }
+    } else if (hinweis) hinweis.remove();
+  } catch (e) { /* der nächste Abruf versucht es wieder */ }
+  zustand.ermittlungTimer = setTimeout(ermittlungHolen, 2000);
+}
+
 /* ---------- Navigation und Adressen ---------- */
 
 function adresse() {
   const teile = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   if (teile[0] === "fall" && teile[1]) return { fall: teile[1], ansicht: teile[2] || "uebersicht", arg: teile.slice(3).join("/") };
+  if (teile[0] === "klartext" && teile[1]) return { fall: null, ansicht: "klartext", arg: teile[1] };
   return { fall: null, ansicht: teile[0] || "faelle", arg: "" };
 }
 
@@ -45,10 +186,12 @@ function navigation(a) {
     liste.append(el("li", unter ? { klasse: "unter" } : {}, verweis));
   };
   punkt("Fälle", "#/", !a.fall && a.ansicht === "faelle");
+  if (zustand.bedienung) punkt("Neuer Fall", "#/neu", !a.fall && (a.ansicht === "neu" || a.ansicht === "klartext"));
   if (a.fall) {
     liste.append(el("li", { klasse: "gruppe", text: a.fall }));
     const eintraege = [["uebersicht", "Fallübersicht"], ["rapport", "Rapport"], ["indikatoren", "Indikatoren"], ["rohdaten", "Rohdaten"], ["suche", "Suche"], ["dokumente", "Dokumente"]];
-    const gleich = { indikator: "indikatoren", beleg: "rohdaten", roh: "rohdaten", dokument: "dokumente" };
+    if (zustand.bedienung) eintraege.push(["bedienen", "Bedienen"]);
+    const gleich = { indikator: "indikatoren", beleg: "rohdaten", roh: "rohdaten", dokument: "dokumente", zurueck: "bedienen" };
     for (const [name, text] of eintraege) punkt(text, weg("fall", a.fall, name), (gleich[a.ansicht] || a.ansicht) === name, true);
   }
   punkt("Quellen", "#/quellen", !a.fall && a.ansicht === "quellen");
@@ -59,7 +202,10 @@ function navigation(a) {
     document.documentElement.dataset.farbe = jetzt === "dunkel" ? "hell" : "dunkel";
     try { localStorage.setItem("farbe", document.documentElement.dataset.farbe); } catch (e) { /* ohne Speicher gilt die Wahl bis zum Neuladen */ }
   });
-  nav.append(farbe, el("p", { klasse: "klein", text: "Die Oberfläche liest nur. Adressen aus dem Fall sind nie anklickbar." }));
+  const modus = !zustand.bedienung ? "Die Oberfläche liest nur." : zustand.geheimnis ? "Bedienbar aus diesem Fenster." :
+    "Dieses Fenster kann nur lesen: Bedienen lässt sich die Oberfläche aus dem Fenster, das sie beim Start geöffnet hat.";
+  nav.append(farbe, el("p", { klasse: "klein", text: modus + " Adressen aus dem Fall sind nie anklickbar." }));
+  if (zustand.anmeldefehler) nav.append(el("p", { klasse: "banner", text: zustand.anmeldefehler }));
 }
 
 async function laden() {
@@ -74,12 +220,16 @@ async function laden() {
       spurNeu(a.fall);
     }
     if (a.fall) await kopfLaden(a.fall);
+    zustand.ansicht = a.ansicht;
     const pfad = a.fall ? `/api/fall/${encodeURIComponent(a.fall)}/${encodeURIComponent(a.ansicht === "rapport" ? "rapport" : a.ansicht)}`
-      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${a.ansicht === "quellen" ? "quellen" : "faelle"}`;
-    const daten = await holen(pfad);
+      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${a.ansicht === "quellen" ? "quellen" : a.ansicht === "neu" ? "neu" : "faelle"}`;
+    // Der Bildschirm der Pseudonymisierung zeigt Klartext: Ihn gibt der Server nur gegen das Geheimnis heraus
+    const daten = a.ansicht === "klartext" ? await senden("/api/klartext/pseudo", { vorgang: a.arg, fall: zustand.vorhaben.fall || "" }) : await holen(pfad);
     mitte.innerHTML = daten.html;      // HTML des eigenen Servers: Fremdinhalte sind dort als Text maskiert
     document.title = `${daten.titel} · OSINT-Arbeitsplatz`;
     einrichten(mitte, a);
+    bedienungEinrichten(mitte);
+    ermittlungHolen();
     if (a.ansicht === "rapport" && a.arg) { const ziel = document.getElementById(a.arg); if (ziel) { ziel.scrollIntoView(); ziel.classList.add("ziel"); } } else mitte.scrollTop = 0;
     mitte.focus({ preventScroll: true });
   } catch (e) {
@@ -402,7 +552,6 @@ function zeitachseEinrichten(liste, ereignisse) {
 /* ---------- Start ---------- */
 
 try { const farbe = localStorage.getItem("farbe"); if (farbe) document.documentElement.dataset.farbe = farbe; } catch (e) { /* ohne Speicher gilt die Vorgabe des Systems */ }
-addEventListener("hashchange", laden);
 addEventListener("beforeprint", () => $$("details").forEach(d => { d.dataset.war = d.open ? "1" : ""; d.open = true; }));
 addEventListener("afterprint", () => $$("details").forEach(d => { d.open = d.dataset.war === "1"; }));
-laden();
+anmelden().then(() => { addEventListener("hashchange", laden); laden(); });

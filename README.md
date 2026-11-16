@@ -170,7 +170,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 82 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 88 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -375,7 +375,7 @@ python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
 python3 tools/rapport.py 2026-0412             # Rapport neu erzeugen (--entwurf, --nur-pruefen)
 python3 tools/protokoll.py 2026-0412           # Protokoll neu erzeugen
 python3 tools/pdf.py 2026-0412                 # beide Dokumente als PDF (A4)
-python3 tools/oberflaeche.py 2026-0412         # Oberfläche: alle Ergebnisse des Falls im Browser, nur lesend
+python3 tools/oberflaeche.py 2026-0412         # Oberfläche: alle Ergebnisse des Falls im Browser, am Terminal gestartet auch bedienbar
 python3 tools/anhang.py 2026-0412              # Datenblätter aller Indikatoren als HTML und PDF
 python3 tools/audit_pruefen.py 2026-0412       # Protokollkette prüfen
 python3 tools/musterfall.py                    # Musterfall neu bauen
@@ -386,8 +386,9 @@ In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>
 ## Oberfläche
 
 Alle Ergebnisse eines Falls an einem Ort: der Rapport zum Durchklicken, ein Datenblatt je Indikator, jeder Beleg
-und jede Rohdatei. Die Oberfläche **liest** die Fallakte und schreibt nie. Abschlussrapport und Ermittlungsprotokoll
-bleiben die Dokumente für die Akte.
+und jede Rohdatei. Die Ansichten **lesen** die Fallakte und schreiben nie. Wer die Oberfläche selbst am Terminal
+startet, kann sie auch bedienen: Fall anlegen, Ermittlung starten, freigeben, Dokumente erzeugen. Abschlussrapport und
+Ermittlungsprotokoll bleiben die Dokumente für die Akte.
 
 ```bash
 python3 tools/oberflaeche.py                     # startet den Server und öffnet den Browser (Windows: python tools\oberflaeche.py)
@@ -436,6 +437,55 @@ Adresse und lässt sich drucken. Die Oberfläche folgt der hellen oder dunklen E
 
 ![Datenblatt einer Wallet-Adresse in der dunklen Darstellung](docs/bilder/oberflaeche-dunkel.png)
 
+**Bedienen ohne Terminal.** Startet der Sachbearbeiter die Oberfläche selbst an einem Terminal, lässt sie sich aus dem
+Browserfenster bedienen, das sich dabei öffnet: Dokument hineinziehen, Ermittlung starten, zusehen, freigeben, Rapport holen.
+
+![Neuer Fall: Dokument hineinziehen, Fall-ID und Titel, geschwärzt oder Klartext](docs/bilder/oberflaeche-neu.png)
+
+- **Neuer Fall.** Ist das Dokument schon geschwärzt, geht es durch die PII-Prüfung in den Fall. Ist es Klartext, folgt
+  zuerst der lokale Bildschirm der Pseudonymisierung: Fundstellen im Text markiert, annehmen, verwerfen, ergänzen. Erst
+  das Ergebnis geht in die PII-Prüfung und in den Fall. Lehnt die PII-Prüfung ab, zeigt die Seite die Stellen maskiert
+  und nimmt nichts auf.
+- **Ermittlung.** Starten, anhalten, fortsetzen. Die Oberfläche steuert Claude Code mit `/ermittlung <Fall-ID>` und
+  zeigt, welcher Analyst woran arbeitet. Fragt Claude Code für eine einzelne aktive Massnahme nach, erscheint die Frage
+  als Dialog.
+- **Freigaben, Abklärung von Hand, Dokumente, Zurückführen, Quellen.** Per Klick oder Formular, über die bestehenden
+  Werkzeuge. Jeder Schritt steht im Sitzungsprotokoll, mit Zeit und dem Vermerk «über die Oberfläche».
+
+![Der lokale Bildschirm der Pseudonymisierung, mit erfundenen Angaben](docs/bilder/oberflaeche-klartext.png)
+
+![Bedienen: Freigabe erteilt, Claude Code fragt für eine aktive Massnahme nach](docs/bilder/oberflaeche-bedienen.png)
+
+![Zurückführen: der Rapport mit echten Angaben, nur auf diesem Bildschirm (erfundene Angaben)](docs/bilder/oberflaeche-zurueck.png)
+
+Die Sitzung von Claude Code läuft im Projektordner und ohne Schalter, die Einstellungen, Hooks oder MCP-Server
+abschalten. Wächter, Verbotsregeln und Protokoll-Hooks gelten wie am Terminal, die Modelle bleiben, wie das Projekt sie
+festlegt. Ob das an eurem Arbeitsplatz so greift, zeigt eine Probe mit dem echten Claude Code:
+`python3 tools/oberflaeche.py --sitzungsprobe`.
+
+**Abrechnung: Abo oder API.** Eine Sitzung aus der Oberfläche rechnet über denselben Zugang ab wie `claude` am Terminal
+desselben Benutzers. Einen eigenen API-Schlüssel braucht dieser Weg nicht. Stand: Dokumentation von Claude Code
+(code.claude.com/docs, Seiten «Authentication», «Manage costs effectively» und «Run Claude Code programmatically»,
+gelesen am 16.11.2026).
+
+- **Mit einem Abo angemeldet** (`/login` mit Pro, Max, Ultra, Team oder Enterprise): Die Ermittlung zählt gegen das
+  Kontingent des Abos, wie am Terminal. Sie verbraucht deutlich mehr als ein Gespräch, weil mehrere Analysten
+  nebeneinander arbeiten.
+- **Mit einem Console-Konto angemeldet oder `ANTHROPIC_API_KEY` gesetzt:** Abrechnung über die API, nach Verbrauch. Ist
+  die Variable gesetzt, nimmt Claude Code im Skriptbetrieb immer den Schlüssel, auch wenn ein Abo angemeldet ist.
+- Die Seite «Bedienen» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen ist.
+  Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
+- **Nicht gewählt: das Agent SDK für Python.** Seine Dokumentation verweist für die Anmeldung auf API-Schlüssel, also
+  Abrechnung nach Verbrauch, und es wäre eine neue Pflicht-Abhängigkeit. Es startet dieselbe Kommandozeile.
+
+Zwei Dinge sind offen. Erstens die Bedingungen: Die Dokumentation zum Agent SDK hält fest, dass Dritte in ihren Produkten
+ohne Zustimmung von Anthropic keine Anmeldung mit claude.ai anbieten dürfen. Die Oberfläche bietet keine Anmeldung an,
+sie startet das installierte Claude Code des Sachbearbeiters mit dessen eigener Anmeldung. Ob ein Abo den Betrieb in
+einer Dienststelle deckt, ist damit nicht gesagt. Die Bedingungen der Abos selbst sind nicht gelesen. Zweitens kündigt
+die Dokumentation an, dass der Skriptbetrieb künftig von sich aus ohne die Einstellungen des Projekts startet (`--bare`
+als Vorgabe) und dann nur noch mit API-Schlüssel läuft. Die Oberfläche merkt das am Start der Sitzung und beendet sie,
+statt ohne Wächter zu arbeiten.
+
 **Anhang für die Akte.** Die Datenblätter gibt es auch ohne laufende Oberfläche, als ein Dokument:
 
 ```bash
@@ -448,14 +498,22 @@ Muster: [Datenblätter des Musterfalls (PDF)](muster/Datenblaetter.pdf).
 **Schutz.**
 
 - Der Server hört nur auf 127.0.0.1 und weist Anfragen mit fremdem Host-Kopf oder fremder Herkunft ab.
-- Er kennt nur GET und HEAD. Fallakte, Protokoll und Rohdaten kann er nicht verändern.
+- Lesen geht mit GET und HEAD. Ändern geht nur mit dem Geheimnis, das beim Start entsteht: Es liegt nur im Speicher des
+  Servers und im Browserfenster des Sachbearbeiters, in keiner Datei und nicht in der Umgebung der Sitzungen, die der
+  Server startet. Ohne Terminal oder aus Claude Code heraus gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann
+  sich so keine Freigabe erteilen und keinen Beleg von Hand erfassen.
+- Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf.
+- Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung. Klartext und Zuordnungstabelle liegen ausserhalb
+  des Projektordners und stehen in keinem Protokoll. Echte Angaben zeigen nur zwei Bildschirme (Pseudonymisierung,
+  Zurückführen), beide als «lokal, Klartext» gekennzeichnet.
 - Was aus einer Quelle stammt, erscheint als Text und wird nie als HTML ausgeführt. Rohdateien liefert er als Text oder Bild.
 - Bilder kommen nur aus den Rohdaten des gezeigten Falls. Eine Content-Security-Policy verbietet alles von aussen.
 - Adressen aus dem Fall (URLs, Domains, Onion-Adressen) sind nie anklickbar. Platzhalter bleiben Platzhalter.
 
-**Grenzen.** Die Oberfläche hat keine Anmeldung und gehört auf den Arbeitsplatz des Sachbearbeiters, nicht auf
-einen geteilten Server. Dieser erste Teil liest nur: Fall anlegen, Freigaben und der Start der Ermittlung bleiben
-am Terminal. Rohdateien über 3 MB zeigt sie nur im Anfang und durchsucht sie nicht. Für Werkzeuge, zu denen keine
+**Grenzen.** Zum Lesen hat die Oberfläche keine Anmeldung. Sie gehört auf den Arbeitsplatz des Sachbearbeiters, nicht auf
+einen geteilten Server. Die Steuerung von Claude Code ist nur gegen ein Programm geprüft, das Claude Code spielt: Mit dem
+echten Claude Code ist noch keine Ermittlung aus der Oberfläche gelaufen. Rohdateien über 3 MB zeigt sie nur im Anfang
+und durchsucht sie nicht. Für Werkzeuge, zu denen keine
 echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Spur, Telegram über RapidAPI, Shodan-DNS, Wayback Machine,
 Robin), ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
 
@@ -856,7 +914,8 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Klartext bleibt beim Sachbearbeiter | `tools/pseudonymisieren.py` und `tools/reidentifizieren.py` laufen nur an einem Terminal und nicht aus Claude Code heraus. Wächter und Berechtigungen sperren beide für Agenten, in jeder Phase. Dokument, Zuordnungstabelle und Ausgabe müssen ausserhalb des Projektordners liegen. Das Pseudonymisieren sperrt sich selbst jede Netzverbindung. | Wächter, `tools/pseudonymisieren.py` |
 | Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten unveränderbar für Agenten | Schreibschutz über Berechtigungen und Wächter. | beide |
-| Die Oberfläche liest nur und führt nichts Fremdes aus | Der Server hört nur auf 127.0.0.1, weist fremde Host-Köpfe ab und kennt nur GET und HEAD. Inhalte aus Quellen erscheinen als Text, Rohdateien als Text oder Bild, eine Content-Security-Policy verbietet alles von aussen. Adressen aus dem Fall sind nie anklickbar. | `tools/ui/server.py`, `tools/ui/seiten.py` |
+| Die Oberfläche ändert nur für den Sachbearbeiter | Ändernde Anfragen brauchen das Geheimnis des Starts (nur im Speicher des Servers und im Browserfenster). Ohne Terminal oder aus Claude Code gestartet, läuft sie «nur lesen». Sie ruft die bestehenden Werkzeuge auf und schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Für Agenten sperrt der Wächter den Aufruf der Bedienschicht aus der Shell, den Start ohne `--nur-lesen` und die Ablage mit Klartext und Zuordnungstabellen. | `tools/ui/bedienung.py`, `tools/oberflaeche.py`, `.claude/hooks/waechter.py` |
+| Die Oberfläche führt nichts Fremdes aus | Der Server hört nur auf 127.0.0.1 und weist fremde Host-Köpfe ab. Inhalte aus Quellen erscheinen als Text, Rohdateien als Text oder Bild, eine Content-Security-Policy verbietet alles von aussen. Adressen aus dem Fall sind nie anklickbar. | `tools/ui/server.py`, `tools/ui/seiten.py` |
 | Agenten stellen die Einrichtung nicht um | `setup.sh`, `setup.cmd` und `tools/einrichten.py` sind für Agenten gesperrt, ebenso das Schreiben an Gateway, Hooks und Einstellungen. | Wächter |
 | Fällt der Wächter aus, läuft nichts | Kann der Wächter nicht starten oder seine Eingabe nicht lesen, sperrt Claude Code den Werkzeugaufruf (`onFailure: block`, ab Claude Code 2.1.295). | `.claude/settings.json`, `.claude/hooks/start.sh` |
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
@@ -940,7 +999,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 82 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 88 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -977,6 +1036,28 @@ PowerShell 7:
   Nicht geprüft: Firefox und Safari, ein Bildschirmleser, Fälle mit mehr als rund tausend Protokolleinträgen
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
+- Sechs gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`), Stand 16.11.2026: Jede der 16
+  ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an seiner Stelle mit 403 und
+  ändert nichts. Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne
+  Terminal oder aus Claude Code gestartet, gibt es kein POST. Weg «geschwärzt» und Weg «Klartext» mit erfundenen
+  Dokumenten: bei Sperrfunden entsteht nichts und die Stellen erscheinen maskiert, nach dem Klartext-Weg steht kein Name
+  und keine AHV-Nummer des Dokuments in Fallakte oder Protokoll, die Zuordnungstabelle liegt ausserhalb des Projekts.
+  Freigabe und Beleg von Hand über die bestehenden Werkzeuge, mit Zeit und Vermerk «Oberfläche» im Sitzungsprotokoll und
+  im Ermittlungsprotokoll. Die Ermittlung gegen ein Programm, das Claude Code spielt: Die Sitzung startet im
+  Projektordner mit `/ermittlung`, ohne einen Schalter, der Einstellungen, Hooks, MCP-Server oder das Modell umstellt.
+  Das Geheimnis steht weder in ihrer Umgebung noch in ihren Argumenten. Der gespielte Agent versucht, sich über die
+  Oberfläche eine Freigabe zu erteilen und einen Beleg zu erfassen, und bekommt viermal 403. Der Wächter lehnt den Aufruf der Bedienschicht aus der Shell, den Start der Oberfläche ohne `--nur-lesen`
+  und jeden Zugriff auf die Ablage ab (Lesen, Suchen, Schreiben, Bash und PowerShell). Rückfrage erlauben,
+  ablehnen und unbeantwortet lassen, anhalten und fortsetzen. Meldet das gespielte Claude Code beim Start kein Gateway,
+  beendet die Oberfläche die Sitzung. Die Antwort auf eine Rückfrage ist ein einzelner Textblock, wie Claude Code ihn
+  verlangt. Vor dem Start sagt die Seite, über welchen Zugang abgerechnet wird, und nennt dabei nur Namen von Variablen. Dazu ein Durchgang im Browser (Chromium, ohne Fenster,
+  16.11.2026) durch alle Schritte der Bedienung, ohne Fehler in der Konsole und ohne Anfrage nach aussen.
+  **Nicht geprüft: die Steuerung mit dem echten Claude Code.** Die Form seiner JSON-Ausgabe und der Weg der Rückfrage
+  (`--permission-prompt-tool`) folgen der Dokumentation (gelesen am 16.11.2026) und der Hilfe von Claude Code 2.1.325, gesehen sind sie nicht.
+  Den Probelauf dafür hat die Sicherheitsprüfung der Entwicklungssitzung abgelehnt. Nachholen am eigenen Arbeitsplatz:
+  `python3 tools/oberflaeche.py --sitzungsprobe`. Ebenfalls nicht geprüft: eine ganze Ermittlung aus der Oberfläche, die
+  Bedienung unter Windows und macOS, Word- und PDF-Dokumente im Klartext-Weg (geprüft sind Textdateien) und eine
+  Testabfrage aus der Oberfläche gegen eine echte Quelle.
 - Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den

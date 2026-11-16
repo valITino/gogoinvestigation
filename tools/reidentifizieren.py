@@ -43,33 +43,27 @@ def innerhalb(pfad: Path) -> bool:
         return False
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("fall")
-    p.add_argument("--zuordnung", required=True, help="CSV mit Platzhalter;Klartext, ausserhalb des Projektordners")
-    p.add_argument("--ausgabe", required=True, help="Zielordner ausserhalb des Projektordners")
-    a = p.parse_args()
+class Fehler(Exception):
+    pass
 
-    if not sys.stdin.isatty():
-        print("FEHLER: Die Rückführung auf echte Angaben macht ein Mensch am Terminal. Ohne Terminal läuft sie nicht.", file=sys.stderr)
-        return 2
-    zuordnung, ausgabe = Path(a.zuordnung).expanduser(), Path(a.ausgabe).expanduser()
+
+def zurueckfuehren(fall_id: str, zuordnung: Path, ausgabe: Path) -> dict:
+    """Ersetzt die Platzhalter in Abschlussrapport.html und indikatoren.csv und schreibt das Ergebnis in den Ausgabeordner.
+    Rückgabe: {"dateien": [Pfad …], "ersetzt": n, "ungenutzt": n, "offen": [Platzhalter …]}. Nennt nie eine echte Angabe.
+    Wer das auslöst, entscheidet der Aufrufer: main() verlangt ein Terminal, die Oberfläche das Geheimnis ihres Starts."""
+    zuordnung, ausgabe = Path(zuordnung).expanduser(), Path(ausgabe).expanduser()
     if innerhalb(zuordnung) or innerhalb(ausgabe):
-        print("FEHLER: Zuordnungsdatei und Ausgabeordner müssen ausserhalb des Projektordners liegen.\n"
-              f"        Projektordner: {PROJEKT}", file=sys.stderr)
-        return 2
+        raise Fehler("Zuordnungsdatei und Ausgabeordner müssen ausserhalb des Projektordners liegen.\n"
+                     f"        Projektordner: {PROJEKT}")
     try:
-        rapport = fall_pfad(a.fall) / "rapport"
+        rapport = fall_pfad(fall_id) / "rapport"
     except ValueError as e:
-        print(f"FEHLER: {e}", file=sys.stderr)
-        return 2
+        raise Fehler(str(e)) from e
     quellen = [rapport / "Abschlussrapport.html", rapport / "indikatoren.csv"]
     if not quellen[0].is_file():
-        print(f"FEHLER: {quellen[0]} fehlt. Zuerst den Rapport erzeugen.", file=sys.stderr)
-        return 2
+        raise Fehler(f"{quellen[0]} fehlt. Zuerst den Rapport erzeugen.")
     if not zuordnung.is_file():
-        print(f"FEHLER: Zuordnungsdatei nicht gefunden: {zuordnung}", file=sys.stderr)
-        return 2
+        raise Fehler(f"Zuordnungsdatei nicht gefunden: {zuordnung}")
 
     paare: dict[str, str] = {}
     with open(zuordnung, newline="", encoding="utf-8-sig") as f:
@@ -77,13 +71,13 @@ def main() -> int:
             if not zeile or not zeile[0].strip() or zeile[0].lstrip().startswith("#"):
                 continue
             if len(zeile) < 2 or not PLATZHALTER.fullmatch(zeile[0].strip()):
-                print(f"FEHLER: Zeile {nr} der Zuordnung hat nicht die Form [TYP_01];Klartext.", file=sys.stderr)
-                return 2
+                raise Fehler(f"Zeile {nr} der Zuordnung hat nicht die Form [TYP_01];Klartext.")
             paare[zeile[0].strip()] = zeile[1].strip()
 
     ausgabe.mkdir(parents=True, exist_ok=True)
     offen: set[str] = set()
     genutzt: set[str] = set()
+    dateien: list[Path] = []
     for quelle in quellen:
         if not quelle.is_file():
             continue
@@ -100,13 +94,33 @@ def main() -> int:
         text = PLATZHALTER.sub(ersetzen, text)
         if ist_html:
             text = text.replace("<div><b>Fassung</b>pseudonymisiert</div>", "<div><b>Fassung</b>mit echten Angaben (im Haus zurückgeführt)</div>")
-        ziel = ausgabe / f"{a.fall}_{quelle.name}"
+        ziel = ausgabe / f"{fall_id}_{quelle.name}"
         ziel.write_text(text, encoding="utf-8")
         ziel.chmod(0o600)
+        dateien.append(ziel)
+    return {"dateien": dateien, "ersetzt": len(genutzt), "ungenutzt": len(paare) - len(genutzt), "offen": sorted(offen)}
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("fall")
+    p.add_argument("--zuordnung", required=True, help="CSV mit Platzhalter;Klartext, ausserhalb des Projektordners")
+    p.add_argument("--ausgabe", required=True, help="Zielordner ausserhalb des Projektordners")
+    a = p.parse_args()
+
+    if not sys.stdin.isatty():
+        print("FEHLER: Die Rückführung auf echte Angaben macht ein Mensch am Terminal. Ohne Terminal läuft sie nicht.", file=sys.stderr)
+        return 2
+    try:
+        ergebnis = zurueckfuehren(a.fall, Path(a.zuordnung), Path(a.ausgabe))
+    except Fehler as e:
+        print(f"FEHLER: {e}", file=sys.stderr)
+        return 2
+    for ziel in ergebnis["dateien"]:
         print(f"geschrieben: {ziel}")
-    print(f"{len(genutzt)} Platzhalter ersetzt, {len(paare) - len(genutzt)} Einträge der Zuordnung nicht gebraucht.")
-    if offen:
-        print(f"ACHTUNG: {len(offen)} Platzhalter ohne Zuordnung blieben stehen: {', '.join(sorted(offen))}")
+    print(f"{ergebnis['ersetzt']} Platzhalter ersetzt, {ergebnis['ungenutzt']} Einträge der Zuordnung nicht gebraucht.")
+    if ergebnis["offen"]:
+        print(f"ACHTUNG: {len(ergebnis['offen'])} Platzhalter ohne Zuordnung blieben stehen: {', '.join(ergebnis['offen'])}")
         return 1
     return 0
 

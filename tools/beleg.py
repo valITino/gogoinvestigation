@@ -74,7 +74,7 @@ def _iso(d: datetime) -> str:
 
 def erfassen(fall_id: str, *, indikator: str, typ: str, quelle: str, abgeklaert: datetime, wortlaut: str, durch: str,
              anonymisierung: str | None = None, art: str | None = None, dienst: str | None = None, residential: bool = False,
-             tatzeit: datetime | None = None, jetzt: datetime | None = None) -> dict:
+             tatzeit: datetime | None = None, jetzt: datetime | None = None, weg: str = "Terminal") -> dict:
     """Prüft die Angaben und trägt den Beleg ein. Gibt den Protokolleintrag zurück. Kein Terminal nötig: Die Sperre für
     Agenten liegt in main() und im Wächter, damit sich diese Funktion im Selbsttest prüfen lässt."""
     fall_daten(fall_id)
@@ -137,7 +137,7 @@ def erfassen(fall_id: str, *, indikator: str, typ: str, quelle: str, abgeklaert:
         ablage.chmod(0o444)
         e = {"nr": nr, "id": kennung, "zeit_utc": _iso(jetzt), "zeit_lokal": jetzt.astimezone(zone).isoformat(timespec="seconds"),
              "fall": fall_id, "werkzeug": VON_HAND, "quelle": f"{quelle} ({KENNZEICHEN})", "art": "von_hand", "freigabe": None,
-             "ziel": indikator, "ziel_typ": typ, "zweck": f"Abklärung von Hand durch {durch}, erfasst mit tools/beleg.py",
+             "ziel": indikator, "ziel_typ": typ, "zweck": f"Abklärung von Hand durch {durch}, erfasst mit tools/beleg.py" + ("" if weg == "Terminal" else f" über die {weg}"),
              "anfrage": {"erfasst_durch": durch, "abgeklaert_am": _iso(abgeklaert), "quelle": quelle},
              "antwort": {"bytes": len(inhalt), "sha256": hashlib.sha256(inhalt).hexdigest(), "rohdaten": f"rohdaten/extern/{ablage.name}"},
              "ergebnis": "ok", "fehler": None, "agent": None, "sitzung": None,

@@ -20,6 +20,8 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
 - Ein Schlüssel oder eine Kontoangabe in Protokoll, Rohdaten, Rapport, Fehlertext oder Log.
 - Fremdinhalt, der im Rapport oder Protokoll als ausführbares HTML erscheint oder einen Agenten steuert.
 - Eine Änderung am Protokoll, die `tools/audit_pruefen.py` nicht erkennt, über das hinaus, was dort als Grenze steht.
+- Ein Weg, auf dem ein Agent die Oberfläche bedient: sich eine Freigabe erteilt, eine Rückfrage selbst beantwortet,
+  an das Geheimnis des Starts kommt oder Klartext und Zuordnungstabelle zu sehen bekommt.
 
 ## Grenzen, die bekannt sind
 
@@ -31,5 +33,11 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   Agent nur darf, was er braucht.
 - Die Hash-Kette macht Veränderungen erkennbar, sie verhindert sie nicht. Eine Kürzung am Ende fällt erst auf, wenn
   der letzte Kettenwert ausserhalb des Systems hinterlegt wurde (`tools/audit_pruefen.py --erwartet`).
+- Die Bedienung der Oberfläche schützt ein Geheimnis im Speicher des Servers und im Browserfenster des
+  Sachbearbeiters. Das hält Agenten auf, die über die Werkzeuge von Claude Code arbeiten. Ein Programm mit den
+  Rechten des Benutzers, das den Speicher des Servers ausliest, hält es nicht auf. Einzelheiten:
+  `docs/OBERFLAECHE.md`, «Schutz der Bedienung».
+- Die Steuerung von Claude Code aus der Oberfläche ist mit dem echten Claude Code noch nicht geprüft. Die Probe dafür:
+  `python3 tools/oberflaeche.py --sitzungsprobe`.
 
 Unterstützt wird der Stand auf `main`.

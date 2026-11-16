@@ -323,13 +323,9 @@ def live_modelle() -> None:
         zeile(AUS, MODELLE["mythos"], f"nicht freigeschaltet, deshalb nicht getestet ({SETUP} --mythos)")
 
 
-def live(bereit: list) -> None:
-    abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
-    if not VENV.is_file():
-        zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
-        return
-    plan = [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]} for q in bereit if q.test]
-    skript = r'''
+# Die Testabfragen laufen in einem eigenen Prozess mit den Paketen des Gateways. Dasselbe Skript nutzt die Oberfläche
+# für den Test einer einzelnen Quelle (tools/ui/bedienung.py).
+LIVE_SKRIPT = r'''
 import asyncio, json, sys
 sys.path.insert(0, sys.argv[1])
 from gateway import server, kern
@@ -350,10 +346,19 @@ async def alle():
         stand = (r.get("befund") or {}).get("quellenstand", {}).get(p["quelle"]) if isinstance(r.get("befund"), dict) else None
         if isinstance(stand, dict) and stand.get("ergebnis") in ("fehler", "aus"):
             r = {"ergebnis": "fehler", "fehler": stand.get("hinweis") or "Die Quelle hat nicht verwertbar geantwortet.", "protokoll_id": r.get("protokoll_id")}
-        print(json.dumps({"quelle": p["quelle"], "werkzeug": p["werkzeug"], "ergebnis": r.get("ergebnis"), "fehler": r.get("fehler"), "id": r.get("protokoll_id")}, ensure_ascii=False), flush=True)
+        kurz = r["befund"].get("kurz") if isinstance(r.get("befund"), dict) else None
+        print(json.dumps({"quelle": p["quelle"], "werkzeug": p["werkzeug"], "ergebnis": r.get("ergebnis"), "fehler": r.get("fehler"), "id": r.get("protokoll_id"), "kurz": kurz}, ensure_ascii=False), flush=True)
 asyncio.run(alle())
 '''
-    p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", skript, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
+
+
+def live(bereit: list) -> None:
+    abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
+    if not VENV.is_file():
+        zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
+        return
+    plan = [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]} for q in bereit if q.test]
+    p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", LIVE_SKRIPT, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
     offen = [eintrag["quelle"] for eintrag in plan]
     rat = " Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."      # hängt das Gateway an jeden Verbindungsfehler an

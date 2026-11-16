@@ -141,19 +141,42 @@ def cmd_aufnehmen(a: argparse.Namespace) -> int:
     return 0 if aufnehmen(a.fall, a.dateien, a.trotzdem, a.durch) else 1
 
 
-def cmd_freigabe(a: argparse.Namespace) -> int:
-    daten = fall_daten(a.fall)
+WEGE = ("Terminal", "Oberfläche")
+
+
+def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "", entziehen: bool = False, weg: str = "Terminal") -> dict:
+    """Erteilt oder entzieht eine Freigabe und schreibt fall.json. Die Entscheidung selbst trifft ein Mensch: am Terminal
+    (cmd_freigabe fragt dort nach) oder in der Oberfläche (der Server ruft diese Funktion erst, wenn die Anfrage das Geheimnis
+    seines Starts trägt). `weg` steht in fall.json, damit sichtbar bleibt, wie die Freigabe zustande kam.
+    Für Agenten bleibt beides gesperrt: Wächter und Berechtigungen lehnen den Befehl und den Aufruf dieser Funktion ab."""
+    if art not in FREIGABEN:
+        raise Fehler(f"Die Freigabe '{art}' gibt es nicht. Möglich: {', '.join(FREIGABEN)}.")
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
+    daten = fall_daten(fall_id)
     freigaben = daten.setdefault("freigaben", {})
+    if entziehen:
+        freigaben[art] = {"erteilt": False, "durch": "", "am": "", "vermerk": f"entzogen am {jetzt()}",
+                          **({"weg": weg} if weg != "Terminal" else {})}
+    else:
+        durch, vermerk = " ".join((durch or "").split()), " ".join((vermerk or "").split())
+        if not durch or not vermerk:
+            raise Fehler("Eine Freigabe braucht --durch (wer verantwortet sie) und --vermerk (Grundlage, z. B. Auftrag oder Verfügung).")
+        freigaben[art] = {"erteilt": True, "durch": durch, "am": jetzt(), "vermerk": vermerk, **({"weg": weg} if weg != "Terminal" else {})}
+    schreiben(fall_pfad(fall_id) / "fall.json", daten)
+    return freigaben[art]
+
+
+def cmd_freigabe(a: argparse.Namespace) -> int:
+    fall_daten(a.fall)
     if a.entziehen:
-        freigaben[a.art] = {"erteilt": False, "durch": "", "am": "", "vermerk": f"entzogen am {jetzt()}"}
-        schreiben(fall_pfad(a.fall) / "fall.json", daten)
+        freigabe_setzen(a.fall, a.art, entziehen=True)
         print(f"Freigabe '{a.art}' für {a.fall} entzogen.")
         return 0
     if not a.durch or not a.vermerk:
         raise Fehler("Eine Freigabe braucht --durch (wer verantwortet sie) und --vermerk (Grundlage, z. B. Auftrag oder Verfügung).")
     am_terminal_bestaetigen(f"Freigabe '{a.art}' für Fall {a.fall}: {FREIGABE_TEXT[a.art]}", a.fall)
-    freigaben[a.art] = {"erteilt": True, "durch": a.durch, "am": jetzt(), "vermerk": a.vermerk}
-    schreiben(fall_pfad(a.fall) / "fall.json", daten)
+    freigabe_setzen(a.fall, a.art, durch=a.durch, vermerk=a.vermerk)
     print(f"Freigabe '{a.art}' für {a.fall} erteilt durch {a.durch}.")
     return 0
 
