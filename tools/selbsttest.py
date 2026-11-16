@@ -2158,7 +2158,7 @@ def _():
     misch = [kl.einordnen(e) for e in liste.suchen("ethereum", TORNADO.lower())]
     assert misch and all(m["mischer"] and not m["dienst"] for m in misch), misch
     boerse = [kl.einordnen(e, "2022-11-16") for e in liste.suchen("ethereum", BINANCE.upper().replace("0X", "0x"))]
-    assert boerse and all(m["dienst"] and m["betreiber"] == "binance" and "Kategorie laut Liste: Börse" in m["detail"] and "(Stand 2022-11-16)" in m["detail"]
+    assert boerse and all(m["dienst"] and m["betreiber"] == "Binance" and "Kategorie laut Liste: Börse" in m["detail"] and "(Stand 2022-11-16)" in m["detail"]
                           for m in boerse), boerse
     assert liste.suchen("polygon", BINANCE) == [], "ein Eintrag für Ethereum gilt nicht für andere Ketten"
     assert liste.suchen("bitcoin", "1MusterAdresseNichtinderListe11111") == []
@@ -2212,7 +2212,7 @@ def _():
     je = {z["adresse"]: z for z in b["adressen"]}
     assert je[WANNACRY]["auffaellig"] == ["ransomware"] and "dienst" not in je[WANNACRY] and je[WANNACRY]["etiketten"][0]["beleg"] == stand["beleg"], je[WANNACRY]
     assert je[TORNADO]["mischer"] == "tornado.cash" and "dienst" not in je[TORNADO], je[TORNADO]
-    assert je[BINANCE]["dienst"] == "binance" and all(m["quelle"] == "GraphSense TagPacks" for m in je[BINANCE]["etiketten"]), je[BINANCE]
+    assert je[BINANCE]["dienst"] == "Binance" and all(m["quelle"] == "GraphSense TagPacks" for m in je[BINANCE]["etiketten"]), je[BINANCE]
     assert eintraege[r["protokoll_id"]]["quellen"] == ["GraphSense TagPacks"]
 
     # Liste und Abfragequelle uneinig (hier gestellt): Beide Angaben bleiben stehen, dazu der Widerspruch. Es gilt die vorsichtigere

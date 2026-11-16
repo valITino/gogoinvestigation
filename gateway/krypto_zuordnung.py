@@ -462,8 +462,15 @@ class Zuordner:
         return {e["quelle"] for liste in self._marken.values() for e in liste}
 
 
+def _abfrage_zuerst(marken: list[dict]) -> list[dict]:
+    """Für den Namen eines Dienstes zählt zuerst, was eine Abfragequelle heute sagt. Die lokale Liste führt Akteure unter einer
+    Kennung und mit dem Stand ihres Datums: Sie benennt, wo keine Abfragequelle einen Namen hat."""
+    return sorted(marken, key=lambda m: m["quelle"] == krypto_listen.QUELLE)
+
+
 def mischer(marken: list[dict]) -> str | None:
     """Name des Mischdienstes, wenn ein Etikett die Adresse einem zuordnet. Sonst None."""
+    marken = _abfrage_zuerst(marken)
     namen = [m["name"] for m in marken if m.get("mischer")]
     return (next((m["name"] for m in marken if m.get("mischer") and m["art"] == "name"), None) or namen[0]) if namen else None
 
@@ -472,6 +479,7 @@ def dienst(marken: list[dict]) -> str | None:
     """Name des Dienstes mit Kunden (Börse, Zahlungsdienst), wenn die Etiketten die Adresse einem zuordnen. Sonst None."""
     if mischer(marken):
         return None
+    marken = _abfrage_zuerst(marken)
     namen = [m.get("betreiber") or m["name"] for m in marken if m.get("dienst") and m["art"] == "name"]
     if namen:
         return namen[0]
