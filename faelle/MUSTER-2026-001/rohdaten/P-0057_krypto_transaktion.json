@@ -14,7 +14,8 @@
   "P-0052",
   "P-0053",
   "P-0054",
-  "P-0055"
+  "P-0055",
+  "P-0056"
  ],
  "befund": {
   "tx": "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f",
@@ -84,7 +85,7 @@
   },
   "gegenpruefung": {
    "quelle": "Blockstream",
-   "beleg": "P-0055",
+   "beleg": "P-0056",
    "ergebnis": "stimmt überein",
    "verglichen": "Block, Zeit, Gebühr, alle Eingänge und Ausgänge mit Adresse und Betrag"
   }

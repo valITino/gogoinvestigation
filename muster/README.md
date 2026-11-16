@@ -7,8 +7,8 @@ Bitcoin-Adressen und Transaktionen aus einer erfundenen Kette. Sie haben gültig
 
 | Dokument | Inhalt |
 |---|---|
-| [Abschlussrapport.pdf](Abschlussrapport.pdf) | Zusammenfassung, Indikatoren, zwölf Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss der Lösegeldzahlung mit Flussbild, Zeitachse, Lücken, Empfehlungen, Glossar. 19 Seiten A4. |
-| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 55 Abfragen und 4 Auswertungen mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu Sitzungsverlauf und Integritätsprüfung. 19 Seiten A4. |
+| [Abschlussrapport.pdf](Abschlussrapport.pdf) | Zusammenfassung, Indikatoren, Einordnung der beiden IP-Adressen (Anonymisierungsdienst ja, kein Hinweis oder nicht geprüft), zwölf Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss der Lösegeldzahlung mit Flussbild, Zeitachse, Lücken, Empfehlungen mit Vorbehalt zur Anmelde-IP, Glossar. 20 Seiten A4. |
+| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 75 Abfragen, 6 Auswertungen und 3 Nachschläge in der lokalen Etikettenliste mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu Sitzungsverlauf und Integritätsprüfung. 27 Seiten A4. |
 
 GitHub zeigt PDF direkt an. Die Originale sind HTML-Dateien, in denen jeder Beleg im Rapport auf seinen Eintrag
 im Protokoll verlinkt. Sie liegen mit der ganzen Fallakte unter

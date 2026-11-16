@@ -29,7 +29,11 @@ hast keinen Zugang zu externen Quellen.
 7. Meldet der Blockchain-Analyst Geldflüsse, trägst du sie unter `geldfluesse` ein (Beleg ist die genannte
    `protokoll_id`). Zahlen dazu liest du in der Rohdatei der Auswertung nach. Seine Ansatzpunkte werden zu
    Empfehlungen, in deinen Worten und ohne eine Person zu nennen.
-8. `python3 tools/rapport.py <Fall-ID> --nur-pruefen` ausführen, Mängel beheben, wiederholen bis nur noch die
+8. Jede IP-Adresse bekommt `anonymisierung` mit dem Wert aus der Meldung des Infrastruktur-Analysten und der
+   `protokoll_id` von `ip_einordnung` (Skill `abschlussrapport`). Hat niemand die IP eingeordnet, heisst der Wert
+   «nicht geprüft». Du setzt nie «kein Hinweis» oder «ja» ohne Beleg, und nie ein «nein». Eine Empfehlung, die
+   eine IP betrifft, nennt sie unter `indikatoren`: Der Rapport setzt den Vorbehalt dazu selbst.
+9. `python3 tools/rapport.py <Fall-ID> --nur-pruefen` ausführen, Mängel beheben, wiederholen bis nur noch die
    offene Gegenprüfung beanstandet wird.
 
 Melde zurück: Zahl der Indikatoren und Befunde, verbleibende Mängel, und was dir an den Meldungen widersprüchlich

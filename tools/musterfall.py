@@ -39,6 +39,7 @@ for _name in ("OSINT_PROXY", "ETHERSCAN_API_KEY", "TRONSCAN_API_KEY", "TRONGRID_
               "BLOCKSCOUT_API_KEY", "KRYPTO_BITCOIN_API"):
     os.environ.pop(_name, None)         # der Musterfall läuft ohne die Zusatzschlüssel der Blockchain-Analyse
 os.environ.pop("OSINT_RIPESTAT_APP", None)
+os.environ["OSINT_LISTEN"] = str(PROJEKT / "faelle" / "MUSTER-ohne-massenlisten")      # nur der Kern der Etikettenliste aus dem Repo, auf jedem Rechner gleich
 os.environ["OSINT_ZEITZONE"] = "Europe/Zurich"     # der Musterfall soll auf jedem Rechner identisch ausfallen
 
 try:

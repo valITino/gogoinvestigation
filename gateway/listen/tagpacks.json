@@ -1,0 +1,812 @@
+{
+ "quelle": "GraphSense TagPacks",
+ "repo": "https://github.com/graphsense/graphsense-tagpacks",
+ "commit": "83754852bd65b697055ae03aceb7b655eefb4259",
+ "datum": "2026-11-05",
+ "lizenz": "MIT (Copyright 2022 Iknaio Cryptoasset Analytics GmbH, 2018-2022 AIT Austrian Institute of Technology)",
+ "hinweis": "Etiketten sind Angaben Dritter, kein Beweis. Sie geben den Stand ihres Datums wieder.",
+ "tabelle": {
+  "datei": "tagpacks.csv.gz",
+  "sha256": "4f60077149157b3a6701b95ce17f2f9c86cdb455025493e075041350e060db9b",
+  "bytes": 696338,
+  "eintraege": 31718
+ },
+ "packs": {
+  "BITB_etf": {
+   "sha256": "de04d7ffe49c131584e93ce884c5708a51bde8914e82fe3120a58fb4d9b10518",
+   "bytes": 443,
+   "title": "Cold Wallets Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.forbes.com/sites/digital-assets/2024/01/25/bitwise-become-first-to-disclose-bitcoin-etf-holdings-address/",
+   "lastmod": "2023-01-26",
+   "eintraege": 1,
+   "uebernommen": 1
+  },
+  "africrypt-hack": {
+   "sha256": "c79a2a837c33f6eb111abe7fee0207ee678cebfc4e7778fa57b973fca0507ae0",
+   "bytes": 414,
+   "title": "Africrypt TagPack",
+   "creator": "Beaunard Grobler",
+   "lastmod": "2021-12-23",
+   "eintraege": 1,
+   "uebernommen": 1
+  },
+  "aft-alqaeda-forfeit_vc": {
+   "sha256": "0836d21ba7fc853befa847fba1769349585ee93c217575646abc638e3a7fbc1d",
+   "bytes": 7393,
+   "title": "155 virtual currency assets",
+   "creator": "GraphSense Core team",
+   "source": "https://www.justice.gov/opa/press-release/file/1304296/download",
+   "eintraege": 155,
+   "uebernommen": 155
+  },
+  "binance": {
+   "sha256": "446a85840b4318d27ec8a3ab74a3fa2779ddd87907ddc0ceff428d6ff18bedd7",
+   "bytes": 495,
+   "title": "GraphSense Binance",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.coindesk.com/hackers-steal-40-7-million-in-bitcoin-from-crypto-exchange-binance",
+   "lastmod": "2019-07-03",
+   "eintraege": 2,
+   "uebernommen": 2
+  },
+  "binance_hack": {
+   "sha256": "279440d6bb6901524b25a6ae1621d90e1d215277b6ead732e8009106d01f65e6",
+   "bytes": 3757,
+   "title": "GraphSense Binance",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.coindesk.com/hackers-steal-40-7-million-in-bitcoin-from-crypto-exchange-binance",
+   "lastmod": "2021-11-12",
+   "eintraege": 44,
+   "uebernommen": 44
+  },
+  "blender_io": {
+   "sha256": "b83e8766aeac4c7f0183513e3f2086e40952e3b1d5d795f15ffa191edf2604dd",
+   "bytes": 2408,
+   "title": "Blender.io",
+   "creator": "GraphSense Core Team",
+   "source": "https://home.treasury.gov/policy-issues/financial-sanctions/recent-actions/20220506",
+   "lastmod": "2022-05-16",
+   "eintraege": 45,
+   "uebernommen": 45
+  },
+  "chaininfo": {
+   "sha256": "3674fe411bc08071842d336dccfecf59c664ed33bf5848a63b352a427357a71a",
+   "bytes": 10680,
+   "title": "Cold Wallets Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://chain.info/richlist",
+   "lastmod": "2021-11-09",
+   "eintraege": 122,
+   "uebernommen": 122
+  },
+  "coinjoin_bounty": {
+   "sha256": "f2b06e0e91d402d3d0b9bb78743808f201d1965062f23b4114302abaf8df0f39",
+   "bytes": 338,
+   "title": "Coinjoin Bounty Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://bitcointalk.org/index.php?topic=279249.0",
+   "lastmod": "2021-11-12",
+   "eintraege": 1,
+   "uebernommen": 1
+  },
+  "defi-fraud-masterthesis": {
+   "sha256": "c9ad61e3a84b75d168572a83c7d030d00378dca877303c361aa07ee4effc6b42",
+   "bytes": 992617,
+   "title": "Tagpack extracted from DeFi Fraud Masterthesis",
+   "creator": "Sebastian Luzian, GraphSense Core Team",
+   "lastmod": "2022-08-13",
+   "eintraege": 6699,
+   "uebernommen": 6699
+  },
+  "defi-protocols-csh": {
+   "sha256": "ec97172b683d2557e8a0039a34733479a2ce334781d3fb5eb37f715f55ab5479",
+   "bytes": 181077,
+   "title": "Known DeFi protocol addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://arxiv.org/abs/2111.11933",
+   "eintraege": 1407,
+   "uebernommen": 1407
+  },
+  "electrum_phishing": {
+   "sha256": "25244ea4c6e5df7775f571f36dd059063eeef1496511c9cfcfae6faa0aefd0a8",
+   "bytes": 1210,
+   "title": "Electrum Phishing Tagpack",
+   "creator": "GraphSense Core Team",
+   "lastmod": "2021-11-12",
+   "eintraege": 6,
+   "uebernommen": 3
+  },
+  "eosio-gambling_part1": {
+   "sha256": "647c346dca050588f39f8f52ab09b5b4e36882d714a6ff25d150d2562fb99970",
+   "bytes": 25720,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/e5bffb655805b49658e7459d2a2407645b0d5118f70df1539a4a254fdad86ef7",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 292
+  },
+  "eosio-gambling_part2": {
+   "sha256": "51594a8630bd159d2037c6d2aaa89f36f47d8bfecba102d5183c4c1c78ceda40",
+   "bytes": 27734,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/21638f22c0be9714d9c2c8570ade24615e124444af84b33b95a8c25f6552c299",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 298
+  },
+  "eosio-gambling_part3": {
+   "sha256": "cbd76792300909a882beca2d1c3818f9d954f06ddd9fec4ac7570311384bce01",
+   "bytes": 31209,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/d414884dbdc5e998259e590d5a5b5c271c013375673ab63c679c2ff4ac0b062a",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 300
+  },
+  "eosio-gambling_part4": {
+   "sha256": "bf01a629e27289eda53e01b9c23b09f2df35f500d405bd77af90e013b6bd0416",
+   "bytes": 25222,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/75ae0a3d0cefc66a30b8245169e17a93dcbc5c111cddc4a6336ab99ef225e76f",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 300
+  },
+  "eosio-gambling_part5": {
+   "sha256": "5c1ed949500267d18fadba7af73f6218c3829a65ab384e9b68de09f3fd32d7a8",
+   "bytes": 31209,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/527a0ca3cb12834756a16edbbc1ed0503b0cc2608f4040677025c8c94d994b3d",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 300
+  },
+  "eosio-gambling_part6": {
+   "sha256": "e19470f43ea01bfee2971325f7ffe047d60b139511f1ab1459b67254398dd3eb",
+   "bytes": 31209,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/a1d77bc67ff3dddaac44a75a68c897268445698db001dda72a2a07d45deaab14",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 300
+  },
+  "eosio-gambling_part7": {
+   "sha256": "98528e96221b46ec0773c505151cc2648da501fc42e32ddcfb66e0fc03ec544c",
+   "bytes": 29145,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/87d73442db05ec53c1418fdd9914506c7e11912108b29febe750e74d99b55cb8",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 300
+  },
+  "eosio-gambling_part8": {
+   "sha256": "e76440e017b2d31112807b869623e4cd39e8b811d0abde023cb97c7893c631a3",
+   "bytes": 26794,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/4794f1341c17fdc4e5e841d486bb158e9df82322bad169a4312478925c5e4c7d",
+   "lastmod": "2022-09-27",
+   "eintraege": 300,
+   "uebernommen": 294
+  },
+  "eosio-gambling_part9": {
+   "sha256": "3c553af3e08e96d647aa263621179f9410b5704643eb4c1e77b24c8aa85ffd06",
+   "bytes": 10083,
+   "title": "ETH gambling addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://bloks.io/transaction/badaee7e3e42a2f455f32a5274ad1db494f4ff70e6443252ccbcf7cb98b14870",
+   "lastmod": "2022-09-27",
+   "eintraege": 111,
+   "uebernommen": 110
+  },
+  "etherscamdb_tagpack": {
+   "sha256": "e34a3548130bfca653b33a4a88aa6bafa06c63fb92e56a404176c3c616ff9dba",
+   "bytes": 465249,
+   "title": "Ethereum Scam Database TagPack",
+   "creator": "EtherScanDB Team",
+   "lastmod": "2019-07-18",
+   "eintraege": 3117,
+   "uebernommen": 3098
+  },
+  "exchange-wallets-binance": {
+   "sha256": "e706166f2c74b23c80f79e4a93f85cb7f7fc80829a5be70409201ea4b5d4b944",
+   "bytes": 9636,
+   "title": "Binance reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.binance.com/en/blog/community/our-commitment-to-transparency-2895840147147652626",
+   "lastmod": "2022-11-16",
+   "eintraege": 86,
+   "uebernommen": 45
+  },
+  "exchange-wallets-bitfinexcom": {
+   "sha256": "7062aada676d7a043318f805a8f4b1f311e9c7747cc5120f353f75708391f460",
+   "bytes": 15836,
+   "title": "bitfinex.com reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://github.com/bitfinexcom/pub/blob/main/wallets.txt",
+   "lastmod": "2022-12-12",
+   "eintraege": 135,
+   "uebernommen": 11
+  },
+  "exchange-wallets-bybit": {
+   "sha256": "134dfb7607f492086dc72ad8e4e4100c4c8bb3a17427cb5cc28ced030cc2486e",
+   "bytes": 962,
+   "title": "Bybit reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://blog.bybit.com/en-US/post/statement-from-ben-on-bybit-s-wallets-bltfb7a70c50462875b/",
+   "lastmod": "2022-11-17",
+   "eintraege": 8,
+   "uebernommen": 8
+  },
+  "exchange-wallets-cryptocom": {
+   "sha256": "461f81a1a452e0f06f0954f11445f0b44e796db52bc6fae231b6e3c76023d96d",
+   "bytes": 1094,
+   "title": "crypto.com reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://twitter.com/kris/status/1591036632664518657",
+   "lastmod": "2022-11-15",
+   "eintraege": 10,
+   "uebernommen": 10
+  },
+  "exchange-wallets-deribit": {
+   "sha256": "7aaa9365b6226462ca5968b4b257b47d79cea83218be8405906ad8556b883ce9",
+   "bytes": 1533,
+   "title": "deribit reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://insights.deribit.com/exchange-updates/deribit-wallet-holdings/",
+   "lastmod": "2022-11-16",
+   "eintraege": 18,
+   "uebernommen": 16
+  },
+  "exchange-wallets-huobi": {
+   "sha256": "6034869b65b060d08c9d1fcd4835986e25ca27e4b083069e50e543c79fa1a2df",
+   "bytes": 6328,
+   "title": "Huobi reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.huobi.com/support/en-us/detail/24922606430831",
+   "lastmod": "2022-11-16",
+   "eintraege": 58,
+   "uebernommen": 37
+  },
+  "exchange-wallets-kucoin": {
+   "sha256": "8a9aac7c252635637072f46ab2caa3adefde64faf0802acd2b6f6af17ea40632",
+   "bytes": 4747,
+   "title": "kucoin reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.kucoin.com/blog/transparency-and-trust-a-detailed-list-of-kucoin-s-wallets",
+   "lastmod": "2022-11-16",
+   "eintraege": 59,
+   "uebernommen": 24
+  },
+  "exchange-wallets-okx": {
+   "sha256": "c84e725af5b1cbcfbb410c6d2762cefa033baa97aa0cd0379daa1b4429b4d643",
+   "bytes": 2974,
+   "title": "OKX reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://twitter.com/okx/status/1590812545346330624",
+   "lastmod": "2022-11-15",
+   "eintraege": 36,
+   "uebernommen": 36
+  },
+  "exchange-wallets-swissborg": {
+   "sha256": "b54393fd6e1b253ce1189ed53dc1c61255d4507e7e9cc95d73d333b4872d9603",
+   "bytes": 1235,
+   "title": "SwisBorg reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://portfolio.nansen.ai/dashboard/APE-C3CMH1",
+   "lastmod": "2022-11-16",
+   "eintraege": 14,
+   "uebernommen": 14
+  },
+  "forsage": {
+   "sha256": "67c8690bd11e9fbcd70990388482c9acbe7a94a6ac8d7c2e0643bb3dd40f2225",
+   "bytes": 1009,
+   "title": "Forsage Pyramid Scheme",
+   "creator": "GraphSense Core Team",
+   "source": "https://arxiv.org/abs/2105.04380",
+   "lastmod": "2021-11-15",
+   "eintraege": 8,
+   "uebernommen": 8
+  },
+  "hacks": {
+   "sha256": "7fff7a640e14800f749fa6cb222cea7494d0d92767106fa4ecca8976ca682c60",
+   "bytes": 106849,
+   "title": "Known Cryptoservice hacks",
+   "creator": "GraphSense Core Team",
+   "lastmod": "2021-11-12",
+   "eintraege": 608,
+   "uebernommen": 608
+  },
+  "hydra": {
+   "sha256": "d56a9fc6f1d45df1b489a9f453646483765df6ae18d4d758064eddef14f51412",
+   "bytes": 5807,
+   "title": "Hydra Market",
+   "creator": "GraphSense Core Team",
+   "source": "https://home.treasury.gov/policy-issues/financial-sanctions/recent-actions/20220405",
+   "lastmod": "2023-05-10",
+   "eintraege": 117,
+   "uebernommen": 117
+  },
+  "interpol-real_services": {
+   "sha256": "9d612c3f0bea8d1e827de3d8a958b7b4b8818b0c284f2bb70731e0d94e9686a6",
+   "bytes": 1545,
+   "title": "INTERPOL TagPack",
+   "creator": "INTERPOL CNTL",
+   "source": "https://www.interpol.int",
+   "lastmod": "2021-11-12",
+   "eintraege": 10,
+   "uebernommen": 10
+  },
+  "lazarus": {
+   "sha256": "8b84a1ac2b239cdaccafbf8a76ae905fe53e48189f30d5c022fec3b614637aa9",
+   "bytes": 1665,
+   "title": "OFAC Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.treasury.gov/resource-center/sanctions/OFAC-Enforcement/Pages/20200302.aspx",
+   "lastmod": "2022-04-15",
+   "eintraege": 21,
+   "uebernommen": 21
+  },
+  "lazarus2": {
+   "sha256": "c73d0b81398fe8c213d2db681a050b8d8462502eebdf51567060af603bb6f04c",
+   "bytes": 766,
+   "title": "FBI Identifies Cryptocurrency Funds Stolen by DPRK",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.fbi.gov/news/press-releases/fbi-identifies-cryptocurrency-funds-stolen-by-dprk",
+   "lastmod": "2023-08-28",
+   "eintraege": 6,
+   "uebernommen": 6
+  },
+  "miners_additional": {
+   "sha256": "baa2f6735cc3eb39ac9f024c2788cf59965cd99b4a98024bac6570fd59a5b9eb",
+   "bytes": 25694,
+   "title": "Miners tagpack update for the years 2020-current",
+   "creator": "GraphSense Core Team",
+   "source": "https://github.com/MatteoRomiti/Deep_Dive_BTC_Mining_Pools/",
+   "lastmod": "2022-10-04",
+   "eintraege": 234,
+   "uebernommen": 234
+  },
+  "mixing_fc2021": {
+   "sha256": "4ac135d275f76ef30d46986a7348fed62e7e0f9a8570e24107623628c0ca2c3e",
+   "bytes": 4709,
+   "title": "Mixing Services",
+   "creator": "GraphSense Core Team",
+   "source": "https://fc21.ifca.ai/papers/103.pdf",
+   "eintraege": 66,
+   "uebernommen": 66
+  },
+  "plustoken": {
+   "sha256": "4f4187e370f0f50e53300033dce79a6cb3bf8c0e4d5c9a11b6f618e600ba0dab",
+   "bytes": 1156,
+   "title": "Plus Token Scam Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://boxmining.com/plus-token-ponzi/",
+   "lastmod": "2021-11-12",
+   "eintraege": 12,
+   "uebernommen": 11
+  },
+  "ponzi_scheme": {
+   "sha256": "53bb60c961efbc9a09fd8c3aad5b0be65e3d50e06b1138bba1caeafb613c8ef3",
+   "bytes": 5204,
+   "title": "Ponzi Scheme Tagpack",
+   "creator": "Matteo Romiti",
+   "source": "https://arxiv.org/abs/1803.00646",
+   "lastmod": "2021-11-12",
+   "eintraege": 52,
+   "uebernommen": 52
+  },
+  "protonmail": {
+   "sha256": "c3c031ddaa0d0983ddebd6c195ace72f6291f425a7374ba75a91b56293e21a2b",
+   "bytes": 297,
+   "title": "ProtonMail Tagpack",
+   "creator": "GraphSense Core Team",
+   "source": "https://protonmail.com/donate",
+   "lastmod": "2021-11-12",
+   "eintraege": 1,
+   "uebernommen": 1
+  },
+  "ransomware": {
+   "sha256": "f97a3234016b54b0d8641e41a097c6353896d6f0caae14789f893f4fd2764522",
+   "bytes": 632559,
+   "title": "Ransomware Tagpack",
+   "creator": "Paquet-Clouston et al.",
+   "source": "https://zenodo.org/record/1238041#.XLQwopMzZR4",
+   "lastmod": "2021-11-14",
+   "eintraege": 7178,
+   "uebernommen": 7178
+  },
+  "ransomwhere": {
+   "sha256": "fa2061e36c4d6b1eed3590bd17e1138198245dd2d11999be1589be0eac122ae0",
+   "bytes": 598926,
+   "title": "Ransomwhere tag pack",
+   "creator": "GraphSense Core Team",
+   "source": "https://ransomwhe.re/",
+   "lastmod": "2022-02-15",
+   "eintraege": 7457,
+   "uebernommen": 7457
+  },
+  "richest_addresses": {
+   "sha256": "8e12d9bb47f1beb0723f495c774fe9262ac79df3f8b21226c6a5498259a96650",
+   "bytes": 4906,
+   "title": "Richest Addresses",
+   "creator": "Matteo Romiti",
+   "source": "https://bitinfocharts.com/top-100-richest-bitcoin-addresses.html",
+   "lastmod": "2021-11-12",
+   "eintraege": 36,
+   "uebernommen": 36
+  },
+  "ronin_bridge": {
+   "sha256": "0ffc3e8c8e5ff6d0355b006a1896f9228bb2f92ec590ad29c6907850c24b7ab9",
+   "bytes": 904,
+   "title": "Ronin bridge hack",
+   "creator": "GraphSense Core Team",
+   "source": "https://roninblockchain.substack.com/p/community-alert-ronin-validators",
+   "lastmod": "2022-04-05",
+   "eintraege": 6,
+   "uebernommen": 6
+  },
+  "service-wallets-checksig": {
+   "sha256": "17e6f9e437c6e7615a71fba870b9b6ae3eb6a01a1b81fa73a43a46441a2c5716",
+   "bytes": 18525,
+   "title": "Checksig reserve wallets",
+   "creator": "GraphSense Core Team",
+   "source": "https://www.checksig.com/por/",
+   "lastmod": "2022-12-23",
+   "eintraege": 247,
+   "uebernommen": 247
+  },
+  "sinbad_io": {
+   "sha256": "6d6adab5c13f8fbfc9176325e1b7227abfb62858e69f4bfaa8728aa4af6af0a3",
+   "bytes": 399,
+   "title": "sinbad.io",
+   "creator": "GraphSense Core Team",
+   "source": "https://ofac.treasury.gov/recent-actions/20231129",
+   "eintraege": 2,
+   "uebernommen": 2
+  },
+  "tornado_cash": {
+   "sha256": "a2fdafe9a32f538150e70b13e7653088bdff82abcd74085dc8c9d380e00480bd",
+   "bytes": 2533,
+   "title": "Tornado.cash",
+   "creator": "GraphSense Core Team",
+   "source": "https://home.treasury.gov/policy-issues/financial-sanctions/recent-actions/20220808",
+   "lastmod": "2022-08-10",
+   "eintraege": 39,
+   "uebernommen": 38
+  },
+  "twitter_hack_scam": {
+   "sha256": "4db94558f6e25a0ef58de05c07211bdf7f1a4c09fcd7fb54274c668b2b9a1e72",
+   "bytes": 641,
+   "title": "Twitter Hack Scam Tagpack",
+   "creator": "GraphSense Core Team",
+   "lastmod": "2021-11-12",
+   "eintraege": 3,
+   "uebernommen": 3
+  },
+  "usdt_blacklist": {
+   "sha256": "9039a2295e8cf27e5d57189e2b61d12395bbee1cc3c2c05aef3f96b4b9c07bd0",
+   "bytes": 136439,
+   "title": "USDT blacklist",
+   "creator": "GraphSense Core team",
+   "source": "https://ikna.io",
+   "lastmod": "2023-02-22",
+   "eintraege": 774,
+   "uebernommen": 774
+  },
+  "walletexplorer": {
+   "sha256": "1db846c32cc028a5be3410eeb9a899dd2d7f64e2c17713dbb0254bbd6d88d05a",
+   "bytes": 74694,
+   "title": "WalletExplorer Tag Pack",
+   "creator": "GraphSense Core Team",
+   "lastmod": "2021-11-11",
+   "eintraege": 386,
+   "uebernommen": 386
+  },
+  "wasabi_collector": {
+   "sha256": "470f40135e8b8c0040a6e85b5e5251133b01c27ceb751896501d408ff6d89a66",
+   "bytes": 513,
+   "title": "Wasabi Fee Collector Addresses",
+   "creator": "GraphSense Core Team",
+   "source": "https://github.com/nopara73/WasabiVsSamourai/blob/master/WasabiVsSamourai/CoinJoinIndexer.cs#L24",
+   "lastmod": "2022-05-17",
+   "eintraege": 2,
+   "uebernommen": 2
+  },
+  "defi_updated/defi-protocols_1inch": {
+   "sha256": "81cb65631307dfddcc9bb1aecaf767b8cbeb816d38cecc776a0444b493b8b483",
+   "bytes": 615,
+   "title": "1inch v3-prerelease",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://docs.1inch.io",
+   "lastmod": "2023-01-05",
+   "eintraege": 4,
+   "uebernommen": 4
+  },
+  "defi_updated/defi-protocols_aave": {
+   "sha256": "71cf33dc14601d38dd250bb513382008ae24bf4930e461fde9fdf9f04c611563",
+   "bytes": 5412,
+   "title": "Aave addresses",
+   "creator": "CSH CryptoFinance Team",
+   "lastmod": "2023-01-09",
+   "eintraege": 31,
+   "uebernommen": 31
+  },
+  "defi_updated/defi-protocols_compound": {
+   "sha256": "4f6e50d1f3ff5f3da2d5e55ddf8c355351ae3a92a4c610f7aa079e64e13a9606",
+   "bytes": 1432,
+   "title": "Compound addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://github.com/compound-finance/compound-config/blob/master/networks/mainnet.json",
+   "lastmod": "2023-01-09",
+   "eintraege": 13,
+   "uebernommen": 13
+  },
+  "defi_updated/defi-protocols_curve": {
+   "sha256": "7c562087be33588d804b5205737afad0a112e87ddf89f8569ed3d9a7156f2f86",
+   "bytes": 681,
+   "title": "CurveFinance addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://curve.readthedocs.io/ref-addresses.html",
+   "lastmod": "2023-01-05",
+   "eintraege": 4,
+   "uebernommen": 4
+  },
+  "defi_updated/defi-protocols_instadapp": {
+   "sha256": "c25c84c8a1088954984221824347f7cf1d29cdf07f4129a08f779ff89fc60e92",
+   "bytes": 2325,
+   "title": "InstaDapp addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://github.com/Instadapp/dsa-connectors/blob/main/docs/connectors.json",
+   "lastmod": "2023-01-09",
+   "eintraege": 18,
+   "uebernommen": 18
+  },
+  "defi_updated/defi-protocols_sushiswap": {
+   "sha256": "891a2f7bbc40720cf7fd55a04948ac4f5da9e0af46b019798bcb04e43e48b18d",
+   "bytes": 1168,
+   "title": "SushiSwap addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://dev.sushi.com/docs/Developers/Deployment%20Addresses",
+   "lastmod": "2023-01-05",
+   "eintraege": 10,
+   "uebernommen": 10
+  },
+  "defi_updated/defi-protocols_synthetix": {
+   "sha256": "b3cc00ed882f1eee2e02c54e61779f79123566c37a36ce405e7f61334daded91",
+   "bytes": 3881,
+   "title": "Synthetix v2.77.0-alpha",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://docs.synthetix.io/addresses/#mainnet-contracts",
+   "lastmod": "2023-01-05",
+   "eintraege": 40,
+   "uebernommen": 40
+  },
+  "defi_updated/defi-protocols_uniswap": {
+   "sha256": "b393d6b32f515d3942149f06bfef0c9ec4b302f4431403dbaff71342f202bada",
+   "bytes": 1865,
+   "title": "UniSwap Governance-related addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://docs.uniswap.org/concepts/governance/overview",
+   "lastmod": "2023-01-09",
+   "eintraege": 16,
+   "uebernommen": 16
+  },
+  "defi_updated/defi-protocols_uniswap_pools": {
+   "sha256": "ec9986cc685ab0c28c828cd34444927f5a40baa21f35d6cfcd06650150d86b65",
+   "bytes": 4485,
+   "title": "UniSwap Pools-related addresses",
+   "creator": "CSH CryptoFinance Team",
+   "source": "https://info.uniswap.org/#/pools/",
+   "lastmod": "2023-01-09",
+   "eintraege": 46,
+   "uebernommen": 46
+  }
+ },
+ "massenlisten": {
+  "inhalt": "Reserve-Adressen der Börse BitMEX, Adressen aus Erpresser-Spam, Mining-Adressen, CoinJoin-Adressen von Samourai",
+  "dateien": {
+   "exchange-wallets-bitmex_0": {
+    "sha256": "4c3917c77c0aa9381e5c9479c1804fde18854b9714f5cfaf22617b50c5044832",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_1": {
+    "sha256": "8d8640c889a97a177741830d801c32b03d9a17585f15d3122dcabe5bcce14665",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_2": {
+    "sha256": "4c91cf8fe4cf7b7e1e95565b706f6a5b69260a368c3b53a96b876b5ca2e06554",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_3": {
+    "sha256": "11ca3d130703dda4e271cb12ba6184f33e5857529c74072bb5304ddcd501b4cd",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_4": {
+    "sha256": "8428f6e6bc04e3c62ca2836d4a5036bf4beccc9ddd5228293dd0b57ffeeede84",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_5": {
+    "sha256": "bfe72067db7a5e753d940e43a8ae5dcb289bc7a8a6a1c916629410070e14d3e1",
+    "bytes": 2300338,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 50000,
+    "uebernommen": 50000
+   },
+   "exchange-wallets-bitmex_6": {
+    "sha256": "932ca91c5c707796e833508469b0350111b68a1f9dbd030b962ee88121765e5e",
+    "bytes": 2491818,
+    "title": "Bitmex reserve wallets",
+    "creator": "GraphSense Core Team",
+    "source": "https://s3-eu-west-1.amazonaws.com/public.bitmex.com/data/porl/20221115-reserves-763269-20221115D113036434534000.yaml",
+    "lastmod": "2022-11-16",
+    "eintraege": 36208,
+    "uebernommen": 36208
+   },
+   "miners": {
+    "sha256": "97808350a7c9053f92200aa3d2829d7194a35b338ca2b9377c4d634419baf083",
+    "bytes": 4109157,
+    "title": "Miners TagPack",
+    "creator": "Matteo Romiti",
+    "source": "https://github.com/MatteoRomiti/Deep_Dive_BTC_Mining_Pools/blob/master/dataset/miners.json",
+    "lastmod": "2021-11-15",
+    "eintraege": 37439,
+    "uebernommen": 37439
+   },
+   "samourai": {
+    "sha256": "7f25711c730f03a736999bb29a47beb2d8c05ac950070d5726689137aabaa9b8",
+    "bytes": 1973951,
+    "title": "Samourai Wallet Tagpack",
+    "creator": "GraphSense Core Team",
+    "source": "https://github.com/nopara73/WasabiVsSamourai/blob/master/WasabiVsSamourai/SamouraiCoinJoins.txt",
+    "lastmod": "2021-11-14",
+    "eintraege": 36548,
+    "uebernommen": 36548
+   },
+   "sextortion_excello": {
+    "sha256": "4a46fa2fe4ddb65841eb5e89d4d9fa45548437371d82bedf4687d50c67cd9bdc",
+    "bytes": 926561,
+    "title": "Talos Sextortion Tagpack",
+    "creator": "Paquet-Clouston et al.",
+    "source": "https://github.com/MatteoRomiti/Sextortion_Spam_Bitcoin",
+    "lastmod": "2021-11-15",
+    "eintraege": 12527,
+    "uebernommen": 12527
+   },
+   "sextortion_talos": {
+    "sha256": "0b903485f7879d80c78396623a11db2d043fca499028db96cf233b2261242b49",
+    "bytes": 2695895,
+    "title": "Talos Sextortion Tagpack",
+    "creator": "Talos Cisco",
+    "source": "https://blog.talosintelligence.com/2018/10/anatomy-of-sextortion-scam.html",
+    "lastmod": "2019-08-06",
+    "eintraege": 58600,
+    "uebernommen": 58600
+   }
+  },
+  "tabelle": {
+   "datei": "tagpacks_gross.csv.gz",
+   "sha256": "09dfb5f7607994659f3472b2b7ac4fb062c9208d96f43870d5708527a07b151f",
+   "bytes": 11676422,
+   "eintraege": 481322
+  }
+ },
+ "ausgelassen": {
+  "Alt-Right": {
+   "sha256": "0200d08044970e8c7cb5f08bf256c4e849f70c3c8b7eef6011a129300cab5308",
+   "bytes": 36246,
+   "grund": "Spendenadressen, die Personen und politischen Gruppen zugeschrieben werden. Personenbezug ohne Nutzen für die Verfolgung von Geld."
+  },
+  "aidecisions_ofac": {
+   "sha256": "16cb6d37efaa31f8c89a623a06ed0e32db96541dfd5017b12b6b68a5ed1c9020",
+   "bytes": 174704,
+   "grund": "Nennt natürliche Personen. Die Sanktionsliste (OFAC) lädt das Gateway selbst, tagesaktuell."
+  },
+  "bitzillions_ltc": {
+   "sha256": "970b309c3ac1b421d134b624cfb33d6380b55d235f9b475d06e5457c8fc348cd",
+   "bytes": 289,
+   "grund": "Enthält keine Adresse einer Kette, die das Gateway verfolgt (Bitcoin, Ethereum, TRON)."
+  },
+  "demo": {
+   "sha256": "5c33b67b8991445ba622d517a5ec168a00192e794073552497c1540cf6f3056a",
+   "bytes": 665,
+   "grund": "Beispieldatei des Projekts ohne echte Angaben."
+  },
+  "etherhiding": {
+   "sha256": "3d4c8c1680445f7f40b6bc86c82e8343aa818d20e6ff171b222e0cda4e90559c",
+   "bytes": 400,
+   "grund": "Enthält keine Adresse einer Kette, die das Gateway verfolgt (Bitcoin, Ethereum, TRON)."
+  },
+  "etherscan-label-word-cloud": {
+   "sha256": "1567d44eed7e1fe2861ed6b0a387c8dd2e2397db0deb3e4ff4607f0e20ce2ca8",
+   "bytes": 722985,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "etherscan-wordcloud-exchange": {
+   "sha256": "d75a7b563d26cc64349bdbb6c09f2a969654ee425be6d7944684a9d66c8513da",
+   "bytes": 73867,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "etherscan-wordcloud-gambling": {
+   "sha256": "134d5a661fbfdd1c6da9f692e7729448bd680f618b96478e080519d6699c6673",
+   "bytes": 12292,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "etherscan-wordcloud-market": {
+   "sha256": "af3d067e17373a1757be7382b493d7729fa60afe533ca30048376dfd61ead5be",
+   "bytes": 24025,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "etherscan-wordcloud-miner": {
+   "sha256": "01a8e3c820c60cedc430fae9e48a8dfeaa1ecb5bc86397d727730145b570dd77",
+   "bytes": 16414,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "etherscan-wordcloud-mixing_service": {
+   "sha256": "d7920fb6386aa88a6c9f0db24bde66dbd2715ef8b2a03487390cd1a8c9e857e2",
+   "bytes": 6446,
+   "grund": "Abgeleitet aus den Etiketten von Etherscan. Dessen Nutzungsbedingungen untersagen die Wiedergabe."
+  },
+  "lockbit_tattoos": {
+   "sha256": "6a514199c937864032935156d6b3f4203dc7a873951bc61cd7310c1bd1af0bf9",
+   "bytes": 1306,
+   "grund": "Adressen von Privatpersonen (Kategorie «user»)."
+  },
+  "ofac": {
+   "sha256": "d545e6e88a2590aee15c3cd55df9a225a29fd569c5079393748ee4c3bfd1d682",
+   "bytes": 37850,
+   "grund": "Nennt natürliche Personen. Die Sanktionsliste (OFAC) lädt das Gateway selbst, tagesaktuell."
+  },
+  "satoshidice_bch": {
+   "sha256": "daefac657b342f3e1d5d865ef1df84fcb408c75c3fa4c07fe38d20bc5fdea512",
+   "bytes": 312,
+   "grund": "Enthält keine Adresse einer Kette, die das Gateway verfolgt (Bitcoin, Ethereum, TRON)."
+  },
+  "suidlanders": {
+   "sha256": "ca994505fb59c4ead4fe869121278d481adda84dcf38c6d4786f16b36f34489b",
+   "bytes": 494,
+   "grund": "Politische Zuschreibung an eine Gruppe, ohne Nutzen für die Verfolgung von Geld."
+  }
+ }
+}

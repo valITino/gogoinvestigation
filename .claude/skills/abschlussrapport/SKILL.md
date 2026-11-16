@@ -39,7 +39,8 @@ Darstellung ist in jedem Fall dieselbe.
     {"id": "I-01", "typ": "ip", "wert": "203.0.113.7", "herkunft": "Rapport Ziff. 5",
      "rolle": "Server der Täter", "bewertung": "boesartig",
      "kennzahlen": {"abuse_score": 87, "vt_boesartig": 9, "vt_gesamt": 93, "offene_ports": [22, 443]},
-     "belege": ["P-0001", "P-0002"]}
+     "anonymisierung": {"wert": "kein Hinweis", "belege": ["P-0018"]},
+     "belege": ["P-0001", "P-0002", "P-0018"]}
   ],
   "befunde": [
     {"id": "B-01", "titel": "Aussage als ganzer Satz", "art": "feststellung",
@@ -62,7 +63,8 @@ Darstellung ist in jedem Fall dieselbe.
     {"zeit": "2026-10-01", "ereignis": "Erpresserschreiben trifft ein.", "quelle": "Rapport Ziff. 6"}
   ],
   "luecken": ["Was nicht geklärt werden konnte und warum, mit P-Nummer bei fehlgeschlagenen Abfragen."],
-  "empfehlungen": [{"text": "Nächster Schritt.", "prioritaet": "hoch"}],
+  "empfehlungen": [{"text": "Nächster Schritt.", "prioritaet": "hoch"},
+                   {"text": "Begehren zur Anmeldung vom 29.09.2026.", "prioritaet": "mittel", "indikatoren": ["I-04"], "adressat": "zugangsanbieter"}],
   "glossar": [{"begriff": "VPN", "erklaerung": "Ein Satz in Alltagssprache."}]
 }
 ```
@@ -77,6 +79,10 @@ Erlaubte Werte:
 | `sicherheit` | `hoch` `mittel` `tief` |
 | `gegenpruefung` | `offen` `bestaetigt` `eingeschraenkt` `widerlegt` |
 | `prioritaet` | `hoch` `mittel` `tief` |
+| `anonymisierung.wert` | nur bei `typ: ip`, dort Pflicht: `ja` `kein Hinweis` `nicht geprüft`. Ein «nein» gibt es nicht. |
+| `anonymisierung.belege` | die `protokoll_id` der Auswertung von `ip_einordnung` und allfällige von Hand erfasste Belege (`X-…`) zu dieser IP. Bei `nicht geprüft` ohne Einordnung in der Fallakte: weglassen. |
+| `empfehlungen[].indikatoren` | Indikatoren, die die Empfehlung betrifft. Pflicht, wenn sie sich an einen Zugangsanbieter richtet. |
+| `empfehlungen[].adressat` | `zugangsanbieter`, wenn die Empfehlung ein Begehren an den Anbieter eines Anschlusses meint. Sonst weglassen. |
 | `kennzahlen` | `abuse_score` (0–100), `vt_boesartig` und `vt_gesamt` (Anzahl Scanner), `offene_ports` (Liste). Diese erscheinen als Diagramm. Weitere Schlüssel sind erlaubt und erscheinen in der Tabelle. |
 
 Zeiten als UTC mit `Z` oder als reines Datum. Der Generator rechnet in Ortszeit um.
@@ -96,6 +102,18 @@ Zeiten als UTC mit `Z` oder als reines Datum. Der Generator rechnet in Ortszeit 
 - `geldfluesse`: `beleg` ist die `protokoll_id` eines Laufs von `krypto_geldfluss`, wie sie in der Befundmeldung des
   Blockchain-Analysten steht. Das Flussbild, die Tabellen und die Ansatzpunkte darunter erzeugt der Generator aus der
   Rohdatei dieser Auswertung. Du schreibst dazu nur Titel und einen kurzen Text.
+
+- Jede IP-Adresse trägt `anonymisierung.wert`. Der Wert muss dem entsprechen, was die Fallakte ergibt: Führt eine
+  Auswertung von `ip_einordnung` oder ein von Hand erfasster Beleg die Adresse als Ausgang eines
+  Anonymisierungsdienstes, heisst er `ja`. Hat mindestens eine Quelle geantwortet und keine führt sie: `kein Hinweis`.
+  Sonst `nicht geprüft`. Den Wert, Netz, Anschlussart, Abfragezeit und Tatzeit zeigt der Rapport in einer eigenen
+  Tabelle, gelesen aus den Rohdateien. Du schreibst sie nicht ab.
+- Eine Empfehlung an einen Zugangsanbieter (`adressat: "zugangsanbieter"`, oder der Text spricht von
+  Zugangsanbieter oder Anschlussinhaber) nennt die betroffene IP unter `indikatoren`. Der Rapport setzt zu jeder
+  Empfehlung, die eine IP betrifft, den Vorbehalt, der zum Wert gehört: bei `ja` «zuerst den Betreiber des
+  Dienstes», bei einem Residential Proxy «Anschlussinhaber voraussichtlich unbeteiligt», bei `kein Hinweis` den
+  festen Vorbehalt, bei `nicht geprüft` zusätzlich «Abklärung nachholen». Diesen Text schreibst du nicht selbst
+  und schwächst ihn nicht ab.
 
 Meldet das Werkzeug einen Mangel, behebst du ihn an der Sache: Beleg nachtragen, Sicherheit senken, Aussage zur
 Hypothese machen oder streichen. Du erfindest keine P-Nummern und verbiegst keine Aussage, damit sie durchgeht.

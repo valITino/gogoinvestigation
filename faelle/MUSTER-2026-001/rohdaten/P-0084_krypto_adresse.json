@@ -5,13 +5,14 @@
   "kette": "bitcoin"
  },
  "grundlage": [
-  "P-0074",
-  "P-0075",
   "P-0076",
   "P-0077",
   "P-0078",
   "P-0079",
-  "P-0080"
+  "P-0080",
+  "P-0081",
+  "P-0082",
+  "P-0083"
  ],
  "befund": {
   "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
@@ -33,7 +34,7 @@
     "art": "ransomware",
     "name": "MusterLocker",
     "detail": "1 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
-    "beleg": "P-0078"
+    "beleg": "P-0081"
    }
   ],
   "auffaellig": [
@@ -42,21 +43,31 @@
   "quellenstand": {
    "OFAC": {
     "ergebnis": "ok",
-    "beleg": "P-0076",
+    "beleg": "P-0078",
     "adressen_in_liste": 3
+   },
+   "GraphSense TagPacks": {
+    "ergebnis": "ok",
+    "beleg": "P-0080",
+    "hinweis": "Die Massenlisten (481322 Adressen: Reserve-Adressen der Börse BitMEX, Adressen aus Erpresser-Spam, Mining-Adressen, CoinJoin-Adressen von Samourai) sind nicht geladen. Nachholen: python3 tools/listen.py laden",
+    "stand": "83754852bd65",
+    "datum": "2026-11-05",
+    "umfang": "Kern",
+    "eintraege": 31718,
+    "sha256": "4f60077149157b3a6701b95ce17f2f9c86cdb455025493e075041350e060db9b"
    },
    "Ransomwhere": {
     "ergebnis": "ok",
-    "beleg": "P-0078",
+    "beleg": "P-0081",
     "adressen_in_liste": 1
    },
    "TRM Labs": {
     "ergebnis": "ok",
-    "beleg": "P-0079"
+    "beleg": "P-0082"
    },
    "WalletExplorer": {
     "ergebnis": "ok",
-    "beleg": "P-0080"
+    "beleg": "P-0083"
    },
    "Iknaio": {
     "ergebnis": "aus",

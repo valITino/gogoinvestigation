@@ -5,6 +5,8 @@ Ohne Schlüssel:
     OFAC             Sanktionsliste des US-Finanzministeriums (SDN) mit den dort genannten Krypto-Adressen
     TRM Labs         Sanktionsprüfung (öffentliche Schnittstelle)
     Ransomwhere      von Freiwilligen gepflegter Datensatz bekannter Lösegeld-Adressen (Bitcoin)
+    TagPacks         lokale Etikettenliste (GraphSense TagPacks, fester Stand): Börsen, Mischdienste, Märkte, Betrugs- und
+                     Lösegeld-Adressen. Es geht keine Adresse hinaus. Siehe krypto_listen.py
     Blockscout       Etiketten für Adressen der Ethereum-Familie (Börsen, Brücken, gesperrte Adressen)
     WalletExplorer   Bitcoin: Zuordnung zu benannten Diensten über gemeinsam genutzte Adressen
     Tether           TRON: Hat Tether die Adresse gesperrt? (Leseaufruf am USDT-Vertrag über TronGrid)
@@ -27,6 +29,7 @@ import re
 from collections import Counter
 from typing import Any
 
+from . import krypto_listen
 from .kern import Abbruch, Vorgang, einstellung, saeubern
 from .krypto_ketten import KETTEN, Kette, Quellfehler, gleich, tron_gesperrt
 
@@ -49,7 +52,7 @@ _MISCH_NAME = re.compile(r"tornado[ .]?cash|mixer|mixing|tumbler|coin ?join|join
 _IKNAIO_DIENST = {"exchange", "service", "gambling", "payment_processor", "wallet_service", "hosted_wallet", "atm", "mining_pool"}
 _IKNAIO_MISCHER = {"mixing_service", "mixer", "coinjoin"}
 TRM_KOERPER = 900          # TRM nimmt je Anfrage höchstens 1 KB an. Grössere Listen gehen in mehreren Anfragen
-QUELLEN = ("ofac", "trm", "ransomwhere", "blockscout", "walletexplorer", "tether", "tronscan", "chainabuse", "iknaio")
+QUELLEN = ("ofac", "trm", "ransomwhere", "tagpacks", "blockscout", "walletexplorer", "tether", "tronscan", "chainabuse", "iknaio")
 
 
 def etikett(quelle: str, art: str, name: str, detail: str = "", dienst: bool = False, beleg: str = "", betreiber: str = "",
@@ -149,7 +152,8 @@ class Zuordner:
         self._flach: set[tuple[str, str]] = set()     # gegen Listen und Sammelabfragen geprüft
         self._tief: set[tuple[str, str]] = set()      # zusätzlich einzeln abgefragt
         self.cluster: dict[str, str] = {}            # Bitcoin-Adresse -> Wallet-Kennung von WalletExplorer
-        self._ofac_beleg = self._rw_beleg = ""
+        self._ofac_beleg = self._rw_beleg = self._tp_beleg = ""
+        self._tp: krypto_listen.Liste | None | bool = None       # None: noch nicht versucht. False: nicht verwendbar
 
     def _an(self, quelle: str) -> bool:
         return self.nur is None or quelle in self.nur
@@ -204,8 +208,30 @@ class Zuordner:
         self._rw_beleg = a.id
         self._melden("Ransomwhere", "ok", a.id, adressen_in_liste=len(self._rw))
 
-    def _aus_listen(self, adresse: str) -> list[dict]:
+    def _tagpacks_laden(self) -> None:
+        """Die lokale Etikettenliste. Gelesen wird sie nur, wenn ihre Prüfsumme zum Verzeichnis passt. Dass sie befragt wurde, steht
+        mit Stand und Prüfsumme im Protokoll. Ist sie nicht verwendbar, heisst das «nicht geprüft», nie «kein Eintrag»."""
+        if self._tp is not None or not self._an("tagpacks"):
+            return
+        self._tp = False
+        try:
+            liste = krypto_listen.laden()
+        except krypto_listen.Listenfehler as e:
+            self._melden(krypto_listen.QUELLE, "fehler", hinweis=str(e))
+            return
+        self._tp = liste
+        self._tp_beleg = self.v.lokal(krypto_listen.QUELLE, f"Etikettenliste, Stand {liste.stand['stand']} vom {liste.stand['datum']}",
+                                      schritt="Lokale Etikettenliste befragen (keine Anfrage nach aussen)", stand=liste.stand, groesse=liste.bytes)
+        self._melden(krypto_listen.QUELLE, "ok", self._tp_beleg, liste.hinweis,
+                     **{k: liste.stand[k] for k in ("stand", "datum", "umfang", "eintraege", "sha256")})
+
+    def _aus_listen(self, kette: Kette, adresse: str) -> list[dict]:
         ergebnis = []
+        if isinstance(self._tp, krypto_listen.Liste):
+            for e in self._tp.suchen(kette.name, adresse)[:8]:
+                m = krypto_listen.einordnen(e, self._tp.packs.get(e["pack"], ""))
+                ergebnis.append(etikett(krypto_listen.QUELLE, m["art"], e["label"], m["detail"], dienst=m["dienst"], mischer=m["mischer"],
+                                        betreiber=m["betreiber"], beleg=self._tp_beleg))
         for e in (self._ofac or {}).get(_schluessel(adresse), []):
             ergebnis.append(etikett("OFAC", "sanktion", e["name"],
                                     f"SDN-Liste, Programm {e['programm']}, Eintrag {e['nr']}, geführt als {e['waehrung']}",
@@ -381,6 +407,14 @@ class Zuordner:
         for m in marken:
             if not any(x["quelle"] == m["quelle"] and x["name"] == m["name"] and x["art"] == m["art"] for x in vorhanden):
                 vorhanden.append(m)
+        # Führt eine Quelle die Adresse als Dienst mit Kunden und eine andere als Mischdienst, stehen beide Angaben da, und dazu der
+        # Widerspruch. Für die Verfolgung gilt die vorsichtigere: Hinter einem Mischdienst ist die Zuordnung nicht belastbar.
+        dienste = sorted({m["quelle"] for m in vorhanden if m.get("dienst")})
+        mischdienste = sorted({m["quelle"] for m in vorhanden if m.get("mischer")})
+        if dienste and mischdienste and not any(m["name"] == "Quellen uneinig" for m in vorhanden):
+            vorhanden.append(etikett("Gateway", "hinweis", "Quellen uneinig",
+                                     f"{', '.join(dienste)} führt die Adresse als Dienst mit Kunden, {', '.join(mischdienste)} als Mischdienst. "
+                                     "Beide Angaben stehen hier. Für die Verfolgung gilt die vorsichtigere: Mischdienst."))
 
     async def pruefen(self, kette: Kette, adressen: list[str], *, tief: bool = False, meldungen: bool = False) -> dict[str, list[dict]]:
         """Etiketten zu Adressen einer Kette. ``tief`` fragt zusätzlich die Quellen, die je Adresse eine eigene
@@ -389,12 +423,13 @@ class Zuordner:
         offen = [a for a in adressen if (kette.name, a) not in self._flach]
         if offen:
             await self._ofac_laden()
+            self._tagpacks_laden()
             if kette.familie == "bitcoin":
                 await self._ransomwhere_laden()
             trm = await self._trm(offen) if self._an("trm") else {}
             marken = await self._blockscout(kette, offen) if kette.familie == "evm" and self._an("blockscout") else {}
             for a in offen:
-                self._dazu(kette, a, self._aus_listen(a) + trm.get(_schluessel(a), []) + marken.get(_schluessel(a), []))
+                self._dazu(kette, a, self._aus_listen(kette, a) + trm.get(_schluessel(a), []) + marken.get(_schluessel(a), []))
                 self._flach.add((kette.name, a))
         for a in adressen if tief else []:
             if (kette.name, a) in self._tief:

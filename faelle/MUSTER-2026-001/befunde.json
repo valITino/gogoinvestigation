@@ -206,7 +206,7 @@
       },
       "belege": [
         "P-0046",
-        "P-0081"
+        "P-0084"
       ]
     },
     {
@@ -217,29 +217,29 @@
       "rolle": "Lösegeldzahlung der [ORG_01] (Bitcoin)",
       "bewertung": "unauffaellig",
       "belege": [
-        "P-0056"
+        "P-0057"
       ]
     },
     {
       "id": "I-12",
       "typ": "wallet",
       "wert": "1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg",
-      "herkunft": "Geldfluss P-0073 (erste Station nach der Zahlungsadresse)",
+      "herkunft": "Geldfluss P-0075 (erste Station nach der Zahlungsadresse)",
       "rolle": "Mutmassliche Einzahlungsadresse bei einer Börse",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0073"
+        "P-0075"
       ]
     },
     {
       "id": "I-13",
       "typ": "wallet",
       "wert": "19uHVM1eMUHnmbudt5213JVgjZTVd5xHd",
-      "herkunft": "Geldfluss P-0073 (zweite Station)",
+      "herkunft": "Geldfluss P-0075 (zweite Station)",
       "rolle": "Adresse, auf der ein Teil des Lösegelds unbewegt liegt",
       "bewertung": "verdaechtig",
       "belege": [
-        "P-0073"
+        "P-0075"
       ]
     }
   ],
@@ -423,7 +423,7 @@
         "I-10"
       ],
       "belege": [
-        "P-0056"
+        "P-0057"
       ],
       "gegenpruefung": "bestaetigt"
     },
@@ -441,7 +441,7 @@
         "I-13"
       ],
       "belege": [
-        "P-0073"
+        "P-0075"
       ],
       "gegenpruefung": "eingeschraenkt",
       "gegenpruefung_notiz": "Die einzelnen Zahlungen stehen in den Rohdaten. Dass die Adresse zu einer Börse gehört, ist die Angabe eines einzelnen Dienstes (WalletExplorer) und stützt sich zusätzlich auf das Muster der Sammeltransaktion. Der Name der Börse ist erst mit ihrer Antwort gesichert."
@@ -459,7 +459,7 @@
         "I-07"
       ],
       "belege": [
-        "P-0081"
+        "P-0084"
       ],
       "gegenpruefung": "bestaetigt"
     }
@@ -537,7 +537,7 @@
       "art": "zahlt an",
       "sicherheit": "hoch",
       "belege": [
-        "P-0056"
+        "P-0057"
       ]
     },
     {
@@ -546,7 +546,7 @@
       "art": "leitet weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0073"
+        "P-0075"
       ]
     },
     {
@@ -555,7 +555,7 @@
       "art": "leitet anteilig weiter an",
       "sicherheit": "mittel",
       "belege": [
-        "P-0073"
+        "P-0075"
       ]
     },
     {
@@ -564,13 +564,13 @@
       "art": "Zahlungsadresse von",
       "sicherheit": "mittel",
       "belege": [
-        "P-0081"
+        "P-0084"
       ]
     }
   ],
   "geldfluesse": [
     {
-      "beleg": "P-0073",
+      "beleg": "P-0075",
       "titel": "Verbleib der Lösegeldzahlung vom 03.10.2026",
       "befunde": [
         "B-11"
@@ -638,14 +638,14 @@
       "zeit": "2026-10-03T13:42:00Z",
       "ereignis": "Die [ORG_01] zahlt 0.5 BTC an die Adresse aus dem Erpresserschreiben.",
       "belege": [
-        "P-0056"
+        "P-0057"
       ]
     },
     {
       "zeit": "2026-10-03T21:05:00Z",
       "ereignis": "Das Lösegeld wird in zwei Teilen weitergeleitet, der grössere an eine Börse.",
       "belege": [
-        "P-0073"
+        "P-0075"
       ]
     },
     {

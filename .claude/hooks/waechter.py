@@ -155,6 +155,9 @@ def shell(befehl: str) -> None:
     if not aufbau() and re.search(r"einrichten\.py|(^|[\s/;&|(])setup\.(sh|ps1|cmd)\b", b, re.I):
         ablehnen("Die Einrichtung des Arbeitsplatzes (Modelle, MCP-Server, Schlüsseldatei) ändert nur der "
                  "Sachbearbeiter am Terminal.")
+    if not aufbau() and re.search(r"listen\.py\s+(laden|holen|bauen)", b, re.I):
+        ablehnen("Die Etikettenliste lädt oder baut nur der Sachbearbeiter am Terminal (tools/listen.py). Der Schritt greift aufs Netz zu "
+                 "und ändert, wogegen Adressen geprüft werden.")
     if not aufbau() and NETZ.search(b):
         ablehnen("Netzwerkzugriffe laufen nur über das OSINT-Gateway (Werkzeuge mcp__osint__…), "
                  "damit sie protokolliert und die Antworten gesichert werden.")

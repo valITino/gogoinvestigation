@@ -566,7 +566,8 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
     # ---- 3 Überblick in Zahlen
     zaehler = Counter((i.get("bewertung") or "unbekannt") for i in indikatoren)
     auswertungen = [e for e in eintraege if e.get("art") == "auswertung"]
-    eintraege = [e for e in eintraege if e.get("art") != "auswertung"]       # ab hier: nur Abfragen bei Quellen
+    listen = [e for e in eintraege if e.get("art") == "lokal"]               # lokal befragte Listen: keine Anfrage nach aussen
+    eintraege = [e for e in eintraege if e.get("art") not in ("auswertung", "lokal")]       # ab hier: nur Abfragen bei Quellen
     quellen = Counter(e.get("quelle") for e in eintraege if e.get("ergebnis") in BRAUCHBAR)
     ohne_treffer = sum(1 for e in eintraege if e.get("ergebnis") == "kein_treffer")
     fehlgeschlagen = sum(1 for e in eintraege if e.get("ergebnis") in ("fehler", "abgelehnt"))
@@ -594,6 +595,13 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
         zeilen = [{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in quellen.most_common()]
         h.append("<figure>" + balken(zeilen, beschriftung="Abfragen je Quelle") +
                  "<figcaption>Verwertbare Abfragen je Quelle (mit und ohne Treffer). Einzelnachweis im Ermittlungsprotokoll.</figcaption></figure>")
+    for quelle in sorted({e.get("quelle") for e in listen}):
+        letzte = [e for e in listen if e.get("quelle") == quelle][-1]
+        stand = (letzte.get("antwort") or {}).get("stand") or {}
+        h.append(f"<p class='klein'>Lokal befragte Liste: {esc(str(quelle))}, Stand {esc(str(stand.get('stand', '?')))} vom "
+                 f"{esc(zeit_zeigen(stand.get('datum')))}, {esc(zahl_ch(str(stand.get('eintraege', '?'))))} Einträge ({esc(str(stand.get('umfang', '?')))}). "
+                 f"Die Adressen wurden auf dem eigenen Rechner nachgeschlagen, es ging dafür keine Anfrage hinaus. Beleg {beleg_links([letzte['id']], protokoll)}. "
+                 "Etiketten einer Liste sind Angaben Dritter und geben den Stand ihres Datums wieder.</p>")
     h.append("<table><tr><th>Freigabe</th><th>Stand</th><th>Bedeutung</th></tr>")
     for name in FREIGABEN:
         e = (fall.get("freigaben") or {}).get(name) or {}

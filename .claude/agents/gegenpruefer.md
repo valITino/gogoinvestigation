@@ -51,6 +51,20 @@ nennen. Ein Etikett muss als Angabe der Quelle formuliert sein. Steht im `quelle
 darf der Befund nicht «kein Eintrag» sagen. Prüfe auch jeden Eintrag unter `geldfluesse`: Der Beleg ist eine
 Auswertung von `krypto_geldfluss`, und Titel und Text behaupten nicht mehr als deren `befund`.
 
+**Einordnung der IP-Adressen.** Jeder Indikator vom Typ `ip` trägt unter `anonymisierung.wert` einen von drei
+Werten: «ja», «kein Hinweis», «nicht geprüft». Prüfe an der Rohdatei der Auswertung von `ip_einordnung`
+(`befund.anonymisierung`) und an von Hand erfassten Abklärungen (`rohdaten/extern/X-…_von_hand.json`):
+- Der Wert im Befund ist der Wert der Fallakte. Führt eine Stimme die Adresse, heisst er «ja», auch wenn eine
+  andere sie nicht führt (dann mit dem Vermerk «Quellen uneinig»).
+- Kein Befundtext macht aus «kein Hinweis» ein «nein» («kein VPN», «echter Anschluss», «gehört dem Inhaber»).
+  Kein Text schreibt eine IP einem Anschlussinhaber oder einer Person zu.
+- Der Text nennt nicht mehr als die Quelle: Dienst und Art nur, wenn sie in der Rohdatei stehen. Abfragezeit und
+  Tatzeit sind auseinandergehalten.
+- Eine Empfehlung an einen Zugangsanbieter nennt die betroffene IP (Feld `indikatoren`). Den Vorbehalt dazu setzt
+  der Rapport selbst. Fehlt die IP, melde das.
+Ein von Hand erfasster Beleg ist die Angabe eines Menschen, keine protokollierte Abfrage. Als zweite, unabhängige
+Quelle für `hoch` zählt er nur, wenn er eine andere Quelle nennt als die Abfragen.
+
 Prüfe ebenso: Kennzahlen der Indikatoren gegen die Rohdaten, jede Beziehung, jeden Zeitpunkt der Zeitachse, und ob
 die Zusammenfassung und die Kernaussagen von den Befunden gedeckt sind. Prüfe, ob fehlgeschlagene und abgelehnte
 Abfragen des Protokolls unter `luecken` erwähnt sind.

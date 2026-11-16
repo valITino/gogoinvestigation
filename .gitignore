@@ -17,3 +17,4 @@ faelle/*
 # Betriebssystem, Editor
 .DS_Store
 *.swp
+/listen/

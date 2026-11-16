@@ -529,6 +529,18 @@ class Vorgang:
         else:
             self.genutzt.add(quelle)
 
+    def lokal(self, quelle: str, ziel: str, *, schritt: str, stand: dict, groesse: int = 0) -> str:
+        """Hält fest, dass eine lokale Liste befragt wurde. Es ging keine Anfrage hinaus, deshalb gibt es keine Rohdatei. Der Eintrag
+        nennt Stand und Prüfsumme der Liste: Damit lässt sich später sagen, gegen welche Fassung geprüft wurde."""
+        e = protokollieren(self.akte, {
+            "werkzeug": self.abruf, "quelle": quelle, "art": "lokal", "freigabe": None, "ziel": ziel, "ziel_typ": "liste",
+            "zweck": f"{self.zweck} · {schritt}", "anfrage": None,
+            "antwort": {"status": None, "bytes": groesse, "sha256": stand.get("sha256"), "rohdaten": None, "dauer_ms": 0, "aus_cache": None, "stand": stand},
+            "ergebnis": "ok", "fehler": None, "schluessel": None})
+        self.belege.append(e["id"])
+        self.genutzt.add(quelle)
+        return e["id"]
+
     def fehlschlag(self, a: Antwort, **zusatz: Any) -> dict:
         """Ergebnis des Werkzeugs, wenn schon die tragende Abfrage nichts brachte."""
         return a.als_dict(**{"belege": list(self.belege), **zusatz})

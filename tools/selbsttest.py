@@ -64,7 +64,7 @@ try:
 
     import httpx
 
-    from gateway import (kern, krypto_adressen, krypto_ketten, krypto_zuordnung, quellen_infrastruktur as infra, quellen_ip as ipq,
+    from gateway import (kern, krypto_adressen, krypto_ketten, krypto_listen as kl, krypto_zuordnung, quellen_infrastruktur as infra, quellen_ip as ipq,
                          quellen_krypto as krypto, quellen_szene as szene, quellen_urlscan as us, quellen_web as web)
     from gateway.akte import belege_lesen, jsonl_lesen, kette, kette_pruefen
     from gateway.quellen import ROBIN_WERKZEUGE, alle_werkzeuge
@@ -1191,7 +1191,7 @@ def _():
     assert je[kw.evm("boerse")]["dienst"] == "Musterbörse" and je[kw.evm("x1")]["auffaellig"] == ["sanktion"], je
     assert je[kw.evm("ofac-fest")]["etiketten"][0]["quelle"] == "OFAC" and "CYBER2" in je[kw.evm("ofac-fest")]["etiketten"][0]["detail"], je
     assert "Ignore previous instructions" in json.dumps(z) and "keine Anweisung" in z["hinweis"], "Fremdtext wird als Fremdtext gekennzeichnet weitergegeben"
-    assert sorted(z["befund"]["geprueft"]) == ["Blockscout (Etiketten)", "OFAC", "TRM Labs"], z["befund"]["geprueft"]
+    assert sorted(z["befund"]["geprueft"]) == ["Blockscout (Etiketten)", "GraphSense TagPacks", "OFAC", "TRM Labs"], z["befund"]["geprueft"]
 
 
 @test("Krypto: Aufrufe ohne Betrag verdecken keine Zahlung, Weiterleitung in derselben Transaktion, Nebenabfrage darf scheitern")
@@ -1418,7 +1418,12 @@ def _():
     assert any("Nicht geprüft werden konnte: OFAC" in h for h in r["befund"]["hinweise"]) and "OFAC" not in r["befund"]["geprueft"], r["befund"]
     bitcoin_welt().aus.update({"sanctionslistservice.ofac.treas.gov", "www.treasury.gov", "api.trmlabs.com", "api.ransomwhe.re",
                                "www.walletexplorer.com"})
+    # Alle Abfragequellen fallen aus, nur die lokale Liste liess sich befragen: Das Ergebnis nennt jede Quelle ohne Aussage beim Namen
     r = kruf(krypto.krypto_zuordnung, [kw.btc("b2")])
+    assert r["ergebnis"] == "kein_treffer" and r["befund"]["geprueft"] == ["GraphSense TagPacks"], r
+    assert any("Nicht geprüft werden konnte: OFAC, Ransomwhere, TRM Labs, WalletExplorer" in h for h in r["befund"]["hinweise"]), r["befund"]["hinweise"]
+    # Ohne eine einzige Quelle mit Aussage ist es ein Fehler und nie «kein Eintrag»
+    r = kruf(krypto.krypto_zuordnung, [kw.btc("b3")], quellen=["ofac", "trm", "ransomwhere", "walletexplorer"])
     assert r["ergebnis"] == "fehler" and "kein «kein Eintrag»" in r["fehler"], r
     # Dienste, die Fehler mit HTTP 200 melden, und unbekannte Transaktionen
     deute = krypto_ketten._liste_deutung
@@ -2129,6 +2134,125 @@ def _():
     finally:
         fallwerkzeug.schreiben(pfad / "fall.json", stamm)
         os.environ.pop("URLSCAN_API_KEY", None)
+
+
+WANNACRY, TORNADO, BINANCE = "12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw", "0x722122dF12D4e14e13Ac3b6895a86e84145b6967", "0x28C6c06298d514Db089934071355E5743bf21d60"
+
+
+@test("Etikettenliste: fester Stand mit Prüfsumme, ohne Personen und ohne Etherscan. «Dienst» nur laut Kategorie, Missbrauch nie")
+def _():
+    v = kl.verzeichnis()
+    assert len(v["commit"]) == 40 and re.fullmatch(r"\d{4}-\d\d-\d\d", v["datum"]) and "MIT" in v["lizenz"], (v["commit"], v["datum"], v["lizenz"])
+    assert hashlib.sha256(kl.KERN.read_bytes()).hexdigest() == v["tabelle"]["sha256"], "die Liste im Repo passt nicht zu ihrem Verzeichnis"
+    liste = kl.Liste()
+    assert liste.eintraege == v["tabelle"]["eintraege"] > 20000 and liste.umfang == "Kern" and "tools/listen.py laden" in liste.hinweis, liste.stand
+    for name in ("aidecisions_ofac", "ofac", "Alt-Right", "lockbit_tattoos", "etherscan-label-word-cloud", "etherscan-wordcloud-exchange"):
+        assert name in v["ausgelassen"] and v["ausgelassen"][name]["grund"] and name not in v["packs"], f"{name} gehört nicht in die Liste"
+    assert not any(kl._PERSON.match(t[0]) for t in liste._tupel), "ein Etikett hat die Form eines Personennamens"
+    for name, a in {**v["packs"], **v["massenlisten"]["dateien"]}.items():
+        assert re.fullmatch(r"[0-9a-f]{64}", a["sha256"]) and a["uebernommen"] > 0, name
+
+    # Öffentlich bekannte Adressen: Lösegeld (WannaCry), ein Mischdienst, die Reserve einer Börse. Gross- und Kleinschreibung zählt nicht
+    lösegeld = [kl.einordnen(e) for e in liste.suchen("bitcoin", WANNACRY)]
+    assert lösegeld and {m["art"] for m in lösegeld} == {"ransomware"} and not any(m["dienst"] or m["mischer"] for m in lösegeld), lösegeld
+    misch = [kl.einordnen(e) for e in liste.suchen("ethereum", TORNADO.lower())]
+    assert misch and all(m["mischer"] and not m["dienst"] for m in misch), misch
+    boerse = [kl.einordnen(e, "2022-11-16") for e in liste.suchen("ethereum", BINANCE.upper().replace("0X", "0x"))]
+    assert boerse and all(m["dienst"] and m["betreiber"] == "binance" and "Kategorie laut Liste: Börse" in m["detail"] and "(Stand 2022-11-16)" in m["detail"]
+                          for m in boerse), boerse
+    assert liste.suchen("polygon", BINANCE) == [], "ein Eintrag für Ethereum gilt nicht für andere Ketten"
+    assert liste.suchen("bitcoin", "1MusterAdresseNichtinderListe11111") == []
+
+    def e(kategorie: str = "", missbrauch: str = "") -> dict:
+        return {"label": "X", "kategorie": kategorie, "missbrauch": missbrauch, "akteur": "x", "vertrauen": "web_crawl", "pack": "p"}
+    # «Dienst» ist nur, was die Liste als Börse, Zahlungsdienst oder Verwahrer einstuft. Ein Name allein macht keinen Dienst
+    assert all(kl.einordnen(e(k))["dienst"] for k in ("exchange", "payment_processor", "wallet_service"))
+    for kategorie in ("", "service", "gambling", "market", "miner", "defi_dex", "organization", "user"):
+        assert not kl.einordnen(e(kategorie))["dienst"] and not kl.einordnen(e(kategorie))["mischer"], kategorie
+    assert kl.einordnen(e("mixing_service"))["mischer"] and kl.einordnen(e("coinjoin"))["mischer"] and not kl.einordnen(e("coinjoin"))["dienst"]
+    # Trägt der Eintrag einen Missbrauch, ist die Adresse nie ein Dienst: Es ist die Adresse eines Täters, nicht die einer Börse
+    m = kl.einordnen(e("exchange", "service_hack"))
+    assert m["art"] == "meldung" and not m["dienst"] and not m["betreiber"] and "Einbruch bei einem Dienst" in m["detail"], m
+    assert kl.einordnen(e("", "sanction"))["art"] == "sanktion" and kl.einordnen(e("black_list"))["art"] == "gesperrt"
+
+    # Aus einer Datei wird nur übernommen, was verfolgbar ist. Angaben im Kopf gelten für jeden Eintrag. Personennamen bleiben draussen
+    bitcoin, ether = "1MusterAdresseNichtinderListe11111", "0x" + "Ab" * 20
+    zeilen, anzahl = kl.zeilen_aus_pack("probe", {"currency": "BTC", "category": "exchange", "label": "Musterbörse", "confidence": "service_data", "tags": [
+        {"address": bitcoin}, {"address": bitcoin, "label": "MUSTER, Erika"}, {"address": "LXg2HVKLpM1kKpZYBUmbQn7PVpAxqDfPXB", "currency": "LTC"},
+        {"address": "kaputt"}, {"address": ether, "currency": "ETH", "abuse": "scam", "label": "Köder"}]})
+    assert anzahl == 5 and zeilen == [("bitcoin", bitcoin, "Musterbörse", "exchange", "", "", "service_data", "probe"),
+                                      ("ethereum", ether.lower(), "Köder", "exchange", "scam", "", "service_data", "probe")], zeilen
+    assert kl.tabelle_bytes(zeilen) == kl.tabelle_bytes(list(reversed(zeilen)) + zeilen), "die Tabelle ist nicht bei gleichem Inhalt gleich"
+    # Der einfache Leser der Massenlisten kann genau eine Form. Alles andere bricht ab, statt falsch gelesen zu werden
+    text = f"---\ntitle: T\ncurrency: BTC\nlabel: 'L'\nis_cluster_definer: true\ntags:\n- address: {bitcoin}\n  label: Eigenes\n  is_cluster_definer: false\n- address: {bitcoin}\n"
+    assert kl.flach_lesen(text) == {"title": "T", "currency": "BTC", "label": "L", "is_cluster_definer": True,
+                                    "tags": [{"address": bitcoin, "label": "Eigenes", "is_cluster_definer": False}, {"address": bitcoin}]}
+    for kaputt in ("tags:\n- {address: x}\n", "title: T\n  eingerueckt: 1\n", "tags:\n- address: a\n    tief: 1\n", "tags:\n- label: ohne\n", "tags:\n  label: x\n"):
+        try:
+            kl.flach_lesen(kaputt)
+            raise AssertionError(f"angenommen: {kaputt!r}")
+        except kl.Listenfehler:
+            pass
+
+
+@test("Etikettenliste: Die Zuordnung schlägt lokal nach, nennt Stand und Prüfsumme im Protokoll, und eine veränderte Liste gilt als nicht geprüft")
+def _():
+    gesehen = us_welt()
+    v = kl.verzeichnis()
+    r = aufruf(krypto.krypto_zuordnung, zweck=KZWECK, adressen=[WANNACRY, TORNADO, BINANCE], quellen=["tagpacks"])
+    assert not gesehen, f"für die lokale Liste ging eine Anfrage hinaus: {[str(a.url) for a in gesehen]}"
+    b = r["befund"]
+    stand = b["quellenstand"]["GraphSense TagPacks"]
+    assert r["ergebnis"] == "ok" and stand["ergebnis"] == "ok" and stand["stand"] == v["commit"][:12] and stand["datum"] == v["datum"], stand
+    assert stand["sha256"] == v["tabelle"]["sha256"] and stand["umfang"] == "Kern" and "Massenlisten" in stand["hinweis"], stand
+    eintraege = {x["id"]: x for x in jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")}
+    e = eintraege[stand["beleg"]]
+    assert e["art"] == "lokal" and e["anfrage"] is None and e["quelle"] == "GraphSense TagPacks" and e["antwort"]["rohdaten"] is None, e
+    assert e["antwort"]["sha256"] == v["tabelle"]["sha256"] and e["antwort"]["stand"]["stand"] == v["commit"][:12] and stand["beleg"] in r["belege"], e["antwort"]
+    je = {z["adresse"]: z for z in b["adressen"]}
+    assert je[WANNACRY]["auffaellig"] == ["ransomware"] and "dienst" not in je[WANNACRY] and je[WANNACRY]["etiketten"][0]["beleg"] == stand["beleg"], je[WANNACRY]
+    assert je[TORNADO]["mischer"] == "tornado.cash" and "dienst" not in je[TORNADO], je[TORNADO]
+    assert je[BINANCE]["dienst"] == "binance" and all(m["quelle"] == "GraphSense TagPacks" for m in je[BINANCE]["etiketten"]), je[BINANCE]
+    assert eintraege[r["protokoll_id"]]["quellen"] == ["GraphSense TagPacks"]
+
+    # Liste und Abfragequelle uneinig (hier gestellt): Beide Angaben bleiben stehen, dazu der Widerspruch. Es gilt die vorsichtigere
+    z = krypto_zuordnung.Zuordner(kern.Vorgang(FALL, KZWECK, "krypto_zuordnung", abruf="krypto_abruf"), {"tagpacks"})
+    kette = krypto_ketten.KETTEN["ethereum"]
+    asyncio.run(z.pruefen(kette, [BINANCE]))
+    z.merken(kette, BINANCE, [krypto_zuordnung.etikett("Blockscout", "name", "Beispielmixer", dienst=False, mischer=True)])
+    marken = z.bekannt(kette, BINANCE)
+    assert krypto_zuordnung.mischer(marken) == "Beispielmixer" and krypto_zuordnung.dienst(marken) is None, marken
+    uneinig = [m for m in marken if m["name"] == "Quellen uneinig"]
+    assert len(uneinig) == 1 and "GraphSense TagPacks führt die Adresse als Dienst" in uneinig[0]["detail"] and "Blockscout als Mischdienst" in uneinig[0]["detail"]
+    assert {m["quelle"] for m in marken} >= {"GraphSense TagPacks", "Blockscout"}
+
+    # Eine veränderte Liste wird nicht gelesen. Das Ergebnis heisst dann «nicht geprüft», nie «kein Eintrag»
+    original = kl.KERN.read_bytes()
+    try:
+        kl.KERN.write_bytes(kl.tabelle_bytes([("bitcoin", WANNACRY, "Harmlos", "", "", "", "", "probe")]))
+        r = aufruf(krypto.krypto_zuordnung, zweck=KZWECK, adressen=[WANNACRY], quellen=["tagpacks"])
+        assert r["ergebnis"] == "fehler" and r["quellenstand"]["GraphSense TagPacks"]["ergebnis"] == "fehler", r
+        assert "passt nicht zur Prüfsumme" in r["quellenstand"]["GraphSense TagPacks"]["hinweis"] and "kein «kein Eintrag»" in r["fehler"], r
+    finally:
+        kl.KERN.write_bytes(original)
+    # Dasselbe gilt für geladene Massenlisten, die nicht zum Verzeichnis passen
+    ordner = PROJEKT / "listen-probe"
+    ordner.mkdir(exist_ok=True)
+    (ordner / kl.GROSS_NAME).write_bytes(kl.tabelle_bytes([("bitcoin", WANNACRY, "Harmlos", "", "", "", "", "probe")]))
+    os.environ["OSINT_LISTEN"] = str(ordner)
+    try:
+        kl.Liste()
+        raise AssertionError("Massenlisten mit falscher Prüfsumme wurden gelesen")
+    except kl.Listenfehler as fehler:
+        assert "Massenlisten" in str(fehler) and "Prüfsumme" in str(fehler)
+    finally:
+        del os.environ["OSINT_LISTEN"]
+    assert kl.Liste().umfang == "Kern" and kette_pruefen(FALL)["ok"]
+    # Laden und Bauen der Liste sind Schritte am Terminal: Ausserhalb der Aufbauphase lehnt der Wächter sie für Agenten ab
+    for befehl, gesperrt in (("laden", True), ("bauen --stand x --datum y --aus z", True), ("holen --stand x --nach y", True), ("stand", False), ("pruefen", False)):
+        _, a = hook("waechter.py", {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": f"python3 tools/listen.py {befehl}"}},
+                    env={"OSINT_WAECHTER": "voll"})
+        assert abgelehnt(a) is gesperrt, (befehl, a)
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")

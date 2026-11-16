@@ -140,7 +140,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                  + "".join(f"<li>{esc(f)}</li>" for f in stand["fehler"] + sitzungsmeldungen) + "</ul></div>")
 
     auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
-    echte = [e for e in abfragen if e.get("art") != "auswertung"]           # Abfragen bei Quellen
+    echte = [e for e in abfragen if e.get("art") not in ("auswertung", "lokal")]      # Abfragen bei Quellen, ohne lokal befragte Listen
     teil_von = {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []}
     zaehler = Counter(e.get("ergebnis") for e in echte)
     cache = sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache"))
@@ -196,6 +196,12 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                            + (f". Tatsachen aus: {esc(', '.join(e.get('quellen') or []))}" if e.get("quellen") else ""),
                            (f"Beruht auf {len(grundlage)} Abfrage(n): {verweise}" + (f" und {len(grundlage) - 60} weiteren" if len(grundlage) > 60 else ""))
                            if grundlage else "Ohne Abfrage nach aussen"]
+            elif e.get("art") == "lokal":
+                stand = antwort.get("stand") or {}
+                technik = [esc(f"Lokale Liste, keine Anfrage nach aussen. Stand {stand.get('stand', '?')} vom {stand.get('datum', '?')}, "
+                               f"{stand.get('eintraege', '?')} Einträge ({stand.get('umfang', '?')}), SHA-256 der Liste: {antwort.get('sha256') or '?'}")]
+                if e["id"] in teil_von:
+                    technik.append(f"Teil der Auswertung <a href='#{esc(teil_von[e['id']])}'>{esc(teil_von[e['id']])}</a>")
             else:
                 technik = [esc(f"{anfrage.get('methode', '')} {anfrage.get('url', '')}")]
                 if antwort:
@@ -209,7 +215,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                 technik.append(f"Aus dem Fall-Cache, ursprüngliche Abfrage: <a href='#{esc(antwort['aus_cache'])}'>{esc(antwort['aus_cache'])}</a>")
             if e.get("fehler"):
                 technik.append(f"Meldung: {esc(e['fehler'])}")
-            art = {"aktiv": "aktiv", "auswertung": "Auswertung"}.get(e.get("art"), "passiv")
+            art = {"aktiv": "aktiv", "auswertung": "Auswertung", "lokal": "lokale Liste"}.get(e.get("art"), "passiv")
             marken = f"<span class='marke'>{art}</span>" + (" <span class='marke'>über Proxy</span>" if anfrage.get("proxy") else "")
             h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span><br>{marken}",
                              f"<span class='mono'>{esc(e.get('ziel', ''))}</span><br>{esc(e.get('zweck', ''))}",

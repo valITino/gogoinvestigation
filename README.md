@@ -21,8 +21,8 @@ darüber, wann was wo und wozu abgefragt wurde.
 
 ![Abschlussrapport des Musterfalls](docs/bilder/abschlussrapport.png)
 
-**Muster ansehen:** [Abschlussrapport (PDF, 19 Seiten)](muster/Abschlussrapport.pdf) ·
-[Ermittlungsprotokoll (PDF, 19 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+**Muster ansehen:** [Abschlussrapport (PDF, 20 Seiten)](muster/Abschlussrapport.pdf) ·
+[Ermittlungsprotokoll (PDF, 27 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
 [was der Musterfall zeigt](muster/README.md). Der Fall ist frei erfunden.
 
 ## Inhalt
@@ -167,7 +167,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 45 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 53 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -260,7 +260,7 @@ Für Windows direkt gilt:
 
 Alle Schlüssel stehen in `.env`. Eintragen kann sie der Assistent der Einrichtung (`./setup.sh`, auf einem
 eingerichteten Arbeitsplatz «Einstellungen ändern»), von Hand in der Datei geht es genauso. Jede Quelle ist für
-sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Elf Quellen brauchen gar keinen, eine
+sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Dreizehn Quellen brauchen gar keinen, eine
 davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Ethereum und TRON ohne Schlüssel.
 
 | Quelle | Variable in `.env` | Woher | Hinweis |
@@ -269,6 +269,9 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 | VirusTotal | `VIRUSTOTAL_API_KEY` | [virustotal.com/gui/my-apikey](https://www.virustotal.com/gui/my-apikey) | Bedingungen des öffentlichen Schlüssels prüfen. Die Drossel ist auf ihn eingestellt (`VT_INTERVALL=15.5`), mit Premium auf `0` setzen. |
 | Spur | `SPUR_TOKEN` | Spur-App, Settings → API ([Doku](https://docs.spur.us/context-api)) | Kommerzieller Dienst. |
 | AbuseIPDB | `ABUSEIPDB_API_KEY` | [abuseipdb.com/account/api](https://www.abuseipdb.com/account/api) | |
+| proxycheck.io | `PROXYCHECK_API_KEY` | [proxycheck.io/dashboard](https://proxycheck.io/dashboard), kostenlos | Für `ip_einordnung`: VPN, Proxy, Tor, Betreiber des Dienstes, 60 Tage Historie. 1'000 Abfragen am Tag. |
+| ipapi.is | `IPAPI_API_KEY` | [ipapi.is/app/signup](https://ipapi.is/app/signup), kostenlos | Zweite Stimme für `ip_einordnung`. Ohne Schlüssel liefert der Dienst die Merkmale für VPN, Proxy und Tor nicht (seit dem 1.9.2026), das Gateway fragt ihn dann nicht. |
+| urlscan.io | `URLSCAN_API_KEY` | [urlscan.io/user/profile](https://urlscan.io/user/profile), kostenlos | Suche und Abruf vorhandener Scans. Kostenlos am 16.11.2026: 1'000 Suchen, 10'000 Abrufe und 50 private Scans am Tag, Suche über 365 Tage. |
 | urlquery | `URLQUERY_API_KEY` | Konto auf [urlquery.net](https://urlquery.net) | |
 | ransomware.live | `RANSOMWARE_LIVE_API_KEY` | [my.ransomware.live](https://my.ransomware.live) | API PRO. Die schlüssellose API v2 ist laut Anbieter nur für private Nutzung, darum hier nur mit `RANSOMWARE_LIVE_V2=1`. |
 | Telegram über RapidAPI | `RAPIDAPI_KEY` | [rapidapi.com](https://rapidapi.com), APIs «Telegram Channel» und «Telegram Scraper API» abonnieren | Nur für Kanal-Stammdaten und Kontoabfragen. Drittanbieter unbekannter Herkunft, vor dem Einsatz prüfen. |
@@ -278,13 +281,14 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 | Tronscan | `TRONSCAN_API_KEY` | [Anleitung von Tronscan](https://docs.tronscan.org/getting-started/api-keys), kostenlos | Namen von Börsen und Diensten für TRON-Adressen. Ohne ihn endet eine Verfolgung auf TRON bei «Sammeladresse, Dienst unbekannt». |
 | Chainabuse | `CHAINABUSE_API_KEY` | Profil auf [chainabuse.com](https://www.chainabuse.com) | Betrugsmeldungen Geschädigter. Das kostenlose Kontingent ist sehr klein, gefragt wird nur auf ausdrücklichen Wunsch. |
 | Iknaio GraphSense | `IKNAIO_API_KEY` | [ikna.io](https://www.ikna.io), Zugang für Behörden auf Anfrage | Etiketten und Cluster für Bitcoin, Ethereum, TRON. |
-| Shodan InternetDB, Wayback Machine, Ahmia-Sperrliste, Telegram-Kanalvorschau, 4chan, Mastodon | keine | | Laufen sofort. |
+| Shodan InternetDB, RIPEstat, Wayback Machine, Ahmia-Sperrliste, Telegram-Kanalvorschau, 4chan, Mastodon | keine | | Laufen sofort. |
 | Bitcoin (mempool.space), Krypto-Zuordnung (OFAC, TRM Labs, Ransomwhere, WalletExplorer), Krypto-Kurse (DefiLlama, EZB) | keine | | Laufen sofort. |
+| Etikettenliste (GraphSense TagPacks) | keine | liegt im Repo | Lokal, fester Stand mit Prüfsumme. Die elf Massenlisten (rund 12 MB) holt einmal `python3 tools/listen.py laden`. |
 | Web-Check | keine | eigene Instanz, die Einrichtung startet sie | Adresse in `WEBCHECK_URL`. |
 | Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
-Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, und für eigene Instanzen der
+Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, und für eigene Instanzen der
 Block-Explorer `KRYPTO_BITCOIN_API`, `KRYPTO_ETHEREUM_API` (je Kette), `KRYPTO_TRON_API`.
 
 Die Schlüssel liest nur das Gateway. Claude Code darf `.env` nicht lesen, und im Protokoll erscheinen
@@ -325,10 +329,24 @@ python3 tools/fall.py freigabe 2026-0412 personenbezug --durch "…" --vermerk "
 | Freigabe | Schaltet frei |
 |---|---|
 | `darkweb` | Suche und Lektüre von Onion-Seiten über Robin. |
-| `aktiv` | Massnahmen, die das Ziel bemerken kann: URL bei urlquery einreichen, Seite in der Wayback Machine sichern, aktive Web-Check-Prüfungen. Jede einzelne verlangt zusätzlich eine Bestätigung in der Sitzung. |
+| `aktiv` | Massnahmen, die das Ziel bemerken kann: URL bei urlquery oder urlscan.io einreichen, Seite in der Wayback Machine sichern, aktive Web-Check-Prüfungen. Jede einzelne verlangt zusätzlich eine Bestätigung in der Sitzung. Bei urlscan.io reicht das Gateway nur mit der Sichtbarkeit «private» ein. |
 | `personenbezug` | Kontoabfragen: Mastodon-Konto, Telegram-Benutzer und -Suche. |
 
 Der Befehl verlangt eine Bestätigung am Terminal. Ein Agent kann sich keine Freigabe selbst erteilen.
+
+**Eine Abklärung von Hand festhalten.** Nicht jede Quelle hat eine Schnittstelle. Schlagt ihr eine IP-Adresse
+selbst nach, etwa in der Weboberfläche eines Dienstes oder per Auskunft eines Anbieters, gehört das Ergebnis in
+die Akte wie jede Abfrage:
+
+```bash
+python3 tools/beleg.py erfassen 2026-0412      # fragt ab: Indikator, Quelle, Zeitpunkt, Wortlaut, wer
+python3 tools/beleg.py zeigen 2026-0412
+```
+
+Der Beleg bekommt eine Nummer `X-…`, steht hash-verkettet im Protokoll und ist überall als «von Hand erfasst»
+gekennzeichnet. Für eine IP-Adresse kann er den Wert setzen, ob sie der Ausgang eines Anonymisierungsdienstes
+ist («ja» oder «kein Hinweis», ein «nein» gibt es nicht). Das Werkzeug läuft nur am Terminal, der Wächter lehnt
+es für Agenten ab, und die PII-Prüfung liest den Wortlaut mit.
 
 **4. Ergebnis ansehen.** `faelle/2026-0412/rapport/Abschlussrapport.html` im Browser öffnen. Als PDF:
 
@@ -501,6 +519,15 @@ dieser Art:
 
 Ein Ansatzpunkt nennt die Stelle, die den Kunden kennt. Eine Person benennt der Rapport nie.
 
+**Etiketten ohne Abfrage.** Neben den Abfragequellen schlägt das Gateway jede Adresse in einer lokalen Liste nach,
+den [GraphSense TagPacks](https://github.com/graphsense/graphsense-tagpacks) (MIT-Lizenz): rund 31'700 Einträge im
+Repo, dazu auf Wunsch elf Massenlisten mit rund 481'000 Adressen (`python3 tools/listen.py laden`). Dabei geht
+nichts hinaus. Stand, Datum und Prüfsumme der Liste stehen im Ergebnis und im Protokoll, und das Gateway liest die
+Liste nur, wenn ihre Prüfsumme zum Verzeichnis `gateway/listen/tagpacks.json` passt. Als «Dienst» gilt eine Adresse
+nur, wenn die Liste sie als Börse, Zahlungsdienst oder Verwahrer einstuft. Ein Name allein macht keinen Dienst, und
+eine Adresse mit dem Vermerk eines Missbrauchs ist nie einer. Sagen Liste und Abfragequelle Verschiedenes, stehen
+beide Angaben da. Ein neuer Stand der Liste ist ein bewusster Schritt (`tools/listen.py bauen`, per Pull Request).
+
 **Grenzen, die ihr kennen solltet**
 
 - Etiketten sind Angaben Dritter und können alt oder falsch sein. Für TRON gibt es ohne Tronscan-Schlüssel keine
@@ -553,6 +580,8 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | VirusTotal | Gateway: `virustotal_ip`, `_domain`, `_datei`, `_url`, `_beziehungen`. Nur Abfragen, nie Uploads. | passiv |
 | Spur | Gateway: `spur_kontext` | passiv |
 | AbuseIPDB | Gateway: `abuseipdb_pruefen`, `abuseipdb_meldungen` | passiv |
+| Einordnung einer IP: proxycheck.io, ipapi.is, RIPEstat, dazu AbuseIPDB und Spur | Gateway: `ip_einordnung`. Netz und Inhaber (mit Tatzeit: wer das Netz damals ankündigte und hielt), Art des Anschlusses je Quelle, und ob die Adresse der Ausgang eines Anonymisierungsdienstes ist: «ja», «kein Hinweis» oder «nicht geprüft». Der Rapport verlangt den Wert für jede IP. | passiv |
+| urlscan.io | Gateway: `urlscan_suche`, `urlscan_ergebnis` (mit Seitentext und Bildschirmfoto), `urlscan_kontingent` und `urlscan_einreichen` | passiv, Einreichen aktiv und nur «private» |
 | web-check | Eigene Instanz per Docker. Gateway: `webcheck_passiv` (13 Prüfungen), `webcheck_aktiv` (27 Prüfungen) | passiv und aktiv |
 | Robin | Eigener MCP-Server des Projekts, läuft als Container mit Tor. Wächter verlangt Freigabe `darkweb`, Hook sichert jede Antwort als Beleg `X-…`. | Tor |
 | Darkus | Menügesteuert, deshalb nicht agentenfähig. Seine Suchmaschinen deckt Robin ab. Die Prüfung gegen die Ahmia-Sperrliste ist als `onion_sperrliste` nachgebaut und Pflicht vor jedem Öffnen einer Onion-Seite. | passiv |
@@ -565,6 +594,7 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | Masto | Nachgebaut: `mastodon_instanz`, `mastodon_konto` | passiv, Konto mit Personenbezug |
 | Blockchain: mempool.space, Blockstream, Blockscout, Etherscan, TronGrid | Gateway: `krypto_adresse_pruefen`, `krypto_adresse`, `krypto_transaktionen`, `krypto_transaktion`, `krypto_geldfluss` | passiv |
 | Zuordnung: OFAC, TRM Labs, Ransomwhere, WalletExplorer, Blockscout, Tronscan, Chainabuse, Iknaio | Gateway: `krypto_zuordnung`, und eingebaut in die übrigen Krypto-Werkzeuge | passiv |
+| Etikettenliste: GraphSense TagPacks | Lokale Liste im Repo (`gateway/listen`), fester Stand mit Prüfsumme. `krypto_zuordnung` und die übrigen Krypto-Werkzeuge schlagen darin nach, ohne dass eine Adresse den Rechner verlässt. Verwaltung: `python3 tools/listen.py` | lokal |
 | Kurse: DefiLlama, Europäische Zentralbank | Gateway: `krypto_kurs`, und eingebaut in die übrigen Krypto-Werkzeuge | passiv |
 
 **Passiv** heisst: Die Datenbank eines Dritten wird befragt, das Ziel merkt nichts. Der Anbieter sieht aber
@@ -666,11 +696,16 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 45 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 53 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Wächter für Bash und PowerShell, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
   Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
+- Acht davon gelten den Quellen aus dem November 2026: die Einordnung einer IP (drei Werte, uneinige Quellen,
+  Tatzeit im Fenster der Historie, Residential Proxy, frühere Zuteilung, nie eine Kontaktperson im Ergebnis), die
+  Regel im Rapport (jede IP trägt den Wert aus der Fallakte, Empfehlungen bekommen den Vorbehalt), der Beleg von
+  Hand, urlscan.io (Suche, Seitentext als Text, Bildschirmfoto als Datei, und: ohne «private» verlässt keine
+  Einreichung das Gateway) und die Etikettenliste (Prüfsumme, Einstufung, veränderte Liste gilt als nicht geprüft).
 - Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den
@@ -742,6 +777,15 @@ Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
 - Die Protokollkette unter Last: 970 Einträge im Fall `SELBSTTEST`, geschrieben von mehreren Prozessen
   gleichzeitig, Kette und Rohdaten unverändert.
 
+- Die neuen Quellen, am 16.11.2026: `ip_einordnung` mit proxycheck.io, ipapi.is und RIPEstat an 8.8.8.8, 1.1.1.1
+  und einem öffentlich gelisteten Tor-Ausgang, mit und ohne Tatzeit. Gesehen sind alle drei Werte, «Quellen
+  uneinig», die Historie von proxycheck.io (Parameter `days` und `history`), die Routing-Geschichte und die
+  früheren Fassungen eines Registereintrags bei RIPEstat. urlscan.io: fünf Suchen (Domain, URL, IP, AS, SHA-256
+  der EICAR-Testdatei), ein Ergebnis samt Seitentext und Bildschirmfoto eines öffentlichen Scans von example.com,
+  das Kontingent. Eingereicht wurde nichts. Etikettenliste: alle 87 Dateien des Standes geladen, die Tabelle
+  gebaut, die elf Massenlisten über `tools/listen.py laden` geholt und gegen die Prüfsummen geprüft, bekannte
+  Adressen nachgeschlagen (eine WannaCry-Adresse, ein Vertrag von Tornado Cash, Reserve-Adressen zweier Börsen).
+
 Auch diese Prüfung hat Fehler gezeigt, die an erfundenen Antworten nicht auffielen. Sie sind behoben und als
 Selbsttest abgesichert, gegen Vorlagen in der Form der echten Antworten (`tools/_vorlagen.py`): Das Gateway
 schrieb Adressen samt Schlüssel in sein Log, Web-Check meldet Fehlschläge mit HTTP 200 (sie galten als Treffer),
@@ -770,6 +814,19 @@ MCP-Server als Belege in die Fallakte.
 
 - **Quellen, für die in der Prüfung kein Schlüssel vorlag:** Spur, Iknaio und RapidAPI (Telegram). Sie sind nach
   den Dokumentationen der Anbieter gebaut und nie gegen den echten Dienst gelaufen.
+- **Residential Proxies an echten Adressen.** Ob `ip_einordnung` einen Privatanschluss erkennt, über den ein
+  Residential Proxy läuft, ist nicht gemessen: Es gab keine Adresse, von der das feststand, und Adressen von
+  Privatanschlüssen wurden nicht abgefragt. Geprüft ist an Vorlagen, dass ein solcher Eintrag richtig gelesen
+  wird. proxycheck.io und ipapi.is sagen selbst, dass sie solche Adressen nur teilweise kennen. Ohne Spur ist
+  die Erkennung schwächer, siehe Grenzen.
+- **Spur innerhalb von `ip_einordnung`** (kein Token), das Objekt `vpn` in der Antwort von ipapi.is (keine der
+  geprüften Adressen trug es) und ein bei proxycheck.io gelöschter Eintrag ohne heutige Erkennung. Diese Formen
+  stehen nach der Dokumentation der Anbieter in den Vorlagen.
+- **`urlscan_einreichen`.** Die Einreichung ist eine aktive Massnahme. Ihre Antwort steht nach der Dokumentation
+  in den Vorlagen. Geprüft ist ohne Netz, dass sie nur mit Freigabe, nach Suche und Kontingent und nur mit
+  «private» hinausgeht. Wie urlscan.io einen Scan meldet, der noch läuft (HTTP 404), ist nicht gesehen.
+- **`tools/beleg.py` am Terminal.** Geprüft sind die Funktion dahinter, die Ablehnung ohne Terminal und die Sperre
+  im Wächter. Der Dialog selbst ist nicht in einem Terminal durchgespielt.
 - **Die Wayback Machine.** Aus der Prüfumgebung vom 16.11.2026 kam keine Verbindung zu `web.archive.org` zustande.
   Geprüft ist an Vorlagen, wie das Werkzeug «keine Aufnahme» und einen Verlauf liest.
 - **Was die kostenlosen Schlüssel nicht decken:** `shodan_dns` (Shodan verlangt eine Mitgliedschaft), die
@@ -819,6 +876,16 @@ MCP-Server als Belege in die Fallakte.
   `breaches` bei einem Treffer antworten, ist nicht gesehen.
 
 **Grenzen:**
+
+- Die Einordnung einer IP sagt, was die Quellen wissen, nicht, was ist. «Kein Hinweis» ist kein «nein». Ohne Spur
+  ist die Erkennung von Residential Proxies schwächer: proxycheck.io und ipapi.is führen vor allem Rechenzentren,
+  VPN-Dienste und offene Proxys. An echten Proxy-Adressen ist die Erkennung nicht gemessen. Der Rapport setzt
+  deshalb zu jeder Empfehlung an einen Zugangsanbieter den Vorbehalt, dass der Anschluss einem Unbeteiligten
+  gehören kann.
+- Die Auskunft zu einer IP gilt für den Abfragezeitpunkt. proxycheck.io reicht 60 Tage zurück, die Register nur
+  für Netze der RIPE-Datenbank. Liegt die Tat weiter zurück, sagt das Ergebnis, dass es nur den heutigen Stand kennt.
+- Die Etikettenliste gibt den Stand ihres Datums wieder (Dateien von 2019 bis 2023, Stand des Repos 5.11.2026).
+  Eine Adresse kann seither den Besitzer gewechselt haben.
 
 - Fable 5.2 hat zusätzliche Schutzmassnahmen im Bereich Cybersicherheit. Der Arbeitsplatz verlangt vom Modell
   Abfragen und deren Auswertung, keine Analyse oder Entwicklung von Schadcode.

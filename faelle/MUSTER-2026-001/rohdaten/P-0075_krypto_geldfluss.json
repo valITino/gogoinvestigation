@@ -10,7 +10,6 @@
   "max_abfragen": 80
  },
  "grundlage": [
-  "P-0057",
   "P-0058",
   "P-0059",
   "P-0060",
@@ -25,7 +24,9 @@
   "P-0069",
   "P-0070",
   "P-0071",
-  "P-0072"
+  "P-0072",
+  "P-0073",
+  "P-0074"
  ],
  "befund": {
   "start": {
@@ -264,21 +265,31 @@
   "quellenstand": {
    "OFAC": {
     "ergebnis": "ok",
-    "beleg": "P-0065",
+    "beleg": "P-0066",
     "adressen_in_liste": 3
+   },
+   "GraphSense TagPacks": {
+    "ergebnis": "ok",
+    "beleg": "P-0068",
+    "hinweis": "Die Massenlisten (481322 Adressen: Reserve-Adressen der Börse BitMEX, Adressen aus Erpresser-Spam, Mining-Adressen, CoinJoin-Adressen von Samourai) sind nicht geladen. Nachholen: python3 tools/listen.py laden",
+    "stand": "83754852bd65",
+    "datum": "2026-11-05",
+    "umfang": "Kern",
+    "eintraege": 31718,
+    "sha256": "4f60077149157b3a6701b95ce17f2f9c86cdb455025493e075041350e060db9b"
    },
    "Ransomwhere": {
     "ergebnis": "ok",
-    "beleg": "P-0067",
+    "beleg": "P-0069",
     "adressen_in_liste": 1
    },
    "TRM Labs": {
     "ergebnis": "ok",
-    "beleg": "P-0068"
+    "beleg": "P-0070"
    },
    "WalletExplorer": {
     "ergebnis": "ok",
-    "beleg": "P-0070"
+    "beleg": "P-0072"
    },
    "Iknaio": {
     "ergebnis": "aus",
