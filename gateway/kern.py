@@ -117,6 +117,7 @@ INTERVALL = {
     "proxycheck.io": 0.3,       # Gratis-Paket: 1'000 Abfragen am Tag
     "ipapi.is": 0.3,            # Gratis-Paket: 1'000 Abfragen am Tag
     "RIPEstat": 0.25,           # höchstens acht gleichzeitige Anfragen je Anschluss. Das Gateway fragt nacheinander
+    "urlscan.io": 1.1,          # Gratis-Paket: 60 Suchen und 120 Abrufe je Minute. Das Gateway bleibt deutlich darunter
 }
 # Wartezeit vor dem zweiten Versuch eines Vorgangs. Austauschbar, damit Tests nicht warten.
 schlaf: Callable[[float], Any] = asyncio.sleep
@@ -203,6 +204,7 @@ class Antwort:
     fehler: str | None = None
     quelle: str | None = None
     warten: float | None = None   # Sekunden, die die Quelle bei Überlast zu warten bittet (Kopfzeile Retry-After)
+    drossel: dict | None = None   # Kopfzeilen der Quelle zu Drossel und Kontingent, wenn sie welche schickte (nicht aus dem Cache)
 
     def als_dict(self, befund: Any = None, **zusatz: Any) -> dict:
         d: dict[str, Any] = {"protokoll_id": self.id, "ergebnis": self.ergebnis, "status": self.status}
@@ -280,13 +282,32 @@ async def _takt(quelle: str) -> None:
         _letzte[quelle] = time.monotonic()
 
 
+BINAER = ("png", "jpg", "gif", "pdf")       # Rohdateien, die als Datei abgelegt, aber nie als Text gelesen werden
+
+
 def _parsen(inhalt: bytes, endung: str) -> tuple[Any, str | None]:
+    if endung in BINAER:
+        return None, None
     if endung == "json":
         try:
             return json.loads(inhalt.decode("utf-8", "replace")), None
         except json.JSONDecodeError:
             pass
     return None, inhalt.decode("utf-8", "replace")
+
+
+def schranke(methode: str, url: str, koerper: Any) -> str | None:
+    """Was das Gateway nie verlässt, egal welches Werkzeug es schickt. Gibt den Grund zurück oder None.
+
+    urlscan.io: Ein Scan ist je nach Sichtbarkeit für alle Welt auffindbar, samt der eingereichten Adresse. Eine Einreichung
+    geht deshalb nur mit der ausdrücklichen Angabe «private» hinaus. Fehlt sie, gälte die Voreinstellung des Kontos, und auf
+    die verlässt sich das Gateway nicht."""
+    host = (urlsplit(url).hostname or "").lower()
+    if (host == "urlscan.io" or host.endswith(".urlscan.io")) and methode.upper() != "GET":
+        if not isinstance(koerper, dict) or koerper.get("visibility") != "private":
+            return ("Eine Einreichung bei urlscan.io verlässt das Gateway nur mit der Sichtbarkeit «private». "
+                    "Öffentliche und nicht gelistete Scans sind für Dritte auffindbar.")
+    return None
 
 
 async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel: str, ziel_typ: str,
@@ -329,6 +350,11 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     basis = {"werkzeug": werkzeug, "quelle": quelle, "art": art, "freigabe": freigabe,
              "ziel": ziel, "ziel_typ": ziel_typ, "zweck": zweck, "anfrage": anfrage}
     key = hashlib.sha256(kanonisch([werkzeug, methode, anfrage["url"], koerper])).hexdigest()
+
+    grund = schranke(methode, url, json_koerper if json_koerper is not None else form)
+    if grund:
+        e = protokollieren(akte, {**basis, "antwort": None, "ergebnis": "abgelehnt", "fehler": grund, "schluessel": key})
+        raise Abbruch(f"Nicht ausgeführt: {grund} Der Versuch ist protokolliert.", e["id"])
 
     if freigabe and not akte.freigabe(freigabe):
         e = protokollieren(akte, {**basis, "antwort": None, "ergebnis": "abgelehnt",
@@ -427,10 +453,13 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
     except ValueError:
         warten = None
     return Antwort(e["id"], status, ergebnis, daten, text,
-                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler, quelle, warten)
+                   f"faelle/{akte.id}/{roh}" if roh else None, None, fehler, quelle, warten, drossel or None)
 
 
-_DROSSEL_KOPF = ("retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset")
+_DROSSEL_KOPF = ("retry-after", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset",
+                 # urlscan.io schreibt die Namen mit Bindestrich und nennt dazu Aktion, Fenster und Geltungsbereich
+                 "x-rate-limit-limit", "x-rate-limit-remaining", "x-rate-limit-reset", "x-rate-limit-reset-after",
+                 "x-rate-limit-action", "x-rate-limit-window", "x-rate-limit-scope")
 
 
 def _http_fehler(quelle: str, status: int) -> str:

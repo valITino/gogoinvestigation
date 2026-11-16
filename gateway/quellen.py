@@ -74,6 +74,13 @@ QUELLEN: tuple[Quelle, ...] = (
            "Sandbox-Berichte zu URLs: Was tat die Seite beim Aufruf?",
            ("urlquery_reputation", {"url": "https://example.com/"}),
            freigabe={"urlquery_einreichen": "aktiv"}),
+    Quelle("urlscan.io", "URLSCAN_API_KEY", "https://urlscan.io/user/profile (kostenlos)",
+           ("urlscan_suche", "urlscan_ergebnis", "urlscan_kontingent", "urlscan_einreichen"),
+           "Vorhandene Scans von Websites: Was lud die Seite, wohin verband sie sich, wie sah sie aus? Suche nach Domain, IP, URL, Hash, AS.",
+           ("urlscan_kontingent", {}),
+           "Betreiber urlscan GmbH, Deutschland. Die Testabfrage liest nur das Kontingent. Eingereicht wird ausschliesslich mit der "
+           "Sichtbarkeit «private». Das kostenlose Konto durchsucht die Scans der letzten 365 Tage.",
+           freigabe={"urlscan_einreichen": "aktiv"}),
     Quelle("Wayback Machine", None, "kein Schlüssel nötig",
            ("wayback_verlauf", "wayback_abruf", "wayback_sichern"),
            "Frühere Stände von Webseiten: Seit wann gibt es die Seite, was stand dort?",

@@ -19,6 +19,9 @@
       "mcp__osint__urlquery_bericht",
       "mcp__osint__urlquery_reputation",
       "mcp__osint__urlquery_status",
+      "mcp__osint__urlscan_suche",
+      "mcp__osint__urlscan_ergebnis",
+      "mcp__osint__urlscan_kontingent",
       "mcp__osint__wayback_verlauf",
       "mcp__osint__wayback_abruf",
       "mcp__osint__webcheck_passiv",
@@ -50,6 +53,7 @@
     ],
     "ask": [
       "mcp__osint__urlquery_einreichen",
+      "mcp__osint__urlscan_einreichen",
       "mcp__osint__wayback_sichern",
       "mcp__osint__webcheck_aktiv",
       "WebFetch",
