@@ -6,7 +6,8 @@ kann das bemerken. Aktive Werkzeuge brauchen die Freigabe 'aktiv' in fall.json.
 """
 from __future__ import annotations
 
-from typing import Annotated
+import re
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from pydantic import Field
@@ -112,6 +113,18 @@ async def urlquery_status(fall: Fall, zweck: Zweck, queue_id: str) -> dict:
 WB = "https://web.archive.org"
 
 
+def _cdx_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
+    """Die CDX-Schnittstelle antwortet auch ohne Aufnahmen mit HTTP 200: mit einer leeren Liste oder nur der
+    Kopfzeile. Das ist «kein Treffer», und so steht es dann auch im Protokoll."""
+    if status != 200:
+        return None
+    if daten is None and (text or "").strip():
+        return "fehler", "Die Wayback Machine hat kein lesbares JSON geliefert. Details in den Rohdaten."
+    if not isinstance(daten, list) or len(daten) < 2:
+        return "kein_treffer", None
+    return None
+
+
 @werkzeug
 async def wayback_verlauf(fall: Fall, zweck: Zweck,
                           url: Annotated[str, Field(description="URL oder Domain")],
@@ -129,13 +142,13 @@ async def wayback_verlauf(fall: Fall, zweck: Zweck,
                       ziel_typ="url", url=f"{WB}/cdx/search/cdx",
                       params={"url": ziel, "output": "json", "limit": limit, "collapse": "digest",
                               "fl": "timestamp,original,statuscode,mimetype,digest,length",
-                              "matchType": "prefix" if mit_unterseiten else None, "from": von, "to": bis})
+                              "matchType": "prefix" if mit_unterseiten else None, "from": von, "to": bis},
+                      deutung=_cdx_deutung)
+    if a.ergebnis == "kein_treffer":
+        return a.als_dict({"anzahl": 0, "aufnahmen": []})
     if a.ergebnis != "ok":
         return a.als_dict()
-    zeilen = a.daten or []
-    if not zeilen or len(zeilen) < 2:
-        return a.als_dict({"anzahl": 0, "aufnahmen": []}, ergebnis="kein_treffer")
-    kopf, *rest = zeilen
+    kopf, *rest = a.daten
     aufnahmen = [dict(zip(kopf, z)) for z in rest]
     return a.als_dict({"anzahl": len(aufnahmen), "erste": aufnahmen[0]["timestamp"],
                        "letzte": aufnahmen[-1]["timestamp"], "aufnahmen": aufnahmen})
@@ -180,6 +193,38 @@ WEBCHECK_AKTIV = ("carbon", "cookies", "dns-server", "firewall", "headers", "hst
                   "status", "tech-stack", "tls-connection", "tls-labs", "trace-route", "trackers")
 
 
+_WC_NICHT_EINGERICHTET = re.compile(r"requires|api[_ -]?key|not (?:set|configured)|missing", re.I)
+_WC_OHNE_ANTWORT = re.compile(r"no \w+ sources? returned|returned no data|unavailable|timed? ?out", re.I)
+
+
+def _webcheck_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
+    """Web-Check meldet eine gescheiterte Prüfung mit HTTP 200 und dem Feld «error», eine ausgelassene mit dem
+    Feld «skipped» (gesehen am 16.11.2026: «Error fetching Wayback data: fetch failed», «No TXT records for this
+    host», «Shodan requires SHODAN_API_KEY to be set»). Ohne diese Deutung gälte beides als Treffer.
+    «error» ist ein Fehlschlag: nicht geprüft. «skipped» heisst in der Regel, dass es nichts gab (kein Treffer).
+    Fehlt der Instanz dafür ein Schlüssel oder hat keine der befragten Stellen geantwortet («No threat sources
+    returned data»), ist auch das ein Fehlschlag: Aus «niemand hat geantwortet» wird kein «nichts gefunden»."""
+    if isinstance(daten, dict):
+        if daten.get("error"):
+            return "fehler", (f"Web-Check konnte diese Prüfung nicht ausführen: «{saeubern(str(daten['error']), 200)}». "
+                              "Das Ziel ist damit nicht geprüft. Häufige Ursache: Die Instanz erreicht den Dienst nicht, "
+                              "den die Prüfung befragt (Netz, DNS, Proxy des Containers).")
+        if daten.get("skipped"):
+            grund = saeubern(str(daten["skipped"]), 200)
+            if _WC_NICHT_EINGERICHTET.search(grund):
+                return "fehler", (f"Web-Check hat diese Prüfung ausgelassen: «{grund}». Sie ist in der Instanz nicht "
+                                  "eingerichtet. Das Ziel ist damit nicht geprüft.")
+            if _WC_OHNE_ANTWORT.search(grund):
+                return "fehler", (f"Web-Check hat diese Prüfung ausgelassen: «{grund}». Die befragten Stellen haben nicht "
+                                  "geantwortet. Das Ziel ist damit nicht geprüft.")
+            return "kein_treffer", None
+    if status == 200 and daten is None:
+        return "fehler", "Web-Check hat kein lesbares JSON geliefert. Details in den Rohdaten."
+    if status >= 500:
+        return "fehler", f"Web-Check meldet einen Fehler bei dieser Prüfung (HTTP {status}). Details in den Rohdaten."
+    return None
+
+
 async def _webcheck(fall: str, zweck: str, ziel: str, pruefung: str, aktiv: bool) -> dict:
     z = entschaerfen(ziel)
     host = urlsplit(z if "://" in z else f"https://{z}").hostname or ""
@@ -189,9 +234,12 @@ async def _webcheck(fall: str, zweck: str, ziel: str, pruefung: str, aktiv: bool
                       quelle="Web-Check", ziel=f"{z} ({pruefung})", ziel_typ="domain",
                       url=f"{basis}/api/{pruefung}", params={"url": z},
                       art="aktiv" if aktiv else "passiv", freigabe="aktiv" if aktiv else None,
-                      cache_h=0 if aktiv else 24, zeitlimit=90,
+                      cache_h=0 if aktiv else 24, zeitlimit=90, deutung=_webcheck_deutung,
                       hilfe="Läuft Web-Check? Start: 'docker compose up -d webcheck'. Adresse: WEBCHECK_URL in .env.")
-    befund = a.daten if a.ergebnis == "ok" else None
+    if a.ergebnis != "ok":
+        grund = a.daten.get("skipped") if isinstance(a.daten, dict) else None
+        return a.als_dict(**({"grund": f"Web-Check: «{saeubern(str(grund), 200)}»", "hinweis": FREMD} if grund and a.ergebnis == "kein_treffer" else {}))
+    befund = a.daten
     if isinstance(befund, dict) and pruefung == "screenshot":
         befund = {"hinweis": "Bildschirmfoto liegt base64-kodiert in den Rohdaten."}
     return a.als_dict(befund, hinweis=FREMD)

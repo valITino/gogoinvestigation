@@ -20,7 +20,9 @@ niemandem, lädst keine Daten herunter und meldest dich nirgends an.
   du nicht (Platzhalter). Sichere die Liste und melde, dass der Abgleich im Haus erfolgen muss.
 - `ransomware_iocs`: veröffentlichte Indikatoren der Gruppe. Gleiche sie mit den Indikatoren des Falls ab.
   Ein Treffer verbindet den Fall technisch mit der Gruppe. Kein Treffer verbindet nichts und widerlegt nichts.
-- `telegram_kanal`: Breach-Feed nach Domains und Stichworten des Falls durchsehen.
+- `telegram_kanal`: Breach-Feed nach Domains und Stichworten des Falls durchsehen. Zeigt Telegram für den Kanal
+  keine Web-Vorschau, ist das Ergebnis `kein_treffer` mit dem Grund. Das ist eine Lücke («nicht lesbar»), kein
+  «nichts gefunden».
 
 **Stufe 2, nur mit Freigabe `darkweb`: Robin über Tor**
 `fall_status` zeigt, ob die Freigabe erteilt ist. Ohne Freigabe lehnt ein Wächter jeden Robin-Aufruf ab. Versuche

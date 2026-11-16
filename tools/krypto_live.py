@@ -11,7 +11,8 @@ Fall auf. Abgefragt werden nur Adressen und Transaktionen, die seit Jahren öffe
 (die erste Bitcoin-Zahlung, eine WannaCry-Adresse, eine sanktionierte Adresse, Adressen einer Börse).
 
 Fallakte: faelle/SELBSTTEST, wie bei tools/pruefen.py --live. Ist BLOCKSCOUT_API_KEY oder TRONGRID_API_KEY gesetzt,
-laufen dieselben Prüfungen über den Zugang mit Schlüssel, mit BLOCKSCOUT_API_KEY kommt eine für Polygon dazu. Die
+laufen dieselben Prüfungen über den Zugang mit Schlüssel, mit BLOCKSCOUT_API_KEY kommen Arbitrum, Gnosis und Polygon
+dazu (Polygon deckt der kostenlose Schlüssel nicht, geprüft wird dort das Ausweichen). Die
 übrigen Schlüssel (Etherscan, Tronscan, Chainabuse, Iknaio) prüft tools/pruefen.py --live.
 Rückgabewert 0: alles wie erwartet. 1: mindestens eine Abweichung.
 """
@@ -252,10 +253,36 @@ async def alle() -> None:
         return f"{b.get('name')}, {b['guthaben']['betrag']} ETH"
     await pruefung("Optimism über Blockscout", k.krypto_adresse(FALL, ZWECK, "0x4200000000000000000000000000000000000006", kette="optimism"), optimism)
     if kern.einstellung("BLOCKSCOUT_API_KEY"):
+        def ueber_schluessel(kette_id: int):
+            """Die Adresse muss über den Zugang mit Schlüssel gekommen sein. Dass irgendeine Quelle geantwortet hat, genügt nicht:
+            Weist Blockscout die Kette ab, springt Etherscan ein, und die Prüfung bestünde, ohne den Zugang geprüft zu haben."""
+            def pruefen(b: dict, r: dict) -> str:
+                je = {e["id"]: e for e in jsonl_lesen(FAELLE / FALL / "protokoll" / "abfragen.jsonl")}
+                adressen = [(je[i].get("anfrage") or {}).get("url", "") for i in r.get("belege", []) if je.get(i, {}).get("ergebnis") == "ok"]
+                assert any(u.startswith(f"{krypto_ketten.BLOCKSCOUT_API}/{kette_id}/api/v2/addresses/") for u in adressen), \
+                    f"Blockscout hat für Kette {kette_id} nicht über den Zugang mit Schlüssel geantwortet"
+                assert b.get("art"), b
+                return f"{b['art']}, {b['guthaben']['betrag']} {b['guthaben'].get('einheit', '')}, über api.blockscout.com/{kette_id}"
+            return pruefen
+        await pruefung("Arbitrum über Blockscout mit Schlüssel", k.krypto_adresse(FALL, ZWECK, BINANCE_ETH, kette="arbitrum"), ueber_schluessel(42161))
+        await pruefung("Gnosis über Blockscout mit Schlüssel", k.krypto_adresse(FALL, ZWECK, BINANCE_ETH, kette="gnosis"), ueber_schluessel(100))
+
         def polygon(b: dict, r: dict) -> str:
+            """Polygon und Base deckt der kostenlose Schlüssel nicht (gesehen am 16.11.2026: HTTP 402). Geprüft wird, dass das
+            Gateway dann eine andere Quelle findet und sagt, woher die Antwort stammt."""
+            je = {e["id"]: e for e in jsonl_lesen(FAELLE / FALL / "protokoll" / "abfragen.jsonl")}
+            wer = set()
+            for i in r.get("belege", []):
+                e = je.get(i) or {}
+                url = (e.get("anfrage") or {}).get("url") or ""
+                if e.get("ergebnis") == "ok" and ("/addresses/" in url or "module=account" in url):
+                    wer.add(f"{e['quelle']} ({url.split('/')[2]})")
+            wer = sorted(wer)
+            ohne_paket = any((je.get(f.get("beleg"), {}).get("antwort") or {}).get("status") == 402 for f in r.get("fehlgeschlagen", []))
             assert b["kette"] == "polygon" and b.get("art"), b
-            return f"{b['art']}, {b['guthaben']['betrag']} {b['guthaben'].get('einheit', '')}, Zugang mit Schlüssel"
-        await pruefung("Polygon über Blockscout mit Schlüssel", k.krypto_adresse(FALL, ZWECK, BINANCE_ETH, kette="polygon"), polygon)
+            return (f"{b['art']}, {b['guthaben']['betrag']} {b['guthaben'].get('einheit', '')}, Antwort von {', '.join(wer) or 'unbekannt'}"
+                    + (". Der Schlüssel deckt Polygon nicht (HTTP 402), das Gateway ist ausgewichen" if ohne_paket else ""))
+        await pruefung("Polygon: mit Schlüssel oder über die Ausweichquelle", k.krypto_adresse(FALL, ZWECK, BINANCE_ETH, kette="polygon"), polygon)
     else:
         await ohne_schluessel()
     await tokenliste()

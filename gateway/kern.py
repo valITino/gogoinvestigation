@@ -22,6 +22,7 @@ import functools
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import threading
@@ -73,6 +74,13 @@ def _env_laden() -> None:
 
 
 _env_laden()
+
+# httpx schreibt je Anfrage eine Zeile mit der ganzen Adresse ins Log, sobald das Logging auf INFO steht. Das
+# MCP-SDK stellt es beim Start des Servers so ein. Bei Diensten, die den Schlüssel in der Adresse erwarten
+# (Shodan, Etherscan, Blockscout, proxycheck.io), stünde er damit im Klartext im Log des MCP-Servers. Jede
+# Abfrage steht ohnehin im Protokoll der Fallakte, dort maskiert. Deshalb schweigen diese Logger.
+for _logger in ("httpx", "httpcore"):
+    logging.getLogger(_logger).setLevel(logging.WARNING)
 
 
 def einstellung(name: str, standard: str = "") -> str:
@@ -208,10 +216,39 @@ class Antwort:
 
 
 def _maskiert(url: str, params: dict | None, geheim: tuple[str, ...]) -> str:
-    if not params:
+    sichtbar = {k: ("***" if k in geheim else v) for k, v in (params or {}).items() if v is not None}
+    if not sichtbar:
         return url
-    sichtbar = {k: ("***" if k in geheim else v) for k, v in params.items() if v is not None}
     return f"{url}?{urlencode(sichtbar)}".replace("%2A%2A%2A", "***")
+
+
+def _geheimnisse(params: dict | None, kopf: dict | None, geheim: tuple[str, ...]) -> list[str]:
+    """Werte, die nie in Protokoll, Rohdaten oder Fehlertexten stehen dürfen: Schlüssel in der Adresse und alle
+    Kopfzeilen, die das Werkzeug mitgibt (dort steht bei den meisten Diensten der Schlüssel). Bei «Basic» und
+    «Bearer» zählt auch der Teil hinter dem Wort."""
+    werte: list[str] = [str(v) for k, v in (params or {}).items() if k in geheim and v is not None]
+    for wert in (kopf or {}).values():
+        if isinstance(wert, str):
+            werte.append(wert)
+            if " " in wert:
+                werte.append(wert.split(" ", 1)[1])
+    return sorted({w for w in werte if len(w) >= 8}, key=len, reverse=True)
+
+
+def _meldung_der_quelle(daten: Any, text: str | None) -> str:
+    """Was die Quelle selbst zu einer Ablehnung sagt («Requires membership or higher to access»). Oft steht dort
+    der eigentliche Grund. Fremdtext: gesäubert und gekürzt."""
+    if isinstance(daten, dict):
+        for feld in ("error", "message", "detail", "error_message", "errorMessage", "msg", "result", "description"):
+            wert = daten.get(feld)
+            if isinstance(wert, dict):
+                wert = wert.get("message") or wert.get("detail") or wert.get("code")
+            if isinstance(wert, str) and wert.strip():
+                return saeubern(wert, 200)
+        return ""
+    if isinstance(text, str) and text.strip() and "<" not in text[:200]:     # eine HTML-Fehlerseite sagt dem Leser nichts
+        return saeubern(text, 200)
+    return ""
 
 
 def _aus_cache(akte: Fallakte, key: str, stunden: float) -> dict | None:
@@ -255,11 +292,18 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
                   form: dict | None = None, geheim: tuple[str, ...] = (), art: str = "passiv",
                   freigabe: str | None = None, cache_h: float = 24.0,
                   endung: str = "json", kein_treffer: tuple[int, ...] = (404,),
-                  zeitlimit: float = 45.0, hilfe: str = "",
+                  zeitlimit: float = 45.0, hilfe: str = "", kontingent: bool = False,
+                  eigene_angaben: tuple[str, ...] = (),
                   deutung: Callable[[int, Any, str | None], tuple[str, str | None] | None] | None = None) -> Antwort:
     """Führt eine protokollierte Abfrage aus. ``art``: passiv | aktiv.
 
     ``hilfe`` ist ein Hinweis, der bei Verbindungsfehlern an die Meldung angehängt wird.
+    ``eigene_angaben`` nennt Felder der obersten Ebene, in denen die Quelle das eigene Konto wiederholt (etwa die
+    E-Mail-Adresse, auf die der Schlüssel lautet). Ihr Wert wird in der Rohdatei durch *** ersetzt, wie ein
+    Schlüssel, und der Protokolleintrag vermerkt das. Die Fallakte soll nichts über den Sachbearbeiter enthalten,
+    was die Quelle ungefragt mitschickt.
+    ``kontingent``: Die Kopfzeilen der Quelle zu Drossel und Kontingent kommen bei jeder Antwort ins Protokoll,
+    nicht nur bei HTTP 429.
     ``deutung`` liest den Inhalt der Antwort, wo der HTTP-Status allein nichts sagt (manche Dienste
     melden Fehler oder «unbekannt» mit Status 200). Sie bekommt (status, daten, text) und gibt
     (ergebnis, fehlertext) zurück oder None, wenn es beim Urteil nach Status bleibt.
@@ -311,23 +355,40 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
 
     start = stoppuhr()
     drossel: dict[str, str] = {}
+    geheimnisse = _geheimnisse(params, kopf, geheim)
     try:
         async with httpx.AsyncClient(**client_args) as client:
             r = await client.request(methode, url, params={k: v for k, v in (params or {}).items()
                                                            if v is not None} or None,
                                      headers=kopfzeilen, json=json_koerper, data=form)
         inhalt, status, fehler = r.content, r.status_code, None
-        if status == 429:       # was die Quelle zur Drossel sagt, gehört ins Protokoll: Es erklärt die Lücke
+        if status == 429 or kontingent:     # was die Quelle zu Drossel und Kontingent sagt, gehört ins Protokoll: Es erklärt die Lücke
             drossel = {name: r.headers[name][:40] for name in _DROSSEL_KOPF if name in r.headers}
     except (httpx.HTTPError, OSError, ValueError) as exc:
         inhalt, status = b"", 0
         fehler = f"Keine Verbindung zu {quelle} ({type(exc).__name__}: {exc})."
-        for wert in list((params or {}).values()) + list((kopf or {}).values()):
-            if isinstance(wert, str) and len(wert) >= 8:      # keine Schlüssel in Fehlertexten
-                fehler = fehler.replace(wert, "***")
+        for wert in geheimnisse + [str(v) for v in (params or {}).values() if isinstance(v, str) and len(v) >= 8]:
+            fehler = fehler.replace(wert, "***")      # keine Schlüssel in Fehlertexten
         fehler = " ".join([fehler, hilfe or "Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."])
     dauer = int((stoppuhr() - start) * 1000)
 
+    # Manche Dienste wiederholen in der Antwort, was man ihnen geschickt hat. Ein Schlüssel darf so nicht in die
+    # Rohdaten geraten. Er wird ersetzt, und das Protokoll hält fest, dass die Rohdatei an dieser Stelle nicht
+    # der Antwort entspricht.
+    bereinigt: list[str] = []
+    for wert in geheimnisse:
+        if wert.encode("utf-8") in inhalt:
+            inhalt = inhalt.replace(wert.encode("utf-8"), b"***")
+            bereinigt.append("den Zugangsschlüssel")
+    if eigene_angaben and inhalt:       # Felder, in denen die Quelle das eigene Konto nennt (E-Mail des Schlüsselinhabers)
+        vorab, _ = _parsen(inhalt, endung)
+        for feld in eigene_angaben if isinstance(vorab, dict) else ():
+            wert = vorab.get(feld)
+            if isinstance(wert, str) and len(wert) >= 4 and wert.encode("utf-8") in inhalt:
+                inhalt = inhalt.replace(wert.encode("utf-8"), b"***")
+                bereinigt.append(f"die Kennung des eigenen Kontos (Feld «{feld}»)")
+
+    daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
     if fehler:
         ergebnis = "fehler"
     elif status in kein_treffer:
@@ -336,7 +397,9 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
         ergebnis = "ok"
     else:
         ergebnis, fehler = "fehler", _http_fehler(quelle, status)
-    daten, text = _parsen(inhalt, endung) if inhalt else (None, None)
+        meldung = _meldung_der_quelle(daten, text) if 400 <= status < 500 else ""
+        if meldung:
+            fehler += f" Die Quelle meldet: «{meldung}»"
     if deutung and status:
         urteil = deutung(status, daten, text)
         if urteil:
@@ -346,6 +409,9 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
                "rohdaten": None, "dauer_ms": dauer, "aus_cache": None}
     if drossel:
         antwort["drossel"] = drossel
+    if bereinigt:
+        antwort["bereinigt"] = (f"Die Quelle hat in ihrer Antwort {' und '.join(dict.fromkeys(bereinigt))} wiederholt. "
+                                "In der Rohdatei steht dafür ***, sonst ist sie unverändert.")
     e = protokollieren(akte, {**basis, "antwort": antwort, "ergebnis": ergebnis, "fehler": fehler,
                               "schluessel": key}, inhalt if inhalt else None, endung)
     roh = e["antwort"]["rohdaten"]

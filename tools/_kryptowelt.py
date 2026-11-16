@@ -82,6 +82,8 @@ class Welt:
         self.gedrosselt: set[str] = set()    # ebenso, aber die Quelle antwortet mit HTTP 429 und bittet, drei Sekunden zu warten
         self.blockscout_key = "proapi_selbsttest0001"
         self.blockscout_ketten: set[str] = set()     # Ketten, die über den Zugang mit Schlüssel gefragt wurden
+        # Ketten, die der kostenlose Schlüssel nicht deckt. So antwortete der echte Dienst am 16.11.2026 für Polygon und Base.
+        self.blockscout_ohne_plan: set[str] = {"137", "8453"}
         self.abweichend: set[str] = set()    # Hosts, die eine Bitcoin-Transaktion leicht anders zeigen (für die Gegenprüfung)
         self.aufrufe: list[str] = []
 
@@ -390,12 +392,15 @@ class Welt:
                 return _json({"message": "Invalid or missing API key"}, 401)
             _, kette, rest = pfad.split("/", 2)
             self.blockscout_ketten.add(kette)
+            if kette in self.blockscout_ohne_plan:
+                return _json({"error": f"Featured chain {kette} requires one of the following plans: Builder, Business, Pro", "source": "internal"}, 402)
             return self._blockscout("/" + rest, frage)
         if host in ("mempool.space", "blockstream.info"):
             return self._btc(pfad, frage, host)
         if host == "api.trongrid.io":
             return self._tron(anfrage, pfad, frage)
-        if host == "eth.blockscout.com":
+        if host in ("eth.blockscout.com", "optimism.blockscout.com", "base.blockscout.com", "arbitrum.blockscout.com",
+                    "polygon.blockscout.com", "gnosis.blockscout.com"):      # öffentliche Instanz je Kette, ohne Schlüssel
             return self._blockscout(pfad, frage)
         if host == "metadata.services.blockscout.com":
             adressen = frage.get("addresses", [""])[0].split(",")

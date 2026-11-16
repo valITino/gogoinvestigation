@@ -18,6 +18,7 @@ import contextlib
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -62,10 +63,11 @@ try:
 
     import httpx
 
-    from gateway import kern, krypto_adressen, krypto_ketten, krypto_zuordnung, quellen_infrastruktur as infra, quellen_krypto as krypto, quellen_web as web
+    from gateway import (kern, krypto_adressen, krypto_ketten, krypto_zuordnung, quellen_infrastruktur as infra, quellen_krypto as krypto,
+                         quellen_szene as szene, quellen_web as web)
     from gateway.akte import jsonl_lesen, kette, kette_pruefen
     from gateway.quellen import ROBIN_WERKZEUGE, alle_werkzeuge
-    from tools import _kryptowelt as kw, einrichten, fall as fallwerkzeug, protokoll as protokollwerkzeug, rapport
+    from tools import _kryptowelt as kw, _vorlagen as vorlagen, einrichten, fall as fallwerkzeug, protokoll as protokollwerkzeug, rapport
     from tools._oberflaeche import Abbruch, Oberflaeche
     from tools.pii_pruefung import pruefen as pii_pruefen
 except ModuleNotFoundError as e:
@@ -128,6 +130,10 @@ def sh() -> str | None:
 def antwort(anfrage: httpx.Request) -> httpx.Response:
     if anfrage.url.host == "internetdb.shodan.io":
         return httpx.Response(200, json={"ip": anfrage.url.path.strip("/"), "ports": [443], "hostnames": [], "tags": [], "vulns": [], "cpes": []})
+    if anfrage.url.host == "api.abuseipdb.com" and anfrage.url.path.endswith("/reports"):
+        # Angenommen, ein Dienst wiederholt in seiner Antwort, womit man sich angemeldet hat
+        return httpx.Response(200, json={"data": {"total": 0, "page": 1, "lastPage": 1, "results": []},
+                                         "anfrage": {"Key": anfrage.headers.get("Key"), "ipAddress": "203.0.113.9"}})
     if anfrage.url.host == "api.abuseipdb.com":
         return httpx.Response(200, json={"data": {"ipAddress": "8.8.8.8", "abuseConfidenceScore": 0, "totalReports": 0}})
     if anfrage.url.host == "api.shodan.io":
@@ -969,6 +975,7 @@ def kwelt() -> kw.Welt:
     global KFALL
     for name in KRYPTO_SCHLUESSEL:
         os.environ.pop(name, None)
+    krypto_ketten._OHNE_PLAN.clear()
     KFALL = f"KRYPTO-{len(list((PROJEKT / 'faelle').glob('KRYPTO-*'))) + 1:04d}"
     for ordner in fallwerkzeug.UNTERORDNER:
         (PROJEKT / "faelle" / KFALL / ordner).mkdir(parents=True)
@@ -1344,17 +1351,32 @@ def _():
     assert not any(kw.evm("n2") in a for a in w.aufrufe if "/addresses/" in a), "nach der Abweisung wird die Quelle nicht für jede Station neu gefragt"
     abgewiesen = [e for e in kprotokoll().values() if (e.get("antwort") or {}).get("status") == 429]
     assert len(abgewiesen) == 2 and abgewiesen[0]["antwort"]["drossel"] == {"retry-after": "3", "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0"}, abgewiesen
-    # Mit Schlüssel geht jede Abfrage an die eine Adresse für alle Ketten. Polygon ist damit erreichbar
+    # Mit Schlüssel geht jede Abfrage an die eine Adresse für alle Ketten. Arbitrum ist damit erreichbar
     w = kwelt()
     w.evm_zahlung("p0", "boerse", "taeter", 3 * ETH1, T0, 60_000_000)
     w.evm_konto("taeter", wei=3 * ETH1)
     os.environ["BLOCKSCOUT_API_KEY"] = w.blockscout_key
     try:
-        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="polygon")
-        assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "3" and r["befund"]["kette"] == "polygon", r
-        assert w.blockscout_ketten == {"137"} and not any("polygon.blockscout.com" in a for a in w.aufrufe), (w.blockscout_ketten, w.aufrufe)
+        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="arbitrum")
+        assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "3" and r["befund"]["kette"] == "arbitrum", r
+        assert w.blockscout_ketten == {"42161"} and not any("arbitrum.blockscout.com" in a for a in w.aufrufe), (w.blockscout_ketten, w.aufrufe)
         protokoll = lesen(PROJEKT / "faelle" / KFALL / "protokoll" / "abfragen.jsonl")
         assert w.blockscout_key not in protokoll and "apikey=***" in protokoll, "der Blockscout-Schlüssel steht im Protokoll"
+        # Polygon deckt der kostenlose Schlüssel nicht (HTTP 402, so gesehen am echten Dienst). Das Gateway sagt, woran es
+        # liegt, und fragt die öffentliche Instanz der Kette. Danach geht es für diese Kette gleich dorthin.
+        w = kwelt()
+        w.evm_zahlung("p0", "boerse", "taeter", 3 * ETH1, T0, 60_000_000)
+        w.evm_konto("taeter", wei=3 * ETH1)
+        os.environ["BLOCKSCOUT_API_KEY"] = w.blockscout_key
+        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="polygon")
+        assert r["ergebnis"] == "ok" and r["befund"]["guthaben"]["betrag"] == "3" and r["befund"]["kette"] == "polygon", r
+        abgewiesen = [e for e in kprotokoll().values() if (e.get("antwort") or {}).get("status") == 402]
+        assert len(abgewiesen) == 1 and "im Paket dieses Schlüssels nicht" in abgewiesen[0]["fehler"], abgewiesen
+        assert "Schlüssel nicht an" not in abgewiesen[0]["fehler"], "der Schlüssel ist gültig, es fehlt das Paket für die Kette"
+        assert any(a.startswith("GET polygon.blockscout.com/api/v2/addresses/") for a in w.aufrufe), w.aufrufe
+        vorher = len([a for a in w.aufrufe if "api.blockscout.com/137/" in a])
+        kruf(krypto.krypto_transaktionen, kw.evm("taeter"), kette="polygon")
+        assert len([a for a in w.aufrufe if "api.blockscout.com/137/" in a]) == vorher == 1, "nach der Abweisung fragt das Gateway dort für diese Kette nicht mehr"
         kwelt()
         os.environ["BLOCKSCOUT_API_KEY"] = "proapi_falsch"
         r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="ethereum")
@@ -1477,6 +1499,140 @@ def _():
 
 
 kern.transport = httpx.MockTransport(antwort)       # ab hier wieder die Gegenstelle der übrigen Tests
+
+
+# --------------------------------------------------------------------------- Antwortformen der echten Dienste
+
+def vorlagen_welt() -> None:
+    """Gegenstelle mit den Antwortformen aus tools/_vorlagen.py. Was sie nicht kennt, beantwortet die einfache vom Anfang."""
+    def gegenstelle(anfrage: httpx.Request) -> httpx.Response:
+        r = vorlagen.antwort(anfrage)
+        return antwort(anfrage) if r is None else r
+    kern.transport = httpx.MockTransport(gegenstelle)
+
+
+def letzter_eintrag() -> dict:
+    return json.loads(lesen(pfad / "protokoll" / "abfragen.jsonl").splitlines()[-1])
+
+
+@test("Schlüssel: nichts im Log des Gateways. Wiederholt eine Quelle Schlüssel oder Konto, steht in der Rohdatei ***")
+def _():
+    # Das MCP-SDK stellt das Logging beim Start des Servers auf INFO. httpx schreibt dann jede Anfrage mit der ganzen
+    # Adresse ins Log, bei Shodan, Etherscan und Blockscout samt Schlüssel. Deshalb schweigt httpx im Gateway.
+    r = subprocess.run([sys.executable, "-c",
+                        "import logging, sys; sys.path.insert(0, sys.argv[1]); from gateway import server; "
+                        "print(logging.getLogger('httpx').getEffectiveLevel(), logging.getLogger('httpcore').getEffectiveLevel())",
+                        str(PROJEKT)], capture_output=True, text=True, encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL)
+    stufen = [int(x) for x in r.stdout.split() if x.isdigit()]
+    assert len(stufen) == 2 and min(stufen) >= logging.WARNING, f"httpx protokolliert im Gateway Adressen: {r.stdout} {r.stderr[-200:]}"
+    mitschnitt: list[str] = []
+
+    class Fang(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            mitschnitt.append(record.getMessage())
+    wurzel, fang = logging.getLogger(), Fang()
+    alt = wurzel.level
+    wurzel.addHandler(fang)
+    wurzel.setLevel(logging.INFO)
+    vorlagen_welt()
+    try:
+        r = aufruf(infra.shodan_dns, zweck=ZWECK, domain="example.org")
+    finally:
+        wurzel.removeHandler(fang)
+        wurzel.setLevel(alt)
+    assert not any("GEHEIMER-TESTSCHLUESSEL" in zeile for zeile in mitschnitt), "der Shodan-Schlüssel steht im Log"
+    # Was die Quelle zur Ablehnung sagt, steht im Fehlertext: Erst daran sieht man, dass nicht der Schlüssel falsch ist
+    assert r["ergebnis"] == "fehler" and "Requires membership or higher to access" in r["fehler"], r
+    # Wiederholt eine Quelle den Schlüssel in ihrer Antwort, kommt er nicht in die Rohdatei, und das Protokoll sagt es
+    r = aufruf(infra.abuseipdb_meldungen, zweck=ZWECK, ip="203.0.113.9")
+    roh = lesen(PROJEKT / r["rohdaten"])
+    assert r["ergebnis"] == "ok" and "GEHEIMER-TESTSCHLUESSEL" not in roh and json.loads(roh)["anfrage"]["Key"] == "***", roh
+    assert "Zugangsschlüssel" in letzter_eintrag()["antwort"]["bereinigt"], letzter_eintrag()["antwort"]
+    assert kette_pruefen(FALL)["ok"], "die bereinigte Rohdatei passt nicht zu ihrem Hash im Protokoll"
+
+
+@test("ransomware.live: Zähler aus der Quelle, das eigene Konto bleibt draussen, Steckbrief in der Form der API PRO")
+def _():
+    vorlagen_welt()
+    os.environ["RANSOMWARE_LIVE_API_KEY"] = "rl-testschluessel-0001"
+    try:
+        antworten = [aufruf(szene.ransomware_opfer, zweck=ZWECK, land="CH")]
+        b = antworten[0]["befund"]
+        assert b["anzahl"] == 264 and b["gezeigt"] == 60 == len(b["opfer"]) and "264" in b["hinweis"], \
+            f"die Quelle führt 264 Einträge, gemeldet wird {b['anzahl']}"
+        assert b["opfer"][0]["opfer"] == "Musteropfer 0 AG" and b["opfer"][0]["fundstelle"].endswith("/post/0"), b["opfer"][0]
+        antworten.append(aufruf(szene.ransomware_opfer, zweck=ZWECK, gruppe="musterlocker"))
+        assert antworten[-1]["befund"]["anzahl"] == 2016, antworten[-1]["befund"]["anzahl"]
+        antworten.append(aufruf(szene.ransomware_aktuell, zweck=ZWECK))
+        assert antworten[-1]["befund"]["anzahl"] == 100 and antworten[-1]["befund"]["gezeigt"] == 60, antworten[-1]["befund"]["anzahl"]
+        antworten.append(aufruf(szene.ransomware_opfer, zweck=ZWECK, stichwort="muster"))       # die Suche nennt ihre Felder anders
+        s = antworten[-1]["befund"]
+        assert s["anzahl"] == 2 and "hinweis" not in s and s["opfer"][0]["opfer"] == "muster Muster 1" and s["opfer"][0]["gruppe"] == "musterlocker", s
+        antworten.append(aufruf(szene.ransomware_gruppe, zweck=ZWECK, gruppe="musterlocker"))
+        g = antworten[-1]["befund"]
+        assert g["name"] == "musterlocker" and g["victims"] == 2016 and g["firstseen"].startswith("2021-12-26") and g["lastseen"].startswith("2025-12-05"), g
+        assert g["leak_seiten_anzahl"] == 38 and len(g["leak_seiten"]) == 25 and g["leak_seiten"][0]["seized"] is True, g["leak_seiten"][:1]
+        assert g["weiteres"]["tools"]["Exfiltration"] == ["Rclone"], g["weiteres"]
+        antworten.append(aufruf(szene.ransomware_iocs, zweck=ZWECK, gruppe="musterlocker"))
+        assert antworten[-1]["befund"]["iocs"]["ip"] == ["203.0.113.10", "203.0.113.11"], antworten[-1]
+        # Die API PRO wiederholt in jeder Antwort die E-Mail-Adresse des Kontos. Sie geht weder an den Agenten noch in die Akte
+        for r in antworten:
+            assert vorlagen.KONTO not in json.dumps(r), f"das eigene Konto steht im Ergebnis für den Agenten: {r['protokoll_id']}"
+            assert vorlagen.KONTO not in lesen(PROJEKT / r["rohdaten"]) and '"client": "***"' in lesen(PROJEKT / r["rohdaten"]), r["rohdaten"]
+        assert "Feld «client»" in letzter_eintrag()["antwort"]["bereinigt"], letzter_eintrag()["antwort"]
+        assert kette_pruefen(FALL)["ok"]
+    finally:
+        del os.environ["RANSOMWARE_LIVE_API_KEY"]
+
+
+@test("Web-Check: Eine gescheiterte Prüfung ist kein Treffer, auch wenn sie mit HTTP 200 antwortet")
+def _():
+    vorlagen_welt()
+    os.environ["WEBCHECK_URL"] = "http://127.0.0.1:3000"
+    erwartet = {"archives": "fehler", "breaches": "fehler", "rank": "fehler", "subdomains": "fehler", "dnssec": "fehler", "shodan": "fehler",
+                "threats": "fehler", "txt-records": "kein_treffer", "whois": "kein_treffer",
+                "caa-records": "ok", "get-ip": "ok", "dns": "ok", "block-lists": "ok"}
+    assert set(erwartet) == set(web.WEBCHECK_PASSIV), "für jede passive Prüfung gibt es eine Vorlage"
+    je: dict[str, dict] = {}
+    for pruefung, soll in erwartet.items():
+        je[pruefung] = r = aufruf(web.webcheck_passiv, zweck=ZWECK, ziel="example.org", pruefung=pruefung)
+        assert r["ergebnis"] == soll, f"{pruefung}: {r['ergebnis']} statt {soll}"
+        assert letzter_eintrag()["ergebnis"] == soll, f"{pruefung}: Im Protokoll steht {letzter_eintrag()['ergebnis']}, beim Agenten {soll}"
+        assert ("befund" in r) == (soll == "ok"), r
+    assert "fetch failed" in je["archives"]["fehler"] and "nicht geprüft" in je["archives"]["fehler"], je["archives"]
+    assert "nicht eingerichtet" in je["shodan"]["fehler"] and "SHODAN_API_KEY" in je["shodan"]["fehler"], je["shodan"]
+    assert "HTTP 500" in je["dnssec"]["fehler"] or "fetch failed" in je["dnssec"]["fehler"], je["dnssec"]
+    assert "No TXT records for this host" in je["txt-records"]["grund"], je["txt-records"]
+    assert "nicht geantwortet" in je["threats"]["fehler"], "«keine Stelle hat geantwortet» ist kein «nichts gefunden»"
+    assert je["dns"]["befund"]["A"] == ["203.0.113.7", "203.0.113.8"], je["dns"]
+
+
+@test("Telegram, Wayback, VirusTotal: «nichts da» steht als kein Treffer im Protokoll, Zähler stammen aus der Antwort")
+def _():
+    vorlagen_welt()
+    r = aufruf(szene.telegram_kanal, zweck=ZWECK, kanal="ohnevorschau")       # Telegram leitet auf die Kanalseite um, HTTP 200
+    assert r["ergebnis"] == "kein_treffer" and "keine Web-Vorschau" in r["grund"], r
+    assert r["befund"]["kanalseite"] == {"titel": "Muster Leak Monitor", "angabe": "27 470 subscribers",
+                                         "beschreibung": "Erfundene Beschreibung des Kanals & Kontaktangabe"}, r["befund"]
+    eintrag = letzter_eintrag()
+    assert eintrag["ergebnis"] == "kein_treffer", "im Protokoll steht ein Treffer, wo es keinen gab"
+    assert eintrag["anfrage"]["url"] == "https://t.me/s/ohnevorschau", eintrag["anfrage"]["url"]
+    r = aufruf(szene.telegram_kanal, zweck=ZWECK, kanal="musterkanal")
+    assert r["ergebnis"] == "ok" and r["befund"]["anzahl"] == 2, r
+    assert r["befund"]["beitraege"][0] == {"beitrag": "musterkanal/441", "zeit": "2026-05-14T16:01:31+00:00",
+                                           "text": "Erfundener Beitrag 1. Zweite Zeile mit Verweis",
+                                           "links": ["https://example.org/meldung/1"]}, r["befund"]["beitraege"][0]
+    r = aufruf(web.wayback_verlauf, zweck=ZWECK, url="ohne-aufnahme.example.org")
+    assert r["ergebnis"] == "kein_treffer" and r["befund"]["anzahl"] == 0 and letzter_eintrag()["ergebnis"] == "kein_treffer", (r, letzter_eintrag()["ergebnis"])
+    r = aufruf(web.wayback_verlauf, zweck=ZWECK, url="example.org")
+    assert r["ergebnis"] == "ok" and r["befund"]["anzahl"] == 1 and r["befund"]["erste"] == "20240115093000", r
+    os.environ["VIRUSTOTAL_API_KEY"] = "vt-testschluessel-0001"
+    try:
+        r = aufruf(infra.virustotal_beziehungen, zweck=ZWECK, typ="domain", wert="example.org", beziehung="resolutions", limit=2)
+    finally:
+        del os.environ["VIRUSTOTAL_API_KEY"]
+    assert r["befund"]["gesamt"] == 49 and r["befund"]["anzahl"] == 2, f"VirusTotal kennt 49 Auflösungen, geliefert sind 2: {r['befund']}"
+    assert r["befund"]["eintraege"][0]["ip_address"] == "203.0.113.1" and r["befund"]["eintraege"][0]["date"].endswith("Z"), r["befund"]["eintraege"][0]
 
 
 @test("Agenten und Einstellungen nennen nur Werkzeuge, die es gibt")
