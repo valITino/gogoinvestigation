@@ -20,7 +20,7 @@ Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was
 | E: Oberfläche Teil 1, nur lesen | [PR 9](https://github.com/valITino/gogoinvestigation/pull/9) | offen, CI grün | 82 |
 | F: Oberfläche Teil 2, Bedienung | [PR 10](https://github.com/valITino/gogoinvestigation/pull/10) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code | 88 |
 | G: Chat, Akten-Eingang, Ergebnisse, ohne Wächter (Nachtrag vom 17.11.2026) | [PR 11](https://github.com/valITino/gogoinvestigation/pull/11) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code, auch für den Chat | 89 |
-| H: Pflichtquellen (Nachtrag vom 17.11.2026) | eigener Pull Request auf Paket G | offen. **Nicht geprüft:** ob das Team die Pflichtquellen in einer echten Ermittlung abarbeitet | 91 |
+| H: Pflichtquellen (Nachtrag vom 17.11.2026) | [PR 12](https://github.com/valITino/gogoinvestigation/pull/12) | offen. **Nicht geprüft:** ob das Team die Pflichtquellen in einer echten Ermittlung abarbeitet | 91 |
 
 Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F, G, H. Gemergt ist nichts.
 
