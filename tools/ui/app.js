@@ -1,6 +1,7 @@
 /* Die Oberfläche im Browser. Eine Datei, keine Bibliothek, nichts von aussen.
    Der Server liefert jede Ansicht als fertiges HTML. Dieses Skript holt sie, setzt sie ein und macht sie bedienbar:
-   Navigation, feste Adressen, sortierbare Tabellen mit Filter und CSV, Arbeitsspur, Filter und Bilder im Rapport.
+   Navigation, feste Adressen, sortierbare Tabellen mit Filter und CSV, Arbeitsspur, Filter und Bilder im Rapport,
+   dazu die Bedienung: Akten hochladen und ordnen, Chat mit der Ermittlung, Rückfragen.
    Was aus Quellen stammt, hat der Server als Text maskiert. Dieses Skript setzt eigene Texte nur über textContent. */
 "use strict";
 
@@ -14,27 +15,37 @@ const el = (name, attribute = {}, ...kinder) => {
   for (const kind of kinder) e.append(kind);
   return e;
 };
-const zustand = { fall: null, ansicht: "", spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
-  bedienung: false, geheimnis: "", vorhaben: {}, ermittlungTimer: null };
+const zustand = { fall: null, ansicht: "", adresse: "", lauf: 0, spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
+  bedienung: false, geheimnis: "", auswahl: {}, warteschlange: null, hochgeladen: null, titel: "OSINT-Arbeitsplatz",
+  chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "" }, rueckfrage: "", rueckfrageTimer: null };
+const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einzelne Datei im Akten-Eingang
 
-async function holen(weg) {
-  const antwort = await fetch(weg, { headers: { Accept: "application/json" } });
+async function antwortLesen(antwort) {
   let daten = null;
   try { daten = await antwort.json(); } catch (e) { /* keine lesbare Antwort */ }
   if (!antwort.ok || !daten) throw new Error((daten && daten.fehler) || `Der Server antwortet nicht wie erwartet (HTTP ${antwort.status}).`);
   return daten;
 }
 
+async function holen(weg) {
+  return antwortLesen(await fetch(weg, { headers: { Accept: "application/json" } }));
+}
+
 function weg(...teile) { return "#/" + teile.map(encodeURIComponent).join("/"); }
+
+// Die eine Stelle, an der HTML eingesetzt wird. Es kommt immer aus einer Antwort des eigenen Servers: Fremdinhalte hat er dort als Text maskiert
+function einsetzen(ziel, html) { ziel.innerHTML = html; }
 
 /* ---------- Bedienung: Ändern geht nur mit dem Geheimnis, das der Server beim Start vergeben hat ---------- */
 
 async function senden(pfad, angaben) {
-  const antwort = await fetch(pfad, { method: "POST", headers: { "Content-Type": "application/json", "X-OSINT-Geheimnis": zustand.geheimnis }, body: JSON.stringify(angaben || {}) });
-  let daten = null;
-  try { daten = await antwort.json(); } catch (e) { /* keine lesbare Antwort */ }
-  if (!antwort.ok || !daten) throw new Error((daten && daten.fehler) || `Der Server antwortet nicht wie erwartet (HTTP ${antwort.status}).`);
-  return daten;
+  return antwortLesen(await fetch(pfad, { method: "POST", headers: { "Content-Type": "application/json", "X-OSINT-Geheimnis": zustand.geheimnis }, body: JSON.stringify(angaben || {}) }));
+}
+
+async function dateiSenden(ziel, name, datei) {
+  // Eine Datei für den Akten-Eingang: der Rohinhalt als Körper, der Name (mit Ordnern) im Kopf. Nichts davon geht nach aussen: Der Server ist dieser Rechner
+  return antwortLesen(await fetch("/api/hochladen?ziel=" + encodeURIComponent(ziel), { method: "POST",
+    headers: { "Content-Type": "application/octet-stream", "X-OSINT-Geheimnis": zustand.geheimnis, "X-OSINT-Name": encodeURIComponent(name) }, body: datei }));
 }
 
 async function anmelden() {
@@ -55,14 +66,7 @@ async function anmelden() {
   try { const stand = await holen("/api/bedienung"); zustand.bedienung = Boolean(stand.aktiv); } catch (e) { zustand.bedienung = false; }
 }
 
-function dateiLesen(datei) {
-  return new Promise((gut, schlecht) => {
-    const leser = new FileReader();
-    leser.onload = () => gut(String(leser.result).split(",")[1] || "");
-    leser.onerror = () => schlecht(new Error("Das Dokument liess sich nicht lesen."));
-    leser.readAsDataURL(datei);
-  });
-}
+const bedienbar = () => Boolean(zustand.bedienung && zustand.geheimnis);
 
 function ergebnisZeigen(feld, daten, fehler) {
   feld.replaceChildren();
@@ -70,42 +74,55 @@ function ergebnisZeigen(feld, daten, fehler) {
   feld.append(el("p", { klasse: fehler ? "banner" : "meldung", text: fehler || daten.meldung || "Erledigt." }));
   if (daten && daten.ausgabe) feld.append(el("pre", { klasse: "rohtext", text: daten.ausgabe }));
   if (daten && daten.zuordnung) feld.append(el("p", { klasse: "klein", text: "Zuordnungstabelle: " + daten.zuordnung + " (ausserhalb des Projektordners)" }));
+  if (daten && daten.dateinamen) feld.append(el("p", { klasse: "klein", text: "Welche Datei unter welchem Namen im Fall liegt: " + daten.dateinamen + " (ausserhalb des Projektordners)" }));
 }
+
+function hinweisZeigen(text) {
+  // Eine Meldung, die einen Wechsel der Ansicht übersteht: unten im Fenster, bis sie weggeklickt wird oder ihre Zeit um ist
+  let feld = $("#hinweis");
+  if (!feld) { feld = el("div", { id: "hinweis", role: "status" }); document.body.append(feld); }
+  clearTimeout(feld.zeit);
+  const zu = el("button", { type: "button", "aria-label": "Meldung schliessen", text: "×" });
+  zu.addEventListener("click", () => { feld.hidden = true; });
+  feld.replaceChildren(el("span", { text }), zu);
+  feld.hidden = false;
+  feld.zeit = setTimeout(() => { feld.hidden = true; }, 15000);
+}
+
+const auswahlName = (bereich) => bereich.dataset.auswahl + ":" + (bereich.dataset.ziel || bereich.dataset.fall || "");
 
 async function formularSenden(form) {
   const feld = $(".ergebnis", form) || form.appendChild(el("div", { klasse: "ergebnis" }));
-  if (form.dataset.frage && !confirm(form.dataset.frage)) return;
   const angaben = {};
   for (const [name, wert] of new FormData(form).entries()) if (!(wert instanceof File)) angaben[name] = wert;
   for (const kasten of $$("input[type=checkbox]", form)) angaben[kasten.name] = kasten.checked ? "1" : "";
+  // Formulare, die mit der Auswahl einer Tabelle arbeiten: Sie bekommen, was dort angehakt ist
+  const bereich = form.closest("[data-auswahl]") || (form.classList.contains("aufnehmen") ? $('[data-auswahl="korb"]') : null);
+  const gewaehlt = bereich ? Array.from(zustand.auswahl[auswahlName(bereich)] || []) : [];
+  if (form.classList.contains("mit-auswahl")) {
+    if (!gewaehlt.length) return ergebnisZeigen(feld, null, "Bitte zuerst Dokumente auswählen.");
+    angaben.namen = gewaehlt;
+  }
+  if (form.classList.contains("aufnehmen")) angaben.ids = gewaehlt;
+  if (form.dataset.frage && !confirm(form.dataset.frage)) return;
   const knopf = $("button[type=submit]", form);
   knopf.disabled = true;
   ergebnisZeigen(feld, { meldung: "Läuft …" });
   try {
-    let aktion = form.dataset.aktion;
-    const datei = $("input[type=file]", form);
-    if (datei) {
-      if (!datei.files.length) throw new Error("Bitte zuerst ein Dokument wählen.");
-      angaben.name = datei.files[0].name;
-      angaben.inhalt = await dateiLesen(datei.files[0]);
-    }
-    if (aktion === "neu") {         // der Weg hängt davon ab, ob das Dokument schon geschwärzt ist
-      if (angaben.weg === "klartext") {
-        const daten = await senden("/api/aktion/pseudo_beginnen", angaben);
-        zustand.vorhaben = { fall: angaben.fall || "", titel: angaben.titel || "", kuerzel: angaben.kuerzel || "", auftrag: angaben.auftrag || "" };
-        location.hash = weg("klartext", daten.vorgang);
-        return;
-      }
-      aktion = angaben.bestehend ? "dokument_aufnehmen" : "fall_anlegen";
-    }
+    const aktion = form.dataset.aktion;
     const daten = await senden("/api/aktion/" + aktion, angaben);
     ergebnisZeigen(feld, daten);
     if (aktion === "zurueckfuehren") klartextZeigen(daten);
-    const gelungen = daten.aufgenommen !== false && daten.gelungen !== false;
-    const danach = form.dataset.danach || (form.dataset.aktion === "neu" && gelungen ? "fall" : "");
-    if (gelungen && danach === "fall" && daten.fall) setTimeout(() => { location.hash = weg("fall", daten.fall, "bedienen"); }, 900);
-    else if (gelungen && danach === "neu-laden") laden();
-    else if (gelungen && danach.startsWith("#/")) location.hash = danach;
+    const gelungen = (daten.aufgenommen !== false || daten.angelegt === true) && daten.gelungen !== false && daten.uebernommen !== false;
+    const danach = gelungen ? (form.dataset.danach || "") : "";
+    if (gelungen && bereich && (form.classList.contains("mit-auswahl") || form.classList.contains("aufnehmen"))) delete zustand.auswahl[auswahlName(bereich)];
+    if (danach && daten.meldung && danach !== "rueckfrage") hinweisZeigen(daten.meldung);
+    if (danach === "fall" && daten.fall) location.hash = weg("fall", daten.fall, daten.bleibt ? "akten" : "ermittlung");
+    else if (danach === "weiter") await naechstesDokument(daten.ziel || "");
+    else if (danach === "rueckfrage") rueckfragenHolen();
+    else if (danach === "neu-laden") await laden();
+    else if (danach.startsWith("#/")) { if (aktion === "pseudo_verwerfen") zustand.warteschlange = null; if (location.hash === danach) await laden(); else location.hash = danach; }
+    if (aktion.startsWith("ermittlung_")) chatHolen();
     if (zustand.fall) kopfLaden(zustand.fall).catch(() => {});
   } catch (e) {
     ergebnisZeigen(feld, null, e.message);
@@ -126,44 +143,366 @@ function klartextZeigen(daten) {
 
 function bedienungEinrichten(wurzel) {
   for (const form of $$("form.aktion", wurzel)) form.addEventListener("submit", (e) => { e.preventDefault(); formularSenden(form); });
-  for (const zone of $$("[data-ablegen]", wurzel)) {
-    const eingabe = $("input[type=file]", zone), name = $("[data-dateiname]", zone);
-    const zeigen = () => { name.textContent = eingabe.files.length ? eingabe.files[0].name + " (" + eingabe.files[0].size + " Bytes)" : "noch kein Dokument gewählt"; };
-    eingabe.addEventListener("change", zeigen);
-    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("ziel"); });
-    zone.addEventListener("dragleave", () => zone.classList.remove("ziel"));
-    zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("ziel"); if (e.dataTransfer.files.length) { eingabe.files = e.dataTransfer.files; zeigen(); } });
-  }
   for (const verweis of $$("[data-zeigen]", wurzel)) verweis.addEventListener("click", (e) => {
     e.preventDefault();
     const ziel = document.getElementById(verweis.dataset.zeigen);
     if (ziel) { ziel.scrollIntoView({ block: "center" }); ziel.classList.add("ziel"); setTimeout(() => ziel.classList.remove("ziel"), 1600); }
   });
-  for (const [name, wert] of Object.entries(zustand.vorhaben)) {       // Angaben aus «Neuer Fall» im Abschluss der Pseudonymisierung vorbelegen
-    const eingabe = $(`form[data-aktion="pseudo_abschliessen"] [name="${name}"]`, wurzel);
-    if (eingabe && !eingabe.value) eingabe.value = wert;
+  for (const zone of $$("[data-hochladen]", wurzel)) hochladenEinrichten(zone);
+  for (const bereich of $$("[data-auswahl]", wurzel)) auswahlEinrichten(bereich);
+  const schlange = $("[data-warteschlange]", wurzel), w = zustand.warteschlange;
+  if (schlange && w && w.gesamt > 1) schlange.textContent = `Dokument ${w.gesamt - w.ids.length} von ${w.gesamt} · `;
+}
+
+/* ---------- Akten-Eingang: Dateien, Ordner und ZIP hochladen ---------- */
+
+function abgelegtes(uebertragung) {
+  // Dateien und Ordner aus einem Ablegen. Die Einträge müssen gelesen sein, bevor das Ereignis zu Ende ist: deshalb zuerst alle holen, dann warten
+  const liste = [], wurzeln = [];
+  for (const item of Array.from(uebertragung.items || [])) {
+    if (item.kind !== "file") continue;
+    const eintrag = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+    if (eintrag) wurzeln.push(eintrag);
+    else { const datei = item.getAsFile(); if (datei) liste.push({ name: datei.name, datei }); }
+  }
+  if (!wurzeln.length && !liste.length) for (const datei of Array.from(uebertragung.files || [])) liste.push({ name: datei.name, datei });
+  const gehen = async (eintrag) => {
+    if (eintrag.isFile) {
+      const datei = await new Promise((gut, schlecht) => eintrag.file(gut, schlecht));
+      liste.push({ name: (eintrag.fullPath || "").replace(/^\//, "") || datei.name, datei });
+    } else if (eintrag.isDirectory) {
+      const leser = eintrag.createReader();
+      for (;;) {        // ein Ordner kommt in Portionen
+        const teil = await new Promise((gut, schlecht) => leser.readEntries(gut, schlecht));
+        if (!teil.length) break;
+        for (const kind of teil) await gehen(kind);
+      }
+    }
+  };
+  return (async () => {
+    for (const wurzel of wurzeln) { try { await gehen(wurzel); } catch (e) { /* was sich nicht lesen lässt, fehlt in der Liste und damit in der Meldung */ } }
+    return liste;
+  })();
+}
+
+async function hochladen(zone, eintraege) {
+  if (zone.getAttribute("aria-busy") === "true") return;
+  const ziel = zone.dataset.ziel || "", stand = $(".hochladen-stand", zone), meldungen = [];
+  if (!eintraege.length) { stand.replaceChildren(el("li", { text: "Darin war keine Datei." })); return; }
+  zone.setAttribute("aria-busy", "true");
+  const zeile = el("li");
+  stand.replaceChildren(zeile);
+  let angenommen = 0, nr = 0;
+  for (const e of eintraege) {
+    nr += 1;
+    zeile.textContent = `Datei ${nr} von ${eintraege.length} wird gelesen und geprüft: ${e.name}`;
+    if (e.datei.size > DATEI_GROESSE) { meldungen.push(`${e.name}: grösser als ${DATEI_GROESSE / 1048576} MB, nicht angenommen.`); continue; }
+    try {
+      const daten = await dateiSenden(ziel, e.name, e.datei);
+      angenommen += daten.neu || 0;
+      meldungen.push(...(daten.meldungen || []));
+    } catch (f) { meldungen.push(`${e.name}: ${f.message}`); }
+  }
+  zone.removeAttribute("aria-busy");
+  zustand.hochgeladen = { ziel, text: `${angenommen} ${angenommen === 1 ? "Datei" : "Dateien"} in den Akten-Eingang gelegt.`, meldungen };
+  await laden();
+}
+
+function hochladenEinrichten(zone) {
+  const dateien = $("[data-dateien]", zone), ordner = $("[data-ordner]", zone);
+  const ausEingabe = (eingabe) => { const liste = Array.from(eingabe.files).map(d => ({ name: d.webkitRelativePath || d.name, datei: d })); eingabe.value = ""; hochladen(zone, liste); };
+  dateien.addEventListener("change", () => ausEingabe(dateien));
+  ordner.addEventListener("change", () => ausEingabe(ordner));
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("ziel"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("ziel"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("ziel"); abgelegtes(e.dataTransfer).then(liste => hochladen(zone, liste)); });
+  const h = zustand.hochgeladen;
+  if (h && h.ziel === (zone.dataset.ziel || "")) {
+    const stand = $(".hochladen-stand", zone);
+    stand.replaceChildren(el("li", { klasse: "meldung", text: h.text }), ...h.meldungen.map(text => el("li", { text })));
   }
 }
 
-async function ermittlungHolen() {
-  clearTimeout(zustand.ermittlungTimer);
-  const fall = zustand.fall;
-  if (!fall || !zustand.bedienung) return;
-  try {
-    const daten = await holen(`/api/fall/${encodeURIComponent(fall)}/ermittlung`);
-    if (fall !== zustand.fall) return;
-    const feld = $("#ermittlung");
-    if (feld && feld.dataset.stand !== daten.html) {
-      feld.dataset.stand = daten.html;
-      feld.innerHTML = daten.html;      // HTML des eigenen Servers
-      bedienungEinrichten(feld);
+/* ---------- Auswahl in Tabellen: einzeln, alle, ein Bereich mit der Umschalttaste ---------- */
+
+function auswahlEinrichten(bereich) {
+  const name = auswahlName(bereich);
+  const gemerkt = zustand.auswahl[name] || (zustand.auswahl[name] = new Set());
+  const kaesten = () => $$('tbody input[name="auswahl"]', bereich);
+  const sichtbar = () => kaesten().filter(k => !k.closest("tr").hidden);
+  const alle = $("[data-alle]", bereich), zaehler = $("[data-gewaehlt]", bereich);
+  const vorhanden = new Set(kaesten().map(k => k.value));
+  for (const wert of Array.from(gemerkt)) if (!vorhanden.has(wert)) gemerkt.delete(wert);      // was nicht mehr da ist, fällt aus der Auswahl
+  let letzter = null;
+  const zeigen = () => {
+    const liste = kaesten(), zu_sehen = sichtbar();
+    for (const k of liste) { k.checked = gemerkt.has(k.value); k.closest("tr").classList.toggle("gewaehlt", k.checked); }
+    if (alle) { alle.checked = zu_sehen.length > 0 && zu_sehen.every(k => k.checked); alle.indeterminate = !alle.checked && zu_sehen.some(k => k.checked); }
+    if (zaehler) zaehler.textContent = gemerkt.size ? `${gemerkt.size} von ${liste.length} gewählt` : "nichts gewählt";
+    for (const knopf of $$(".auswahlleiste button", bereich)) knopf.disabled = gemerkt.size === 0;
+    const hinweis = bereich.dataset.auswahl === "korb" ? $("[data-aufnehmen-hinweis]") : null;
+    if (hinweis) {      // beim Knopf steht, was er aufnehmen wird: Eine Auswahl von vorhin soll niemanden überraschen
+      const bereit = liste.filter(k => k.dataset.stand === "sauber"), davon = bereit.filter(k => gemerkt.has(k.value)).length;
+      hinweis.textContent = gemerkt.size ? `Aufgenommen werden die ${gemerkt.size} gewählten Dateien, soweit sie bereit sind: ${davon} von ${gemerkt.size}. Für alle: die Auswahl aufheben.`
+        : `Nichts gewählt: Aufgenommen wird alles, was bereit ist (${bereit.length} von ${liste.length} Dateien).`;
     }
-    let hinweis = $("#rueckfrage-hinweis");
-    if (daten.frage && zustand.ansicht !== "bedienen") {
-      if (!hinweis) { hinweis = el("a", { id: "rueckfrage-hinweis", klasse: "banner", href: weg("fall", fall, "bedienen"), text: "Claude Code fragt nach: zur Rückfrage" }); $("#kopf").after(hinweis); }
-    } else if (hinweis) hinweis.remove();
+  };
+  for (const k of kaesten()) k.addEventListener("click", (e) => {
+    const liste = sichtbar();
+    if (e.shiftKey && letzter && liste.includes(letzter)) {     // mit der Umschalttaste: alles zwischen dem letzten und diesem Haken
+      const [von, bis] = [liste.indexOf(letzter), liste.indexOf(k)].sort((x, y) => x - y);
+      for (const x of liste.slice(von, bis + 1)) { if (k.checked) gemerkt.add(x.value); else gemerkt.delete(x.value); }
+    } else if (k.checked) gemerkt.add(k.value); else gemerkt.delete(k.value);
+    letzter = k;
+    zeigen();
+  });
+  if (alle) alle.addEventListener("click", () => {       // «alle» meint, was gerade zu sehen ist: Der Filter der Tabelle zählt
+    for (const k of sichtbar()) { if (alle.checked) gemerkt.add(k.value); else gemerkt.delete(k.value); }
+    zeigen();
+  });
+  bereich.addEventListener("input", (e) => { if (e.target.type === "search") zeigen(); });
+  for (const knopf of $$("[data-korb]", bereich)) knopf.addEventListener("click", () => korbAktion(bereich, knopf, gemerkt));
+  zeigen();
+}
+
+async function korbAktion(bereich, knopf, gemerkt) {
+  const ziel = bereich.dataset.ziel || "", art = knopf.dataset.korb, feld = $("[data-korb-ergebnis]", bereich);
+  const ids = knopf.dataset.id ? [knopf.dataset.id] : Array.from(gemerkt);
+  if (!ids.length) return;
+  if (knopf.dataset.frage && !confirm(knopf.dataset.frage)) return;
+  try {
+    if (art === "pseudo" || art === "pseudo-auswahl") {
+      // In der Reihenfolge der Tabelle, und nur, was sich lesen lässt
+      const lesbar = $$('tbody input[name="auswahl"]', bereich).filter(k => ids.includes(k.value) && $('[data-korb="pseudo"], a[href^="#/klartext/"]', k.closest("tr"))).map(k => k.value);
+      if (!lesbar.length) throw new Error("Keine der gewählten Dateien lässt sich lesen. Pseudonymisieren lässt sich nur, was sich lesen lässt.");
+      zustand.warteschlange = { ziel, ids: lesbar, gesamt: lesbar.length, ausAuswahl: art === "pseudo-auswahl" };
+      return await naechstesDokument(ziel);
+    }
+    if (art === "umbenennen") {
+      const neu = prompt("Neuer Name der Datei (die Endung bleibt):", knopf.dataset.name || "");
+      if (!neu) return;
+      await senden("/api/aktion/korb_umbenennen", { ziel, id: ids[0], name: neu });
+    } else if (art === "rolle" || art === "rolle-auswahl") await senden("/api/aktion/korb_rolle", { ziel, ids, rolle: knopf.dataset.rolle });
+    else if (art === "verschieben") { const daten = await senden("/api/aktion/korb_verschieben", { ziel, ids, nach: $("[data-korb-nach]", bereich).value }); gemerkt.clear(); hinweisZeigen(daten.meldung); }
+    else if (art === "entfernen") { const daten = await senden("/api/aktion/korb_entfernen", { ziel, ids }); for (const id of ids) gemerkt.delete(id); hinweisZeigen(daten.meldung); }
+    await laden();
+  } catch (e) { ergebnisZeigen(feld, null, e.message); }
+}
+
+async function naechstesDokument(ziel) {
+  // Nach «Übernehmen»: das nächste gewählte Dokument auf den lokalen Bildschirm holen. Ist keines mehr da: zurück zum Akten-Eingang
+  const w = zustand.warteschlange;
+  while (w && w.ids.length) {
+    const id = w.ids.shift();
+    try {
+      const daten = await senden("/api/aktion/korb_pseudo", { ziel: w.ziel, id });
+      location.hash = weg("klartext", daten.vorgang);
+      return;
+    } catch (e) { hinweisZeigen(e.message); }     // die Datei ist nicht mehr da oder nicht lesbar: weiter mit der nächsten
+  }
+  if (w && w.ausAuswahl) delete zustand.auswahl["korb:" + w.ziel];      // die Auswahl galt dem Pseudonymisieren und ist damit erledigt
+  zustand.warteschlange = null;
+  const zurueck = ziel ? weg("fall", ziel, "akten") : "#/neu";
+  if (location.hash === zurueck) await laden(); else location.hash = zurueck;
+}
+
+/* ---------- Chat mit der Ermittlung: Vorgaben, Nachrichten, jeder Schritt ---------- */
+
+const STATUS_WORT = { aus: "nicht gestartet", laeuft: "läuft", wartet: "wartet auf eine Antwort", angehalten: "angehalten", beendet: "beendet", fehler: "abgebrochen" };
+const STATUS_FARBE = { laeuft: "gut", wartet: "warnung", fehler: "kritisch" };
+const ERGEBNIS_WORT = { ok: ["● Treffer", "gut"], kein_treffer: ["○ kein Treffer", "neutral"], fehler: ["✕ Fehlschlag", "kritisch"], abgelehnt: ["⊘ abgelehnt", "warnung"] };
+const ENTSCHEID_FARBE = { offen: "warnung", erlaubt: "gut", abgelehnt: "kritisch", "nicht beantwortet": "kritisch" };
+
+function chatEintrag(z, fall) {
+  const li = el("li", { klasse: "c-" + z.art + (z.wartet ? " wartet" : "") + (z.zurueck ? " zurueck" : ""), "data-nr": String(z.nr) });
+  if (z.art === "sachbearbeiter" || z.art === "claude") {
+    li.append(el("div", { klasse: "chat-wer" }, el("b", { text: z.art === "sachbearbeiter" ? "Du" : z.wer === "hauptsitzung" ? "Ermittlung" : z.wer }), el("time", { text: z.zeit })),
+      el("div", { klasse: "chat-text", text: z.text }));
+    if (z.wartet) li.append(el("div", { klasse: "klein", text: "wartet auf das Ende des laufenden Auftrags" }));
+    if (z.zurueck) li.append(el("div", { klasse: "klein", text: "zurückgenommen, nicht zugestellt" }));
+    return li;
+  }
+  const zeile = el("div", { klasse: "chat-zeile" }, el("time", { text: z.zeit }));
+  if (z.wer && z.wer !== "oberfläche") zeile.append(el("span", { klasse: "chat-quelle", text: z.wer }));
+  zeile.append(el("span", { klasse: z.art === "schritt" ? "mono" : "", text: z.text }));
+  if (z.beleg) zeile.append(el("a", { href: weg("fall", fall, "beleg", z.beleg), text: z.beleg }));
+  if (z.ergebnis) { const [wort, farbe] = ERGEBNIS_WORT[z.ergebnis] || [z.ergebnis, "neutral"]; zeile.append(el("span", { klasse: "z-" + farbe, text: wort })); }
+  if (z.entscheid) zeile.append(el("span", { klasse: "marke z-" + (ENTSCHEID_FARBE[z.entscheid] || "neutral"), text: z.entscheid }));
+  if (z.ergebnisse) zeile.append(el("a", { klasse: "knopf", href: weg("fall", fall, "ergebnisse"), text: "Ergebnisse ansehen" }));
+  li.append(zeile);
+  return li;
+}
+
+function chatBauen(feld, fall, gross) {
+  const c = zustand.chat;
+  clearTimeout(c.timer);
+  Object.assign(c, { fall, feld, v: 0, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "" });
+  feld.replaceChildren();
+  feld.classList.add("chat");
+  feld.dataset.fall = fall;
+  const kopf = el("div", { klasse: "chat-kopf" }, el("h2", { text: "Chat mit der Ermittlung" }), el("span", { klasse: "marke", "data-chat-status": "", text: "…" }));
+  const verlauf = el("ol", { klasse: "chat-verlauf", "aria-live": "polite", "aria-label": "Verlauf der Ermittlung", tabindex: "0" });
+  const schritte = el("input", { type: "checkbox", checked: "" });
+  let zeigeSchritte = true;
+  try { zeigeSchritte = sessionStorage.getItem("chat-schritte") !== "0"; } catch (e) { /* ohne Speicher gilt die Vorgabe */ }
+  schritte.checked = zeigeSchritte;
+  feld.classList.toggle("ohne-schritte", !zeigeSchritte);
+  schritte.addEventListener("change", () => {
+    feld.classList.toggle("ohne-schritte", !schritte.checked);
+    try { sessionStorage.setItem("chat-schritte", schritte.checked ? "1" : "0"); } catch (e) { /* siehe oben */ }
+    verlauf.scrollTop = verlauf.scrollHeight;
+  });
+  kopf.append(el("label", { klasse: "klein" }, schritte, document.createTextNode(" jeden Schritt zeigen")));
+  if (!gross) {
+    const zu = el("button", { type: "button", klasse: "klein-knopf", "aria-expanded": "true", text: "einklappen" });
+    const klappen = (eingeklappt) => { feld.classList.toggle("zu", eingeklappt); zu.textContent = eingeklappt ? "aufklappen" : "einklappen"; zu.setAttribute("aria-expanded", String(!eingeklappt)); };
+    zu.addEventListener("click", () => { const jetzt = !feld.classList.contains("zu"); klappen(jetzt); try { sessionStorage.setItem("chat-zu", jetzt ? "1" : "0"); } catch (e) { /* siehe oben */ } });
+    try { klappen(sessionStorage.getItem("chat-zu") === "1"); } catch (e) { /* siehe oben */ }
+    kopf.append(zu);
+  }
+  const text = el("textarea", { name: "text", rows: "3", id: "chat-text", "aria-label": "Nachricht an die Ermittlung" });
+  const form = el("form", { klasse: "chat-eingabe" }, text, el("div", { klasse: "knopfzeile", "data-chat-knoepfe": "" }), el("div", { klasse: "ergebnis", "aria-live": "polite" }));
+  form.addEventListener("submit", (e) => { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); });
+  text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); } });
+  feld.append(kopf, verlauf, el("div", { klasse: "chat-wartend" }), form);
+  chatHolen();
+}
+
+async function chatSenden(aktion, zusatz, textfeld, frage) {
+  const c = zustand.chat, feld = c.feld;
+  if (!feld) return;
+  const eingabe = $("textarea", feld), ergebnis = $(".chat-eingabe .ergebnis", feld);
+  const text = eingabe.value.trim();
+  if (textfeld === "text" && !text) { ergebnisZeigen(ergebnis, null, "Bitte zuerst eine Nachricht schreiben."); eingabe.focus(); return; }
+  if (frage && !confirm(frage)) return;
+  const knoepfe = $$("[data-chat-knoepfe] button", feld);
+  knoepfe.forEach(k => { k.disabled = true; });
+  try {
+    const angaben = { fall: c.fall, ...zusatz };
+    if (textfeld) angaben[textfeld] = text;
+    await senden("/api/aktion/" + aktion, angaben);
+    if (textfeld) eingabe.value = "";
+    ergebnis.replaceChildren();
+  } catch (e) { ergebnisZeigen(ergebnis, null, e.message); }
+  knoepfe.forEach(k => { k.disabled = false; });
+  chatHolen();
+}
+
+function chatKnoepfe(d) {
+  const feld = zustand.chat.feld, zeile = $("[data-chat-knoepfe]", feld), eingabe = $("textarea", feld);
+  zeile.replaceChildren();
+  const knopf = (text, tun, haupt, titel) => { const k = el("button", { type: "button", klasse: haupt ? "haupt" : "", text }); if (titel) k.title = titel; k.addEventListener("click", tun); zeile.append(k); };
+  eingabe.disabled = Boolean(d.claude);
+  if (d.claude) { zeile.append(el("p", { klasse: "banner", text: d.claude })); return; }
+  const arbeitet = d.status === "laeuft" || d.status === "wartet";
+  eingabe.placeholder = arbeitet || d.sitzung || d.frueher ? "Nachricht an die Ermittlung, ohne Personendaten" : "Vorgaben für die Ermittlung (freiwillig), ohne Personendaten";
+  if (arbeitet) {
+    knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true, "Die Nachricht wartet, bis der laufende Auftrag zu Ende ist (Strg+Eingabe)");
+    knopf("Jetzt unterbrechen und senden", () => chatSenden("ermittlung_nachricht", { jetzt: "1" }, "text"), false, "Bricht den laufenden Schritt ab und gibt der Ermittlung die Nachricht sofort");
+    knopf("Anhalten", () => chatSenden("ermittlung_anhalten", {}, ""), false, "Hält die Ermittlung an. Sie lässt sich fortsetzen");
+  } else if (d.sitzung || d.frueher) {
+    knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true, "Setzt die Sitzung mit dieser Nachricht fort (Strg+Eingabe)");
+    knopf("Fortsetzen", () => chatSenden("ermittlung_fortsetzen", {}, ""), false, "Setzt die Sitzung fort, wo sie aufgehört hat");
+    knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt von vorn, mit dem Text im Feld als Vorgabe. Was schon abgefragt ist, bleibt im Protokoll."), false,
+      "Beginnt eine neue Sitzung mit /ermittlung. Der Text im Feld geht als Vorgabe mit");
+  } else knopf("Ermittlung starten", () => chatSenden("ermittlung_starten", {}, "vorgaben"), true, "Startet Claude Code mit /ermittlung für diesen Fall. Der Text im Feld geht als Vorgabe mit");
+}
+
+function chatZeigen(d) {
+  const c = zustand.chat, feld = c.feld, liste = $(".chat-verlauf", feld);
+  const unten = liste.scrollHeight - liste.scrollTop - liste.clientHeight < 60;
+  if (d.neu_beginnen) { liste.replaceChildren(); c.knoten = new Map(); }
+  for (const z of d.verlauf || []) {
+    const neu = chatEintrag(z, c.fall), alt = c.knoten.get(z.nr);
+    if (alt) alt.replaceWith(neu); else liste.append(neu);
+    c.knoten.set(z.nr, neu);
+  }
+  c.v = d.v || 0;
+  const leer = $(".chat-leer", liste);
+  if (!c.knoten.size && !leer) liste.append(el("li", { klasse: "chat-leer klein", text: d.frueher ? "Zu diesem Fall gibt es eine frühere Sitzung. Eine Nachricht setzt sie fort." :
+    "Hier erscheint jeder Schritt der Ermittlung. Vorgaben eintragen, wenn es welche gibt, und starten." }));
+  else if (c.knoten.size && leer) leer.remove();
+  const marke = $("[data-chat-status]", feld);
+  marke.textContent = STATUS_WORT[d.status] || d.status;
+  marke.className = "marke z-" + (STATUS_FARBE[d.status] || "leer");
+  const wartend = $(".chat-wartend", feld);
+  wartend.replaceChildren();
+  for (const w of d.wartend || []) {
+    const zurueck = el("button", { type: "button", klasse: "verweis klein", text: "zurücknehmen" });
+    zurueck.addEventListener("click", () => chatSenden("ermittlung_nachricht_zurueck", { nachricht: w.id }, ""));
+    wartend.append(el("p", { klasse: "klein" }, document.createTextNode("Wartet: " + (w.text.length > 80 ? w.text.slice(0, 79) + "…" : w.text) + " "), zurueck));
+  }
+  const merkmal = [d.status, d.claude, d.sitzung || "", d.frueher || ""].join("|");
+  if (merkmal !== c.merkmal) {
+    const vorher = c.merkmal;
+    c.merkmal = merkmal;
+    chatKnoepfe(d);
+    if (vorher && zustand.fall === c.fall) kopfLaden(c.fall).catch(() => {});        // der Stand der Schritte im Kopf ändert sich mit der Ermittlung
+  }
+  const stand = $("#ermittlung"), tafel = $("#ermittlung-wer");        // Stand mit Knöpfen und die Tafel «Wer arbeitet woran» in der Ansicht Ermittlung
+  if (stand && d.feld && d.feld !== c.feldStand) { c.feldStand = d.feld; einsetzen(stand, d.feld); bedienungEinrichten(stand); }
+  if (tafel && (d.tafel || "") !== c.tafelStand) { c.tafelStand = d.tafel || ""; einsetzen(tafel, d.tafel || ""); }
+  if (unten) liste.scrollTop = liste.scrollHeight;        // wer unten war, bleibt unten: auch wenn sich nur die Höhe der Eingabe geändert hat
+}
+
+async function chatHolen() {
+  const c = zustand.chat, fall = c.fall;
+  clearTimeout(c.timer);
+  if (!fall || !c.feld || !c.feld.isConnected) return;
+  let pause = 4000;
+  try {
+    const d = await holen(`/api/fall/${encodeURIComponent(fall)}/verlauf?v=${c.v}`);
+    if (fall !== zustand.chat.fall || !c.feld.isConnected) return;
+    chatZeigen(d);
+    pause = d.status === "laeuft" || d.status === "wartet" ? 1200 : 4000;
   } catch (e) { /* der nächste Abruf versucht es wieder */ }
-  zustand.ermittlungTimer = setTimeout(ermittlungHolen, 2000);
+  clearTimeout(c.timer);
+  c.timer = setTimeout(chatHolen, pause);
+}
+
+function chatEinrichten(a) {
+  // Der Chat steht gross in der Ansicht «Ermittlung» und sonst klein am rechten Rand, unter der Arbeitsspur
+  const rand = $("#chatrand"), gross = $("#mitte [data-chat]");
+  const klein = bedienbar() && a.fall && !gross && a.ansicht !== "klartext";
+  rand.hidden = !klein;
+  if (gross && bedienbar()) { rand.replaceChildren(); chatBauen(gross, a.fall, true); }
+  else if (klein) { if (zustand.chat.feld !== rand || zustand.chat.fall !== a.fall || !rand.firstChild) chatBauen(rand, a.fall, false); }
+  else { clearTimeout(zustand.chat.timer); zustand.chat.feld = null; zustand.chat.fall = null; rand.replaceChildren(); }
+}
+
+/* ---------- Rückfrage: erscheint in jeder Ansicht, über allem anderen ---------- */
+
+function titelSetzen() { document.title = (zustand.rueckfrage ? "● Rückfrage · " : "") + zustand.titel; }
+
+async function rueckfragenHolen() {
+  clearTimeout(zustand.rueckfrageTimer);
+  if (!bedienbar()) return;
+  try {
+    const d = await holen("/api/rueckfragen");
+    if (d.html !== zustand.rueckfrage) {
+      zustand.rueckfrage = d.html;
+      const ebene = $("#rueckfrage-ebene"), hinweis = $("#rueckfrage-hinweis");
+      if (hinweis) hinweis.remove();
+      einsetzen(ebene, d.html);         // Werkzeug und Eingabe der Rückfrage sind dort als Text maskiert
+      ebene.hidden = !d.html;
+      if (d.html) {
+        bedienungEinrichten(ebene);
+        const dialog = $(".rueckfrage", ebene);
+        const spaeter = el("button", { type: "button", klasse: "verweis klein", text: "Erst nachsehen: Dialog ausblenden" });
+        spaeter.addEventListener("click", () => {
+          ebene.hidden = true;
+          const zurueck = el("button", { type: "button", id: "rueckfrage-hinweis", klasse: "banner", text: "Claude Code fragt nach und wartet: zur Rückfrage" });
+          zurueck.addEventListener("click", () => { ebene.hidden = false; zurueck.remove(); dialog.focus(); });
+          $("#kopf").after(zurueck);
+        });
+        dialog.append(spaeter);
+        dialog.setAttribute("tabindex", "-1");
+        dialog.focus();
+      }
+      titelSetzen();
+    }
+  } catch (e) { /* der nächste Abruf versucht es wieder */ }
+  zustand.rueckfrageTimer = setTimeout(rueckfragenHolen, 1500);
 }
 
 /* ---------- Navigation und Adressen ---------- */
@@ -189,9 +528,11 @@ function navigation(a) {
   if (zustand.bedienung) punkt("Neuer Fall", "#/neu", !a.fall && (a.ansicht === "neu" || a.ansicht === "klartext"));
   if (a.fall) {
     liste.append(el("li", { klasse: "gruppe", text: a.fall }));
-    const eintraege = [["uebersicht", "Fallübersicht"], ["rapport", "Rapport"], ["indikatoren", "Indikatoren"], ["rohdaten", "Rohdaten"], ["suche", "Suche"], ["dokumente", "Dokumente"]];
+    const eintraege = [["uebersicht", "Fallübersicht"], ["akten", "Akten"]];
+    if (zustand.bedienung) eintraege.push(["ermittlung", "Ermittlung"]);
+    eintraege.push(["rapport", "Rapport"], ["indikatoren", "Indikatoren"], ["rohdaten", "Rohdaten"], ["suche", "Suche"], ["ergebnisse", "Ergebnisse"]);
     if (zustand.bedienung) eintraege.push(["bedienen", "Bedienen"]);
-    const gleich = { indikator: "indikatoren", beleg: "rohdaten", roh: "rohdaten", dokument: "dokumente", zurueck: "bedienen" };
+    const gleich = { indikator: "indikatoren", beleg: "rohdaten", roh: "rohdaten", dokument: "ergebnisse", dokumente: "ergebnisse", zurueck: "bedienen" };
     for (const [name, text] of eintraege) punkt(text, weg("fall", a.fall, name), (gleich[a.ansicht] || a.ansicht) === name, true);
   }
   punkt("Quellen", "#/quellen", !a.fall && a.ansicht === "quellen");
@@ -209,9 +550,10 @@ function navigation(a) {
 }
 
 async function laden() {
-  const a = adresse();
+  const a = adresse(), lauf = ++zustand.lauf;
+  const gleiche = zustand.adresse === location.hash;
   navigation(a);
-  const mitte = $("#mitte");
+  const mitte = $("#mitte"), hoehe = mitte.scrollTop;
   mitte.setAttribute("aria-busy", "true");
   try {
     if (a.fall !== zustand.fall) {
@@ -219,29 +561,41 @@ async function laden() {
       $("#kopf").replaceChildren();
       spurNeu(a.fall);
     }
+    if (!gleiche && !["neu", "akten", "klartext"].includes(a.ansicht)) zustand.hochgeladen = null;       // die Meldung zum Hochladen gehört zum Akten-Eingang
     if (a.fall) await kopfLaden(a.fall);
+    if (lauf !== zustand.lauf) return;          // inzwischen wurde eine andere Ansicht verlangt
     zustand.ansicht = a.ansicht;
-    const pfad = a.fall ? `/api/fall/${encodeURIComponent(a.fall)}/${encodeURIComponent(a.ansicht === "rapport" ? "rapport" : a.ansicht)}`
+    const pfad = a.fall ? `/api/fall/${encodeURIComponent(a.fall)}/${encodeURIComponent(a.ansicht)}`
       + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${a.ansicht === "quellen" ? "quellen" : a.ansicht === "neu" ? "neu" : "faelle"}`;
-    // Der Bildschirm der Pseudonymisierung zeigt Klartext: Ihn gibt der Server nur gegen das Geheimnis heraus
-    const daten = a.ansicht === "klartext" ? await senden("/api/klartext/pseudo", { vorgang: a.arg, fall: zustand.vorhaben.fall || "" }) : await holen(pfad);
-    mitte.innerHTML = daten.html;      // HTML des eigenen Servers: Fremdinhalte sind dort als Text maskiert
-    document.title = `${daten.titel} · OSINT-Arbeitsplatz`;
+    // Was echte Angaben zeigen kann, gibt der Server nur gegen das Geheimnis heraus: den Bildschirm der Pseudonymisierung und den Akten-Eingang
+    const daten = a.ansicht === "klartext" ? await senden("/api/klartext/pseudo", { vorgang: a.arg })
+      : bedienbar() && ((!a.fall && a.ansicht === "neu") || (a.fall && a.ansicht === "akten")) ? await senden("/api/klartext/korb", { ziel: a.fall || "" })
+      : await holen(pfad);
+    if (lauf !== zustand.lauf) return;
+    einsetzen(mitte, daten.html);
+    zustand.titel = `${daten.titel} · OSINT-Arbeitsplatz`;
+    titelSetzen();
     einrichten(mitte, a);
     bedienungEinrichten(mitte);
-    ermittlungHolen();
-    if (a.ansicht === "rapport" && a.arg) { const ziel = document.getElementById(a.arg); if (ziel) { ziel.scrollIntoView(); ziel.classList.add("ziel"); } } else mitte.scrollTop = 0;
-    mitte.focus({ preventScroll: true });
+    chatEinrichten(a);
+    if (a.ansicht === "rapport" && a.arg) { const ziel = document.getElementById(a.arg); if (ziel) { ziel.scrollIntoView(); ziel.classList.add("ziel"); } }
+    else mitte.scrollTop = gleiche ? hoehe : 0;        // dieselbe Ansicht neu geladen: Die Stelle bleibt
+    if (!gleiche) mitte.focus({ preventScroll: true });
+    zustand.adresse = location.hash;
   } catch (e) {
-    mitte.replaceChildren(el("h1", { text: "Das hat nicht geklappt" }), el("p", { klasse: "banner", text: e.message }),
-      el("p", {}, el("a", { href: a.fall ? weg("fall", a.fall) : "#/", text: a.fall ? "Zur Fallübersicht" : "Zur Liste der Fälle" })));
+    if (lauf !== zustand.lauf) return;
+    zustand.adresse = "";
+    const zurueck = a.ansicht === "klartext" ? ["#/neu", "Zum Akten-Eingang"] : a.fall ? [weg("fall", a.fall), "Zur Fallübersicht"] : ["#/", "Zur Liste der Fälle"];
+    mitte.replaceChildren(el("h1", { text: "Das hat nicht geklappt" }), el("p", { klasse: "banner", text: e.message }), el("p", {}, el("a", { href: zurueck[0], text: zurueck[1] })));
+    chatEinrichten({ fall: null, ansicht: "" });
   }
   mitte.removeAttribute("aria-busy");
 }
 
 async function kopfLaden(fall) {
   const daten = await holen(`/api/fall/${encodeURIComponent(fall)}/kopf`);
-  $("#kopf").innerHTML = daten.html;
+  if (fall !== zustand.fall) return;
+  einsetzen($("#kopf"), daten.html);
   zustand.indikatoren = daten.indikatoren || [];
 }
 
@@ -261,7 +615,7 @@ function csvSicher(text) {      // eine Zelle, die mit = + - @ beginnt, hält ei
 }
 
 function tabelleEinrichten(tabelle) {
-  if (tabelle.dataset.fertig) return;
+  if (tabelle.dataset.fertig || tabelle.closest("[data-ohne-leiste]")) return;      // eine Tafel, die sich laufend erneuert, bekommt keine Leiste
   if (!tabelle.tHead) {     // Tabellen des Rapports haben ihre Kopfzeile als erste Zeile: Sie wird zum Tabellenkopf
     const erste = tabelle.rows[0];
     if (!erste || !Array.from(erste.cells).every(c => c.tagName === "TH")) return;
@@ -292,6 +646,7 @@ function tabelleEinrichten(tabelle) {
   leiste.append(feld, csv, zahl);
   (tabelle.closest(".tabelle-breit") || tabelle).before(leiste);
   Array.from(tabelle.tHead.rows[0].cells).forEach((th, spalte) => {
+    if (th.querySelector("input")) return;        // die Spalte mit den Haken zum Auswählen sortiert nicht
     const knopf = el("button", { type: "button", klasse: "sortieren", title: "Nach dieser Spalte sortieren" });
     while (th.firstChild) knopf.append(th.firstChild);
     th.append(knopf);
@@ -332,8 +687,8 @@ function spurNeu(fall) {
   zustand.spurStand = 0; zustand.spurFall = fall;
   const spur = $("#spur");
   spur.replaceChildren();
-  if (!fall) { spur.hidden = true; return; }
-  spur.hidden = false;
+  $("#rand").hidden = !fall;        // der rechte Rand gehört zum Fall: Arbeitsspur und, wenn bedienbar, der Chat
+  if (!fall) return;
   spur.append(el("h2", { text: "Arbeitsspur" }));
   const filter = el("div", { klasse: "spurfilter", role: "group", "aria-label": "Arbeitsspur filtern" });
   for (const [name, text] of SPUR_FILTER) {
@@ -554,4 +909,4 @@ function zeitachseEinrichten(liste, ereignisse) {
 try { const farbe = localStorage.getItem("farbe"); if (farbe) document.documentElement.dataset.farbe = farbe; } catch (e) { /* ohne Speicher gilt die Vorgabe des Systems */ }
 addEventListener("beforeprint", () => $$("details").forEach(d => { d.dataset.war = d.open ? "1" : ""; d.open = true; }));
 addEventListener("afterprint", () => $$("details").forEach(d => { d.open = d.dataset.war === "1"; }));
-anmelden().then(() => { addEventListener("hashchange", laden); laden(); });
+anmelden().then(() => { addEventListener("hashchange", laden); laden(); rueckfragenHolen(); });

@@ -172,13 +172,17 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 88 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 89 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
-Zeile mit, die sagt, was gerade geschieht. Am Ende steht, ob der Arbeitsplatz einsatzbereit ist, was neu
-eingerichtet wurde und was für euch bleibt.
+Zeile mit, die sagt, was gerade geschieht. Am Ende steht, wo ihr steht und wie es weitergeht: ob der Arbeitsplatz
+einsatzbereit ist, was neu eingerichtet wurde, was für euch bleibt, und unter «So geht es weiter» die nächsten vier
+Schritte, vom Start der Oberfläche bis zum Herunterladen der Ergebnisse.
 
 ![Ergebnis der Einrichtung](docs/bilder/einrichtung-ergebnis.png)
+
+Das Bild stammt aus einem Lauf vor dem 17.11.2026. Die letzten Zeilen heissen seither «So geht es weiter» und nennen
+zuerst die Oberfläche.
 
 Die Prüfung erscheint hier als Kurzfassung, jeder Fehler steht einzeln da. Ausführlich zeigt sie
 `python3 tools/pruefen.py`. Die Meldungen der Installationsprogramme liegen im Ordner `osint-setup` des
@@ -308,7 +312,23 @@ ihnen wird gesucht. Eine fertige Anweisung für euer LLM und die Regeln, was ble
 [docs/PSEUDONYMISIERUNG.md](docs/PSEUDONYMISIERUNG.md). Fällt das LLM aus, gibt es einen zweiten Weg, der den
 Rechner nicht verlässt: [Pseudonymisieren ohne LLM](#pseudonymisieren-ohne-llm-der-rückfall).
 
-**2. Ermitteln.** Ein Befehl in Claude Code:
+**2. Ermitteln.** Am einfachsten in der [Oberfläche](#oberfläche):
+
+```bash
+python3 tools/oberflaeche.py          # Windows: python tools\oberflaeche.py
+```
+
+Der Browser öffnet sich von selbst. Dort:
+
+1. **«Neuer Fall».** Rapport und Beilagen hineinziehen: einzeln, als Ordner oder als ZIP. Jede Datei wird gelesen und
+   auf Personendaten geprüft. Hat die Pseudonymisierung im Haus etwas übersehen, bessert ihr es auf einem lokalen
+   Bildschirm nach, ohne Sprachmodell. Dann Fall-ID und Titel eintragen und den Fall anlegen.
+2. **«Ermittlung».** Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Jeder Schritt erscheint im
+   Verlauf. Nachrichten gehen jederzeit hinterher. Braucht Claude Code eine Zustimmung, erscheint ein Fenster.
+3. **«Ergebnisse».** Rapport, Protokoll und Datenblätter ansehen, einzeln herunterladen oder alles als ein Archiv
+   mitnehmen, samt Sitzungsprotokoll.
+
+Oder am Terminal, mit einem Befehl in Claude Code:
 
 ```
 claude
@@ -324,7 +344,8 @@ Wer den Fall lieber selbst anlegt:
 python3 tools/fall.py neu 2026-0412 --titel "Phishing Kundenportal" --kuerzel ABC --rapport rapport.docx
 ```
 
-**3. Freigaben erteilen, falls nötig.** Drei Dinge sind standardmässig aus und werden pro Fall am Terminal freigegeben:
+**3. Freigaben erteilen, falls nötig.** Drei Dinge sind standardmässig aus und werden pro Fall freigegeben: in der
+Oberfläche unter «Bedienen» oder am Terminal:
 
 ```bash
 python3 tools/fall.py freigabe 2026-0412 darkweb       --durch "Kürzel/Funktion" --vermerk "Grundlage"
@@ -354,7 +375,8 @@ gekennzeichnet. Für eine IP-Adresse kann er den Wert setzen, ob sie der Ausgang
 ist («ja» oder «kein Hinweis», ein «nein» gibt es nicht). Das Werkzeug läuft nur am Terminal oder aus der
 Oberfläche, die Berechtigungen verbieten es für Agenten, und die PII-Prüfung liest den Wortlaut mit.
 
-**4. Ergebnis ansehen.** `faelle/2026-0412/rapport/Abschlussrapport.html` im Browser öffnen. Als PDF:
+**4. Ergebnis ansehen.** In der Oberfläche unter «Ergebnisse», dort auch zum Herunterladen. Ohne Oberfläche:
+`faelle/2026-0412/rapport/Abschlussrapport.html` im Browser öffnen. Als PDF:
 
 ```bash
 python3 tools/pdf.py 2026-0412
@@ -362,7 +384,8 @@ python3 tools/pdf.py 2026-0412
 
 Alles an einem Ort, vom Rapport bis zur Rohdatei, zeigt die [Oberfläche](#oberfläche): `python3 tools/oberflaeche.py 2026-0412`.
 
-**5. Zurückführen, im Haus.** Die Platzhalter im fertigen Rapport ersetzt ihr ausserhalb von Claude Code:
+**5. Zurückführen, im Haus.** Die Platzhalter im fertigen Rapport ersetzt ihr ausserhalb von Claude Code: mit der
+Zuordnung, die im Haus geführt wird. Was in der Oberfläche nachgebessert wurde, führt sie unter «Bedienen» selbst zurück.
 
 ```bash
 python3 tools/reidentifizieren.py 2026-0412 --zuordnung /sicher/zuordnung.csv --ausgabe /sicher/ablage/
@@ -377,7 +400,9 @@ python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
 python3 tools/rapport.py 2026-0412             # Rapport neu erzeugen (--entwurf, --nur-pruefen)
 python3 tools/protokoll.py 2026-0412           # Protokoll neu erzeugen
 python3 tools/pdf.py 2026-0412                 # beide Dokumente als PDF (A4)
-python3 tools/oberflaeche.py 2026-0412         # Oberfläche: alle Ergebnisse des Falls im Browser, am Terminal gestartet auch bedienbar
+python3 tools/oberflaeche.py 2026-0412         # Oberfläche: Akten, Ermittlung mit Chat und alle Ergebnisse des Falls im Browser
+python3 tools/fall.py entfernen 2026-0412 <Datei> --durch "…" --grund "…"    # Dokument aus dem Eingang nehmen
+python3 tools/fall.py loeschen 2026-0412 --durch "…"                         # Fall löschen, solange nichts abgefragt wurde
 python3 tools/anhang.py 2026-0412              # Datenblätter aller Indikatoren als HTML und PDF
 python3 tools/audit_pruefen.py 2026-0412       # Protokollkette prüfen
 python3 tools/musterfall.py                    # Musterfall neu bauen
@@ -389,8 +414,8 @@ In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>
 
 Alle Ergebnisse eines Falls an einem Ort: der Rapport zum Durchklicken, ein Datenblatt je Indikator, jeder Beleg
 und jede Rohdatei. Die Ansichten **lesen** die Fallakte und schreiben nie. Wer die Oberfläche selbst am Terminal
-startet, kann sie auch bedienen: Fall anlegen, Ermittlung starten, freigeben, Dokumente erzeugen. Abschlussrapport und
-Ermittlungsprotokoll bleiben die Dokumente für die Akte.
+startet, arbeitet darin vom ersten bis zum letzten Schritt: Akten hochladen, Fall anlegen, im Chat Vorgaben geben, der
+Ermittlung zusehen, Ergebnisse herunterladen. Abschlussrapport und Ermittlungsprotokoll bleiben die Dokumente für die Akte.
 
 ```bash
 python3 tools/oberflaeche.py                     # startet den Server und öffnet den Browser (Windows: python tools\oberflaeche.py)
@@ -404,6 +429,7 @@ Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Inte
 
 Links die Navigation, oben der Kopf des Falls mit Freigaben und Schrittleiste, rechts die Arbeitsspur: das
 Abfrageprotokoll, laufend nachgeführt, filterbar nach Abfragen, «kein Treffer», Fehlschlägen, Auswertungen und Freigaben.
+Ist die Oberfläche bedienbar, steht darunter ein kleines Chat-Fenster zur Ermittlung.
 
 **Fallübersicht.** Kennzahlen aus denselben Funktionen wie im Abschlussrapport, offene Punkte und die Abdeckung
 Indikator × Quelle. «Kein Treffer», Fehlschlag und «nicht abgefragt» sind so sichtbar wie ein Treffer:
@@ -432,38 +458,69 @@ geht verloren. Die Rohdatei steht daneben, mit Prüfsumme und der Auskunft, ob s
 
 ![Rohdatei mit Prüfsumme und Kettenprüfung](docs/bilder/oberflaeche-rohdatei.png)
 
-**Suche und Dokumente.** Die Suche geht über den ganzen Fall, samt Rohdaten. Unter «Dokumente» stehen
+**Suche und Ergebnisse.** Die Suche geht über den ganzen Fall, samt Rohdaten. Unter «Ergebnisse» stehen
 Abschlussrapport, Ermittlungsprotokoll und Datenblätter, als HTML und PDF, mit dem Vermerk, ob sie noch zum Stand
-der Daten passen. Jede Tabelle lässt sich sortieren, filtern und als CSV ausgeben, jede Ansicht hat eine feste
-Adresse und lässt sich drucken. Die Oberfläche folgt der hellen oder dunklen Einstellung des Systems:
+der Daten passen, und alles zusammen als Archiv. Jede Tabelle lässt sich sortieren, filtern und als CSV ausgeben, jede
+Ansicht hat eine feste Adresse und lässt sich drucken. Die Oberfläche folgt der hellen oder dunklen Einstellung des Systems:
 
 ![Datenblatt einer Wallet-Adresse in der dunklen Darstellung](docs/bilder/oberflaeche-dunkel.png)
 
 **Bedienen ohne Terminal.** Startet der Sachbearbeiter die Oberfläche selbst an einem Terminal, lässt sie sich aus dem
-Browserfenster bedienen, das sich dabei öffnet: Dokument hineinziehen, Ermittlung starten, zusehen, freigeben, Rapport holen.
+Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 
-![Neuer Fall: Dokument hineinziehen, Fall-ID und Titel, geschwärzt oder Klartext](docs/bilder/oberflaeche-neu.png)
+![Neuer Fall: Akten hineinziehen, jede Datei geprüft, mit Auswahl](docs/bilder/oberflaeche-neu.png)
 
-- **Neuer Fall.** Ist das Dokument schon geschwärzt, geht es durch die PII-Prüfung in den Fall. Ist es Klartext, folgt
-  zuerst der lokale Bildschirm der Pseudonymisierung: Fundstellen im Text markiert, annehmen, verwerfen, ergänzen. Erst
-  das Ergebnis geht in die PII-Prüfung und in den Fall. Lehnt die PII-Prüfung ab, zeigt die Seite die Stellen maskiert
-  und nimmt nichts auf.
-- **Ermittlung.** Starten, anhalten, fortsetzen. Die Oberfläche steuert Claude Code mit `/ermittlung <Fall-ID>` und
-  zeigt, welcher Analyst woran arbeitet. Fragt Claude Code für eine einzelne aktive Massnahme nach, erscheint die Frage
-  als Dialog.
-- **Freigaben, Abklärung von Hand, Dokumente, Zurückführen, Quellen.** Per Klick oder Formular, über die bestehenden
-  Werkzeuge. Jeder Schritt steht im Sitzungsprotokoll, mit Zeit und dem Vermerk «über die Oberfläche».
+- **Akten hineinziehen.** Unter «Neuer Fall»: einzelne Dateien, ein ganzer Ordner oder ein ZIP. Gelesen werden Text,
+  Word, PDF, OpenDocument, Excel, PowerPoint, RTF, E-Mail (.eml, die Anhänge werden eigene Dokumente), CSV und JSON.
+  Jede Datei geht sofort durch die PII-Prüfung: bereit, Personendaten oder nicht lesbar. Bilder, Ton und alte Formate
+  lassen sich nicht prüfen und bleiben bei euch.
+- **Auswählen und ordnen.** Jede Zeile hat einen Haken, dazu «alle auswählen» und die Umschalttaste für einen Bereich.
+  Für die Auswahl: nochmals pseudonymisieren, als Rapport oder Beilage ordnen, entfernen, in den Akten-Eingang eines
+  anderen Falls verschieben.
+- **Nochmals pseudonymisieren.** Hat die Pseudonymisierung im Haus etwas übersehen, zeigt ein lokaler Bildschirm das
+  Dokument mit markierten Fundstellen: annehmen, verwerfen, ergänzen, übernehmen. Das geschieht auf eurem Rechner,
+  ohne Sprachmodell. Platzhalter, die schon im Dokument stehen, bleiben. Neue zählen dahinter weiter.
 
 ![Der lokale Bildschirm der Pseudonymisierung, mit erfundenen Angaben](docs/bilder/oberflaeche-klartext.png)
 
-![Bedienen: Freigabe erteilt, Claude Code fragt für eine aktive Massnahme nach](docs/bilder/oberflaeche-bedienen.png)
+- **Fall anlegen.** Fall-ID und Titel. In den Fall kommt von jedem Dokument die Textfassung, nie das Original, unter
+  einem neutralen Namen (`rapport-01.txt`, `beilage-01.txt`). Welche Datei wie heisst, hält die Ablage ausserhalb des
+  Projekts fest.
+- **Ermitteln mit Chat.** Unter «Ermittlung»: Vorgaben eintragen, wenn es welche gibt, und starten. Die Oberfläche
+  steuert Claude Code mit `/ermittlung <Fall-ID>`. Der Verlauf zeigt jeden Schritt: welcher Analyst, welche Abfrage,
+  welcher Beleg, welches Ergebnis. Eine Nachricht an die Ermittlung wartet auf das Ende des laufenden Auftrags oder
+  unterbricht ihn. Anhalten und fortsetzen geht jederzeit. Derselbe Chat steht in den übrigen Ansichten klein am Rand.
+
+![Ermittlung: der Chat mit Vorgaben, Schritten und wartenden Nachrichten](docs/bilder/oberflaeche-ermittlung.png)
+
+- **Rückfragen.** Braucht Claude Code eine Zustimmung, etwa für eine einzelne aktive Massnahme, erscheint ein Fenster,
+  in jeder Ansicht: erlauben oder ablehnen. «Erst nachsehen» lässt die Ermittlung warten.
+
+![Rückfrage: Claude Code braucht eine Zustimmung, das Fenster nennt Werkzeug und Eingabe](docs/bilder/oberflaeche-rueckfrage.png)
+
+- **Ergebnisse.** Rapport, Protokoll und Datenblätter ansehen, als HTML und PDF einzeln herunterladen oder alles als
+  ein Archiv mitnehmen: mit Sitzungsprotokoll und Verlauf, auf Wunsch die ganze Fallakte mit Rohdaten. Jedes Archiv
+  nennt in `INHALT.txt` die Prüfsumme jeder Datei.
+
+![Ergebnisse: Unterlagen mit Stand, einzeln oder als Archiv](docs/bilder/oberflaeche-ergebnisse.png)
+
+- **Akten eines Falls.** Weitere Dokumente nachziehen, und was im Eingang liegt: auswählen, entfernen (mit «Durch» und
+  «Grund»), in einen anderen Fall verschieben, von Hand Kopiertes nachträglich prüfen.
+
+![Akten eines Falls: Dokumente im Eingang auswählen, entfernen, verschieben](docs/bilder/oberflaeche-akten.png)
+
+- **Bedienen.** Freigaben, Abklärung von Hand, Dokumente einzeln erzeugen, Zurückführen, einen Fall löschen, solange
+  nichts abgefragt wurde. Per Klick oder Formular, über die bestehenden Werkzeuge. Jeder Schritt steht im
+  Sitzungsprotokoll, mit Zeit und dem Vermerk «über die Oberfläche».
+
+![Bedienen: Freigaben, Abklärung von Hand, Dokumente](docs/bilder/oberflaeche-bedienen.png)
 
 ![Zurückführen: der Rapport mit echten Angaben, nur auf diesem Bildschirm (erfundene Angaben)](docs/bilder/oberflaeche-zurueck.png)
 
 Die Sitzung von Claude Code läuft im Projektordner und ohne Schalter, die Einstellungen, Hooks oder MCP-Server
 abschalten. Berechtigungen und Protokoll-Hooks gelten wie am Terminal, die Modelle bleiben, wie das Projekt sie
-festlegt. Ob das an eurem Arbeitsplatz so greift, zeigt eine Probe mit dem echten Claude Code:
-`python3 tools/oberflaeche.py --sitzungsprobe`.
+festlegt. Ob der Weg an eurem Arbeitsplatz trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage), zeigt eine Probe
+mit dem echten Claude Code in vier kurzen Sitzungen: `python3 tools/oberflaeche.py --sitzungsprobe`.
 
 **Abrechnung: Abo oder API.** Eine Sitzung aus der Oberfläche rechnet über denselben Zugang ab wie `claude` am Terminal
 desselben Benutzers. Einen eigenen API-Schlüssel braucht dieser Weg nicht. Stand: Dokumentation von Claude Code
@@ -475,8 +532,8 @@ gelesen am 16.11.2026).
   nebeneinander arbeiten.
 - **Mit einem Console-Konto angemeldet oder `ANTHROPIC_API_KEY` gesetzt:** Abrechnung über die API, nach Verbrauch. Ist
   die Variable gesetzt, nimmt Claude Code im Skriptbetrieb immer den Schlüssel, auch wenn ein Abo angemeldet ist.
-- Die Seite «Bedienen» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen ist.
-  Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
+- Die Ansicht «Ermittlung» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen
+  ist. Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
 - **Nicht gewählt: das Agent SDK für Python.** Seine Dokumentation verweist für die Anmeldung auf API-Schlüssel, also
   Abrechnung nach Verbrauch, und es wäre eine neue Pflicht-Abhängigkeit. Es startet dieselbe Kommandozeile.
 
@@ -503,19 +560,26 @@ Muster: [Datenblätter des Musterfalls (PDF)](muster/Datenblaetter.pdf).
 - Lesen geht mit GET und HEAD. Ändern geht nur mit dem Geheimnis, das beim Start entsteht: Es liegt nur im Speicher des
   Servers und im Browserfenster des Sachbearbeiters, in keiner Datei und nicht in der Umgebung der Sitzungen, die der
   Server startet. Ohne Terminal oder aus Claude Code heraus gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann
-  sich so keine Freigabe erteilen und keinen Beleg von Hand erfassen.
-- Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf.
-- Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung. Klartext und Zuordnungstabelle liegen ausserhalb
-  des Projektordners und stehen in keinem Protokoll. Echte Angaben zeigen nur zwei Bildschirme (Pseudonymisierung,
-  Zurückführen), beide als «lokal, Klartext» gekennzeichnet.
+  sich so keine Freigabe erteilen, keinen Beleg von Hand erfassen und seine eigene Rückfrage nicht beantworten.
+- Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Sie ruft die bestehenden
+  Werkzeuge auf. Die eine Datei, die sie selbst in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand.
+- In einen Fall kommt nur, was die PII-Prüfung besteht, und immer die Textfassung, nie das Original. Auch was der
+  Sachbearbeiter in den Chat schreibt, geht durch die PII-Prüfung, bevor es das Sprachmodell erreicht.
+- Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung. Hochgeladene Dateien liegen im Speicher,
+  Zuordnungstabelle und zurückgeführter Rapport ausserhalb des Projektordners, nichts davon steht in einem Protokoll.
+  Echte Angaben können drei Bildschirme zeigen (Akten-Eingang mit den Namen der Dateien, Pseudonymisierung,
+  Zurückführen), alle als «lokal, Klartext» gekennzeichnet und nur gegen das Geheimnis zu haben.
 - Was aus einer Quelle stammt, erscheint als Text und wird nie als HTML ausgeführt. Rohdateien liefert er als Text oder Bild.
 - Bilder kommen nur aus den Rohdaten des gezeigten Falls. Eine Content-Security-Policy verbietet alles von aussen.
 - Adressen aus dem Fall (URLs, Domains, Onion-Adressen) sind nie anklickbar. Platzhalter bleiben Platzhalter.
 
 **Grenzen.** Zum Lesen hat die Oberfläche keine Anmeldung. Sie gehört auf den Arbeitsplatz des Sachbearbeiters, nicht auf
 einen geteilten Server. Die Steuerung von Claude Code ist nur gegen ein Programm geprüft, das Claude Code spielt: Mit dem
-echten Claude Code ist noch keine Ermittlung aus der Oberfläche gelaufen. Rohdateien über 3 MB zeigt sie nur im Anfang
-und durchsucht sie nicht. Für Werkzeuge, zu denen keine
+echten Claude Code ist noch keine Ermittlung aus der Oberfläche gelaufen, und auch der Chat ist nur so geprüft. Der
+Akten-Eingang lebt im Speicher: Was hochgeladen, aber nicht aufgenommen ist, ist nach dem Beenden der Oberfläche weg.
+Bilder, Ton, gescannte PDF und die alten Office-Formate liest er nicht, sie bleiben bei euch. Die PII-Prüfung erkennt
+Muster, keine Namen: Ein Name, der in einem Dokument oder im Chat stehen bleibt, erreicht das Sprachmodell. Rohdateien
+über 3 MB zeigt die Oberfläche nur im Anfang und durchsucht sie nicht. Für Werkzeuge, zu denen keine
 echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Spur, Telegram über RapidAPI, Shodan-DNS, Wayback Machine,
 Robin), ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
 
@@ -1001,7 +1065,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 88 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 89 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1038,27 +1102,46 @@ PowerShell 7:
   Nicht geprüft: Firefox und Safari, ein Bildschirmleser, Fälle mit mehr als rund tausend Protokolleinträgen
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
-- Sechs gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`), Stand 16.11.2026: Jede der 16
-  ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an seiner Stelle mit 403 und
-  ändert nichts. Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne
-  Terminal oder aus Claude Code gestartet, gibt es kein POST. Weg «geschwärzt» und Weg «Klartext» mit erfundenen
-  Dokumenten: bei Sperrfunden entsteht nichts und die Stellen erscheinen maskiert, nach dem Klartext-Weg steht kein Name
-  und keine AHV-Nummer des Dokuments in Fallakte oder Protokoll, die Zuordnungstabelle liegt ausserhalb des Projekts.
-  Freigabe und Beleg von Hand über die bestehenden Werkzeuge, mit Zeit und Vermerk «Oberfläche» im Sitzungsprotokoll und
-  im Ermittlungsprotokoll. Die Ermittlung gegen ein Programm, das Claude Code spielt: Die Sitzung startet im
-  Projektordner mit `/ermittlung`, ohne einen Schalter, der Einstellungen, Hooks, MCP-Server oder das Modell umstellt.
-  Das Geheimnis steht weder in ihrer Umgebung noch in ihren Argumenten. Der gespielte Agent versucht, sich über die
-  Oberfläche eine Freigabe zu erteilen und einen Beleg zu erfassen, und bekommt viermal 403. Rückfrage erlauben,
-  ablehnen und unbeantwortet lassen, anhalten und fortsetzen. Meldet das gespielte Claude Code beim Start kein Gateway,
-  beendet die Oberfläche die Sitzung. Die Antwort auf eine Rückfrage ist ein einzelner Textblock, wie Claude Code ihn
-  verlangt. Vor dem Start sagt die Seite, über welchen Zugang abgerechnet wird, und nennt dabei nur Namen von Variablen. Dazu ein Durchgang im Browser (Chromium, ohne Fenster,
-  16.11.2026) durch alle Schritte der Bedienung, ohne Fehler in der Konsole und ohne Anfrage nach aussen.
+- Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
+  17.11.2026: Jede der 24 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  seiner Stelle mit 403 und ändert nichts. Eine Datei liest der Server erst ein, wenn das Geheimnis stimmt. Der
+  Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
+  Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
+  ein ZIP mit einem ZIP darin, ein ZIP mit Passwort, eine E-Mail mit Anhängen, Word, ein Bild, gleicher Inhalt zweimal,
+  eine leere Datei, ein Name, der aus dem Ordner hinausführen will. In den Fall kommt nur die Textfassung dessen, was
+  die PII-Prüfung besteht, unter neutralen Namen. Der Verfasser aus den Eigenschaften eines Word-Dokuments steht danach
+  nirgends im Projekt. Ohne Auswahl entfernt «entfernen» nichts. Entfernen, Verschieben (auch bei gleichem Namen im
+  Zielfall), nachträgliches Prüfen von Hand Kopiertem, Löschen eines Falls ohne Abfragen. Nochmals pseudonymisieren:
+  Nach dem Übernehmen steht kein Name und keine AHV-Nummer des Dokuments in Fallakte oder Protokoll, Platzhalter von
+  anderer Hand bleiben, neue zählen dahinter weiter, die Zuordnungstabelle liegt ausserhalb des Projekts, und eine
+  Tabelle, die ausserhalb der Oberfläche geändert wurde, wird nicht überschrieben. Freigabe und Beleg von Hand über die
+  bestehenden Werkzeuge. Die Ermittlung gegen ein Programm, das Claude Code spielt: Die Sitzung startet im Projektordner
+  mit `/ermittlung` und den Vorgaben aus dem Chat, ohne einen Schalter, der Einstellungen, Hooks, MCP-Server oder das
+  Modell umstellt. Das Geheimnis steht weder in ihrer Umgebung noch in ihren Argumenten. Der gespielte Agent versucht,
+  sich über die Oberfläche eine Freigabe zu erteilen, einen Beleg zu erfassen und seine Rückfrage selbst zu
+  beantworten, und bekommt fünfmal 403. Jeder Schritt steht im Verlauf, mit Analyst, Beleg und Ergebnis. Eine Vorgabe
+  oder Nachricht mit einer Telefonnummer geht nicht hinaus. Eine Nachricht setzt eine ruhende Sitzung fort, wartet auf
+  das Ende eines laufenden Auftrags, lässt sich zurücknehmen oder unterbricht ihn. Rückfrage erlauben, ablehnen und
+  unbeantwortet lassen, zwei Rückfragen nacheinander, anhalten und fortsetzen. Meldet das gespielte Claude Code beim
+  Start kein Gateway, beendet die Oberfläche die Sitzung. Das Archiv: jede Datei mit der Prüfsumme aus `INHALT.txt`, im
+  Auszug des Sitzungsprotokolls nur die Zeilen des Falls, kein Klartext, und die Fallakten sind danach Byte für Byte
+  unverändert. Die Formate: Aus Word, OpenDocument, Excel, PowerPoint, RTF und E-Mail entsteht der erwartete Text.
+  Dazu ein Durchgang im Browser (Chromium, ohne Fenster, 17.11.2026) mit erfundenen Akten durch den ganzen Ablauf, 66
+  Prüfpunkte: Ordner wählen, ZIP, Datei ablegen, alle auswählen, Bereich mit der Umschalttaste, Filter, entfernen,
+  umbenennen, verschieben, zwei Dokumente nacheinander pseudonymisieren, Fall anlegen, Vorgaben, Rückfrage als Fenster,
+  Nachricht warten lassen und zurücknehmen, unterbrechen, anhalten, fortsetzen, Unterlagen erzeugen, Archive und
+  einzelne Dateien herunterladen, zurückführen. Kein Fehler in der Konsole, keine Anfrage nach aussen.
   **Nicht geprüft: die Steuerung mit dem echten Claude Code.** Die Form seiner JSON-Ausgabe und der Weg der Rückfrage
-  (`--permission-prompt-tool`) folgen der Dokumentation (gelesen am 16.11.2026) und der Hilfe von Claude Code 2.1.325, gesehen sind sie nicht.
-  Den Probelauf dafür hat die Sicherheitsprüfung der Entwicklungssitzung abgelehnt. Nachholen am eigenen Arbeitsplatz:
-  `python3 tools/oberflaeche.py --sitzungsprobe`. Ebenfalls nicht geprüft: eine ganze Ermittlung aus der Oberfläche, die
-  Bedienung unter Windows und macOS, Word- und PDF-Dokumente im Klartext-Weg (geprüft sind Textdateien) und eine
-  Testabfrage aus der Oberfläche gegen eine echte Quelle.
+  (`--permission-prompt-tool`) folgen der Dokumentation (gelesen am 16.11.2026) und der Hilfe von Claude Code 2.1.326,
+  gesehen sind sie nicht. Aus der Entwicklungssitzung liess sich kein zweites Claude Code starten, ohne deren
+  Anmeldung und Umgebung mitzunehmen. Nachholen am eigenen Arbeitsplatz: `python3 tools/oberflaeche.py --sitzungsprobe`.
+  Ebenfalls nicht geprüft: eine ganze Ermittlung aus der Oberfläche; ob Vorgaben nach der Fall-ID beim Skill ankommen
+  und ob eine Nachricht mit `--resume` die Sitzung so fortsetzt, wie die Dokumentation es beschreibt; ob die
+  Erlaubt-Regeln für die Arbeitsdateien eines Falls (`Edit(./faelle/*/arbeitsstand/**)` und zwei weitere) im echten
+  Claude Code greifen; die Bedienung unter Windows und macOS; Firefox und Safari, vor allem das Hineinziehen ganzer
+  Ordner; PDF im Akten-Eingang (der Leser dahinter ist derselbe wie am Terminal und dort geprüft); grosse Dateien nahe
+  der Grenze von 60 MB; und eine Testabfrage aus der Oberfläche gegen eine echte Quelle.
+
 - Elf dieser Selbsttests gelten der Blockchain-Analyse. Sie laufen gegen eine erfundene Kette
   (`tools/_kryptowelt.py`), die in den Formen der echten Dienste antwortet: Prüfsummen und Abschreibfehler,
   Geldfluss auf Bitcoin, Ethereum und TRON (die Enden ergeben zusammen auf die kleinste Einheit genau den

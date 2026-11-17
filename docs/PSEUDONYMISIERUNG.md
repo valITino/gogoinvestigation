@@ -27,6 +27,20 @@ Claude Code sieht zu keinem Zeitpunkt die Zuordnungstabelle oder den zurückgef�
 Fällt das LLM im Haus aus, übernimmt `tools/pseudonymisieren.py` den ersten Schritt: auf demselben Rechner, ohne
 Sprachmodell und ohne Netz. Siehe [Rückfall ohne LLM](#rückfall-ohne-llm-toolspseudonymisierenpy).
 
+**Nachbessern in der Oberfläche.** Kommt ein Dokument mit einer Lücke aus dem ersten Schritt (eine Telefonnummer blieb
+stehen, ein Name wurde übersehen), braucht es keinen zweiten Lauf im Haus. In der Oberfläche unter «Neuer Fall» die Akten
+hineinziehen: Jede Datei geht durch die PII-Prüfung, und die Seite zeigt, wo etwas stehen blieb. Die betroffenen Dateien
+anhaken und «Nochmals pseudonymisieren»: Ein lokaler Bildschirm zeigt das Dokument mit markierten Fundstellen. Das
+geschieht auf demselben Rechner, mit derselben Bibliothek wie der Rückfall, ohne Sprachmodell.
+
+- Platzhalter aus dem ersten Schritt bleiben, wie sie sind. Neue zählen hinter der höchsten Nummer weiter: Steht im
+  Dokument `[PERSON_08]`, heisst die nächste Person `[PERSON_09]`.
+- Was die Oberfläche ersetzt, steht in einer eigenen Zuordnungstabelle in ihrer Ablage ausserhalb des Projekts
+  (`<Ablage>/<Fall-ID>/zuordnung.csv`). Die Tabelle aus dem Haus kennt die Oberfläche nicht.
+- In den Fall kommt von jedem Dokument die Textfassung, nie das Original, und nur, wenn die PII-Prüfung nichts mehr findet.
+
+Einzelheiten: [OBERFLAECHE.md](OBERFLAECHE.md), «Akten-Eingang» und «Nochmals pseudonymisieren».
+
 ## Platzhalter
 
 Form: eckige Klammern, Typ in Grossbuchstaben, Unterstrich, laufende Nummer. `[PERSON_01]`
@@ -366,6 +380,13 @@ Format der Zuordnungstabelle: zwei Spalten, Strichpunkt, keine Kopfzeile.
 [PERSON_01];Hans Muster
 [ORG_01];Muster AG
 ```
+
+**Zwei Tabellen.** Wurde in der Oberfläche nachgebessert, gibt es zwei Zuordnungstabellen: die aus dem Haus und die
+der Oberfläche (`<Ablage>/<Fall-ID>/zuordnung.csv`). Sie teilen keinen Platzhalter, solange alle Dokumente des Falls
+durch den Akten-Eingang der Oberfläche gingen, denn neue Platzhalter zählen hinter den vorhandenen weiter. Zum
+Zurückführen hängt ihr die beiden Dateien aneinander und gebt die gemeinsame Tabelle an, am Terminal mit `--zuordnung`
+oder in der Oberfläche unter «Bedienen», «Zurückführen». Mit ihrer eigenen Tabelle allein führt die Oberfläche nur
+zurück, was sie selbst ersetzt hat. Die übrigen Platzhalter bleiben stehen und werden genannt.
 
 ## Wenn doch etwas durchrutscht
 

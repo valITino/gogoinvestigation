@@ -41,6 +41,14 @@ PROJEKT = Path(__file__).resolve().parents[1]
 # So heissen die Befehle in Meldungen an den Menschen am Terminal.
 PY = "python" if WINDOWS else "python3"
 SETUP = ".\\setup.cmd" if WINDOWS else "./setup.sh"
+# Die nächsten Schritte, wenn der Arbeitsplatz eingerichtet ist. Die Einrichtung und tools/pruefen.py nennen dieselben
+WEITER = (
+    f"Oberfläche starten: {PY} tools/oberflaeche.py   Der Browser öffnet sich von selbst.",
+    "Dort «Neuer Fall»: Akten hineinziehen (einzeln, als Ordner oder als ZIP). Wo die erste Schwärzung im Haus etwas übersehen hat, "
+    "auf dem lokalen Bildschirm nachbessern. Fall-ID und Titel eintragen, Fall anlegen.",
+    "«Ermittlung»: Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Zusehen, Rückfragen beantworten.",
+    "«Ergebnisse»: Rapport, Protokoll und Datenblätter ansehen und herunterladen.",
+)
 
 # Schlichte Zeichen für die alte Windows-Konsole, deren Schrift Haken und Kreuz nicht kennt.
 _SCHLICHT = WINDOWS and not os.environ.get("WT_SESSION")

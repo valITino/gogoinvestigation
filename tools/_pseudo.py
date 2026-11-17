@@ -1389,11 +1389,22 @@ def stand(f: Fund, ent: Entscheide | None) -> bool | None:
     return True if f.sicher else None
 
 
-def anwenden(erk: Erkennung, ent: Entscheide | None = None) -> Ergebnis:
-    """Schreibt die Platzhalter. Kandidaten ohne Entscheid bleiben stehen. Eine E-Mail-Adresse, deren Seite niemand
-    geklärt hat, wird ersetzt und unter «Zur Klärung» genannt (Regel 4 der Anweisung in docs/PSEUDONYMISIERUNG.md)."""
-    ent = ent or Entscheide()
+def platzhalter_stand(*texte: str) -> dict[str, int]:
+    """Die höchste Nummer je Typ unter den Platzhaltern, die in den Texten schon stehen: {"PERSON": 7, "ORG": 2}."""
     hoechste: dict[str, int] = {}
+    for text in texte:
+        for m in PLATZHALTER.finditer(text or ""):
+            hoechste[m.group(1)] = max(hoechste.get(m.group(1), 0), int(m.group(2)))
+    return hoechste
+
+
+def anwenden(erk: Erkennung, ent: Entscheide | None = None, belegt: dict | None = None) -> Ergebnis:
+    """Schreibt die Platzhalter. Kandidaten ohne Entscheid bleiben stehen. Eine E-Mail-Adresse, deren Seite niemand
+    geklärt hat, wird ersetzt und unter «Zur Klärung» genannt (Regel 4 der Anweisung in docs/PSEUDONYMISIERUNG.md).
+    `belegt` nennt je Typ die höchste Nummer, die anderswo im Fall schon vergeben ist: in anderen Dokumenten, auch von
+    anderer Hand pseudonymisiert. Neue Platzhalter zählen dahinter weiter, damit eine Nummer nie zwei Personen meint."""
+    ent = ent or Entscheide()
+    hoechste: dict[str, int] = {str(typ): int(nr) for typ, nr in (belegt or {}).items()}
     zuordnung: list[tuple[str, str]] = list(erk.tabelle)
     for platzhalter, _ in zuordnung:
         m = PLATZHALTER.fullmatch(platzhalter)
@@ -1437,9 +1448,10 @@ class Vorgang:
     Jede Eingabe rechnet neu, damit sich eine bestätigte oder ergänzte Angabe im ganzen Dokument fortpflanzt."""
 
     def __init__(self, text: str, *, zuordnung: Iterable = (), namensliste: Iterable = (), marken: Marken | None = None,
-                 vornamen: frozenset | None = None, erkenner: Iterable[Callable] = ()):
+                 vornamen: frozenset | None = None, erkenner: Iterable[Callable] = (), belegt: dict | None = None):
         self.text = text
         self.zuordnung = list(zuordnung)
+        self.belegt = dict(belegt or {})        # höchste Nummer je Typ, die anderswo im Fall schon vergeben ist
         self.marken, self.vornamen, self.erkenner = marken, vornamen, tuple(erkenner)
         self.ent = Entscheide()
         for eintrag in namensliste:
@@ -1505,7 +1517,7 @@ class Vorgang:
         return [f for f in self.erk.funde if stand(f, self.ent) is None]
 
     def ergebnis(self) -> Ergebnis:
-        return anwenden(self.erk, self.ent)
+        return anwenden(self.erk, self.ent, self.belegt)
 
     def als_dict(self) -> dict:
         """Der Stand als einfache Daten, für die Oberfläche."""

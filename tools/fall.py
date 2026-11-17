@@ -4,12 +4,15 @@
     python3 tools/fall.py neu 2026-0412 --titel "Phishing Kundenportal" --rapport rapport.md
     python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
     python3 tools/fall.py freigabe 2026-0412 darkweb --durch "Kürzel/Funktion" --vermerk "Verfügung vom …"
+    python3 tools/fall.py entfernen 2026-0412 nachtrag.docx --durch "Kürzel" --grund "falsches Dokument"
+    python3 tools/fall.py loeschen 2026-0413 --durch "Kürzel"      (nur solange noch nichts abgefragt wurde)
     python3 tools/fall.py status 2026-0412
     python3 tools/fall.py liste
 
 Dokumente durchlaufen vor der Aufnahme die PII-Prüfung (tools/pii_pruefung.py).
-Freigaben und das Übersteuern der PII-Prüfung verlangen eine Bestätigung am Terminal.
-Ein Agent kann sie deshalb nicht selbst erteilen.
+Freigaben, das Übersteuern der PII-Prüfung, das Entfernen von Dokumenten und das Löschen eines Falls verlangen eine
+Bestätigung am Terminal. Ein Agent kann sie deshalb nicht selbst auslösen. Dieselben Schritte gibt es in der
+Oberfläche (tools/oberflaeche.py), dort mit dem Geheimnis ihres Starts.
 """
 from __future__ import annotations
 
@@ -29,9 +32,10 @@ if __name__ == "__main__":
 
 from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, eingang_stand, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
                           jsonl_lesen, sha256_datei)
-from tools.pii_pruefung import NichtLesbar, bericht, pruefen, text_lesen  # noqa: E402
+from tools.pii_pruefung import GEWANDELT, NichtLesbar, bericht, pruefen, text_lesen  # noqa: E402
 
 UNTERORDNER = ("eingang", "protokoll", "rohdaten", "arbeitsstand", "rapport")
+WEGE = ("Terminal", "Oberfläche")       # wie eine Entscheidung des Sachbearbeiters zustande kam
 
 
 class Fehler(Exception):
@@ -97,9 +101,18 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
         # Agenten lesen immer die Textfassung. Das Original bleibt daneben liegen.
         ziel = eingang / quelle.name
         if ziel.resolve() != quelle.resolve():
+            if ziel.exists():
+                # Ein Dokument im Eingang wird nie stillschweigend überschrieben: Agenten können es schon gelesen haben
+                if sha256_datei(ziel) == sha256_datei(quelle):
+                    print(f"→ {quelle.name} liegt schon unverändert im Eingang.\n")
+                else:
+                    print(f"→ {quelle.name} NICHT aufgenommen: Im Eingang liegt schon ein anderes Dokument mit diesem Namen.\n"
+                          f"  Unter anderem Namen aufnehmen, oder das alte zuerst entfernen: {plattform.PY} tools/fall.py entfernen {fall_id} {quelle.name} …\n")
+                    alles_gut = False
+                continue
             shutil.copy2(quelle, ziel)
         lesefassung = ziel
-        if quelle.suffix.lower() in (".docx", ".pdf"):
+        if quelle.suffix.lower() in GEWANDELT:
             lesefassung = eingang / f"{quelle.name}.txt"
             plattform.text_schreiben(lesefassung, text)
         for datei in {ziel, lesefassung}:
@@ -110,6 +123,72 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
         print(f"→ aufgenommen: faelle/{fall_id}/eingang/{lesefassung.name}\n")
     schreiben(register_datei, register)
     return alles_gut
+
+
+def entfernen(fall_id: str, namen: list[str], *, durch: str, grund: str, weg: str = "Terminal") -> list[str]:
+    """Nimmt Dokumente wieder aus dem Eingang eines Falls: die Datei, ihre Lesefassung und den Eintrag im Register.
+    Das Register hält unter «entfernt» fest, was wann von wem und warum entfernt wurde: Name und Prüfsumme, nie den Inhalt.
+    Auch ein Dokument, das von Hand hineinkopiert wurde, lässt sich so bereinigen. Von ihm bleibt nur die Prüfsumme: Sein Name
+    wurde nie geprüft und kann eine Person nennen. Wer das Entfernen auslöst, entscheidet der Aufrufer:
+    cmd_entfernen verlangt ein Terminal, die Oberfläche das Geheimnis ihres Starts."""
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
+    fall_daten(fall_id)
+    durch, grund = " ".join((durch or "").split()), " ".join((grund or "").split())
+    if not durch or not grund:
+        raise Fehler("Entfernen braucht --durch (wer entfernt) und --grund (warum).")
+    eingang = fall_pfad(fall_id) / "eingang"
+    register_datei = eingang / ".freigabe.json"
+    register = json.loads(register_datei.read_text(encoding="utf-8")) if register_datei.is_file() else {"dateien": {}}
+    weg_damit: list[Path] = []
+    for name in namen:
+        if not name or Path(name).name != name or name.startswith("."):
+            raise Fehler(f"'{name}' ist kein Dateiname im Eingang.")
+        datei = eingang / name
+        if not datei.is_file():
+            raise Fehler(f"'{name}' liegt nicht im Eingang von Fall {fall_id}.")
+        # Original und Lesefassung gehören zusammen: rapport.docx und rapport.docx.txt
+        paar = [datei, eingang / f"{name}.txt"] + ([eingang / name[:-4]] if name.endswith(".txt") and (eingang / name[:-4]).suffix.lower() in GEWANDELT else [])
+        weg_damit += [d for d in paar if d.is_file() and d not in weg_damit]
+    entfernt = []
+    for datei in weg_damit:
+        eintrag = register.get("dateien", {}).pop(datei.name, None)
+        register.setdefault("entfernt", []).append({
+            "name": datei.name if eintrag else "(ungeprüftes Dokument)", "sha256": sha256_datei(datei), "am": jetzt(), "durch": durch, "grund": grund,
+            "geprueft": bool(eintrag), **({"weg": weg} if weg != "Terminal" else {})})
+        datei.unlink()
+        entfernt.append(datei.name)
+    schreiben(register_datei, register)
+    return entfernt
+
+
+def loeschbar(fall_id: str) -> str:
+    """Leer, wenn sich der Fall löschen lässt. Sonst der Grund: Sobald etwas abgefragt wurde, ist die Akte Beweismaterial."""
+    daten = fall_daten(fall_id)
+    pfad = fall_pfad(fall_id)
+    if daten.get("muster"):
+        return "Der Musterfall gehört zum Projekt und wird nicht gelöscht."
+    eintraege = len(jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")) + len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl"))
+    if eintraege:
+        return (f"In Fall {fall_id} stehen {eintraege} Protokolleinträge. Was abgefragt wurde, bleibt als Beleg in der Akte: "
+                "Ein solcher Fall wird nicht gelöscht.")
+    if (pfad / "rohdaten").is_dir() and any(d.is_file() for d in (pfad / "rohdaten").rglob("*")):
+        return f"In Fall {fall_id} liegen Rohdaten. Ein solcher Fall wird nicht gelöscht."
+    if (pfad / "befunde.json").is_file():
+        return f"Fall {fall_id} hat Befunde. Ein solcher Fall wird nicht gelöscht."
+    return ""
+
+
+def loeschen(fall_id: str, *, durch: str, weg: str = "Terminal") -> None:
+    """Löscht einen Fall, in dem noch nichts abgefragt wurde: aus Versehen angelegt, falsche Fall-ID."""
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
+    if not " ".join((durch or "").split()):
+        raise Fehler("Löschen braucht --durch (wer löscht).")
+    grund = loeschbar(fall_id)
+    if grund:
+        raise Fehler(grund)
+    plattform.baum_loeschen(fall_pfad(fall_id))
 
 
 def cmd_neu(a: argparse.Namespace) -> int:
@@ -130,9 +209,9 @@ def cmd_neu(a: argparse.Namespace) -> int:
         return 1
     if not a.rapport:
         print(f"Noch kein Dokument im Fall. Aufnehmen: {plattform.PY} tools/fall.py aufnehmen {a.fall} <Datei>")
-    print("Nächster Schritt: 'claude' im Projektordner starten und eingeben:\n"
-          f"    /ermittlung {a.fall}\n"
-          f"Freigaben (aktiv, darkweb, personenbezug) sind aus. Erteilen: {plattform.PY} tools/fall.py freigabe …")
+    print(f"Nächster Schritt: die Oberfläche starten ({plattform.PY} tools/oberflaeche.py {a.fall}) und dort ermitteln.\n"
+          f"Oder am Terminal: 'claude' im Projektordner starten und eingeben:   /ermittlung {a.fall}\n"
+          f"Freigaben (aktiv, darkweb, personenbezug) sind aus. Erteilen: in der Oberfläche oder mit {plattform.PY} tools/fall.py freigabe …")
     return 0
 
 
@@ -141,7 +220,24 @@ def cmd_aufnehmen(a: argparse.Namespace) -> int:
     return 0 if aufnehmen(a.fall, a.dateien, a.trotzdem, a.durch) else 1
 
 
-WEGE = ("Terminal", "Oberfläche")
+def cmd_entfernen(a: argparse.Namespace) -> int:
+    fall_daten(a.fall)
+    if not a.durch or not a.grund:
+        raise Fehler("Entfernen braucht --durch (wer entfernt) und --grund (warum).")
+    am_terminal_bestaetigen(f"{len(a.dateien)} Dokument(e) werden aus dem Eingang von Fall {a.fall} entfernt: {', '.join(a.dateien)}", a.fall)
+    for name in entfernen(a.fall, a.dateien, durch=a.durch, grund=a.grund):
+        print(f"→ entfernt: faelle/{a.fall}/eingang/{name}")
+    return 0
+
+
+def cmd_loeschen(a: argparse.Namespace) -> int:
+    grund = loeschbar(a.fall)
+    if grund:
+        raise Fehler(grund)
+    am_terminal_bestaetigen(f"Fall {a.fall} wird mit allen Dokumenten im Eingang gelöscht. Abgefragt wurde darin noch nichts.", a.fall)
+    loeschen(a.fall, durch=a.durch or "")
+    print(f"Fall {a.fall} gelöscht.")
+    return 0
 
 
 def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "", entziehen: bool = False, weg: str = "Terminal") -> dict:
@@ -229,7 +325,7 @@ def main() -> int:
     n.add_argument("--auftrag", help="Ermittlungsauftrag in ein bis zwei Sätzen, ohne Personendaten")
     n.add_argument("--kuerzel", help="Kürzel des Sachbearbeiters")
     n.add_argument("--klassifizierung", default="INTERN")
-    n.add_argument("--rapport", nargs="+", metavar="DATEI", help="pseudonymisierte Dokumente (.txt .md .docx .pdf)")
+    n.add_argument("--rapport", nargs="+", metavar="DATEI", help="pseudonymisierte Dokumente (Text, .docx, .pdf, .odt, .xlsx, .pptx, .rtf, .eml)")
     n.set_defaults(func=cmd_neu)
 
     au = sub.add_parser("aufnehmen", help="weitere Dokumente in einen Fall aufnehmen")
@@ -246,6 +342,18 @@ def main() -> int:
     fr.add_argument("--vermerk", help="Grundlage der Freigabe")
     fr.add_argument("--entziehen", action="store_true")
     fr.set_defaults(func=cmd_freigabe)
+
+    en = sub.add_parser("entfernen", help="Dokumente wieder aus dem Eingang nehmen (nur am Terminal)")
+    en.add_argument("fall")
+    en.add_argument("dateien", nargs="+", help="Dateinamen im Eingang")
+    en.add_argument("--durch", metavar="KÜRZEL", help="wer entfernt")
+    en.add_argument("--grund", help="warum")
+    en.set_defaults(func=cmd_entfernen)
+
+    lo = sub.add_parser("loeschen", help="einen Fall löschen, in dem noch nichts abgefragt wurde (nur am Terminal)")
+    lo.add_argument("fall")
+    lo.add_argument("--durch", metavar="KÜRZEL", help="wer löscht")
+    lo.set_defaults(func=cmd_loeschen)
 
     st = sub.add_parser("status", help="Stand eines Falls")
     st.add_argument("fall")

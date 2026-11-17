@@ -3114,7 +3114,7 @@ def ui_vorbereiten() -> dict:
 
 def ui_ansichten(fall: "ui_daten.Fall") -> list[tuple[str, str]]:
     """Jede Ansicht eines Falls mit jedem Argument: alle Indikatoren, alle Belege, alle Rohdateien."""
-    wege = [("uebersicht", ""), ("rapport", ""), ("indikatoren", ""), ("rohdaten", ""), ("dokumente", ""), ("suche", ""), ("suche", "alert"), ("suche", BOESE)]
+    wege = [("uebersicht", ""), ("rapport", ""), ("indikatoren", ""), ("rohdaten", ""), ("dokumente", ""), ("ergebnisse", ""), ("suche", ""), ("suche", "alert"), ("suche", BOESE)]
     wege += [("indikator", i["id"]) for i in fall.indikatoren()]
     wege += [(a, e["id"]) for e in fall.eintraege() for a in ("beleg", "roh")]
     wege += [("dokument", d["name"]) for d in fall.dokumente() if d["html"]]
@@ -3346,7 +3346,10 @@ def _():
     assert vorlagen.ONION in liste.text and all(a["href"].startswith("#/") for t, a in liste.elemente if t == "a")
     # Das Skript der Oberfläche setzt nur das HTML des eigenen Servers ein und lädt nichts von aussen
     skript, seite_ = lesen(PROJEKT / "tools" / "ui" / "app.js"), ui_server.SEITE
-    assert set(re.findall(r"\.innerHTML\s*=\s*([^;]+);", skript)) == {"daten.html"}, "innerHTML nur für das HTML des eigenen Servers"
+    assert re.findall(r"\.innerHTML\s*=\s*([^;]+);", skript) == ["html"] and "function einsetzen(ziel, html) { ziel.innerHTML = html; }" in skript, "HTML wird an genau einer Stelle eingesetzt"
+    eingesetzt = set(re.findall(r"(?<!function )einsetzen\((?:\$\(\"[^\"]*\"\)|\w+),\s*([^)]+)\)", skript))
+    assert eingesetzt and eingesetzt <= {"daten.html", "d.html", "d.feld", 'd.tafel || ""'}, f"eingesetzt wird nur HTML aus Antworten des eigenen Servers: {eingesetzt}"
+    assert skript.count("einsetzen(") == 6, "jede Stelle, die HTML einsetzt, ist oben geprüft"
     assert not re.search(r"insertAdjacentHTML|document\.write|\beval\(|new Function|outerHTML\s*=|srcdoc", skript)
     fremd_ = [a for a in re.findall(r"https?://[^\s\"'`)]+", skript + lesen(PROJEKT / "tools" / "ui" / "app.css") + seite_) if not a.startswith("http://www.w3.org/")]
     assert not fremd_, f"Die Oberfläche nennt fremde Adressen: {fremd_[:3]}"
@@ -3376,8 +3379,9 @@ def _():
             c.close()
     try:
         gezaehlt = 0
-        for weg, typ in (("/", "text/html"), ("/basis.css", "text/css"), ("/app.js", "text/javascript"), ("/app.css", "text/css"), ("/api/faelle", "application/json"),
-                         ("/api/quellen", "application/json"), ("/api/neu", "application/json"), ("/api/bedienung", "application/json")):
+        for weg, typ in (("/", "text/html"), ("/basis.css", "text/css"), ("/app.js", "text/javascript"), ("/app.css", "text/css"), ("/bedienung.css", "text/css"),
+                         ("/api/faelle", "application/json"), ("/api/quellen", "application/json"), ("/api/neu", "application/json"), ("/api/bedienung", "application/json"),
+                         ("/api/rueckfragen", "application/json")):
             status, kopf, inhalt = holen(weg)
             assert status == 200 and kopf["content-type"].startswith(typ) and inhalt, f"{weg}: {status} {kopf.get('content-type')}"
             assert "default-src 'none'" in kopf["content-security-policy"] and kopf["x-content-type-options"] == "nosniff" and kopf["cache-control"] == "no-store", weg
@@ -3389,11 +3393,15 @@ def _():
         assert {f["id"] for f in liste["faelle"]} >= {OBERFL, MUSTER, FALL} and not verstoesse(liste["html"], "x")
         for fall in (u["fall"], u["muster"]):
             q = urllib_quote(fall.id)
-            for name in ("kopf", "spur", "spur?ab=3", "spur?ab=unsinn", "ermittlung", "bedienen", "zurueck"):
+            for name in ("kopf", "spur", "spur?ab=3", "spur?ab=unsinn", "verlauf", "verlauf?v=7", "verlauf?v=unsinn", "ermittlung", "bedienen", "zurueck", "akten", "ergebnisse"):
                 status, kopf, inhalt = holen(f"/api/fall/{q}/{name}")
                 assert status == 200 and json.loads(inhalt), f"{fall.id} {name}: {status}"
-                if name in ("ermittlung", "bedienen", "zurueck"):       # die Bildschirme der Bedienung: im Modus «nur lesen» ohne Formular
-                    assert not verstoesse(json.loads(inhalt)["html"], fall.id) and "form" not in Seite(json.loads(inhalt)["html"]).namen(), name
+                if name in ("ermittlung", "bedienen", "zurueck", "akten", "ergebnisse"):       # die Bildschirme der Bedienung: im Modus «nur lesen» ohne Formular
+                    assert not verstoesse(json.loads(inhalt)["html"], fall.id) and not {"form", "input", "textarea"} & Seite(json.loads(inhalt)["html"]).namen(), name
+                gezaehlt += 1
+            for teile in ("unterlagen", "unterlagen,sitzung", "unterlagen,sitzung,akte"):       # das Archiv entsteht im Speicher: Auch es schreibt nichts
+                status, kopf, inhalt = holen(f"/fall/{q}/paket.zip?teile={teile}")
+                assert status == 200 and kopf["content-type"] == "application/zip" and inhalt[:2] == b"PK" and "attachment" in kopf["content-disposition"], f"{fall.id} {teile}: {status}"
                 gezaehlt += 1
             for ansicht, arg in ui_ansichten(fall):
                 status, kopf, inhalt = holen(f"/api/fall/{q}/{ansicht}" + (f"/{urllib_quote(arg, safe='')}" if arg else ""))
@@ -3448,7 +3456,7 @@ def _():
     # Im Quelltext der Ansichten steht kein Aufruf, der eine Datei anlegt, verändert oder löscht. Was etwas ändert, steht in
     # bedienung.py und sitzung.py, läuft nur mit Geheimnis und ruft dafür die bestehenden Werkzeuge auf (eigene Tests weiter unten)
     for datei in [PROJEKT / "tools" / "ui" / n for n in ("daten.py", "seiten.py", "darsteller.py", "blaetter.py", "pruefstand.py", "formulare.py", "server.py",
-                                                         "rueckfrage.py")] + [PROJEKT / "tools" / "oberflaeche.py"]:
+                                                         "rueckfrage.py", "paket.py")] + [PROJEKT / "tools" / "oberflaeche.py"]:
         treffer = re.findall(r"write_text|write_bytes|text_schreiben|zeile_anhaengen|\.unlink\(|\.mkdir\(|\.rename\(|\.replace\(\s*Path|os\.remove|shutil\.|open\([^)]*[\"'][wax]b?\+?[\"']|\.touch\(",
                              lesen(datei))
         assert not treffer, f"{datei.name}: {treffer}"
@@ -3646,15 +3654,25 @@ def _():
     assert "## Oberfläche" in readme and "tools/oberflaeche.py" in readme and "docs/OBERFLAECHE.md" in readme
     abschnitt = readme.split("## Oberfläche")[1].split("\n## ")[0]
     for wort in ("127.0.0.1", "Grenzen", "lesen", "tools/anhang.py", "Bedienen ohne Terminal", "Geheimnis", "«nur lesen»", "lokal, Klartext", "--sitzungsprobe",
-                 "Abrechnung: Abo oder API", "ANTHROPIC_API_KEY"):
+                 "Abrechnung: Abo oder API", "ANTHROPIC_API_KEY", "Akten hineinziehen", "Ordner oder ein ZIP", "alle auswählen", "Nochmals pseudonymisieren", "Ermitteln mit Chat",
+                 "Rückfragen", "Ergebnisse", "INHALT.txt", "nie das Original"):
         assert wort in abschnitt, f"Im Abschnitt «Oberfläche» des README fehlt: {wort}"
+    assert "erkennt Muster, keine Namen" in " ".join(abschnitt.split()), "das README muss sagen, was die PII-Prüfung nicht erkennt"
     assert "Nicht geprüft: die Steuerung mit dem echten Claude Code" in readme, "Das README muss sagen, dass die Steuerung mit dem echten Claude Code nicht geprüft ist"
     bilder = re.findall(r"\]\((docs/bilder/[^)]+)\)", abschnitt)
-    assert len(bilder) >= 8 and all((REPO / b).is_file() for b in bilder), f"Bilder der Ansichten fehlen: {[b for b in bilder if not (REPO / b).is_file()]}"
-    assert {"docs/bilder/oberflaeche-neu.png", "docs/bilder/oberflaeche-klartext.png", "docs/bilder/oberflaeche-bedienen.png", "docs/bilder/oberflaeche-zurueck.png"} <= set(bilder)
+    assert len(bilder) >= 16 and all((REPO / b).is_file() for b in bilder), f"Bilder der Ansichten fehlen: {[b for b in bilder if not (REPO / b).is_file()]}"
+    assert {f"docs/bilder/oberflaeche-{n}.png" for n in ("neu", "klartext", "ermittlung", "rueckfrage", "ergebnisse", "akten", "bedienen", "zurueck")} <= set(bilder)
     for wort in ("Host-Kopf", "Content-Security-Policy", "nie anklickbar", "Weitere Angaben der Quelle", "nicht geprüft", "## Bedienung", "Startcode", "lokal, Klartext",
-                 "Abrechnung: Abo oder API", "--permission-prompt-tool", "--sitzungsprobe", "Grenzen dieses Schutzes", "nur gegen ein Programm geprüft, das Claude Code spielt"):
+                 "Abrechnung: Abo oder API", "--permission-prompt-tool", "--sitzungsprobe", "Grenzen dieses Schutzes", "nur gegen ein Programm geprüft, das Claude Code spielt",
+                 "### Akten-Eingang", "### Nochmals pseudonymisieren", "### Ermittlung und Chat", "### Rückfragen", "### Ergebnisse und Archiv", "dateinamen.csv",
+                 "verlauf-oberflaeche", "INHALT.txt", "nie das Original", "keine Namen"):
         assert wort in doku, f"In docs/OBERFLAECHE.md fehlt: {wort}"
+    # Was die Dokumentation über Grenzen und Formate des Akten-Eingangs sagt, steht so im Code
+    from tools.pii_pruefung import GEWANDELT as gewandelt
+    from tools.ui import bedienung as grenzen, sitzung as fristen
+    assert f"{grenzen.DATEI_GROESSE // (1024 * 1024)} MB je Datei, {grenzen.KORB_GROESSE // (1024 * 1024)} MB und {grenzen.KORB_EINTRAEGE} Dateien je Eingang" in doku
+    assert all(endung in doku for endung in gewandelt if endung != ".pdf") and "PDF" in doku and f"innert {fristen.WARTEZEIT // 60} Minuten" in doku
+    assert "Stand: 17.11.2026." in doku and "So geht es weiter" in readme and "So geht es weiter" in lesen(REPO / "tools" / "einrichten.py")
     assert "\nABRECHNUNG\n" not in doku + readme, "Platzhalter in der Dokumentation"
     # Das README nennt die Zahl der ändernden Aktionen so, wie der Code sie hat
     from tools.ui import bedienung as bedien_modul, sitzung as sitzung_modul
@@ -3662,16 +3680,20 @@ def _():
     assert f"Jede der {aktionen} ändernden Aktionen" in " ".join(readme.split()), f"Das README nennt nicht {aktionen} ändernde Aktionen"
 
 
-# --------------------------------------------------------------------------- Oberfläche, Teil 2: Bedienung (tools/ui/bedienung.py, sitzung.py)
+# --------------------------------------------------------------------------- Oberfläche, Teil 2: Bedienung (tools/ui/bedienung.py, sitzung.py, paket.py)
 
 import asyncio  # noqa: E402
+import zipfile  # noqa: E402
 from collections import Counter  # noqa: E402
+from email.message import EmailMessage  # noqa: E402
 
 from gateway.akte import eingang_stand, freigabe_erteilt  # noqa: E402
 from tools import oberflaeche as oberflaeche_start  # noqa: E402
-from tools.ui import bedienung as ui_bedienung, rueckfrage as ui_rueckfrage, sitzung as ui_sitzung  # noqa: E402
+from tools.pii_pruefung import NichtLesbar as PiiNichtLesbar, mail_lesen as pii_mail_lesen, text_aus as pii_text_aus  # noqa: E402
+from tools.ui import bedienung as ui_bedienung, paket as ui_paket, rueckfrage as ui_rueckfrage, sitzung as ui_sitzung  # noqa: E402
 
 BEDIEN: dict = {}
+FALSCHE_SITZUNG = "11111111-2222-4333-8444-555555555555"
 FALSCHER_CLAUDE = r'''
 """Spielt die Kommandozeile von Claude Code für die Selbsttests: gibt Ereignisse als JSON-Zeilen aus, stellt eine Rückfrage
 über den MCP-Weg der Oberfläche und versucht als «Agent», sich selbst eine Freigabe zu erteilen."""
@@ -3695,50 +3717,60 @@ def post(weg, angaben, geheimnis=None):
             return r.status
     except urllib.error.HTTPError as e:
         return e.code
+def text(inhalt):
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": inhalt}]}})
 projekt_server = [] if os.environ.get("OSINT_FAKE_OHNE_PROJEKT") else [{"name": "osint", "status": "connected"}, {"name": "robin", "status": "failed"}]
 # Das Modell meldet das Programm so, wie die Einstellungen des Projekts es festlegen: Die Oberfläche stellt nichts um
 modell = os.environ.get("OSINT_FAKE_MODELL") or json.load(open(os.path.join(os.getcwd(), ".claude", "settings.json"), encoding="utf-8")).get("model", "")
 aus({"type": "system", "subtype": "init", "session_id": sitzung, "model": modell, "cwd": os.getcwd(),
      "mcp_servers": [{"name": "oberflaeche", "status": "connected"}] + projekt_server})
 if os.environ.get("OSINT_FAKE_OHNE_PROJEKT"):
-    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Ich arbeite ohne Projekt."}]}})
+    text("Ich arbeite ohne Projekt.")
     json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
     time.sleep(120)
 elif "--resume" in argv:
-    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Ich fahre fort: " + auftrag}]}})
+    text("Ich fahre fort: " + auftrag)
 elif os.environ.get("OSINT_FAKE_LANG"):
-    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Das dauert."}]}})
+    text("Das dauert.")
     json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
     time.sleep(120)
+elif os.environ.get("OSINT_FAKE_KURZ"):
+    text("Das dauert kurz.")
+    time.sleep(float(os.environ["OSINT_FAKE_KURZ"]))
 else:
     aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [
         {"type": "text", "text": "Ich setze das Team ein."},
         {"type": "tool_use", "id": "toolu_auftrag_1", "name": "Task", "input": {"subagent_type": "infrastruktur-analyst", "description": "Server klaeren"}}]}})
     aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": "toolu_auftrag_1", "message": {"content": [
         {"type": "tool_use", "id": "toolu_2", "name": "mcp__osint__shodan_host", "input": {"fall": fall, "ip": "203.0.113.7", "zweck": "Test"}}]}})
+    # Das Ergebnis des Werkzeugs, wie ein MCP-Server es liefert: ein Textblock mit JSON darin
+    aus({"type": "user", "session_id": sitzung, "parent_tool_use_id": "toolu_auftrag_1", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_2", "content": [
+        {"type": "text", "text": json.dumps({"protokoll_id": "P-0007", "ergebnis": "kein_treffer", "befund": None})}]}]}})
     # Der «Agent» versucht, sich ueber die Oberflaeche selbst eine Freigabe zu erteilen: ohne Geheimnis und mit der Karte fuer Rueckfragen
     freigabe = {"fall": fall, "art": "aktiv", "durch": "agent", "vermerk": "selbst erteilt"}
     merk["versuche"] = {"ohne": post("/api/aktion/freigabe", freigabe), "karte": post("/api/aktion/freigabe", freigabe, karte),
-                        "anmelden": post("/api/anmelden", {"startcode": karte}), "beleg": post("/api/aktion/beleg", {"fall": fall}, karte)}
+                        "anmelden": post("/api/anmelden", {"startcode": karte}), "beleg": post("/api/aktion/beleg", {"fall": fall}, karte),
+                        "antworten": post("/api/aktion/ermittlung_antworten", {"fall": fall, "frage": "x", "erlauben": "1"}, karte)}
     sys.path.insert(0, os.getcwd())
     os.environ.update(umgebung)
     from tools.ui import rueckfrage
     entscheid = rueckfrage.fragen("mcp__osint__urlquery_einreichen", {"fall": fall, "url": "https://kundenportal.example/login", "zweck": "aktueller Stand"}, "toolu_3")
     merk["entscheid"] = entscheid
-    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "text", "text": "Entscheid: " + entscheid["behavior"]}]}})
+    text("Entscheid: " + entscheid["behavior"])
     aus({"type": "user", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_auftrag_1", "content": "fertig"}]}})
 json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
 aus({"type": "result", "subtype": "success", "is_error": False, "session_id": sitzung, "result": "Ermittlung abgeschlossen.", "num_turns": 3})
 '''
 
 
-def ui_anfrage(port: int, weg: str, methode: str = "GET", koerper: object = None, **kopf) -> tuple[int, dict, bytes]:
-    """Eine Anfrage an die Oberfläche, mit frei wählbaren Kopfzeilen. `koerper` geht als JSON hinaus."""
+def ui_anfrage(port: int, weg: str, methode: str = "GET", koerper: object = None, roh: bytes | None = None, **kopf) -> tuple[int, dict, bytes]:
+    """Eine Anfrage an die Oberfläche, mit frei wählbaren Kopfzeilen. `koerper` geht als JSON hinaus, `roh` als Inhalt einer Datei."""
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
     try:
-        inhalt = json.dumps(koerper, ensure_ascii=False).encode("utf-8") if koerper is not None else None
+        inhalt = roh if roh is not None else json.dumps(koerper, ensure_ascii=False).encode("utf-8") if koerper is not None else None
         c.putrequest(methode, weg, skip_host=True)
-        zeilen = {"Host": f"127.0.0.1:{port}", **({"Content-Type": "application/json", "Content-Length": str(len(inhalt))} if inhalt is not None else {}),
+        zeilen = {"Host": f"127.0.0.1:{port}",
+                  **({"Content-Type": "application/octet-stream" if roh is not None else "application/json", "Content-Length": str(len(inhalt))} if inhalt is not None else {}),
                   **{k.replace("_", "-"): w for k, w in kopf.items()}}
         for name, wert in zeilen.items():
             c.putheader(name, wert)
@@ -3765,14 +3797,23 @@ def bedien_vorbereiten() -> dict:
     os.environ["OSINT_CLAUDE"] = json.dumps([sys.executable, str(skript)])
     os.environ["OSINT_FAKE_MERKER"] = str(aussen / "merker.json")
 
+    def geheim(geheimnis: str | None) -> dict:
+        return {"X_OSINT_Geheimnis": b.geheimnis if geheimnis == "richtig" else geheimnis} if geheimnis is not None else {}
+
     def aktion(name: str, angaben: dict, geheimnis: str | None = "richtig", **kopf) -> tuple[int, dict]:
-        kopf = {**({"X_OSINT_Geheimnis": b.geheimnis if geheimnis == "richtig" else geheimnis} if geheimnis is not None else {}), **kopf}
-        status, _kopf, inhalt = ui_anfrage(port, f"/api/aktion/{name}", "POST", angaben, **kopf)
+        status, _kopf, inhalt = ui_anfrage(port, f"/api/aktion/{name}", "POST", angaben, **{**geheim(geheimnis), **kopf})
         return status, json.loads(inhalt or b"{}")
 
-    def dokument(name: str, text: str) -> dict:
-        return {"name": name, "inhalt": base64.b64encode(text.encode("utf-8")).decode()}
-    BEDIEN.update(b=b, port=port, server=server, aussen=aussen, startcode=startcode, aktion=aktion, dokument=dokument, merker=aussen / "merker.json")
+    def hochladen(ziel: str, name: str, inhalt: bytes | str, geheimnis: str | None = "richtig", **kopf) -> tuple[int, dict]:
+        roh = inhalt.encode("utf-8") if isinstance(inhalt, str) else inhalt
+        status, _kopf, antwort = ui_anfrage(port, "/api/hochladen?ziel=" + urllib_quote(ziel, safe=""), "POST", roh=roh,
+                                            **{**geheim(geheimnis), "X_OSINT_Name": urllib_quote(name), **kopf})
+        return status, json.loads(antwort or b"{}")
+
+    def korbseite(ziel: str = "") -> tuple[int, str]:
+        status, _kopf, antwort = ui_anfrage(port, "/api/klartext/korb", "POST", {"ziel": ziel}, **geheim("richtig"))
+        return status, json.loads(antwort or b"{}").get("html", "")
+    BEDIEN.update(b=b, port=port, server=server, aussen=aussen, startcode=startcode, aktion=aktion, hochladen=hochladen, korbseite=korbseite, merker=aussen / "merker.json")
     return BEDIEN
 
 
@@ -3788,6 +3829,29 @@ def projekt_enthaelt(*stuecke: str, ordner: tuple = ("",)) -> list[str]:
     return treffer
 
 
+def zip_bytes(teile: dict) -> bytes:
+    puffer = io.BytesIO()
+    with zipfile.ZipFile(puffer, "w", zipfile.ZIP_DEFLATED) as archiv:
+        for name, inhalt in teile.items():
+            archiv.writestr(name, inhalt)
+    return puffer.getvalue()
+
+
+def zip_verschluesselt(name: str, inhalt: bytes) -> bytes:
+    """Ein ZIP, dessen Eintrag als verschlüsselt gekennzeichnet ist, wie es ein Passwortschutz tut (Bit 0 der Merker)."""
+    roh = bytearray(zip_bytes({name: inhalt}))
+    for signatur, versatz in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        roh[roh.index(signatur) + versatz] |= 0x01
+    return bytes(roh)
+
+
+def docx_bytes(*absaetze: str, verfasser: str = "Erika Erfunden") -> bytes:
+    """Ein Word-Dokument mit Absätzen. Der Verfasser steht nur in den Eigenschaften der Datei: Im Text sieht ihn niemand."""
+    return zip_bytes({"[Content_Types].xml": "<Types/>",
+                      "word/document.xml": "<w:document><w:body>" + "".join(f"<w:p><w:r><w:t>{html_escape(a)}</w:t></w:r></w:p>" for a in absaetze) + "</w:body></w:document>",
+                      "docProps/core.xml": f"<cp:coreProperties><dc:creator>{html_escape(verfasser)}</dc:creator></cp:coreProperties>"})
+
+
 GESCHWAERZT = ("Rapport\n\n1. [PERSON_01] meldet am 02.10.2026 einen Vorfall bei der [ORG_01].\n2. Die Phishing-Mail verwies auf https://kundenportal.example/login.\n"
                "3. Die Anmeldung kam von 198.51.100.23.\n")
 
@@ -3795,19 +3859,33 @@ GESCHWAERZT = ("Rapport\n\n1. [PERSON_01] meldet am 02.10.2026 einen Vorfall bei
 @test("Bedienung: Jede ändernde Anfrage verlangt das Geheimnis. Es entsteht beim Start, gilt aus einem Fenster und steht in keiner Datei")
 def _():
     u = bedien_vorbereiten()
-    b, port, aktion = u["b"], u["port"], u["aktion"]
+    b, port, aktion, hochladen = u["b"], u["port"], u["aktion"], u["hochladen"]
     vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)}
     faelle_vorher = sorted(p.name for p in (PROJEKT / "faelle").iterdir())
     alle = ui_bedienung.AKTIONEN + ui_sitzung.AKTIONEN
-    assert len(alle) >= 16 and all(callable(getattr(b, n, None) or getattr(ui_sitzung, n, None)) for n in alle)
-    angaben = {"fall": OBERFL, "art": "aktiv", "durch": "x", "vermerk": "y", "name": "a.txt", "inhalt": base64.b64encode(b"[PERSON_01]").decode(), "was": "kette",
-               "indikator": "203.0.113.50", "typ": "ip", "quelle": "Test", "abgeklaert": "16.11.2026 10:00", "wortlaut": "Rechenzentrum laut Auskunft", "frage": "x"}
+    assert len(alle) >= 22 and len(set(alle)) == len(alle) and all(callable(getattr(b, n, None) or getattr(ui_sitzung, n, None)) for n in alle)
+    angaben = {"fall": OBERFL, "ziel": "", "art": "aktiv", "durch": "x", "vermerk": "y", "grund": "z", "was": "kette", "ids": ["x"], "namen": ["a.txt"], "nach": MUSTER,
+               "indikator": "203.0.113.50", "typ": "ip", "quelle": "Test", "abgeklaert": "16.11.2026 10:00", "wortlaut": "Rechenzentrum laut Auskunft", "frage": "x", "text": "Hallo"}
     for name in alle:
         for geheimnis in (None, "", "falsch", b.startcode or "x", "A" * 43):
             status, antwort = aktion(name, angaben, geheimnis)
             assert status == 403 and "fehler" in antwort and "nichts geändert" in antwort["fehler"], f"{name} mit Geheimnis {geheimnis!r}: {status} {antwort}"
-    for weg in ("/api/klartext/pseudo", "/api/aktion/gibt_es_nicht", "/api/irgendwas"):
-        assert ui_anfrage(port, weg, "POST", {"vorgang": "x"})[0] == 403, weg
+    for weg in ("/api/klartext/pseudo", "/api/klartext/korb", "/api/aktion/gibt_es_nicht", "/api/irgendwas"):
+        assert ui_anfrage(port, weg, "POST", {"vorgang": "x", "ziel": ""})[0] == 403, weg
+    assert ui_anfrage(port, "/api/klartext/korb")[0] == 404 and ui_anfrage(port, "/api/hochladen")[0] == 404, "Akten-Eingang und Hochladen gibt es nicht per GET"
+    # Hochladen: erst das Geheimnis, dann der Inhalt. Ohne Geheimnis liegt nichts im Akten-Eingang
+    for geheimnis in (None, "", "falsch", "A" * 43):
+        status, antwort = hochladen("", "rapport.txt", GESCHWAERZT, geheimnis)
+        assert status == 403 and "nichts geändert" in antwort["fehler"], (geheimnis, status, antwort)
+    assert not b.koerbe, "ohne Geheimnis darf keine Datei im Speicher der Oberfläche landen"
+    assert hochladen("", "rapport.txt", GESCHWAERZT, Content_Type="application/json")[0] == 400 and hochladen("", "", GESCHWAERZT)[0] == 400
+    grenze, ui_bedienung.DATEI_GROESSE = ui_bedienung.DATEI_GROESSE, 10
+    try:
+        status, antwort = hochladen("", "zu gross.txt", "elf Zeichen")
+        assert status == 413 and "grösser als" in antwort["fehler"], (status, antwort)
+    finally:
+        ui_bedienung.DATEI_GROESSE = grenze
+    assert not b.koerbe
     # Der Startcode: einmal gegen das Geheimnis, falsch und ein zweites Mal nie
     assert ui_anfrage(port, "/api/anmelden", "POST", {"startcode": "falsch"})[0] == 403 and ui_anfrage(port, "/api/anmelden", "POST", {})[0] == 403
     status, _kopf, inhalt = ui_anfrage(port, "/api/anmelden", "POST", {"startcode": u["startcode"]})
@@ -3815,10 +3893,12 @@ def _():
     status, _kopf, inhalt = ui_anfrage(port, "/api/anmelden", "POST", {"startcode": u["startcode"]})
     assert status == 403 and b"geheimnis" not in inhalt.lower().replace(b"geheimnis der", b""), "der Startcode darf nur einmal gelten"
     # Mit Geheimnis, aber falscher Form, von fremder Seite oder mit fremdem Host-Kopf: nichts
+    freigabe = {"fall": OBERFL, "art": "aktiv", "durch": "x", "vermerk": "y"}
     for kopf in ({"Content_Type": "text/plain"}, {"Content_Type": "application/x-www-form-urlencoded"}, {"Host": "boese.example"}, {"Origin": "https://boese.example"},
                  {"Sec_Fetch_Site": "cross-site"}):
-        status, _antwort = aktion("freigabe", angaben, "richtig", **kopf)
-        assert status in (400, 403), f"{kopf}: {status}"
+        assert aktion("freigabe", freigabe, "richtig", **kopf)[0] in (400, 403), kopf
+        assert hochladen("", "rapport.txt", GESCHWAERZT, **kopf)[0] in (400, 403), kopf
+    assert not b.koerbe
     assert ui_anfrage(port, "/api/aktion/freigabe")[0] == 404 and ui_anfrage(port, "/api/aktion/freigabe", "PUT")[0] == 405, "Ändern geht nur mit POST"
     assert json.loads(ui_anfrage(port, "/api/bedienung")[2])["aktiv"] is True and b.geheimnis.encode() not in ui_anfrage(port, "/api/bedienung")[2]
     for f in (OBERFL, MUSTER):
@@ -3855,92 +3935,243 @@ def _():
         m = re.search(r"127\.0\.0\.1:(\d+)/", zeilen[0])
         assert m and "nur lesen" in zeilen[1] and "#start=" not in "".join(zeilen), zeilen
         nur_lesen = int(m.group(1))
-        status, kopf, _inhalt = ui_anfrage(nur_lesen, "/api/aktion/freigabe", "POST", angaben, X_OSINT_Geheimnis=b.geheimnis)
+        status, kopf, _inhalt = ui_anfrage(nur_lesen, "/api/aktion/freigabe", "POST", freigabe, X_OSINT_Geheimnis=b.geheimnis)
         assert status == 405 and kopf.get("allow") == "GET, HEAD", "im Modus «nur lesen» darf es kein POST geben"
         assert ui_anfrage(nur_lesen, "/api/anmelden", "POST", {"startcode": "x"})[0] == 405
+        assert ui_anfrage(nur_lesen, "/api/hochladen?ziel=", "POST", roh=b"x", X_OSINT_Geheimnis=b.geheimnis, X_OSINT_Name="a.txt")[0] == 405
+        assert ui_anfrage(nur_lesen, "/api/klartext/korb", "POST", {"ziel": ""}, X_OSINT_Geheimnis=b.geheimnis)[0] == 405
         assert json.loads(ui_anfrage(nur_lesen, "/api/bedienung")[2])["aktiv"] is False
-        assert "nur lesen" in json.loads(ui_anfrage(nur_lesen, "/api/neu")[2])["html"] and "form" not in Seite(json.loads(ui_anfrage(nur_lesen, "/api/neu")[2])["html"]).namen()
-        assert "form" not in Seite(json.loads(ui_anfrage(nur_lesen, f"/api/fall/{MUSTER}/bedienen")[2])["html"]).namen()
+        assert json.loads(ui_anfrage(nur_lesen, "/api/rueckfragen")[2]) == {"anzahl": 0, "html": ""}
+        for weg in ("/api/neu", f"/api/fall/{MUSTER}/bedienen", f"/api/fall/{MUSTER}/akten", f"/api/fall/{MUSTER}/ermittlung", f"/api/fall/{MUSTER}/ergebnisse", "/api/faelle"):
+            seite = Seite(json.loads(ui_anfrage(nur_lesen, weg)[2])["html"])
+            assert not {"form", "input", "textarea"} & seite.namen(), f"{weg}: im Modus «nur lesen» gibt es nichts auszufüllen"
+            assert "nur lesen" in seite.text or weg.endswith(("ergebnisse", "faelle")), weg
+        verlauf = json.loads(ui_anfrage(nur_lesen, f"/api/fall/{MUSTER}/verlauf")[2])
+        assert verlauf["status"] == "aus" and verlauf["bedienbar"] is False and verlauf["feld"] == ""
     finally:
         p.terminate()
         p.wait(timeout=20)
 
 
-@test("Bedienung, Weg «geschwärzt»: PII-Prüfung, dann tools/fall.py. Bei Sperrfunden entsteht nichts, und die Seite zeigt die Stellen maskiert")
+@test("Bedienung, Akten-Eingang: Dateien, Ordner, ZIP und E-Mail. Jede Datei wird gelesen und geprüft, in den Fall kommt nur die Textfassung dessen, was die PII-Prüfung besteht")
 def _():
     u = bedien_vorbereiten()
-    aktion, dokument = u["aktion"], u["dokument"]
+    b, port, aktion, hochladen, korbseite = u["b"], u["port"], u["aktion"], u["hochladen"], u["korbseite"]
     zwischen_vorher = sorted(p.name for p in Path(tempfile.gettempdir()).glob("osint-oberflaeche-*"))
-    # Ein Dokument mit Personendaten: abgelehnt, maskiert gezeigt, kein Fall
     unsauber = GESCHWAERZT + "4. Erreichbar unter 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7.\n"
-    status, antwort = aktion("fall_anlegen", {"fall": "BEDIEN-0001", "titel": "Test", **dokument("rapport.txt", unsauber)})
-    assert status == 200 and antwort["aufgenommen"] is False and "SPERRE" in antwort["ausgabe"] and "nichts angelegt" in antwort["meldung"], antwort
-    assert "079 123 45 67" not in antwort["ausgabe"] and "6238 5295" not in antwort["ausgabe"], "die Fundstellen müssen maskiert sein"
-    assert not (PROJEKT / "faelle" / "BEDIEN-0001").exists(), "bei Sperrfunden darf kein Fall entstehen"
-    status, antwort = aktion("dokument_pruefen", dokument("rapport.txt", unsauber))
-    assert status == 200 and antwort["sauber"] is False and antwort["sperren"] >= 2
-    # Ein geschwärztes Dokument: Der Fall entsteht über tools/fall.py, das Dokument liegt geprüft im Eingang
-    status, antwort = aktion("fall_anlegen", {"fall": "BEDIEN-0001", "titel": "Phishing Kundenportal", "kuerzel": "MUS", "auftrag": "Infrastruktur klären",
-                                             **dokument("../../rapport geschwärzt.txt", GESCHWAERZT)})
-    assert status == 200 and antwort["aufgenommen"] is True, antwort
+    # Einzelne Dateien, auch aus einem Ordner. Jede wird sofort gelesen und geprüft, in einen Fall kommt noch nichts
+    status, antwort = hochladen("", "Fall 2026/rapport geschwärzt.txt", GESCHWAERZT)
+    assert status == 200 and antwort["neu"] == 1, antwort
+    erster = antwort["eintraege"][0]
+    assert (erster["name"], erster["ordner"], erster["stand"], erster["rolle"], erster["platzhalter"]) == ("rapport geschwärzt.txt", "Fall 2026", "sauber", "rapport", 2), erster
+    notiz = hochladen("", "notiz.txt", unsauber)[1]["eintraege"][0]
+    assert notiz["stand"] == "personendaten" and notiz["sperren"] >= 2 and notiz["rolle"] == "beilage", notiz
+    docx = hochladen("", "Beilage 1.docx", docx_bytes("[PERSON_02] bestätigt die Zahlung.", "Betrag: 1250.50 CHF"))[1]["eintraege"][0]
+    assert docx["stand"] == "sauber" and docx["platzhalter"] == 1 and docx["rolle"] == "beilage", docx
+    bild = hochladen("", "foto.png", png())[1]["eintraege"][0]
+    assert bild["stand"] == "nicht_lesbar" and "Bild" in bild["grund"], bild
+    # Ein ZIP wird entpackt, auch ein ZIP darin. Was Betriebssysteme hineinlegen, zählt nicht. Gleicher Inhalt kommt nicht zweimal, Leeres gar nicht
+    archiv = zip_bytes({"ordner/liste.csv": "nr;wert\n1;203.0.113.7\n", "ordner/unter.zip": zip_bytes({"tief.txt": "Tief im Archiv: [ORG_02].\n", "noch.zip": zip_bytes({"zu tief.txt": "x"})}),
+                        "__MACOSX/._liste.csv": "x", "scan.jpg": b"\xff\xd8\xff" + bytes(10), "kopie.txt": GESCHWAERZT, "leer.txt": ""})
+    status, antwort = hochladen("", "beilagen.zip", archiv)
+    namen = {(e["name"], e["ordner"], e["stand"]) for e in antwort["eintraege"]}
+    assert status == 200 and namen == {("liste.csv", "beilagen.zip/ordner", "sauber"), ("tief.txt", "beilagen.zip/ordner/unter.zip", "sauber"),
+                                       ("noch.zip", "beilagen.zip/ordner/unter.zip", "nicht_lesbar"), ("scan.jpg", "beilagen.zip", "nicht_lesbar")}, namen
+    assert any("kopie.txt" in m and "demselben Inhalt" in m for m in antwort["meldungen"]) and any("leer.txt" in m for m in antwort["meldungen"]), antwort["meldungen"]
+    geschuetzt = hochladen("", "geheim.zip", zip_verschluesselt("vertraulich.txt", b"Inhalt"))[1]
+    assert geschuetzt["neu"] == 0 and "Passwort" in geschuetzt["meldung"], geschuetzt
+    kaputt = hochladen("", "kaputt.zip", b"PK\x03\x04 kein Archiv")[1]
+    assert kaputt["neu"] == 0 and "kein gültiges ZIP" in kaputt["meldung"], kaputt
+    assert hochladen("", "nichts.txt", b"")[1]["neu"] == 0
+    # Eine E-Mail: Kopf und Text werden ein Dokument, jeder Anhang ein eigenes
+    mail = EmailMessage()
+    mail["From"], mail["To"], mail["Subject"] = "support@boese.example", "[PERSON_01]", "Ihre Zahlung"
+    mail.set_content("Guten Tag\n\nBitte zahlen Sie an die genannte Adresse.\n")
+    mail.add_attachment(b"Spalte;Wert\nA;1\n", maintype="text", subtype="csv", filename="liste2.csv")
+    mail.add_attachment(png(5, 5), maintype="image", subtype="png", filename="bild.png")
+    antwort = hochladen("", "meldung.eml", mail.as_bytes())[1]
+    assert [(e["name"], e["ordner"], e["stand"]) for e in antwort["eintraege"]] == [("meldung.eml", "", "sauber"), ("liste2.csv", "meldung.eml", "sauber"),
+                                                                                    ("bild.png", "meldung.eml", "nicht_lesbar")], antwort["eintraege"]
+    fremd = hochladen("", "../../etc/passwd.txt", "Hinweis ohne Personendaten.\n")[1]["eintraege"][0]
+    assert (fremd["name"], fremd["ordner"]) == ("passwd.txt", "etc"), "der Name einer Datei führt nie aus einem Ordner hinaus"
+    assert len(b.korb("").eintraege) == 12
+    grenze, ui_bedienung.KORB_EINTRAEGE = ui_bedienung.KORB_EINTRAEGE, 12
+    try:
+        voll = hochladen("", "zuviel.txt", "eine Datei zu viel\n")[1]
+        assert voll["neu"] == 0 and "höchstens" in voll["meldung"], voll
+    finally:
+        ui_bedienung.KORB_EINTRAEGE = grenze
+    # Die Seite: lokal, Klartext. Sie zeigt Namen von Dateien, nie ihren Inhalt, und Haken zum Auswählen. Ohne Geheimnis gibt es sie nicht
+    status, seite_html = korbseite("")
+    seite = Seite(seite_html)
+    assert status == 200 and "lokal, Klartext" in seite.text and "rapport geschwärzt.txt" in seite.text and "aus beilagen.zip/ordner/unter.zip" in seite.text, seite.text[:400]
+    assert not verstoesse(seite_html, "x") and "079 123 45 67" not in seite_html and "6238 5295" not in seite_html, "Fundstellen der PII-Prüfung müssen maskiert sein"
+    haken = [a["value"] for t, a in seite.elemente if t == "input" and a.get("name") == "auswahl"]
+    assert sorted(haken) == sorted(b.korb("").eintraege) and any(t == "input" and "data-alle" in a for t, a in seite.elemente), "je Datei ein Haken, dazu «alle auswählen»"
+    assert any(t == "input" and a.get("type") == "file" and "multiple" in a and "webkitdirectory" in a for t, a in seite.elemente), "Ordner lassen sich wählen"
+    assert "rapport geschwärzt" not in json.loads(ui_anfrage(port, "/api/neu")[2])["html"], "ohne Geheimnis zeigt die Oberfläche keine Namen hochgeladener Dateien"
+    # Ordnen: Rolle, Name, entfernen. Ohne Auswahl geschieht nichts
+    for name, angaben in (("korb_rolle", {"ziel": "", "rolle": "rapport"}), ("korb_entfernen", {"ziel": ""}), ("korb_entfernen", {"ziel": "", "ids": []}),
+                          ("korb_rolle", {"ziel": "", "ids": [docx["id"]], "rolle": "chef"}), ("korb_entfernen", {"ziel": "", "ids": ["gibt-es-nicht"]})):
+        status, antwort = aktion(name, angaben)
+        assert status in (400, 404) and "fehler" in antwort, (name, angaben, status, antwort)
+    assert len(b.korb("").eintraege) == 12, "ohne Auswahl darf «entfernen» nichts entfernen"
+    assert aktion("korb_rolle", {"ziel": "", "ids": [docx["id"]], "rolle": "rapport"})[0] == 200
+    assert aktion("korb_umbenennen", {"ziel": "", "id": docx["id"], "name": "Beilage A"})[0] == 200 and b.korb("").eintraege[docx["id"]].name == "Beilage A.docx"
+    status, antwort = aktion("korb_umbenennen", {"ziel": "", "id": docx["id"], "name": "Tel 079 123 45 67.docx"})
+    assert status == 400 and "Personendaten" in antwort["fehler"], antwort
+    assert aktion("korb_entfernen", {"ziel": "", "ids": [bild["id"]]})[0] == 200 and bild["id"] not in b.korb("").eintraege
+    # Verschieben in den Akten-Eingang eines bestehenden Falls und zurück. Ohne Auswahl und an denselben Ort geschieht nichts
+    status, antwort = aktion("korb_verschieben", {"ziel": "", "ids": [fremd["id"]], "nach": OBERFL})
+    assert status == 200 and antwort["verschoben"] == 1 and fremd["id"] in b.koerbe[OBERFL].eintraege and fremd["id"] not in b.korb("").eintraege, antwort
+    dort = Seite(korbseite(OBERFL)[1])
+    assert "passwd.txt" in dort.text and not verstoesse(korbseite(OBERFL)[1], OBERFL)
+    ziele = [a.get("value") for t, a in Seite(korbseite("")[1]).elemente if t == "option"]
+    assert OBERFL in ziele and MUSTER not in ziele, "der Musterfall gehört zum Projekt und ist kein Ziel zum Verschieben"
+    for angaben in ({"ziel": "", "nach": OBERFL}, {"ziel": "", "ids": [docx["id"]], "nach": ""}, {"ziel": "", "ids": [docx["id"]], "nach": "GIBT-ES-NICHT"}):
+        assert aktion("korb_verschieben", angaben)[0] in (400, 404), angaben
+    assert aktion("korb_verschieben", {"ziel": OBERFL, "ids": [fremd["id"]], "nach": ""})[1]["verschoben"] == 1 and OBERFL not in b.koerbe and fremd["id"] in b.korb("").eintraege
+    assert b.korb("").eintraege[fremd["id"]].rolle == "beilage" and len(b.korb("").eintraege) == 11
+    # Aufnehmen: Ein neuer Fall braucht Fall-ID und Titel ohne Personendaten. Was Personendaten enthält, legt keinen Fall an
+    for angaben, grund in (({"ziel": "", "titel": "Test"}, "Fall-ID"), ({"ziel": "", "fall": "../x", "titel": "Test"}, "Fall-ID"), ({"ziel": "", "fall": "BEDIEN-0001"}, "Titel"),
+                           ({"ziel": "", "fall": "BEDIEN-0001", "titel": "Rückruf 079 123 45 67"}, "Personendaten"), ({"ziel": "", "fall": MUSTER, "titel": "x"}, "gibt es schon")):
+        status, antwort = aktion("korb_aufnehmen", angaben)
+        assert status == 400 and grund in antwort["fehler"], (grund, status, antwort)
+    status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": "BEDIEN-0001", "titel": "Test", "ids": [notiz["id"]]})
+    assert status == 200 and antwort["aufgenommen"] is False and "nichts angelegt" in antwort["meldung"] and not (PROJEKT / "faelle" / "BEDIEN-0001").exists(), antwort
+    # Ohne Auswahl: alles, was bereit ist. Rapporte zuerst, neutrale Namen, über tools/fall.py, das selbst noch einmal prüft
+    status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": "BEDIEN-0001", "titel": "Phishing Kundenportal", "kuerzel": "MUS", "auftrag": "Infrastruktur klären", "neutral": "1"})
+    assert status == 200 and antwort["aufgenommen"] is True and antwort["angelegt"] is True, antwort
+    assert antwort["namen"] == ["rapport-01.txt", "rapport-02.txt", "beilage-01.csv", "beilage-02.txt", "beilage-03.txt", "beilage-04.csv", "beilage-05.txt"], antwort["namen"]
     pfad = PROJEKT / "faelle" / "BEDIEN-0001"
     stamm = json.loads(lesen(pfad / "fall.json"))
     assert stamm["titel"] == "Phishing Kundenportal" and stamm["sachbearbeiter"] == "MUS" and stamm["eroeffnet"] and not any(f["erteilt"] for f in stamm["freigaben"].values())
-    register = json.loads(lesen(pfad / "eingang" / ".freigabe.json"))["dateien"]
-    assert list(register) == ["rapport geschwärzt.txt"] and register["rapport geschwärzt.txt"]["ergebnis"] == "sauber", register
-    assert lesen(pfad / "eingang" / "rapport geschwärzt.txt") == GESCHWAERZT and not list(PROJEKT.glob("rapport*")), "der Name des Dokuments darf nicht aus dem Eingang hinausführen"
-    assert eingang_stand(pfad) == (["rapport geschwärzt.txt"], []), "ein über die Oberfläche aufgenommenes Dokument gilt als geprüft"
-    # Kopiert jemand ein Dokument von Hand in den Eingang, warnt der Kopf des Falls. Er nennt die Zahl, nicht den Namen
-    assert "PII-Prüfung" not in json.loads(ui_anfrage(u["port"], "/api/fall/BEDIEN-0001/kopf")[2])["html"]
-    (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").write_text("Erika Erfunden, 079 123 45 67", encoding="utf-8")
-    try:
-        kopf_html = json.loads(ui_anfrage(u["port"], "/api/fall/BEDIEN-0001/kopf")[2])["html"]
-        assert "liegt 1 Dokument" in Seite(kopf_html).text and "nicht durch die PII-Prüfung" in Seite(kopf_html).text and "Erika" not in kopf_html, Seite(kopf_html).text
-    finally:
-        (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").unlink()
-    # Weiteres Dokument nachziehen, und was nicht geht
-    status, antwort = aktion("dokument_aufnehmen", {"fall": "BEDIEN-0001", **dokument("nachtrag.md", "Nachtrag: [PERSON_02] bestätigt die Angaben.\n")})
-    assert status == 200 and antwort["aufgenommen"] is True and (pfad / "eingang" / "nachtrag.md").is_file()
-    status, antwort = aktion("dokument_aufnehmen", {"fall": "BEDIEN-0001", **dokument("nachtrag2.md", "Tel. 079 123 45 67\n")})
-    assert antwort["aufgenommen"] is False and not (pfad / "eingang" / "nachtrag2.md").exists()
-    for angaben, grund in (({"fall": "BEDIEN-0001", "titel": "x", **dokument("a.txt", GESCHWAERZT)}, "gibt es schon"), ({"fall": "../x", **dokument("a.txt", GESCHWAERZT)}, "Fall-ID"),
-                           ({"fall": "BEDIEN-0002", **dokument("a.exe", GESCHWAERZT)}, "Format"), ({"fall": "BEDIEN-0002", "name": "a.txt", "inhalt": "kein base64 !"}, "beschädigt"),
-                           ({"fall": "BEDIEN-0002", "name": "a.txt", "inhalt": ""}, "leer")):
-        status, antwort = aktion("fall_anlegen", angaben)
-        assert status == 400 and grund in antwort["fehler"], (grund, status, antwort)
-    assert not (PROJEKT / "faelle" / "BEDIEN-0002").exists()
-    # Die Schritte stehen im Sitzungsprotokoll, mit Zeit und dem Vermerk «Oberfläche». Zwischendateien bleiben keine liegen
+    assert eingang_stand(pfad) == (sorted(antwort["namen"]), []), "was über die Oberfläche aufgenommen wurde, gilt als geprüft"
+    assert lesen(pfad / "eingang" / "rapport-01.txt") == GESCHWAERZT and not list(PROJEKT.glob("rapport*")) and not list(PROJEKT.glob("passwd*"))
+    zweiter = lesen(pfad / "eingang" / "rapport-02.txt")
+    assert "[PERSON_02] bestätigt die Zahlung." in zweiter and "Erika Erfunden" not in zweiter, "in den Fall kommt die Textfassung, nicht das Original mit seinen unsichtbaren Angaben"
+    assert "From: support@boese.example" in lesen(pfad / "eingang" / "beilage-03.txt") and "Anhänge: liste2.csv, bild.png" in lesen(pfad / "eingang" / "beilage-03.txt")
+    assert not [p.name for p in (pfad / "eingang").iterdir() if p.suffix in (".docx", ".eml", ".zip", ".png", ".jpg")], "Originale kommen nicht in den Fall"
+    assert not projekt_enthaelt("Erika Erfunden", ordner=("faelle/BEDIEN-0001", "protokoll"))
+    # Was bleibt, liegt jetzt im Akten-Eingang des neuen Falls. Die Ablage ausserhalb des Projekts hält fest, welche Datei wie heisst
+    assert {e["name"] for e in antwort["zurueck"]} == {"notiz.txt", "noch.zip", "scan.jpg", "bild.png"} and antwort["bleibt"] == 4, antwort["zurueck"]
+    assert "" not in b.koerbe and len(b.koerbe["BEDIEN-0001"].eintraege) == 4
+    liste = Path(antwort["dateinamen"])
+    assert liste == b.ablage / "BEDIEN-0001" / "dateinamen.csv" and not ui_bedienung.innerhalb(liste) and "rapport-02.txt;Beilage A.docx;" in lesen(liste), lesen(liste)
+    assert "beilage-02.txt;tief.txt;beilagen.zip/ordner/unter.zip;" in lesen(liste) and (WINDOWS or (liste.stat().st_mode & 0o077) == 0)
+    assert antwort["zuordnung"] == "" and not (b.ablage / "BEDIEN-0001" / "zuordnung.csv").exists(), "ohne Pseudonymisierung in der Oberfläche entsteht keine Zuordnungstabelle"
     sitzung, _meldungen = protokollwerkzeug.sitzungen_laden("BEDIEN-0001")
     schritte = [(z["schritt"], z["weg"], z["agent"]) for z in sitzung if z.get("ereignis") == "Oberflaeche"]
-    assert schritte == [("Fall angelegt", "Oberfläche", "sachbearbeiter"), ("Dokument aufgenommen", "Oberfläche", "sachbearbeiter")] and all(z["zeit_utc"] for z in sitzung), schritte
+    assert schritte == [("Fall angelegt", "Oberfläche", "sachbearbeiter")] and sitzung[-1]["zeit_utc"], schritte
+    angabe = sitzung[-1]["angabe"]
+    assert "7 Dokument(e): 7 geschwärzt angeliefert, 0 lokal pseudonymisiert" in angabe and "1 × .jpg" in angabe and "1 mit Personendaten zurückgehalten" in angabe, angabe
+    assert "notiz" not in angabe and "Beilage" not in angabe, "im Protokoll stehen Zahlen, keine Namen hochgeladener Dateien"
+    # Weitere Dokumente zu einem bestehenden Fall: Namen bleiben oder zählen weiter, und ein Dokument überschreibt nie ein anderes
+    status, seite_html = korbseite("BEDIEN-0001")
+    seite = Seite(seite_html)
+    assert status == 200 and "Im Fall (7)" in seite.text and "rapport-01.txt" in seite.text and "notiz.txt" in seite.text and not verstoesse(seite_html, "BEDIEN-0001"), seite.text[:300]
+    nachtrag = hochladen("BEDIEN-0001", "nachtrag.md", "Nachtrag: [PERSON_02] bestätigt die Angaben.\n")[1]["eintraege"][0]
+    assert nachtrag["rolle"] == "beilage", "zu einem bestehenden Fall ist ein neues Dokument eine Beilage, bis es anders geordnet wird"
+    antwort = aktion("korb_aufnehmen", {"ziel": "BEDIEN-0001", "ids": [nachtrag["id"]], "neutral": ""})[1]
+    assert antwort["aufgenommen"] is True and antwort["namen"] == ["nachtrag.md"] and antwort["angelegt"] is False, antwort
+    zweiter_nachtrag = hochladen("BEDIEN-0001", "nachtrag.md", "Zweiter Nachtrag: [ORG_01] meldet einen weiteren Versuch.\n")[1]["eintraege"][0]
+    assert aktion("korb_aufnehmen", {"ziel": "BEDIEN-0001", "ids": [zweiter_nachtrag["id"]], "neutral": ""})[1]["namen"] == ["nachtrag (2).md"]
+    assert "[PERSON_02] bestätigt die Angaben." in lesen(pfad / "eingang" / "nachtrag.md")
+    dritter = hochladen("BEDIEN-0001", "noch einer.txt", "Dritter Nachtrag ohne Personendaten.\n")[1]["eintraege"][0]
+    assert aktion("korb_aufnehmen", {"ziel": "BEDIEN-0001", "ids": [dritter["id"]], "neutral": "1"})[1]["namen"] == ["beilage-06.txt"], "neutrale Namen zählen hinter denen weiter, die im Fall liegen"
+    assert hochladen("GIBT-ES-NICHT", "a.txt", "x")[0] == 404 and hochladen("../x", "a.txt", "x")[0] == 400
+    # Von Hand in den Eingang kopiert: Der Kopf warnt und nennt die Zahl, nicht den Namen. Nachträglich prüfen oder entfernen
+    assert "PII-Prüfung" not in json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0001/kopf")[2])["html"]
+    (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").write_text("Erika Erfunden, 079 123 45 67", encoding="utf-8")
+    (pfad / "eingang" / "von hand.txt").write_text("Von Hand kopiert: [PERSON_03] wurde befragt.\n", encoding="utf-8")
+    kopf_html = json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0001/kopf")[2])["html"]
+    assert "liegen 2 Dokumente" in Seite(kopf_html).text and "nicht durch die PII-Prüfung" in Seite(kopf_html).text and "Erika" not in kopf_html, Seite(kopf_html).text
+    assert "nicht geprüft" in Seite(korbseite("BEDIEN-0001")[1]).text
+    status, antwort = aktion("eingang_pruefen", {"fall": "BEDIEN-0001", "namen": ["Einvernahme Erika Erfunden.txt", "von hand.txt"]})
+    assert status == 200 and antwort["gelungen"] is False and "1 von 2" in antwort["meldung"] and eingang_stand(pfad)[1] == ["Einvernahme Erika Erfunden.txt"], antwort
+    assert aktion("eingang_pruefen", {"fall": "BEDIEN-0001", "namen": ["rapport-01.txt"]})[0] == 400, "was geprüft ist, wird nicht noch einmal aufgenommen"
+    status, antwort = aktion("eingang_entfernen", {"fall": "BEDIEN-0001", "namen": ["Einvernahme Erika Erfunden.txt"], "durch": "MUS"})
+    assert status == 400 and "Grund" in antwort["fehler"], antwort
+    assert aktion("eingang_entfernen", {"fall": "BEDIEN-0001", "namen": [], "durch": "MUS", "grund": "x"})[0] == 400
+    status, antwort = aktion("eingang_entfernen", {"fall": "BEDIEN-0001", "namen": ["Einvernahme Erika Erfunden.txt"], "durch": "MUS", "grund": "von Hand kopiert, nicht pseudonymisiert"})
+    assert status == 200 and antwort["entfernt"] == ["Einvernahme Erika Erfunden.txt"] and not (pfad / "eingang" / "Einvernahme Erika Erfunden.txt").exists(), antwort
+    register = json.loads(lesen(pfad / "eingang" / ".freigabe.json"))
+    letzter = register["entfernt"][-1]
+    assert (letzter["durch"], letzter["weg"], letzter["geprueft"], letzter["name"]) == ("MUS", "Oberfläche", False, "(ungeprüftes Dokument)") and len(letzter["sha256"]) == 64, letzter
+    assert "von hand.txt" in register["dateien"] and not projekt_enthaelt("Erika Erfunden", ordner=("faelle/BEDIEN-0001", "protokoll")), "vom Namen eines ungeprüften Dokuments bleibt nichts"
+    assert "PII-Prüfung" not in json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0001/kopf")[2])["html"]
+    for name in ("../fall.json", ".freigabe.json", "gibt es nicht.txt"):
+        aktion("eingang_entfernen", {"fall": "BEDIEN-0001", "namen": [name], "durch": "MUS", "grund": "Test"})
+        assert (pfad / "fall.json").is_file() and (pfad / "eingang" / ".freigabe.json").is_file(), f"{name}: Entfernen darf nur Dokumente des Eingangs treffen"
+    # Verschieben in einen anderen Fall: dort aufnehmen (mit Prüfung), hier entfernen
+    hochladen("", "kurz.txt", "Kurzmeldung zu [ORG_01].\n")
+    assert aktion("korb_aufnehmen", {"ziel": "", "fall": "BEDIEN-0002", "titel": "Falsch angelegt"})[1]["aufgenommen"] is True
+    for nr in (1, 2):
+        hochladen("BEDIEN-0002", f"anhang {nr}.txt", f"Anhang {nr} zu [ORG_01].\n")
+    assert aktion("korb_aufnehmen", {"ziel": "BEDIEN-0002"})[1]["namen"] == ["beilage-01.txt", "beilage-02.txt"]
+    status, antwort = aktion("eingang_verschieben", {"fall": "BEDIEN-0001", "nach": "BEDIEN-0002", "namen": ["von hand.txt", "nachtrag (2).md", "beilage-02.txt"], "durch": "MUS"})
+    assert status == 200 and antwort["gelungen"] is True and "3 von 3" in antwort["meldung"] and "beilage-02.txt liegt dort als beilage-03.txt" in antwort["meldung"], antwort
+    dort = PROJEKT / "faelle" / "BEDIEN-0002" / "eingang"
+    assert set(eingang_stand(PROJEKT / "faelle" / "BEDIEN-0002")[0]) == {"von hand.txt", "nachtrag (2).md", "rapport-01.txt", "beilage-01.txt", "beilage-02.txt", "beilage-03.txt"}
+    assert lesen(dort / "beilage-03.txt") == "Tief im Archiv: [ORG_02].\n" and lesen(dort / "beilage-02.txt") == "Anhang 2 zu [ORG_01].\n", "ein verschobenes Dokument überschreibt nie ein anderes"
+    assert not (pfad / "eingang" / "von hand.txt").exists() and not (pfad / "eingang" / "beilage-02.txt").exists()
+    assert json.loads(lesen(pfad / "eingang" / ".freigabe.json"))["entfernt"][-1]["grund"] == "verschoben nach Fall BEDIEN-0002"
+    for angaben in ({"fall": "BEDIEN-0001", "nach": "BEDIEN-0001", "namen": ["nachtrag.md"], "durch": "MUS"}, {"fall": "BEDIEN-0001", "nach": "GIBT-ES-NICHT", "namen": ["nachtrag.md"], "durch": "MUS"},
+                    {"fall": "BEDIEN-0001", "nach": "BEDIEN-0002", "namen": ["nachtrag.md"]}, {"fall": "BEDIEN-0001", "nach": "BEDIEN-0002", "namen": ["gibt es nicht.txt"], "durch": "MUS"}):
+        assert aktion("eingang_verschieben", angaben)[0] in (400, 404), angaben
+    assert (pfad / "eingang" / "nachtrag.md").is_file()
+    # Einen Fall löschen: nur, solange nichts abgefragt wurde, nie den Musterfall, und nicht, solange in seinem Akten-Eingang etwas wartet
+    status, antwort = aktion("fall_loeschen", {"fall": "BEDIEN-0002"})
+    assert status == 400 and "Durch" in antwort["fehler"], antwort
+    hochladen("BEDIEN-0002", "wartet.txt", "liegt noch im Akten-Eingang\n")
+    status, antwort = aktion("fall_loeschen", {"fall": "BEDIEN-0002", "durch": "MUS"})
+    assert status == 400 and "Akten-Eingang" in antwort["fehler"], antwort
+    assert aktion("korb_entfernen", {"ziel": "BEDIEN-0002", "ids": list(b.korb("BEDIEN-0002").eintraege)})[0] == 200 and "BEDIEN-0002" not in b.koerbe
+    for fall, grund in ((OBERFL, "Protokolleinträge"), (MUSTER, "Musterfall")):
+        status, antwort = aktion("fall_loeschen", {"fall": fall, "durch": "MUS"})
+        assert status == 400 and grund in antwort["fehler"] and (PROJEKT / "faelle" / fall / "fall.json").is_file(), (fall, antwort)
+    assert ui_anfrage(port, "/api/fall/BEDIEN-0002/kopf")[0] == 200
+    status, antwort = aktion("fall_loeschen", {"fall": "BEDIEN-0002", "durch": "MUS"})
+    assert status == 200 and not (PROJEKT / "faelle" / "BEDIEN-0002").exists() and ui_anfrage(port, "/api/fall/BEDIEN-0002/kopf")[0] == 404, antwort
+    # Ein Fenster ohne Geheimnis sieht, was im Fall liegt, aber nicht, was im Akten-Eingang wartet
+    lesen_html = json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0001/akten")[2])["html"]
+    assert "rapport-01.txt" in lesen_html and "notiz.txt" not in lesen_html and not {"form", "input", "button"} & Seite(lesen_html).namen() and not verstoesse(lesen_html, "BEDIEN-0001")
+    for ansicht in ("bedienen", "zurueck", "ermittlung", "ergebnisse"):
+        text = json.loads(ui_anfrage(port, f"/api/fall/BEDIEN-0001/{ansicht}")[2])["html"]
+        assert not verstoesse(text, "BEDIEN-0001") and ("form" in Seite(text).namen() or ansicht == "ermittlung"), ansicht
+    assert "Fall löschen" in Seite(json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0001/bedienen")[2])["html"]).text
+    faelle_html = json.loads(ui_anfrage(port, "/api/faelle")[2])["html"]
+    assert any(t == "a" and a.get("href") == "#/neu" for t, a in Seite(faelle_html).elemente) and not verstoesse(faelle_html, "x")
     assert sorted(p.name for p in Path(tempfile.gettempdir()).glob("osint-oberflaeche-*")) == zwischen_vorher, "eine Zwischendatei blieb liegen"
-    for ansicht in ("bedienen", "zurueck"):
-        text = json.loads(ui_anfrage(u["port"], f"/api/fall/BEDIEN-0001/{ansicht}")[2])["html"]
-        assert not verstoesse(text, "BEDIEN-0001") and "form" in Seite(text).namen(), ansicht
-    neu = json.loads(ui_anfrage(u["port"], "/api/neu")[2])["html"]
-    assert not verstoesse(neu, "x") and "schon geschwärzt" in neu and "Klartext" in neu and str(u["b"].ablage) in Seite(neu).text
 
 
-@test("Bedienung, Weg «Klartext»: lokaler Bildschirm, Entscheide, Ergebnis in PII-Prüfung und Fall. Klartext und Zuordnung bleiben ausserhalb des Projekts")
+@test("Bedienung, nochmals pseudonymisieren: lokaler Bildschirm, Entscheide, Ergebnis in PII-Prüfung und Fall. Platzhalter von anderer Hand bleiben, Klartext und Zuordnung bleiben ausserhalb des Projekts")
 def _():
     u = bedien_vorbereiten()
-    b, port, aktion, dokument = u["b"], u["port"], u["aktion"], u["dokument"]
+    b, port, aktion, hochladen = u["b"], u["port"], u["aktion"], u["hochladen"]
     dok = pruefsatz.rapport(3)
     person = next(wert for typ, wert in dok.namen.values() if typ == "PERSON")
     alle_namen = [wert for _typ, wert in dok.namen.values()]
-    status, antwort = aktion("pseudo_beginnen", dokument("rapport klartext.txt", dok.text))
+
+    def nummer(platzhalter_: str) -> int:
+        return int(ps.PLATZHALTER.fullmatch(platzhalter_).group(2))
+    eintrag = hochladen("", "rapport klartext.txt", dok.text)[1]["eintraege"][0]
+    status, antwort = aktion("korb_pseudo", {"ziel": "", "id": eintrag["id"]})
     assert status == 200 and antwort["vorgang"] and antwort["bekannt"] == 0, antwort
     vorgang = antwort["vorgang"]
+    assert aktion("korb_pseudo", {"ziel": "", "id": eintrag["id"]})[1]["vorgang"] == vorgang, "ein Dokument, das in Arbeit ist, bleibt in Arbeit"
+    assert aktion("korb_pseudo", {"ziel": "", "id": "gibt-es-nicht"})[0] == 404
     # Der Bildschirm mit Klartext: nur gegen das Geheimnis, deutlich gekennzeichnet, Fundstellen markiert, technische Indikatoren eigens
     assert ui_anfrage(port, "/api/klartext/pseudo", "POST", {"vorgang": vorgang})[0] == 403
     assert ui_anfrage(port, f"/api/klartext/{vorgang}")[0] == 404 and ui_anfrage(port, f"/api/fall/{OBERFL}/pseudo/{vorgang}")[0] == 404
     status, _kopf, inhalt = ui_anfrage(port, "/api/klartext/pseudo", "POST", {"vorgang": vorgang}, X_OSINT_Geheimnis=b.geheimnis)
     bildschirm = json.loads(inhalt)["html"]
     seite = Seite(bildschirm)
-    assert status == 200 and "lokal, Klartext" in seite.text and person in seite.text and not verstoesse(bildschirm, "x")
+    assert status == 200 and "lokal, Klartext" in seite.text and person in seite.text and not verstoesse(bildschirm, "x") and json.loads(inhalt)["ziel"] == ""
     marken = [a for t, a in seite.elemente if t == "mark" and "fund" in a.get("class", "")]
     assert len(marken) > 15 and any("s-ersetzen" in a["class"] for a in marken) and any("s-offen" in a["class"] for a in marken), len(marken)
     assert any(t == "span" and a.get("class") == "technik" for t, a in seite.elemente), "technische Indikatoren müssen als solche zu sehen sein"
+    assert {a.get("data-aktion") for t, a in seite.elemente if t == "form"} >= {"pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen"}
     # Entscheide: verwerfen, annehmen, ergänzen. Jede Eingabe rechnet neu
     kandidaten = b.pseudo_holen(vorgang).vorgang.kandidaten()
     assert len(kandidaten) >= 2
@@ -3950,41 +4181,91 @@ def _():
     status, antwort = aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "ergaenzen", "wert": "Kommt Nichtvor", "typ": "PERSON"})
     assert status == 400 and "kommt im Dokument nicht vor" in antwort["fehler"]
     assert aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "unsinn"})[0] == 400 and aktion("pseudo_entscheid", {"vorgang": "gibt-es-nicht", "art": "verwerfen"})[0] == 404
+    status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": "BEDIEN-0003", "titel": "Klartext-Weg", "ids": [eintrag["id"]]})
+    assert status == 400 and "wird gerade pseudonymisiert" in antwort["fehler"] and not (PROJEKT / "faelle" / "BEDIEN-0003").exists(), antwort
     for offen in b.pseudo_holen(vorgang).vorgang.kandidaten():
         aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "annehmen", "fund": offen.id})
-    # Abschliessen: Das Ergebnis besteht die PII-Prüfung und kommt über tools/fall.py in den Fall, die Zuordnung in die Ablage
-    status, antwort = aktion("pseudo_abschliessen", {"vorgang": vorgang, "fall": "BEDIEN-0003", "titel": "Klartext-Weg", "kuerzel": "MUS"})
-    assert status == 200 and antwort["aufgenommen"] is True and antwort["platzhalter"] >= 5 and antwort["ersetzt"] >= 20, antwort
-    pfad = PROJEKT / "faelle" / "BEDIEN-0003"
-    ergebnis = lesen(pfad / "eingang" / "rapport klartext_pseudonymisiert.txt")
-    assert "[PERSON_01]" in ergebnis and not any(name in ergebnis for name in alle_namen), [n for n in alle_namen if n in ergebnis]
-    assert not [f for f in pii_pruefen(ergebnis)[0] if f.stufe == "sperre"]
+    # Übernehmen: Das Ergebnis besteht die PII-Prüfung und ersetzt die Datei im Akten-Eingang. Der Klartext verlässt den Speicher
+    status, antwort = aktion("pseudo_uebernehmen", {"vorgang": vorgang})
+    assert status == 200 and antwort["uebernommen"] is True and antwort["ersetzt"] >= 20 and antwort["ziel"] == "", antwort
+    e = b.korb("").eintraege[eintrag["id"]]
+    assert e.stand == "sauber" and e.inhalt is None and e.vorgang is None and e.ersetzt >= 20 and vorgang not in b.pseudo, "nach dem Übernehmen ist der Klartext aus dem Speicher"
+    assert "[PERSON_01]" in e.text and not any(name in e.text for name in alle_namen), [n for n in alle_namen if n in e.text]
     for start, ende, art in dok.technik:
-        assert dok.text[start:ende] in ergebnis, f"technischer Indikator ({art}) fehlt im Ergebnis"
+        assert dok.text[start:ende] in e.text, f"technischer Indikator ({art}) fehlt im Ergebnis"
+    assert aktion("pseudo_uebernehmen", {"vorgang": vorgang})[0] == 404
+    paare = dict(b.korb("").zuordnung)
+    platzhalter = next(p for p, klar in paare.items() if klar == person)
+    # Ein zweites Dokument im selben Eingang: gleiche Angabe, gleicher Platzhalter
+    zweites = hochladen("", "nachtrag.txt", f"Nachtrag\n\n{person} wurde erneut befragt.\n")[1]["eintraege"][0]
+    antwort = aktion("korb_pseudo", {"ziel": "", "id": zweites["id"]})[1]
+    assert antwort["bekannt"] == len(paare)
+    assert aktion("pseudo_uebernehmen", {"vorgang": antwort["vorgang"]})[1]["uebernommen"] is True
+    assert platzhalter in b.korb("").eintraege[zweites["id"]].text and person not in b.korb("").eintraege[zweites["id"]].text
+    # Ein Dokument, das von anderer Hand pseudonymisiert wurde und noch eine Lücke hat: Seine Platzhalter bleiben, neue zählen dahinter weiter
+    fremd_person = f"[PERSON_{max(nummer(p) for p in paare if p.startswith('[PERSON_')) + 7:02d}]"
+    luecke = hochladen("", "von anderer hand.txt", f"Einvernahme\n\n{fremd_person} ist erreichbar unter 079 123 45 67. Die alte Nummer war [TEL_93].\n")[1]["eintraege"][0]
+    assert luecke["stand"] == "personendaten" and luecke["platzhalter"] == 2, luecke
+    v3 = aktion("korb_pseudo", {"ziel": "", "id": luecke["id"]})[1]["vorgang"]
+    assert aktion("pseudo_entscheid", {"vorgang": v3, "art": "alle_verwerfen"})[0] == 200 and not b.pseudo_holen(v3).vorgang.kandidaten()
+    assert aktion("pseudo_uebernehmen", {"vorgang": v3})[1]["uebernommen"] is True
+    text3 = b.korb("").eintraege[luecke["id"]].text
+    assert fremd_person in text3 and "[TEL_93]" in text3 and "079 123 45 67" not in text3, text3
+    neue_tel = next(p for p, klar in b.korb("").zuordnung if klar == "079 123 45 67")
+    assert nummer(neue_tel) == 94 and neue_tel in text3, f"{neue_tel}: eine Nummer darf nie zwei Angaben meinen"
+    # Aufnehmen: über tools/fall.py in den Fall, die Zuordnung in die Ablage ausserhalb des Projekts
+    status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": "BEDIEN-0003", "titel": "Klartext-Weg", "kuerzel": "MUS"})
+    assert status == 200 and antwort["aufgenommen"] is True and antwort["anzahl"] == 3, antwort
+    pfad = PROJEKT / "faelle" / "BEDIEN-0003"
+    ergebnis = lesen(pfad / "eingang" / "rapport-01.txt")
+    assert "[PERSON_01]" in ergebnis and not any(name in ergebnis for name in alle_namen) and not [f for f in pii_pruefen(ergebnis)[0] if f.stufe == "sperre"]
     tabelle = Path(antwort["zuordnung"])
     assert tabelle == b.ablage / "BEDIEN-0003" / "zuordnung.csv" and tabelle.is_file() and not ui_bedienung.innerhalb(tabelle)
     paare = dict(ps.zuordnung_lesen(tabelle))
-    assert person in paare.values() and (WINDOWS or (tabelle.stat().st_mode & 0o077) == 0), "Zuordnungstabelle: vollständig und nur für den Benutzer lesbar"
-    assert aktion("pseudo_abschliessen", {"vorgang": vorgang, "fall": "BEDIEN-0003"})[0] == 404, "nach dem Abschluss ist der Klartext aus dem Speicher"
+    assert person in paare.values() and "079 123 45 67" in paare.values() and (WINDOWS or (tabelle.stat().st_mode & 0o077) == 0), "Zuordnungstabelle: vollständig und nur für den Benutzer lesbar"
+    assert "rapport-01.txt;rapport klartext.txt;" in lesen(b.ablage / "BEDIEN-0003" / "dateinamen.csv")
     # Nichts vom Klartext steht im Projekt: nicht im Fall, in keinem Protokoll, in keiner Zwischendatei
     ahv = next(dok.text[x.start:x.ende] for x in dok.gold if x.typ == "AHV")
     assert ahv in dok.text and not projekt_enthaelt(person, ahv, ordner=("faelle", "protokoll")), projekt_enthaelt(person, ahv, ordner=("faelle", "protokoll"))
+    assert not projekt_enthaelt("079 123 45 67", "rapport klartext", ordner=("faelle/BEDIEN-0003",))
     sitzung, _m = protokollwerkzeug.sitzungen_laden("BEDIEN-0003")
-    assert [z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche"] == ["Fall angelegt"] and "lokal pseudonymisiert" in sitzung[-1]["angabe"]
-    # Weiteres Dokument zum selben Fall: gleiche Angabe, gleicher Platzhalter
-    status, antwort = aktion("pseudo_beginnen", {"fall": "BEDIEN-0003", **dokument("nachtrag.txt", f"Nachtrag\n\n{person} wurde erneut befragt.\n")})
-    assert antwort["bekannt"] == len(paare)
-    platzhalter = next(p for p, klar in paare.items() if klar == person)
-    assert aktion("pseudo_abschliessen", {"vorgang": antwort["vorgang"], "fall": "BEDIEN-0003"})[1]["aufgenommen"] is True
-    assert platzhalter in lesen(pfad / "eingang" / "nachtrag_pseudonymisiert.txt") and person not in lesen(pfad / "eingang" / "nachtrag_pseudonymisiert.txt")
-    # Ein Ergebnis, das die PII-Prüfung nicht besteht, wird nicht aufgenommen
-    status, antwort = aktion("pseudo_beginnen", dokument("rest.txt", "Notiz\n\nRückruf erbeten auf 079 123 45 67.\n"))
-    v = b.pseudo_holen(antwort["vorgang"]).vorgang
+    assert [z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche"] == ["Fall angelegt"] and "0 geschwärzt angeliefert, 3 lokal pseudonymisiert" in sitzung[-1]["angabe"]
+    # Weiteres Dokument zum bestehenden Fall: Die Oberfläche kennt seine Zuordnungstabelle. Neue Paare kommen dazu, alte bleiben
+    assert "BEDIEN-0003" not in b.koerbe
+    weiteres = hochladen("BEDIEN-0003", "zweiter nachtrag.txt", f"Zweiter Nachtrag\n\n{person} meldet sich unter 079 987 65 43.\n")[1]["eintraege"][0]
+    antwort = aktion("korb_pseudo", {"ziel": "BEDIEN-0003", "id": weiteres["id"]})[1]
+    assert antwort["bekannt"] == len(paare), antwort
+    assert aktion("pseudo_uebernehmen", {"vorgang": antwort["vorgang"]})[1]["uebernommen"] is True
+    text4 = b.korb("BEDIEN-0003").eintraege[weiteres["id"]].text
+    assert platzhalter in text4 and person not in text4 and "079 987 65 43" not in text4, text4
+    antwort = aktion("korb_aufnehmen", {"ziel": "BEDIEN-0003", "ids": [weiteres["id"]]})[1]
+    gewachsen = dict(ps.zuordnung_lesen(tabelle))
+    assert antwort["aufgenommen"] is True and Path(antwort["zuordnung"]) == tabelle and len(gewachsen) == len(paare) + 1 and paare.items() <= gewachsen.items(), antwort
+    assert nummer(next(p for p, klar in gewachsen.items() if klar == "079 987 65 43")) == 95 and platzhalter in lesen(pfad / "eingang" / antwort["namen"][0])
+    # Die Tabelle wurde ausserhalb der Oberfläche geändert, während ein Akten-Eingang offen ist: Die neuen Paare kommen in eine eigene Datei, überschrieben wird nichts
+    dritter = hochladen("BEDIEN-0003", "dritter nachtrag.txt", "Dritter Nachtrag\n\nNeue Nummer: 079 111 22 33.\n")[1]["eintraege"][0]
+    assert aktion("pseudo_uebernehmen", {"vorgang": aktion("korb_pseudo", {"ziel": "BEDIEN-0003", "id": dritter["id"]})[1]["vorgang"]})[1]["uebernommen"] is True
+    verfaelscht = [(p, "Anders Lautend" if p == platzhalter else klar) for p, klar in ps.zuordnung_lesen(tabelle)]
+    ps.zuordnung_schreiben(tabelle, verfaelscht)
+    antwort = aktion("korb_aufnehmen", {"ziel": "BEDIEN-0003", "ids": [dritter["id"]]})[1]
+    eigene = Path(antwort["zuordnung"])
+    assert antwort["aufgenommen"] is True and eigene.name.startswith("zuordnung-") and eigene.parent == tabelle.parent and "eigenen Datei" in antwort["meldung"], antwort
+    assert ps.zuordnung_lesen(tabelle) == verfaelscht and "079 111 22 33" in dict(ps.zuordnung_lesen(eigene)).values()
+    ps.zuordnung_schreiben(tabelle, list(gewachsen.items()))        # für das Zurückführen weiter unten wieder, wie sie war
+    # Ein Ergebnis, das die PII-Prüfung nicht besteht, ersetzt nichts. Abbrechen lässt die Datei, wie sie war
+    rest = hochladen("BEDIEN-0003", "rest.txt", "Notiz\n\nRückruf erbeten auf 079 555 44 33.\n")[1]["eintraege"][0]
+    v5 = aktion("korb_pseudo", {"ziel": "BEDIEN-0003", "id": rest["id"]})[1]["vorgang"]
+    v = b.pseudo_holen(v5).vorgang
     for f in v.erk.funde:
         v.verwerfen(f)
-    status, abschluss = aktion("pseudo_abschliessen", {"vorgang": antwort["vorgang"], "fall": "BEDIEN-0004"})
-    assert abschluss["aufgenommen"] is False and "SPERRE" in abschluss["ausgabe"] and "079 123 45 67" not in abschluss["ausgabe"] and not (PROJEKT / "faelle" / "BEDIEN-0004").exists()
-    assert aktion("pseudo_verwerfen", {"vorgang": antwort["vorgang"]})[0] == 200 and antwort["vorgang"] not in b.pseudo
+    status, abschluss = aktion("pseudo_uebernehmen", {"vorgang": v5})
+    assert status == 200 and abschluss["uebernommen"] is False and "SPERRE" in abschluss["ausgabe"] and "079 555 44 33" not in abschluss["ausgabe"], abschluss
+    e = b.korb("BEDIEN-0003").eintraege[rest["id"]]
+    assert e.stand == "personendaten" and e.vorgang == v5 and e.inhalt is not None and "079 555 44 33" in e.text, "ein Ergebnis mit Personendaten ersetzt nichts"
+    assert aktion("pseudo_verwerfen", {"vorgang": v5})[0] == 200 and v5 not in b.pseudo and e.vorgang is None
+    assert aktion("korb_aufnehmen", {"ziel": "BEDIEN-0003", "ids": [rest["id"]]})[1]["aufgenommen"] is False and "079 555 44 33" not in json.dumps(projekt_enthaelt("079 555 44 33", ordner=("faelle",)))
+    assert not projekt_enthaelt("079 555 44 33", "079 111 22 33", "079 987 65 43", ordner=("faelle", "protokoll"))
+    assert aktion("korb_entfernen", {"ziel": "BEDIEN-0003", "ids": [rest["id"]]})[0] == 200
     # Zurückführen: der Rapport mit echten Angaben, nur in der Ablage und nur auf dem Bildschirm «lokal, Klartext»
     plattform.text_schreiben(pfad / "rapport" / "Abschlussrapport.html", f"<html><body><div><b>Fassung</b>pseudonymisiert</div><p>{platzhalter} meldet den Vorfall. [ORG_99] bleibt.</p></body></html>")
     status, antwort = aktion("zurueckfuehren", {"fall": "BEDIEN-0003"})
@@ -4018,12 +4299,16 @@ def _():
     kopf = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/kopf")[2])["html"]).text
     assert "aktiv: erteilt durch MUS, Sachbearbeiter" in kopf
     assert aktion("freigabe", {"fall": fall, "art": "aktiv", "entziehen": "1"})[0] == 200 and not json.loads(lesen(pfad / "fall.json"))["freigaben"]["aktiv"]["erteilt"]
-    # Der Weg am Terminal bleibt, wie er war: ohne Terminal keine Freigabe, und fall.json trägt dort keinen Vermerk «Oberfläche»
-    try:
-        fallwerkzeug.cmd_freigabe(argparse.Namespace(fall=fall, art="darkweb", durch="x", vermerk="y", entziehen=False))
-        raise AssertionError("eine Freigabe ohne Terminal wurde angenommen")
-    except fallwerkzeug.Fehler:
-        pass
+    # Der Weg am Terminal bleibt, wie er war: ohne Terminal keine Freigabe, kein Entfernen und kein Löschen, und fall.json trägt dort keinen Vermerk «Oberfläche»
+    for befehl, angaben in ((fallwerkzeug.cmd_freigabe, argparse.Namespace(fall=fall, art="darkweb", durch="x", vermerk="y", entziehen=False)),
+                            (fallwerkzeug.cmd_entfernen, argparse.Namespace(fall=fall, dateien=["nachtrag.md"], durch="x", grund="y")),
+                            (fallwerkzeug.cmd_loeschen, argparse.Namespace(fall="BEDIEN-0003", durch="x"))):
+        try:
+            befehl(angaben)
+            raise AssertionError(f"{befehl.__name__} wurde ohne Terminal angenommen")
+        except fallwerkzeug.Fehler as e:
+            assert "Terminal" in str(e) or "Befunde" in str(e) or "Protokolleinträge" in str(e), str(e)
+    assert (pfad / "eingang" / "nachtrag.md").is_file() and (PROJEKT / "faelle" / "BEDIEN-0003" / "fall.json").is_file()
     assert "weg" not in fallwerkzeug.freigabe_setzen(fall, "personenbezug", durch="MUS", vermerk="Test am Terminal")
     fallwerkzeug.freigabe_setzen(fall, "personenbezug", entziehen=True)
     # Die Ablage lässt sich über OSINT_ABLAGE festlegen. Die Vorgabe (OSINT-Ablage im Benutzerordner) sperren die Einstellungen für Agenten
@@ -4050,38 +4335,50 @@ def _():
         status, antwort = aktion("beleg", {**beleg_angaben, **aenderung})
         assert status == 400 and grund in antwort["fehler"], (aenderung, status, antwort)
     assert len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl")) == 1
+    status, antwort = aktion("fall_loeschen", {"fall": fall, "durch": "MUS"})
+    assert status == 400 and "Protokolleinträge" in antwort["fehler"] and (pfad / "fall.json").is_file(), "ein Fall mit einem Beleg ist Beweismaterial und bleibt"
     # Dokumente erzeugen und Kette prüfen: Die Oberfläche ruft die Werkzeuge auf und zeigt ihre Ausgabe
     status, antwort = aktion("dokumente", {"fall": fall, "was": "kette"})
     assert status == 200 and antwort["gelungen"] is True and antwort["ausgabe"], antwort
     status, antwort = aktion("dokumente", {"fall": fall, "was": "protokoll"})
     assert antwort["gelungen"] is True and (pfad / "rapport" / "Ermittlungsprotokoll.html").is_file(), antwort
     protokoll_html = lesen(pfad / "rapport" / "Ermittlungsprotokoll.html")
-    for stueck in ("Oberfläche: Freigabe erteilt: aktiv", "Oberfläche: Freigabe entzogen: aktiv", "Oberfläche: Beleg von Hand erfasst: X-0001", "über die Oberfläche", "sachbearbeiter"):
+    for stueck in ("Oberfläche: Freigabe erteilt: aktiv", "Oberfläche: Freigabe entzogen: aktiv", "Oberfläche: Beleg von Hand erfasst: X-0001", "Oberfläche: Dokumente verschoben",
+                   "über die Oberfläche", "sachbearbeiter"):
         assert stueck in Seite(protokoll_html).text, f"im Ermittlungsprotokoll fehlt: {stueck}"
     status, antwort = aktion("dokumente", {"fall": fall, "was": "rapport"})
     assert status == 200 and antwort["gelungen"] is False and "befunde.json" in antwort["ausgabe"], "ohne Befunde gibt es keinen Rapport, und die Seite sagt warum"
+    status, antwort = aktion("dokumente", {"fall": fall, "was": "alles"})
+    assert status == 200 and antwort["gelungen"] is False and "befunde.json" in antwort["ausgabe"], "«alles» hört beim ersten Fehler auf und sagt, woran es liegt"
     status, antwort = aktion("dokumente", {"fall": fall, "was": "anhang"})
     assert antwort["gelungen"] is True and (pfad / "rapport" / "Datenblaetter.html").is_file()
-    assert aktion("dokumente", {"fall": fall, "was": "loeschen"})[0] == 400
+    assert aktion("dokumente", {"fall": fall, "was": "loeschen"})[0] == 400 and {"alles", "abschluss"} <= set(ui_bedienung.WERKZEUGE)
     sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
     schritte = [z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche"]
-    assert schritte[2:5] == ["Freigabe erteilt: aktiv", "Freigabe entzogen: aktiv", "Beleg von Hand erfasst: X-0001"] and "Protokollkette prüfen" in schritte, schritte
-    # Die Oberfläche selbst schreibt weder Protokoll noch Rohdaten noch fall.json: Im Quelltext der Bedienung kommen diese Dateien nicht als Ziel vor
-    for datei in ("bedienung.py", "sitzung.py", "formulare.py", "rueckfrage.py"):
+    assert [s for s in schritte if s.startswith(("Freigabe", "Beleg"))] == ["Freigabe erteilt: aktiv", "Freigabe entzogen: aktiv", "Beleg von Hand erfasst: X-0001"], schritte
+    assert {"Fall angelegt", "Dokumente aufgenommen", "Dokumente nachträglich geprüft", "Dokumente aus dem Eingang entfernt", "Dokumente verschoben", "Protokollkette prüfen"} <= set(schritte), schritte
+    # Die Oberfläche selbst schreibt weder Protokoll noch Rohdaten noch fall.json noch in den Eingang: Im Quelltext der Bedienung kommen diese Orte nicht als Ziel vor.
+    # Die eine Datei, die sie in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand (eigener Test bei der Ermittlung)
+    for datei in ("bedienung.py", "sitzung.py", "formulare.py", "rueckfrage.py", "paket.py", "server.py", "seiten.py"):
         quelltext = lesen(PROJEKT / "tools" / "ui" / datei)
         assert "abfragen.jsonl" not in quelltext and "extern.jsonl" not in quelltext and not re.search(r"schreiben\(\s*[^)]*fall\.json", quelltext), datei
-        assert not re.search(r"(write_text|write_bytes|text_schreiben|zeile_anhaengen)\([^\n]*(faelle|FAELLE|fall_pfad|rohdaten|protokoll)", quelltext), datei
+        assert not re.search(r"(write_text|write_bytes|text_schreiben|zeile_anhaengen)\([^\n]*(faelle|FAELLE|fall_pfad|rohdaten|protokoll|eingang)", quelltext), datei
+    schreibt = re.findall(r"^.*\.write_text\(.*$", lesen(PROJEKT / "tools" / "ui" / "sitzung.py"), re.M)
+    assert len(schreibt) == 2 and "konfiguration.write_text" in schreibt[0] and "verlauf_datei" in schreibt[1], schreibt
 
 
-@test("Bedienung, Ermittlung: Sitzung im Projektordner ohne abschaltende Schalter, Rückfrage als Dialog, Antwort im Protokoll, anhalten und fortsetzen")
+@test("Bedienung, Ermittlung und Chat: Sitzung im Projektordner ohne abschaltende Schalter, Vorgaben und Nachrichten, jeder Schritt im Verlauf, Rückfrage als Dialog, anhalten und fortsetzen")
 def _():
     u = bedien_vorbereiten()
     b, port, aktion, merker = u["b"], u["port"], u["aktion"], u["merker"]
     fall = "BEDIEN-0001"
     pfad = PROJEKT / "faelle" / fall
 
-    def stand() -> dict:
-        return json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])
+    def stand(version: int = 0) -> dict:
+        return json.loads(ui_anfrage(port, f"/api/fall/{fall}/verlauf?v={version}")[2])
+
+    def texte(s: dict) -> list[str]:
+        return [z["text"] for z in s["verlauf"]]
 
     def warten(bedingung, sekunden: float = 30) -> dict:
         ende = time.time() + sekunden
@@ -4090,15 +4387,31 @@ def _():
             if bedingung(s):
                 return s
             time.sleep(0.1)
-        raise AssertionError(f"Zustand nicht erreicht: {stand()['status']} {Seite(stand()['html']).text[:300]}")
-    assert stand()["status"] == "aus" and ui_sitzung.verfuegbar() == ""
-    status, antwort = aktion("ermittlung_starten", {"fall": fall})
+        raise AssertionError(f"Zustand nicht erreicht: {stand()['status']} {texte(stand())[-6:]}")
+
+    def dialog() -> tuple[dict, Seite]:
+        antwort = json.loads(ui_anfrage(port, "/api/rueckfragen")[2])
+        return antwort, Seite(antwort["html"])
+
+    def ruhe() -> None:
+        b.ermittlungen[fall].prozess.wait(timeout=20)       # das Ereignis «result» kommt kurz vor dem Ende des Prozesses
+    assert stand()["status"] == "aus" and stand()["verlauf"] == [] and stand()["bedienbar"] is True and ui_sitzung.verfuegbar() == "" and dialog()[0] == {"anzahl": 0, "html": ""}
+    seite_html = json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]
+    assert any(t == "section" and "data-chat" in a and a.get("data-fall") == fall for t, a in Seite(seite_html).elemente) and "Abrechnung: " in Seite(seite_html).text
+    # Vorgaben aus dem Chat gehen mit dem Auftrag mit. Was der Sachbearbeiter schreibt, liest das Sprachmodell: dieselbe PII-Prüfung wie für Dokumente
+    vorgabe = "Schwerpunkt Hosting. [PERSON_01] nicht weiter abklären."
+    for angaben, grund in (({"fall": fall, "vorgaben": "Rückruf an 079 123 45 67"}, "nicht gesendet"), ({"fall": fall, "vorgaben": "x" * (ui_sitzung.NACHRICHT_LAENGE + 1)}, "länger")):
+        status, antwort = aktion("ermittlung_starten", angaben)
+        assert status == 400 and grund in antwort["fehler"] and "079 123 45 67" not in antwort["fehler"], antwort
+    assert fall not in b.ermittlungen
+    status, antwort = aktion("ermittlung_starten", {"fall": fall, "vorgaben": vorgabe})
     assert status == 200, antwort
     s = warten(lambda x: x["frage"])
-    dialog = Seite(s["html"])
-    assert s["status"] == "wartet" and "Claude Code fragt nach" in dialog.text and "mcp__osint__urlquery_einreichen" in dialog.text and "kundenportal.example/login" in dialog.text
-    assert not verstoesse(s["html"], fall) and not any(t == "a" and "kundenportal" in a.get("href", "") for t, a in dialog.elemente)
-    frage = next(a["value"] for t, a in dialog.elemente if t == "input" and a.get("name") == "frage")
+    offen, seite = dialog()
+    assert s["status"] == "wartet" and offen["anzahl"] == 1 and "Claude Code fragt nach" in seite.text and "mcp__osint__urlquery_einreichen" in seite.text, seite.text
+    assert "kundenportal.example/login" in seite.text and fall in seite.text and not verstoesse(offen["html"], fall) and "a" not in seite.namen(), "Adressen aus dem Fall sind nie anklickbar"
+    frage = s["frage"]["id"]
+    assert frage == next(a["value"] for t, a in seite.elemente if t == "input" and a.get("name") == "frage")
     # Beantworten kann nur, wer das Geheimnis hat. Die Karte der Sitzung taugt nur zum Fragen
     karte = b.ermittlungen[fall].karte
     for geheimnis in (None, karte, "falsch"):
@@ -4108,12 +4421,29 @@ def _():
     status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": frage, "erlauben": "1"})
     assert status == 200 and "Erlaubt" in antwort["meldung"], antwort
     s = warten(lambda x: x["status"] == "beendet")
-    text = Seite(s["html"]).text
-    assert "infrastruktur-analyst" in text and "shodan_host 203.0.113.7" in text and "Entscheid: allow" in text and json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["model"] in text, text[:600]
+    ruhe()
+    # Jeder Schritt steht im Verlauf: wer, was, mit Beleg und Ergebnis der Abfrage, die Rückfrage mit ihrem Entscheid
+    alle = texte(s)
+    for stueck in (f"Ermittlung starten: /ermittlung {fall}\n\n{vorgabe}", "Ich setze das Team ein.", "beauftragt infrastruktur-analyst: Server klaeren", "shodan_host 203.0.113.7",
+                   "Entscheid: allow", "hat seinen Auftrag abgeschlossen.", "Ermittlung abgeschlossen.", "Der Auftrag ist zu Ende."):
+        assert stueck in alle, (stueck, alle)
+    schritt = next(z for z in s["verlauf"] if z["text"] == "shodan_host 203.0.113.7")
+    assert (schritt["art"], schritt["wer"], schritt.get("beleg"), schritt.get("ergebnis"), schritt["quelle"]) == ("schritt", "infrastruktur-analyst", "P-0007", "kein_treffer", True), schritt
+    rueck = next(z for z in s["verlauf"] if z["art"] == "rueckfrage")
+    assert rueck["entscheid"] == "erlaubt" and "urlquery_einreichen" in rueck["text"], rueck
+    modell = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["model"]
+    assert s["modell"] == modell and modell in Seite(s["feld"]).text and not verstoesse(s["feld"], fall), Seite(s["feld"]).text
+    assert "infrastruktur-analyst" in Seite(s["tafel"]).text and "shodan_host 203.0.113.7" in Seite(s["tafel"]).text and not verstoesse(s["tafel"], fall), Seite(s["tafel"]).text
+    assert [z["nr"] for z in s["verlauf"]] == sorted(z["nr"] for z in s["verlauf"]) and all(z["zeit"] and z["wer"] for z in s["verlauf"])
+    # Der Browser holt nur, was neu ist. Kennt er einen Stand, den es nicht gibt, bekommt er alles
+    v = stand()["v"]
+    assert stand(v)["verlauf"] == [] and stand(v)["neu_beginnen"] is False and len(stand(v + 100)["verlauf"]) == len(alle) and stand(v + 100)["neu_beginnen"] is True
     merk = json.loads(lesen(merker))
-    # Die Sitzung lief im Projektordner, mit /ermittlung, ohne Schalter, die Einstellungen, Hooks, MCP-Server oder das Modell umstellen
+    # Die Sitzung lief im Projektordner, mit /ermittlung und den Vorgaben, ohne Schalter, die Einstellungen, Hooks, MCP-Server oder das Modell umstellen
     argv = merk["argv"]
-    assert Path(merk["cwd"]).resolve() == PROJEKT.resolve() and argv[argv.index("-p") + 1] == f"/ermittlung {fall}", (merk["cwd"], argv[:3])
+    auftrag = argv[argv.index("-p") + 1]
+    assert Path(merk["cwd"]).resolve() == PROJEKT.resolve() and auftrag == ui_sitzung.auftrag_text(fall, vorgabe) and auftrag.startswith(f"/ermittlung {fall}\n\nVorgaben des Sachbearbeiters"), auftrag
+    assert auftrag.endswith(vorgabe) and ui_sitzung.auftrag_text(fall) == f"/ermittlung {fall}"
     assert argv[argv.index("--output-format") + 1] == "stream-json" and argv[argv.index("--permission-prompt-tool") + 1] == "mcp__oberflaeche__rueckfrage"
     verboten = {"--bare", "--safe-mode", "--restricted", "--setting-sources", "--strict-mcp-config", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
                 "--model", "--fallback-model", "--permission-mode", "--disable-slash-commands", "--settings", "--allowedTools", "--allowed-tools", "--tools", "--agents", "--system-prompt"}
@@ -4122,47 +4452,144 @@ def _():
     alles = json.dumps(merk, ensure_ascii=False)
     assert b.geheimnis not in alles and u["startcode"] not in alles and "CLAUDECODE" not in merk["umgebung"] and merk["umgebung"]["CLAUDE_PROJECT_DIR"] == str(PROJEKT)
     assert set(merk["konfiguration"]["mcpServers"]) == {"oberflaeche"} and not ui_bedienung.innerhalb(Path(argv[argv.index("--mcp-config") + 1]))
-    # Der «Agent» in der Sitzung hat versucht, sich selbst eine Freigabe zu erteilen und einen Beleg zu erfassen: abgewiesen, nichts geändert
-    assert merk["versuche"] == {"ohne": 403, "karte": 403, "anmelden": 403, "beleg": 403}, merk["versuche"]
+    # Der «Agent» in der Sitzung hat versucht, sich selbst eine Freigabe zu erteilen, einen Beleg zu erfassen und seine Rückfrage selbst zu beantworten: abgewiesen
+    assert merk["versuche"] == {"ohne": 403, "karte": 403, "anmelden": 403, "beleg": 403, "antworten": 403}, merk["versuche"]
     assert not any(f["erteilt"] for f in ui_daten.Fall(fall).freigaben()) and len(jsonl_lesen(pfad / "protokoll" / "extern.jsonl")) == 1
     assert merk["entscheid"] == {"behavior": "allow", "updatedInput": {"fall": fall, "url": "https://kundenportal.example/login", "zweck": "aktueller Stand"}}
-    # Zweiter Lauf: ablehnen. Dritter: niemand antwortet, das gilt als abgelehnt
+    # Zweiter Lauf: ablehnen. Dritter: niemand antwortet, das gilt als abgelehnt. Der Chat bleibt stehen
     assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
     s = warten(lambda x: x["frage"])
-    frage = next(a["value"] for t, a in Seite(s["html"]).elemente if t == "input" and a.get("name") == "frage")
-    assert aktion("ermittlung_antworten", {"fall": fall, "frage": frage, "erlauben": ""})[0] == 200
+    assert alle[0] in texte(s), "ein neuer Start löscht den Verlauf nicht"
+    assert aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": ""})[0] == 200
     warten(lambda x: x["status"] == "beendet")
+    ruhe()
     assert json.loads(lesen(merker))["entscheid"]["behavior"] == "deny" and "abgelehnt" in json.loads(lesen(merker))["entscheid"]["message"]
     wartezeit, ui_sitzung.WARTEZEIT = ui_sitzung.WARTEZEIT, 1
     try:
         assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
-        warten(lambda x: x["status"] == "beendet")
+        s = warten(lambda x: x["status"] == "beendet")
+        ruhe()
         assert "nicht rechtzeitig" in json.loads(lesen(merker))["entscheid"]["message"]
+        assert [z["entscheid"] for z in s["verlauf"] if z["art"] == "rueckfrage"] == ["erlaubt", "abgelehnt", "nicht beantwortet"]
     finally:
         ui_sitzung.WARTEZEIT = wartezeit
-    # Start, Rückfragen und Antworten stehen im Sitzungsprotokoll, mit Zeit und dem Vermerk «Oberfläche»
+    # Start, Rückfragen, Antworten des Sachbearbeiters und die Antwort der Ermittlung stehen im Sitzungsprotokoll, mit Zeit und dem Vermerk «Oberfläche»
     sitzung, meldungen = protokollwerkzeug.sitzungen_laden(fall)
     schritte = Counter(z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche" and z.get("weg") == "Oberfläche"
-                       and (z["schritt"].startswith("Ermittlung ge") or "Rückfrage" in z["schritt"]))
-    assert schritte == {"Ermittlung gestartet": 3, "Rückfrage erlaubt": 1, "Rückfrage abgelehnt": 1} and not meldungen, (schritte, meldungen)
+                       and (z["schritt"].startswith("Ermittlung ge") or "Rückfrage" in z["schritt"] or z["schritt"] == "Antwort der Ermittlung"))
+    assert schritte == {"Ermittlung gestartet": 3, "Rückfrage erlaubt": 1, "Rückfrage abgelehnt": 1, "Antwort der Ermittlung": 3} and not meldungen, (schritte, meldungen)
     antwort_eintrag = next(z for z in sitzung if z.get("schritt") == "Rückfrage erlaubt")
-    assert "urlquery_einreichen" in str(antwort_eintrag["angabe"]) and antwort_eintrag["zeit_utc"] and antwort_eintrag["sitzung"] == "11111111-2222-4333-8444-555555555555"
+    assert "urlquery_einreichen" in str(antwort_eintrag["angabe"]) and antwort_eintrag["zeit_utc"] and antwort_eintrag["sitzung"] == FALSCHE_SITZUNG
+    assert vorgabe in next(z for z in sitzung if z.get("schritt") == "Ermittlung gestartet")["angabe"], "die Vorgaben stehen im Sitzungsprotokoll"
+    # Eine Nachricht an eine Sitzung, die nicht arbeitet, setzt sie fort. Leeres und Personendaten gehen nicht hinaus
+    for angaben, grund in (({"fall": fall, "text": "  "}, "leer"), ({"fall": fall, "text": "Bitte 079 123 45 67 anrufen"}, "nicht gesendet"), ({"fall": OBERFL, "text": "Hallo"}, "keine Sitzung")):
+        status, antwort = aktion("ermittlung_nachricht", angaben)
+        assert status == 400 and grund in antwort["fehler"] and "079 123 45 67" not in antwort["fehler"], (grund, antwort)
+    nachricht = "Bitte zusätzlich das Zertifikat der Domain prüfen."
+    assert aktion("ermittlung_nachricht", {"fall": fall, "text": nachricht})[0] == 200
+    s = warten(lambda x: x["status"] == "beendet" and f"Ich fahre fort: {nachricht}" in texte(x))
+    ruhe()
+    argv = json.loads(lesen(merker))["argv"]
+    assert argv[argv.index("-p") + 1] == nachricht and argv[argv.index("--resume") + 1] == FALSCHE_SITZUNG and nachricht in texte(s)
+    # Eine Nachricht, während die Ermittlung arbeitet: Sie wartet auf das Ende des Auftrags, lässt sich zurücknehmen und geht dann an dieselbe Sitzung
+    os.environ["OSINT_FAKE_KURZ"] = "6"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        warten(lambda x: x["status"] == "laeuft" and "Das dauert kurz." in texte(x))
+    finally:
+        os.environ.pop("OSINT_FAKE_KURZ")
+    status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": "Erste wartende Nachricht."})
+    assert status == 200 and antwort.get("wartet") is True, antwort
+    assert aktion("ermittlung_nachricht", {"fall": fall, "text": "Zweite, die ich zurücknehme."})[1].get("wartet") is True
+    s = stand()
+    assert [w["text"] for w in s["wartend"]] == ["Erste wartende Nachricht.", "Zweite, die ich zurücknehme."] and s["status"] == "laeuft", s["wartend"]
+    assert [z["text"] for z in s["verlauf"] if z.get("wartet")] == ["Erste wartende Nachricht.", "Zweite, die ich zurücknehme."]
+    assert aktion("ermittlung_nachricht_zurueck", {"fall": fall, "nachricht": s["wartend"][1]["id"]})[0] == 200
+    assert aktion("ermittlung_nachricht_zurueck", {"fall": fall, "nachricht": s["wartend"][1]["id"]})[0] == 404
+    s = warten(lambda x: x["status"] == "beendet" and "Ich fahre fort: Erste wartende Nachricht." in texte(x), 45)
+    ruhe()
+    zurueck = next(z for z in s["verlauf"] if z["text"] == "Zweite, die ich zurücknehme.")
+    assert zurueck["zurueck"] is True and zurueck["wartet"] is False and s["wartend"] == [] and not any(t.startswith("Ich fahre fort: Zweite") for t in texte(s))
+    sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
+    schritte = Counter(z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche" and "Nachricht" in z["schritt"])
+    assert schritte == {"Nachricht an die Ermittlung": 3, "Nachricht an die Ermittlung zugestellt": 1, "Nachricht zurückgenommen": 1}, schritte
     # Anhalten und fortsetzen: dieselbe Sitzung geht weiter
     os.environ["OSINT_FAKE_LANG"] = "1"
     try:
         assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
-        warten(lambda x: x["status"] == "laeuft" and "Das dauert." in Seite(x["html"]).text)
+        warten(lambda x: x["status"] == "laeuft" and texte(x).count("Das dauert.") == 1)
         assert aktion("ermittlung_starten", {"fall": fall})[0] == 400, "eine zweite Ermittlung zum selben Fall darf nicht nebenher starten"
         assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 200 and warten(lambda x: x["status"] == "angehalten")
+        assert aktion("ermittlung_fortsetzen", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["status"] == "beendet" and f"Ich fahre fort: {ui_sitzung.AUFTRAG_WEITER}" in texte(x))
+        ruhe()
+        argv = json.loads(lesen(merker))["argv"]
+        assert argv[argv.index("--resume") + 1] == FALSCHE_SITZUNG and "Ermittlung angehalten." in texte(s)
+        assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 400, "wo nichts läuft, gibt es nichts anzuhalten"
+        assert aktion("ermittlung_fortsetzen", {"fall": OBERFL})[0] == 400, "ohne frühere Sitzung gibt es nichts fortzusetzen"
+        # Eilig: Die Nachricht unterbricht den laufenden Auftrag und geht sofort an dieselbe Sitzung
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        warten(lambda x: x["status"] == "laeuft" and x["sitzung"] and texte(x).count("Das dauert.") == 2)
+        eilig = "Bitte nur noch die Domain prüfen."
+        status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": eilig, "jetzt": "1"})
+        assert status == 200 and "unterbrochen" in antwort["meldung"], antwort
     finally:
         os.environ.pop("OSINT_FAKE_LANG")
-    assert aktion("ermittlung_fortsetzen", {"fall": fall})[0] == 200
-    s = warten(lambda x: x["status"] == "beendet")
+    s = warten(lambda x: x["status"] == "beendet" and any(t.startswith("Ich fahre fort: Der Sachbearbeiter hat die Ermittlung unterbrochen") and eilig in t for t in texte(x)))
+    ruhe()
+    assert eilig in texte(s) and json.loads(lesen(merker))["argv"][json.loads(lesen(merker))["argv"].index("-p") + 1] == ui_sitzung.UNTERBRECHUNG.format(text=eilig)
+    # Der Verlauf liegt als Textdatei im Arbeitsstand des Falls: eine Lesehilfe, die einen Neustart der Oberfläche übersteht
+    datei = pfad / "arbeitsstand" / ui_sitzung.verlauf_datei(b)
+    ende = time.time() + 15
+    while time.time() < ende and not (datei.is_file() and eilig in lesen(datei)):
+        time.sleep(0.1)
+    verlauf_text = lesen(datei)
+    assert [p.name for p in (pfad / "arbeitsstand").glob("verlauf-oberflaeche-*.txt")] == [datei.name] and "kein Beleg" in verlauf_text and vorgabe in verlauf_text, verlauf_text[:300]
+    assert "shodan_host 203.0.113.7 [P-0007] [kein_treffer]" in verlauf_text and "[zurückgenommen]" in verlauf_text and "[erlaubt]" in verlauf_text
+    # Nach einem Neustart der Oberfläche findet sie die letzte Sitzung von Claude Code im Sitzungsprotokoll des Projekts und setzt sie fort
+    frueher = "22222222-3333-4444-8555-666666666666"
+    assert ui_sitzung.letzte_sitzung("BEDIEN-0003") == ""
+    hook("protokoll_hook.py", {"hook_event_name": "UserPromptSubmit", "session_id": frueher, "prompt": "/ermittlung BEDIEN-0003"})
+    assert ui_sitzung.letzte_sitzung("BEDIEN-0003") == frueher and json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0003/verlauf")[2])["frueher"] == frueher
+    assert aktion("ermittlung_nachricht", {"fall": "BEDIEN-0003", "text": "Wo stehen wir?"})[0] == 200
+    ende = time.time() + 30
+    while time.time() < ende and "Ich fahre fort: Wo stehen wir?" not in [z["text"] for z in json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0003/verlauf")[2])["verlauf"]]:
+        time.sleep(0.1)
+    b.ermittlungen["BEDIEN-0003"].prozess.wait(timeout=20)
     argv = json.loads(lesen(merker))["argv"]
-    assert argv[argv.index("--resume") + 1] == "11111111-2222-4333-8444-555555555555" and "Ich fahre fort" in Seite(s["html"]).text
-    b.ermittlungen[fall].prozess.wait(timeout=20)       # das Ereignis «result» kommt kurz vor dem Ende des Prozesses
-    assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 400, "wo nichts läuft, gibt es nichts anzuhalten"
-    assert aktion("ermittlung_fortsetzen", {"fall": OBERFL})[0] == 400, "ohne frühere Sitzung gibt es nichts fortzusetzen"
+    assert argv[argv.index("--resume") + 1] == frueher and argv[argv.index("-p") + 1] == "Wo stehen wir?", argv
+    # Zwei Rückfragen zugleich (Hauptsitzung und ein Analyst): eine nach der andern, in der Reihenfolge ihres Eingangs
+    zwei, vorige = ui_sitzung.Sitzung(b, fall, port), b.ermittlungen[fall]
+    b.ermittlungen[fall] = zwei
+    antworten: dict = {}
+    try:
+        faeden = [threading.Thread(target=lambda n=n: antworten.__setitem__(n, zwei.fragen("WebSearch", {"query": f"frage {n}"}, f"toolu_{n}")), daemon=True) for n in (1, 2)]
+        for nr, faden in enumerate(faeden, 1):
+            faden.start()
+            ende = time.time() + 10
+            while time.time() < ende and len(zwei.fragen_offen) < nr:
+                time.sleep(0.02)
+        offen, seite = dialog()
+        assert offen["anzahl"] == 1 and "frage 1" in seite.text and "folgt eine weitere Rückfrage" in seite.text and zwei.status == "wartet", seite.text
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": zwei.frage["id"], "erlauben": "1"})[0] == 200
+        faeden[0].join(10)
+        assert antworten[1]["erlauben"] is True and zwei.frage is not None and "frage 2" in zwei.frage["eingabe"] and zwei.status == "wartet", antworten
+        assert "frage 2" in dialog()[1].text and "weitere" not in dialog()[1].text
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": zwei.frage["id"], "erlauben": ""})[0] == 200
+        faeden[1].join(10)
+        assert antworten[2]["erlauben"] is False and zwei.frage is None and dialog()[0]["anzahl"] == 0, antworten
+    finally:
+        b.ermittlungen[fall] = vorige
+    # Nach einer Ermittlung, die Befunde und einen Rapport hinterlassen hat, erzeugt die Oberfläche die übrigen Unterlagen
+    aufrufe: list = []
+    b.dokumente = lambda d: aufrufe.append(d) or {"gelungen": True, "ausgabe": ""}
+    try:
+        ohne, mit = ui_sitzung.Sitzung(b, fall, port), ui_sitzung.Sitzung(b, MUSTER, port)
+        ohne._abschliessen()
+        mit._abschliessen()
+    finally:
+        del b.dokumente
+    assert aufrufe == [{"fall": MUSTER, "was": "abschluss"}] and mit.unterlagen == "bereit" and mit.verlauf[-1].get("ergebnisse") is True and ohne.unterlagen == "" and not ohne.verlauf
     # Der MCP-Server der Rückfrage: ohne erreichbare Oberfläche oder mit falscher Karte lehnt er ab
     for umgebung in ({"OSINT_RUECKFRAGE_PORT": "1", "OSINT_RUECKFRAGE_KARTE": "x", "OSINT_RUECKFRAGE_FALL": fall},
                      {"OSINT_RUECKFRAGE_PORT": str(port), "OSINT_RUECKFRAGE_KARTE": "falsch", "OSINT_RUECKFRAGE_FALL": fall}, {}):
@@ -4189,9 +4616,9 @@ def _():
     try:
         assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
         s = warten(lambda x: x["status"] == "fehler")
-        b.ermittlungen[fall].prozess.wait(timeout=20)
-        text = Seite(stand()["html"]).text
-        assert "nicht geladen" in text and "osint" in text and "am Terminal starten" in text and "Ich arbeite ohne Projekt." not in text, text[:500]
+        ruhe()
+        text = " ".join(texte(stand())[-3:]) + Seite(stand()["feld"]).text
+        assert "nicht geladen" in text and "osint" in text and "am Terminal starten" in text and "Ich arbeite ohne Projekt." not in texte(stand()), text[:500]
         assert b.ermittlungen[fall].fragen("mcp__osint__wayback_sichern", {}, "x") == {"erlauben": False, "grund": "Die Oberfläche hat diese Sitzung beendet."}
     finally:
         os.environ.pop("OSINT_FAKE_OHNE_PROJEKT")
@@ -4207,7 +4634,7 @@ def _():
     alt_schluessel = os.environ.pop("ANTHROPIC_API_KEY", None)
     try:
         os.environ["ANTHROPIC_API_KEY"] = wert
-        seite = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"])
+        seite = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"])
         assert "über die API, nach Verbrauch" in seite.text and "ANTHROPIC_API_KEY" in seite.text and wert not in json.dumps(seite.text)
     finally:
         os.environ.pop("ANTHROPIC_API_KEY")
@@ -4218,15 +4645,27 @@ def _():
     weg, os.environ["PATH"] = os.environ["PATH"], ""
     try:
         assert "nicht gefunden" in ui_sitzung.verfuegbar() and aktion("ermittlung_starten", {"fall": OBERFL})[0] == 400
-        assert "nicht gefunden" in Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"]).text
+        assert "nicht gefunden" in Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]).text and "nicht gefunden" in stand()["claude"]
     finally:
         os.environ["OSINT_CLAUDE"], os.environ["PATH"] = alt_programm, weg
-    # Die Probe für den eigenen Arbeitsplatz (--sitzungsprobe) liest aus den Ereignissen einer echten Sitzung, ob die Sperren gegriffen haben
+    assert stand()["claude"] == ""
+    # Die Probe für den eigenen Arbeitsplatz (--sitzungsprobe) liest aus den Ereignissen echter Sitzungen, ob der Weg trägt: Ablauf, Fortsetzen, Verbote, Rückfrage
     def aufruf(kennung: str, name: str, eingabe: dict) -> dict:
         return {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": kennung, "name": name, "input": eingabe}]}}
 
     def ergebnis(kennung: str, text: str, fehler: bool) -> dict:
         return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "content": text, "is_error": fehler}]}}
+    assert [art for art, _ in ui_sitzung.PROBEN] == ["ablauf", "fortsetzen", "verbot", "rueckfrage"]
+    anfang = {"type": "system", "subtype": "init", "session_id": "s-1", "model": "modell-x", "mcp_servers": [{"name": "osint", "status": "connected"}, {"name": "oberflaeche", "status": "connected"}]}
+    schluss = {"type": "result", "subtype": "success", "is_error": False, "result": f"{ui_sitzung.PROBE_SATZ}: 3 Abfragen."}
+    ablauf = [anfang, aufruf("s", "mcp__osint__fall_status", {"fall": fall, "zweck": "Probe"}), ergebnis("s", '{"abfragen": 3}', False), schluss]
+    punkte = ui_sitzung.probe_auswerten("ablauf", ablauf, [], True, True)
+    assert len(punkte) == 6 and all(gut for gut, _ in punkte) and "s-1, modell-x" in punkte[0][1] and "connected" in punkte[2][1], punkte
+    punkte = ui_sitzung.probe_auswerten("ablauf", [{**anfang, "mcp_servers": []}, schluss], [], True, False)
+    assert [gut for gut, _ in punkte] == [True, True, False, False, True, False] and "Hooks des Projekts liefen nicht" in punkte[5][1], punkte
+    assert not ui_sitzung.probe_auswerten("ablauf", ablauf, [{"werkzeug": "mcp__osint__fall_status"}], True, True)[3][0], "fall_status steht auf der Erlaubt-Liste: Eine Rückfrage dafür ist ein Fehler"
+    assert [gut for gut, _ in ui_sitzung.probe_auswerten("fortsetzen", [anfang, schluss], [], True)] == [True, True, True]
+    assert [gut for gut, _ in ui_sitzung.probe_auswerten("fortsetzen", [anfang, {**schluss, "result": "Ich weiss von nichts."}], [], True)] == [True, True, False]
     freigabe_befehl = {"command": f"python3 tools/fall.py freigabe {fall} aktiv --durch probe --vermerk probe"}
     gesperrt = [aufruf("a", "Bash", freigabe_befehl), ergebnis("a", "Permission to use Bash with this command has been denied.", True),
                 aufruf("b", "Bash", {"command": "cat .env"}), ergebnis("b", "Der Sachbearbeiter hat den Aufruf in der Oberfläche abgelehnt.", True)]
@@ -4256,10 +4695,121 @@ def _():
         fallwerkzeug.freigabe_setzen(fall, "darkweb", entziehen=True, weg="Oberfläche")
     sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
     assert sum(1 for z in sitzung if z.get("schritt") == "Dark-Web-Aufruf abgelehnt") == 1, "die Ablehnung steht genau einmal im Sitzungsprotokoll"
-    # Die Einstellungen des Projekts verlangen für aktive Massnahmen weiter eine Rückfrage, und nichts in der Steuerung stellt ein Modell um
-    einstellungen = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))
-    assert {"mcp__osint__urlquery_einreichen", "mcp__osint__urlscan_einreichen", "mcp__osint__wayback_sichern", "mcp__osint__webcheck_aktiv"} <= set(einstellungen["permissions"]["ask"])
+    # Die Einstellungen des Projekts: aktive Massnahmen und Robin verlangen eine Rückfrage, Arbeitsdateien des Falls nicht, und nichts in der Steuerung stellt ein Modell um
+    einstellungen = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]
+    assert {"mcp__osint__urlquery_einreichen", "mcp__osint__urlscan_einreichen", "mcp__osint__wayback_sichern", "mcp__osint__webcheck_aktiv", "mcp__robin__*"} <= set(einstellungen["ask"])
+    assert {"Edit(./faelle/*/arbeitsstand/**)", "Edit(./faelle/*/befunde.json)", "Edit(./faelle/*/rapport/**)"} <= set(einstellungen["allow"]), "sonst fragt jede Arbeitsdatei der Ermittlung nach"
+    assert {"Edit(./faelle/*/fall.json)", "Edit(./faelle/*/protokoll/**)", "Edit(./faelle/*/rohdaten/**)", "Edit(./faelle/*/eingang/**)"} <= set(einstellungen["deny"])
     assert "--model" not in lesen(PROJEKT / "tools" / "ui" / "sitzung.py").replace('"--model", "--fallback-model"', "")
+    skill = lesen(PROJEKT / ".claude" / "skills" / "ermittlung" / "SKILL.md")
+    assert ui_sitzung.VORGABEN_KOPF.split(" (")[0] in skill and "keine Freigabe" in skill, "der Skill /ermittlung muss wissen, was Vorgaben aus der Oberfläche sind und was sie nicht dürfen"
+
+
+@test("Bedienung, Ergebnisse: Unterlagen ansehen und einzeln holen, alles als ein Archiv mit Sitzungsprotokoll, Verlauf und Prüfsummen. Das Archiv liest nur")
+def _():
+    u = bedien_vorbereiten()
+    b, port = u["b"], u["port"]
+    fall = "BEDIEN-0001"
+    vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (fall, MUSTER, "BEDIEN-0003")}
+    # Die Seite: interaktive Ansichten, jede Unterlage zum Ansehen und Holen, drei Archive. Erzeugen lässt sich nur bedienbar
+    seite_html = json.loads(ui_anfrage(port, f"/api/fall/{MUSTER}/ergebnisse")[2])["html"]
+    seite = Seite(seite_html)
+    verweise = [a.get("href", "") for t, a in seite.elemente if t == "a"]
+    assert not verstoesse(seite_html, MUSTER) and all(f"/fall/{MUSTER}/paket.zip?teile={teile}" in verweise for teile in ("unterlagen", "unterlagen,sitzung", "unterlagen,sitzung,akte")), verweise
+    for ziel in (f"/fall/{MUSTER}/dokument/Abschlussrapport.html?holen=1", f"/fall/{MUSTER}/dokument/indikatoren.csv", f"/fall/{MUSTER}/befunde.json", f"#/fall/{MUSTER}/rapport",
+                 f"#/fall/{MUSTER}/indikatoren", f"#/fall/{MUSTER}/dokument/Abschlussrapport"):
+        assert ziel in verweise, ziel
+    assert any(t == "form" and a.get("data-aktion") == "dokumente" for t, a in seite.elemente) and "INHALT.txt" in seite.text and "Protokoll der Sitzung" in seite.text
+    assert "form" not in Seite(ui_seiten.ergebnisse_seite(ui_daten.Fall(MUSTER), False)).namen(), "im Modus «nur lesen» lässt sich nichts erzeugen"
+    assert "noch nicht erzeugt" in Seite(ui_seiten.ergebnisse_seite(ui_daten.Fall(fall), True)).text
+    # Einzeln holen: als Datei zum Mitnehmen. Zum Ansehen bleibt das Dokument im Rahmen ohne Skripte
+    rapport_datei = PROJEKT / "faelle" / MUSTER / "rapport" / "Abschlussrapport.html"
+    status, kopf, inhalt = ui_anfrage(port, f"/fall/{MUSTER}/dokument/Abschlussrapport.html?holen=1")
+    assert status == 200 and f'attachment; filename="{MUSTER}_Abschlussrapport.html"' == kopf["content-disposition"] and inhalt == rapport_datei.read_bytes()
+    assert "content-disposition" not in ui_anfrage(port, f"/fall/{MUSTER}/dokument/Abschlussrapport.html")[1]
+    status, kopf, inhalt = ui_anfrage(port, f"/fall/{MUSTER}/befunde.json")
+    assert status == 200 and "attachment" in kopf["content-disposition"] and "sandbox" in kopf["content-security-policy"] and inhalt == (PROJEKT / "faelle" / MUSTER / "befunde.json").read_bytes()
+    assert ui_anfrage(port, f"/fall/{fall}/befunde.json")[0] == 404 and ui_anfrage(port, "/fall/GIBT-ES-NICHT/paket.zip")[0] == 404
+    # Das Archiv: Unterlagen, Sitzungsprotokoll (nur die Zeilen dieses Falls), Verlauf aus dem Chat, und INHALT.txt mit der Prüfsumme jeder Datei
+    hook("protokoll_hook.py", {"hook_event_name": "UserPromptSubmit", "session_id": FALSCHE_SITZUNG, "prompt": f"/ermittlung {OBERFL}"})     # dieselbe Sitzung berührt einen anderen Fall
+    status, kopf, inhalt = ui_anfrage(port, f"/fall/{fall}/paket.zip?teile=unterlagen,sitzung")
+    assert status == 200 and kopf["content-type"] == "application/zip" and kopf["content-disposition"] == f'attachment; filename="{fall}_Unterlagen_und_Sitzungsprotokoll.zip"', kopf
+    archiv = zipfile.ZipFile(io.BytesIO(inhalt))
+    namen = archiv.namelist()
+    assert archiv.testzip() is None and namen[0] == "INHALT.txt" and {"unterlagen/Ermittlungsprotokoll.html", "unterlagen/Datenblaetter.html", f"sitzung/{ui_sitzung.verlauf_datei(b)}",
+                                                                      f"sitzung/{FALSCHE_SITZUNG}.jsonl"} <= set(namen) and not [n for n in namen if n.startswith("akte/")], namen
+    inhaltsliste = archiv.read("INHALT.txt").decode("utf-8")
+    assert "Protokollkette: unversehrt" in inhaltsliste and f"Fall {fall}: Phishing Kundenportal" in inhaltsliste and "Abschlussrapport: noch nicht erzeugt." in inhaltsliste, inhaltsliste[:600]
+    for name in namen[1:]:
+        assert f"{hashlib.sha256(archiv.read(name)).hexdigest()}  {len(archiv.read(name)):>10}  {name}" in inhaltsliste, f"{name}: Prüfsumme fehlt in INHALT.txt"
+    zeilen = [json.loads(z) for name in namen if name.endswith(".jsonl") for z in archiv.read(name).decode("utf-8").splitlines()]
+    assert len(zeilen) > 20 and all(z["fall"] == fall for z in zeilen), "im Auszug des Sitzungsprotokolls stehen nur die Zeilen dieses Falls"
+    assert "Ermittlung starten: /ermittlung" in archiv.read(f"sitzung/{ui_sitzung.verlauf_datei(b)}").decode("utf-8")
+    # Die ganze Fallakte: mit Eingang, Protokollkette und Rohdaten. Klartext ist auch darin keiner
+    status, kopf, inhalt = ui_anfrage(port, "/fall/BEDIEN-0003/paket.zip?teile=unterlagen,sitzung,akte")
+    archiv = zipfile.ZipFile(io.BytesIO(inhalt))
+    assert status == 200 and "BEDIEN-0003_Fallakte.zip" in kopf["content-disposition"] and {"akte/fall.json", "akte/eingang/rapport-01.txt", "akte/eingang/.freigabe.json"} <= set(archiv.namelist())
+    person = next(wert for typ, wert in pruefsatz.rapport(3).namen.values() if typ == "PERSON")
+    assert person.encode("utf-8") not in b"".join(archiv.read(n) for n in archiv.namelist()), "das Archiv enthält die pseudonymisierte Akte, keinen Klartext"
+    muster_archiv = zipfile.ZipFile(io.BytesIO(ui_anfrage(port, f"/fall/{MUSTER}/paket.zip?teile=akte")[2]))
+    rohdaten = [n for n in muster_archiv.namelist() if n.startswith("akte/rohdaten/")]
+    assert rohdaten and all(muster_archiv.read(n) == (PROJEKT / "faelle" / MUSTER / n[5:]).read_bytes() for n in rohdaten) and "akte/protokoll/abfragen.jsonl" in muster_archiv.namelist()
+    assert "Unterlagen_und_Sitzungsprotokoll" in ui_anfrage(port, f"/fall/{fall}/paket.zip?teile=unsinn")[1]["content-disposition"]
+    assert (ui_paket.dateiname({"sitzung"}), ui_paket.dateiname(set()), ui_paket.dateiname({"unterlagen"}), ui_paket.dateiname({"akte", "unterlagen"})) == \
+        ("Sitzungsprotokoll", "Unterlagen_und_Sitzungsprotokoll", "Unterlagen", "Fallakte")
+    # Der Verlauf im Speicher ist der neueste: Er ersetzt im Archiv die Datei gleichen Namens aus dem Arbeitsstand
+    roh, _hinweise = ui_paket.bauen(ui_daten.Fall(fall), {"sitzung"}, [{"zeit": "10:00:00", "wer": "oberfläche", "text": "nur im Speicher"}], ui_sitzung.verlauf_datei(b))
+    eigenes = zipfile.ZipFile(io.BytesIO(roh))
+    assert "nur im Speicher" in eigenes.read(f"sitzung/{ui_sitzung.verlauf_datei(b)}").decode("utf-8") and not [n for n in eigenes.namelist() if n.startswith("unterlagen/")]
+    _roh, hinweise = ui_paket.bauen(ui_daten.Fall(OBERFL), {"sitzung"})
+    assert any("Verlauf aus dem Chat" in h for h in hinweise)
+    for f, abdruck in vorher.items():
+        assert akte_abdruck(PROJEKT / "faelle" / f) == abdruck, f"{f}: Das Archiv hat die Fallakte verändert"
+
+
+@test("Formate: Aus Word, OpenDocument, Excel, PowerPoint, RTF und E-Mail entsteht eine Textfassung im Speicher. Was sich nicht lesen lässt, sagt warum")
+def _():
+    assert pii_text_aus("a.docx", docx_bytes("Zeile eins & mehr", "IP 203.0.113.7")).strip() == "Zeile eins & mehr\nIP 203.0.113.7"
+    assert "Erika Erfunden" not in pii_text_aus("a.docx", docx_bytes("Text")), "Eigenschaften der Datei gehören nicht zur Textfassung"
+    odt = zip_bytes({"content.xml": '<office:document-content><office:body><office:text><text:h>Titel</text:h><text:p>Erste<text:s text:c="3"/>Zeile<text:tab/>Tab</text:p>'
+                                    "<text:p>Tel. 079 123 45 67</text:p></office:text></office:body></office:document-content>"})
+    assert pii_text_aus("a.odt", odt).strip() == "Titel\nErste   Zeile\tTab\nTel. 079 123 45 67"
+    assert [f.stufe for f in pii_pruefen(pii_text_aus("a.odt", odt))[0]] == ["sperre"], "die PII-Prüfung sieht, was im Dokument steht"
+    xlsx = zip_bytes({"xl/workbook.xml": '<workbook><sheets><sheet name="Zahlungen" sheetId="1"/><sheet name="Zwei &amp; mehr" sheetId="2"/></sheets></workbook>',
+                      "xl/sharedStrings.xml": "<sst><si><t>Datum</t></si><si><r><t>Bet</t></r><r><t>rag</t></r></si><si><t>[PERSON_01]</t></si></sst>",
+                      "xl/worksheets/sheet1.xml": '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="s"><v>2</v></c>'
+                                                  '<c r="B2"><v>1250.5</v></c><c r="C2" t="inlineStr"><is><t>bc1qbeispiel</t></is></c></row></sheetData></worksheet>',
+                      "xl/worksheets/sheet2.xml": '<worksheet><sheetData><row r="1"><c r="A1"><v>42</v></c><c r="B1"/></row></sheetData></worksheet>'})
+    assert pii_text_aus("a.xlsx", xlsx).strip() == "Tabelle: Zahlungen\nDatum\tBetrag\n[PERSON_01]\t1250.5\tbc1qbeispiel\n\nTabelle: Zwei & mehr\n42"
+    pptx = zip_bytes({"ppt/slides/slide2.xml": "<p:sld><a:p><a:r><a:t>Zweite Folie</a:t></a:r></a:p></p:sld>",
+                      "ppt/slides/slide1.xml": "<p:sld><a:p><a:r><a:t>Erste</a:t></a:r><a:br/><a:r><a:t>Folie</a:t></a:r></a:p></p:sld>",
+                      "ppt/notesSlides/notesSlide1.xml": "<p:notes><a:p><a:r><a:t>Notiz</a:t></a:r></a:p></p:notes>"})
+    assert pii_text_aus("a.pptx", pptx).strip() == "Folie 1\nErste\nFolie\n\nFolie 2\nZweite Folie\n\nNotizen zu Folie 1\nNotiz"
+    rs = chr(92)
+    rtf = ("{" + rs + "rtf1" + rs + "ansi" + rs + "ansicpg1252" + rs + "deff0{" + rs + "fonttbl{" + rs + "f0 Arial;}}{" + rs + "info{" + rs + "author Erika Erfunden}}" + rs + "f0" + rs
+           + "fs20 Erste Zeile mit " + rs + "'e4 und " + rs + "u8364? Zeichen" + rs + "par Zweite" + rs + "tab Zeile " + rs + "{geklammert" + rs + "}" + rs + "par}").encode("ascii")
+    assert pii_text_aus("a.rtf", rtf).strip() == "Erste Zeile mit ä und € Zeichen\nZweite\tZeile {geklammert}", repr(pii_text_aus("a.rtf", rtf))
+    mail = EmailMessage()
+    mail["From"], mail["To"], mail["Subject"] = "support@boese.example", "[PERSON_01] <[EMAIL_01]>", "Ihre Zahlung"
+    mail.set_content("Guten Tag\n\nBitte zahlen Sie an bc1qbeispiel.\n")
+    mail.add_alternative("<html><body><p>Guten Tag</p><script>alert(1)</script><p>HTML-Fassung</p></body></html>", subtype="html")
+    mail.add_attachment(b"Spalte;Wert\nA;1\n", maintype="text", subtype="csv", filename="liste.csv")
+    text, anhaenge = pii_mail_lesen(mail.as_bytes())
+    assert text.startswith("From: support@boese.example\nTo: [PERSON_01] <[EMAIL_01]>\nSubject: Ihre Zahlung\nAnhänge: liste.csv\n\nGuten Tag") and "alert(1)" not in text, text
+    assert anhaenge == [("liste.csv", b"Spalte;Wert\nA;1\n")] and pii_text_aus("a.eml", mail.as_bytes()) == text
+    assert pii_text_aus("utf16.txt", "Umlaut ä in UTF-16".encode("utf-16")).strip() == "Umlaut ä in UTF-16"
+    for name, grund in (("x.png", "Bild"), ("x.jpg", "Bild"), ("x.doc", "altes Word-Format"), ("x.msg", "Outlook"), ("x.zip", "Archiv"), ("x.mp4", "Ton- oder Videodatei"), ("x.exe", "Binärdatei"),
+                        ("kaputt.docx", ""), ("kaputt.xlsx", "")):
+        try:
+            pii_text_aus(name, b"\x00\x01\x02" * 10)
+            raise AssertionError(f"{name} wurde gelesen")
+        except PiiNichtLesbar as e:
+            assert grund in str(e), (name, str(e))
+    # Platzhalter von anderer Hand: Die höchste Nummer je Typ zählt, neue Platzhalter beginnen dahinter
+    assert ps.platzhalter_stand("[PERSON_08] und [PERSON_02], [TEL_03]", "[ORG_11]", "") == {"PERSON": 8, "TEL": 3, "ORG": 11}
+    v = ps.Vorgang("Erreichbar unter 079 123 45 67.", belegt={"TEL": 3})
+    assert "[TEL_04]" in v.ergebnis().text and "[TEL_01]" not in v.ergebnis().text, v.ergebnis().text
+    assert "[TEL_01]" in ps.Vorgang("Erreichbar unter 079 123 45 67.").ergebnis().text
 
 
 @test("Bedienung, Quellen: Bereitschaft, Testabfrage je Quelle und Stand der Listen. Von Schlüsseln zeigt die Seite nur den Namen der Variablen")

@@ -9,12 +9,18 @@ Grundsätze:
     tools/audit_pruefen.py. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt.
   - Klartext bearbeitet nur dieser Server, nie eine Claude-Sitzung. Er liegt im Speicher, die Zuordnungstabelle und der
     zurückgeführte Rapport in der Ablage ausserhalb des Projektordners. Nichts davon steht in einem Protokoll.
+
+Der Akten-Eingang («Korb»): Hochgeladene Dateien liegen im Speicher, bis der Sachbearbeiter sie in einen Fall aufnimmt
+oder entfernt. Je Datei entsteht eine Textfassung. Geprüft, pseudonymisiert und aufgenommen wird die Textfassung, nie das
+Original: In einem Original können Angaben stecken, die niemand sieht (Verfasser, eingebettete Bilder, Änderungsverlauf).
+Was sich nicht lesen lässt (Bilder, Ton, alte Formate), lässt sich nicht prüfen und bleibt beim Sachbearbeiter.
 """
 from __future__ import annotations
 
-import base64
-import binascii
+import csv
+import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -25,24 +31,32 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 from gateway import plattform
-from gateway.akte import FALL_RE, FREIGABE_TEXT, FREIGABEN, PROJEKT, fall_daten, fall_pfad
+from gateway.akte import FALL_RE, FREIGABE_TEXT, FREIGABEN, PROJEKT, eingang_stand, fall_daten, fall_pfad
 from gateway.quellen import QUELLEN
 from tools import _pseudo as ps, beleg as belegwerkzeug, fall as fallwerkzeug, reidentifizieren as rueck
-from tools.pii_pruefung import NichtLesbar, bericht as pii_bericht, pruefen as pii_pruefen, text_lesen
+from tools.pii_pruefung import GEWANDELT, NichtLesbar, bericht as pii_bericht, mail_lesen, pruefen as pii_pruefen, text_aus, text_lesen
 
-ENDUNGEN = (".txt", ".md", ".docx", ".pdf")
-GROESSE = 25 * 1024 * 1024          # grösstes Dokument, das die Oberfläche annimmt
+DATEI_GROESSE = 60 * 1024 * 1024        # grösste einzelne Datei im Akten-Eingang
+KORB_GROESSE = 600 * 1024 * 1024        # alles zusammen, was ein Akten-Eingang im Speicher hält
+KORB_EINTRAEGE = 2000
+AUSPACK_TIEFE = 2                       # ZIP im ZIP, Anhang in der E-Mail: so tief wird ausgepackt
+UEBERGEHEN = ("__MACOSX/", ".DS_Store", "Thumbs.db", "desktop.ini")     # was Betriebssysteme in Archive legen
 TICKET_SEKUNDEN = 120
+ROLLEN = {"rapport": "Rapport", "beilage": "Beilage"}
 WERKZEUGE = {       # was «Dokumente» auslösen kann: Name -> (Bezeichnung, Befehle nach dem Interpreter)
     "rapport": ("Abschlussrapport erzeugen", [["tools/rapport.py", "{fall}"]]),
     "protokoll": ("Ermittlungsprotokoll erzeugen", [["tools/protokoll.py", "{fall}"]]),
     "anhang": ("Datenblätter erzeugen", [["tools/anhang.py", "{fall}", "--ohne-pdf"]]),
     "pdf": ("PDF erzeugen", [["tools/pdf.py", "{fall}"], ["tools/anhang.py", "{fall}"]]),
     "kette": ("Protokollkette prüfen", [["tools/audit_pruefen.py", "{fall}"]]),
+    "alles": ("Alle Dokumente neu erzeugen", [["tools/rapport.py", "{fall}"], ["tools/protokoll.py", "{fall}"], ["tools/pdf.py", "{fall}"], ["tools/anhang.py", "{fall}"]]),
+    # nach einer Ermittlung: Der Rapport steht schon, das Protokoll bekommt die letzten Einträge, PDF und Datenblätter kommen dazu
+    "abschluss": ("Unterlagen nach der Ermittlung erzeugen", [["tools/protokoll.py", "{fall}"], ["tools/pdf.py", "{fall}"], ["tools/anhang.py", "{fall}"]]),
 }
 
 
@@ -84,32 +98,12 @@ def werkzeug_lauf(argumente: list[str], zeit: int = 600) -> tuple[int, str]:
     return r.returncode, (r.stdout + (("\n" + r.stderr) if r.stderr.strip() else "")).strip()
 
 
-class Dokument:
-    """Ein hochgeladenes Dokument. Der Inhalt liegt im Speicher. Auf die Platte kommt er nur kurz und nur ausserhalb des Projekts."""
-
-    def __init__(self, name: str, inhalt_b64: str):
-        self.name = re.sub(r"[^A-Za-z0-9._ äöüÄÖÜ-]", "_", Path(str(name or "")).name).strip() or "dokument.txt"
-        if Path(self.name).suffix.lower() not in ENDUNGEN:
-            raise Fehler(f"Dieses Format nimmt die Oberfläche nicht an. Möglich: {', '.join(ENDUNGEN)}.")
-        try:
-            self.inhalt = base64.b64decode(inhalt_b64 or "", validate=True)
-        except (binascii.Error, ValueError) as e:
-            raise Fehler("Das Dokument kam beschädigt an. Bitte noch einmal hineinziehen.") from e
-        if not self.inhalt:
-            raise Fehler("Das Dokument ist leer.")
-        if len(self.inhalt) > GROESSE:
-            raise Fehler(f"Das Dokument ist grösser als {GROESSE // (1024 * 1024)} MB.")
-
-    def text(self) -> str:
-        if Path(self.name).suffix.lower() in (".txt", ".md"):
-            return self.inhalt.decode("utf-8-sig", "replace")
-        with Zwischenablage() as ordner:        # Word und PDF brauchen eine Datei, um gelesen zu werden
-            datei = ordner / self.name
-            datei.write_bytes(self.inhalt)
-            try:
-                return text_lesen(datei)
-            except NichtLesbar as e:
-                raise Fehler(str(e)) from e
+def sauberer_name(roh: object) -> tuple[str, str]:
+    """Aus dem Namen einer hochgeladenen Datei (mit Ordnern, aus einem Archiv, aus einer E-Mail) werden ein Dateiname und ein
+    Ordner zur Anzeige. Nichts davon kann aus einem Ordner hinausführen: Trenner, «..» und Sonderzeichen fallen weg."""
+    teile = [t for t in re.split(r"[\\/]+", str(roh or "")) if t.strip() and t.strip() not in (".", "..")]
+    teile = [re.sub(r"[^A-Za-z0-9._ äöüÄÖÜéèàçâêîôûÉÈÀ()+-]", "_", t).strip(" .")[:120] or "_" for t in teile]
+    return (teile[-1] if teile else "dokument.txt"), "/".join(teile[:-1])[:200]
 
 
 class Zwischenablage:
@@ -130,12 +124,58 @@ class Zwischenablage:
         shutil.rmtree(self.ordner, ignore_errors=True)
 
 
-class Pseudo:
-    """Ein Klartext-Dokument auf dem Weg durch die Bestätigung. Lebt nur im Speicher des Servers."""
+class Eintrag:
+    """Eine Datei im Akten-Eingang. Original und Textfassung liegen im Speicher des Servers, nirgends sonst."""
 
-    def __init__(self, name: str, text: str, zuordnung: list):
-        self.name = name
-        self.vorgang = ps.Vorgang(text, zuordnung=zuordnung)
+    def __init__(self, name: str, ordner: str, inhalt: bytes, summe: str):
+        self.id = secrets.token_urlsafe(8)
+        self.name, self.ordner = name, ordner
+        self.inhalt: bytes | None = inhalt      # das Original. Nach der Pseudonymisierung verlässt es den Speicher
+        self.groesse, self.sha256 = len(inhalt), summe
+        self.text: str | None = None            # die Textfassung: Sie wird geprüft, pseudonymisiert und aufgenommen
+        self.grund = ""                         # warum sich die Datei nicht lesen lässt
+        self.sperren = self.hinweise = self.platzhalter = 0
+        self.bericht = ""                       # Bericht der PII-Prüfung, Fundstellen maskiert
+        self.rolle = "beilage"
+        self.vorgang: str | None = None         # Kennung einer laufenden Pseudonymisierung
+        self.ersetzt: int | None = None         # Zahl der ersetzten Fundstellen, sobald eine Pseudonymisierung übernommen ist
+
+    @property
+    def stand(self) -> str:
+        return "nicht_lesbar" if self.text is None else "personendaten" if self.sperren else "sauber"
+
+    @property
+    def endung(self) -> str:
+        return Path(self.name).suffix.lower()
+
+    def kurz(self) -> dict:
+        return {"id": self.id, "name": self.name, "ordner": self.ordner, "groesse": self.groesse, "endung": self.endung, "stand": self.stand, "grund": self.grund,
+                "sperren": self.sperren, "hinweise": self.hinweise, "platzhalter": self.platzhalter, "rolle": self.rolle, "ersetzt": self.ersetzt,
+                "vorgang": self.vorgang or ""}
+
+
+class Korb:
+    """Der Akten-Eingang zu einem Ziel: zu einem neuen Fall oder zu einem bestehenden."""
+
+    def __init__(self, zuordnung: list | tuple = ()):
+        self.eintraege: dict[str, Eintrag] = {}
+        self.zuordnung = list(zuordnung)        # (Platzhalter, Klartext): wächst mit jedem Dokument, das hier pseudonymisiert wird
+
+    def groesse(self) -> int:
+        return sum(len(e.inhalt or b"") + len((e.text or "").encode("utf-8")) for e in self.eintraege.values())
+
+    def belegt(self, *weitere: str) -> dict:
+        """Die höchste Nummer je Typ unter allen Platzhaltern, die in diesem Eingang, in seiner Zuordnung und in den weiteren
+        Texten (den Dokumenten, die schon im Fall liegen) stehen."""
+        return ps.platzhalter_stand(*(e.text or "" for e in self.eintraege.values()), *(p for p, _ in self.zuordnung), *weitere)
+
+
+class Pseudo:
+    """Ein Dokument des Akten-Eingangs auf dem Weg durch die Bestätigung. Lebt nur im Speicher des Servers."""
+
+    def __init__(self, name: str, text: str, zuordnung: list, belegt: dict, ziel: str, eintrag: str):
+        self.name, self.ziel, self.eintrag = name, ziel, eintrag
+        self.vorgang = ps.Vorgang(text, zuordnung=zuordnung, belegt=belegt)
         self.beruehrt = time.time()
 
 
@@ -147,6 +187,7 @@ class Bedienung:
         self.ablage = Path(ablage or eigen).expanduser() if (ablage or eigen) else Path.home() / "OSINT-Ablage"
         if innerhalb(self.ablage):
             raise Fehler("Die Ablage für Klartext muss ausserhalb des Projektordners liegen.")
+        self.koerbe: dict[str, Korb] = {}       # Ziel -> Akten-Eingang. "" ist der Eingang für einen neuen Fall
         self.pseudo: dict[str, Pseudo] = {}
         self.tickets: dict[str, tuple[Path, float]] = {}
         self.sitzung = "oberflaeche-" + datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -174,85 +215,258 @@ class Bedienung:
         subprocess.run([python(), "-X", "utf8", str(PROJEKT / ".claude" / "hooks" / "protokoll_hook.py")], input=json.dumps(ereignis, ensure_ascii=False),
                        cwd=str(PROJEKT), env=umgebung(), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
 
-    # ---- 1. Fall anlegen, Dokumente aufnehmen
     def _fall_id(self, fall: str) -> str:
         if not FALL_RE.match(fall or ""):
             raise Fehler("Die Fall-ID besteht aus Buchstaben, Ziffern, Punkt, Strich und Unterstrich (3 bis 64 Zeichen).")
         return fall
 
-    def dokument_pruefen(self, d: dict) -> dict:
-        """Die PII-Prüfung für ein Dokument, das schon geschwärzt sein soll. Nimmt nichts auf."""
-        dok = Dokument(d.get("name"), d.get("inhalt"))
-        funde, platzhalter = pii_pruefen(dok.text())
-        sperren = [f for f in funde if f.stufe == "sperre"]
-        return {"sauber": not sperren, "sperren": len(sperren), "hinweise": sum(1 for f in funde if f.stufe == "hinweis"),
-                "platzhalter": sum(platzhalter.values()), "bericht": pii_bericht(dok.name, funde, platzhalter)}
-
-    def _aufnehmen(self, fall: str, name: str, inhalt: bytes, neu: dict | None) -> dict:
-        """Schreibt das Dokument kurz in die Zwischenablage und übergibt es tools/fall.py. Das Werkzeug prüft selbst noch einmal."""
-        with Zwischenablage() as ordner:
-            datei = ordner / name
-            datei.write_bytes(inhalt)
-            if neu is not None:
-                befehl = ["tools/fall.py", "neu", fall, "--titel", neu.get("titel") or fall, "--rapport", str(datei)]
-                for schalter, feld in (("--auftrag", "auftrag"), ("--kuerzel", "kuerzel"), ("--klassifizierung", "klassifizierung")):
-                    if str(neu.get(feld) or "").strip():
-                        befehl += [schalter, " ".join(str(neu[feld]).split())]
-            else:
-                befehl = ["tools/fall.py", "aufnehmen", fall, str(datei)]
-            code, ausgabe = werkzeug_lauf(befehl, 180)
-        ausgabe = ausgabe.replace(str(ordner), "(Zwischenablage)")
-        return {"aufgenommen": code == 0, "ausgabe": ausgabe, "fall": fall}
-
-    def fall_anlegen(self, d: dict) -> dict:
-        """Weg «Dokument ist schon geschwärzt»: PII-Prüfung, dann tools/fall.py neu. Bei Sperrfunden entsteht nichts."""
-        fall = self._fall_id(str(d.get("fall") or "").strip())
-        if (fall_pfad(fall) / "fall.json").exists():
-            raise Fehler(f"Den Fall «{fall}» gibt es schon. Weitere Dokumente lassen sich im Fall nachziehen.")
-        dok = Dokument(d.get("name"), d.get("inhalt"))
-        pruefung = self.dokument_pruefen(d)
-        if not pruefung["sauber"]:
-            return {"aufgenommen": False, "fall": fall, "ausgabe": pruefung["bericht"],
-                    "meldung": "Die PII-Prüfung hat Personendaten gefunden. Es wurde nichts angelegt und nichts aufgenommen."}
-        ergebnis = self._aufnehmen(fall, dok.name, dok.inhalt, {k: d.get(k) for k in ("titel", "auftrag", "kuerzel", "klassifizierung")})
-        if ergebnis["aufgenommen"]:
-            self.vermerken(fall, "Fall angelegt", f"Dokument {dok.name}, geschwärzt angeliefert")
-        return {**ergebnis, "meldung": f"Fall {fall} angelegt." if ergebnis["aufgenommen"] else "Der Fall liess sich nicht anlegen."}
-
-    def dokument_aufnehmen(self, d: dict) -> dict:
-        fall = self._fall_id(str(d.get("fall") or ""))
-        fall_daten(fall)
-        dok = Dokument(d.get("name"), d.get("inhalt"))
-        pruefung = self.dokument_pruefen(d)
-        if not pruefung["sauber"]:
-            return {"aufgenommen": False, "fall": fall, "ausgabe": pruefung["bericht"],
-                    "meldung": "Die PII-Prüfung hat Personendaten gefunden. Das Dokument wurde nicht aufgenommen."}
-        ergebnis = self._aufnehmen(fall, dok.name, dok.inhalt, None)
-        if ergebnis["aufgenommen"]:
-            self.vermerken(fall, "Dokument aufgenommen", f"{dok.name}, geschwärzt angeliefert")
-        return {**ergebnis, "meldung": "Dokument aufgenommen." if ergebnis["aufgenommen"] else "Das Dokument wurde nicht aufgenommen."}
-
-    # ---- Klartext: der lokale Bildschirm der Pseudonymisierung
     def zuordnung_pfad(self, fall: str) -> Path:
         return self.ablage / self._fall_id(fall) / "zuordnung.csv"
 
-    def pseudo_beginnen(self, d: dict) -> dict:
-        dok = Dokument(d.get("name"), d.get("inhalt"))
-        fall = str(d.get("fall") or "").strip()
-        zuordnung = []
-        if fall and self.zuordnung_pfad(fall).is_file():        # weiteres Dokument zum selben Fall: gleiche Angabe, gleicher Platzhalter
-            zuordnung = ps.zuordnung_lesen(self.zuordnung_pfad(fall))
+    # ---- 1. Akten-Eingang: hochladen, prüfen, ordnen
+    def korb(self, ziel: object) -> Korb:
+        """Der Akten-Eingang zu einem Ziel. Zu einem bestehenden Fall kennt er dessen Zuordnungstabelle: Dieselbe Angabe bekommt
+        denselben Platzhalter."""
+        ziel = str(ziel or "").strip()
+        with self.sperre:
+            if ziel:
+                self._fall_id(ziel)
+                fall_daten(ziel)        # den Fall muss es geben
+            if ziel not in self.koerbe:
+                zuordnung: list = []
+                tabelle = self.zuordnung_pfad(ziel) if ziel else None
+                if tabelle is not None and tabelle.is_file():
+                    try:
+                        zuordnung = ps.zuordnung_lesen(tabelle)
+                    except (ValueError, OSError) as e:
+                        raise Fehler(f"Die Zuordnungstabelle zu Fall {ziel} lässt sich nicht lesen: {e}") from e
+                self.koerbe[ziel] = Korb(zuordnung)
+            return self.koerbe[ziel]
+
+    def _im_fall(self, ziel: str) -> list[str]:
+        """Die Texte der geprüften Dokumente, die im Eingang eines Falls liegen. Aus ihnen liest die Pseudonymisierung, welche
+        Platzhalter schon vergeben sind: Eine Nummer meint nie zwei Personen, auch wenn sie von anderer Hand stammt."""
+        if not ziel:
+            return []
+        eingang, texte = fall_pfad(ziel) / "eingang", []
+        for name in eingang_stand(fall_pfad(ziel))[0]:
+            datei = eingang / name
+            if datei.suffix.lower() not in GEWANDELT and datei.stat().st_size < DATEI_GROESSE:
+                texte.append(datei.read_text(encoding="utf-8", errors="replace"))
+        return texte
+
+    def _eintrag(self, korb: Korb, kennung: object) -> Eintrag:
+        e = korb.eintraege.get(str(kennung or ""))
+        if e is None:
+            raise Fehler("Diese Datei liegt nicht mehr im Akten-Eingang.", 404)
+        return e
+
+    def _auswahl(self, korb: Korb, d: dict, alle: bool = False) -> list[Eintrag]:
+        """Die gewählten Dateien. Ist nichts gewählt, gilt das nur beim Aufnehmen als «alle»: Entfernen und Ordnen brauchen eine Auswahl."""
+        kennungen = d.get("ids")
+        if isinstance(kennungen, str):
+            kennungen = [k for k in kennungen.split(",") if k]
+        if not kennungen:
+            if alle:
+                return list(korb.eintraege.values())
+            raise Fehler("Bitte zuerst Dateien auswählen.")
+        return [self._eintrag(korb, k) for k in dict.fromkeys(str(k) for k in kennungen)]
+
+    def _lesen(self, e: Eintrag) -> None:
+        """Die Textfassung einer Datei und ihre PII-Prüfung. Was sich nicht lesen lässt, bekommt den Grund."""
+        e.text, e.grund = None, ""
+        try:
+            e.text = text_aus(e.name, e.inhalt or b"")
+        except NichtLesbar as f:
+            grund = str(f)
+            if e.endung == ".pdf" and "pdftotext meldet" in grund:       # nicht jede Fassung von pdftotext liest von der Standardeingabe
+                try:
+                    with Zwischenablage() as ordner:
+                        (ordner / "dokument.pdf").write_bytes(e.inhalt or b"")
+                        e.text = text_lesen(ordner / "dokument.pdf")
+                except NichtLesbar as zweiter:
+                    grund = str(zweiter).replace("dokument.pdf", e.name)
+            if e.text is None:
+                e.grund = grund.split(": ", 1)[-1]
+        self._pruefen(e)
+
+    def _pruefen(self, e: Eintrag) -> None:
+        e.sperren = e.hinweise = e.platzhalter = 0
+        e.bericht = ""
+        if e.text is None:
+            return
+        funde, platzhalter = pii_pruefen(e.text)
+        e.sperren = sum(1 for f in funde if f.stufe == "sperre")
+        e.hinweise = sum(1 for f in funde if f.stufe == "hinweis")
+        e.platzhalter = sum(platzhalter.values())
+        e.bericht = pii_bericht(e.name, funde, platzhalter)
+
+    def _einlegen(self, korb: Korb, name: str, ordner: str, inhalt: bytes, tiefe: int, neu: list, meldungen: list) -> None:
+        if not inhalt:
+            meldungen.append(f"{name}: leer, nicht angenommen.")
+            return
+        if len(inhalt) > DATEI_GROESSE:
+            meldungen.append(f"{name}: grösser als {DATEI_GROESSE // (1024 * 1024)} MB, nicht angenommen.")
+            return
+        endung = Path(name).suffix.lower()
+        if endung == ".zip" and tiefe < AUSPACK_TIEFE:
+            self._auspacken(korb, name, ordner, inhalt, tiefe, neu, meldungen)
+            return
+        summe = hashlib.sha256(inhalt).hexdigest()
+        if any(e.sha256 == summe for e in korb.eintraege.values()):
+            meldungen.append(f"{name}: liegt mit demselben Inhalt schon im Akten-Eingang.")
+            return
+        if len(korb.eintraege) >= KORB_EINTRAEGE:
+            meldungen.append(f"{name}: Der Akten-Eingang fasst höchstens {KORB_EINTRAEGE} Dateien.")
+            return
+        if korb.groesse() + len(inhalt) > KORB_GROESSE:
+            meldungen.append(f"{name}: Der Akten-Eingang ist voll ({KORB_GROESSE // (1024 * 1024)} MB). Bitte zuerst aufnehmen oder entfernen.")
+            return
+        e = Eintrag(name, ordner, inhalt, summe)
+        self._lesen(e)
+        if e.text is not None and not any(x.rolle == "rapport" for x in korb.eintraege.values()) and not self._ist_fall(korb):
+            e.rolle = "rapport"     # das erste lesbare Dokument zu einem neuen Fall gilt als Rapport, bis der Sachbearbeiter es anders ordnet
+        korb.eintraege[e.id] = e
+        neu.append(e)
+        if endung == ".eml" and tiefe < AUSPACK_TIEFE:      # Anhänge einer E-Mail sind eigene Dokumente
+            try:
+                anhaenge = mail_lesen(inhalt)[1]
+            except NichtLesbar:
+                anhaenge = []
+            for an_name, an_inhalt in anhaenge:
+                self._einlegen(korb, sauberer_name(an_name)[0], "/".join(x for x in (ordner, name) if x), an_inhalt, tiefe + 1, neu, meldungen)
+
+    def _ist_fall(self, korb: Korb) -> bool:
+        return any(k is korb and ziel for ziel, k in self.koerbe.items())
+
+    def _auspacken(self, korb: Korb, name: str, ordner: str, inhalt: bytes, tiefe: int, neu: list, meldungen: list) -> None:
+        try:
+            archiv = zipfile.ZipFile(io.BytesIO(inhalt))
+        except (zipfile.BadZipFile, OSError):
+            meldungen.append(f"{name}: kein gültiges ZIP-Archiv, nicht angenommen.")
+            return
+        with archiv:
+            teile = [i for i in archiv.infolist() if not i.is_dir()]
+            if len(teile) > KORB_EINTRAEGE:
+                meldungen.append(f"{name}: Das Archiv enthält mehr als {KORB_EINTRAEGE} Dateien, nicht angenommen.")
+                return
+            entpackt = 0
+            for info in teile:
+                teil_name, teil_ordner = sauberer_name(info.filename)
+                if any(u in info.filename for u in UEBERGEHEN) or Path(info.filename).name.startswith("._"):
+                    continue
+                if info.flag_bits & 0x1:
+                    meldungen.append(f"{teil_name} (aus {name}): mit einem Passwort geschützt, nicht entpackt.")
+                    continue
+                entpackt += info.file_size
+                if info.file_size > DATEI_GROESSE or entpackt > KORB_GROESSE:
+                    meldungen.append(f"{teil_name} (aus {name}): entpackt zu gross, nicht angenommen.")
+                    continue
+                try:
+                    daten = archiv.read(info)
+                except (RuntimeError, zipfile.BadZipFile, OSError, EOFError, NotImplementedError):
+                    meldungen.append(f"{teil_name} (aus {name}): liess sich nicht entpacken.")
+                    continue
+                self._einlegen(korb, teil_name, "/".join(x for x in (ordner, name, teil_ordner) if x), daten, tiefe + 1, neu, meldungen)
+
+    def hochladen(self, ziel: object, pfadname: object, inhalt: bytes) -> dict:
+        """Eine Datei kommt in den Akten-Eingang: ein Dokument, eine Beilage, ein ZIP-Archiv (wird entpackt) oder eine E-Mail
+        (ihre Anhänge werden eigene Dokumente). Jede Datei wird sofort gelesen und geprüft. In einen Fall kommt hier noch nichts."""
+        korb = self.korb(ziel)
+        name, ordner = sauberer_name(pfadname)
+        neu: list[Eintrag] = []
+        meldungen: list[str] = []
+        with self.sperre:
+            self._einlegen(korb, name, ordner, inhalt, 0, neu, meldungen)
+        return {"neu": len(neu), "eintraege": [e.kurz() for e in neu], "meldungen": meldungen,
+                "meldung": (f"{len(neu)} Datei(en) im Akten-Eingang." if neu else "Nichts angenommen.") + (" " + " ".join(meldungen) if meldungen else "")}
+
+    def korb_entfernen(self, d: dict) -> dict:
+        korb = self.korb(d.get("ziel"))
+        with self.sperre:
+            weg = self._auswahl(korb, d)
+            for e in weg:
+                if e.vorgang:
+                    self.pseudo.pop(e.vorgang, None)
+                korb.eintraege.pop(e.id, None)
+            if not korb.eintraege:      # ein leerer Eingang vergisst auch, was in ihm pseudonymisiert wurde
+                self.koerbe.pop(str(d.get("ziel") or "").strip(), None)
+        return {"meldung": f"{len(weg)} Datei(en) aus dem Akten-Eingang entfernt. Sie sind aus dem Speicher der Oberfläche gelöscht."}
+
+    def korb_rolle(self, d: dict) -> dict:
+        korb, rolle = self.korb(d.get("ziel")), str(d.get("rolle") or "")
+        if rolle not in ROLLEN:
+            raise Fehler("Diese Rolle gibt es nicht.")
+        with self.sperre:
+            auswahl = self._auswahl(korb, d)
+            for e in auswahl:
+                e.rolle = rolle
+        return {"meldung": f"{len(auswahl)} Datei(en) als {ROLLEN[rolle]} geordnet."}
+
+    def korb_verschieben(self, d: dict) -> dict:
+        """Legt gewählte Dateien in den Akten-Eingang eines anderen Falls oder des neuen Falls. Was hier schon pseudonymisiert
+        wurde, bleibt liegen: Seine Platzhalter gehören zur Zuordnung dieses Eingangs und könnten dort etwas anderes meinen."""
+        quelle, nach = str(d.get("ziel") or "").strip(), str(d.get("nach") or "").strip()
+        if quelle == nach:
+            raise Fehler("Die Dateien liegen schon in diesem Akten-Eingang.")
+        korb, anderer = self.korb(quelle), self.korb(nach)
+        with self.sperre:
+            auswahl = self._auswahl(korb, d)
+            fest = [e for e in auswahl if e.ersetzt is not None or e.vorgang]
+            doppelt = 0
+            for e in (e for e in auswahl if e not in fest):
+                korb.eintraege.pop(e.id, None)
+                if any(x.sha256 == e.sha256 for x in anderer.eintraege.values()):
+                    doppelt += 1        # liegt dort mit demselben Inhalt schon
+                    continue
+                # Zu einem bestehenden Fall ist ein neues Dokument eine Beilage. Zu einem neuen Fall wird das erste lesbare der Rapport
+                e.rolle = "beilage" if nach or e.text is None or any(x.rolle == "rapport" for x in anderer.eintraege.values()) else "rapport"
+                anderer.eintraege[e.id] = e
+            if not korb.eintraege:
+                self.koerbe.pop(quelle, None)
+            if not anderer.eintraege:
+                self.koerbe.pop(nach, None)
+        verschoben = len(auswahl) - len(fest) - doppelt
+        wohin = f"den Akten-Eingang von Fall {nach}" if nach else "den Akten-Eingang für einen neuen Fall"
+        return {"verschoben": verschoben, "nach": nach,
+                "meldung": f"{verschoben} Datei(en) in {wohin} gelegt."
+                           + (f" {doppelt} lagen dort mit demselben Inhalt schon." if doppelt else "")
+                           + (f" {len(fest)} bleiben hier: Sie wurden in diesem Eingang pseudonymisiert und gehören zu seiner Zuordnung." if fest else "")}
+
+    def korb_umbenennen(self, d: dict) -> dict:
+        korb = self.korb(d.get("ziel"))
+        e = self._eintrag(korb, d.get("id"))
+        name = sauberer_name(d.get("name"))[0]
+        if Path(name).suffix.lower() != e.endung:
+            name += e.endung        # die Endung sagt, wie die Datei gelesen wird: Sie bleibt
+        if any(f for f in pii_pruefen(name)[0] if f.stufe == "sperre"):
+            raise Fehler("In diesem Namen steckt eine Angabe, die nach Personendaten aussieht. Bitte einen anderen Namen wählen.")
+        e.name = name
+        return {"meldung": "Umbenannt."}
+
+    # ---- Klartext: der lokale Bildschirm der Pseudonymisierung
+    def korb_pseudo(self, d: dict) -> dict:
+        """Beginnt die Pseudonymisierung einer Datei des Akten-Eingangs. Sie kennt, was im selben Eingang und im Fall schon
+        ersetzt wurde, und zählt neue Platzhalter hinter allen weiter, die dort schon stehen (auch von anderer Hand vergeben)."""
+        ziel = str(d.get("ziel") or "").strip()
+        korb = self.korb(ziel)
+        e = self._eintrag(korb, d.get("id"))
+        if e.text is None:
+            raise Fehler(f"{e.name} lässt sich nicht lesen und deshalb nicht pseudonymisieren: {e.grund}")
         with self.sperre:
             for alt in [k for k, v in self.pseudo.items() if time.time() - v.beruehrt > 6 * 3600]:
                 del self.pseudo[alt]
+            if e.vorgang and e.vorgang in self.pseudo:
+                return {"vorgang": e.vorgang, "bekannt": len(korb.zuordnung)}
             kennung = secrets.token_urlsafe(12)
-            self.pseudo[kennung] = Pseudo(dok.name, dok.text(), zuordnung)
-        return {"vorgang": kennung, "bekannt": len(zuordnung)}
+            self.pseudo[kennung] = Pseudo(e.name, e.text, list(korb.zuordnung), korb.belegt(*self._im_fall(ziel)), ziel, e.id)
+            e.vorgang = kennung
+        return {"vorgang": kennung, "bekannt": len(korb.zuordnung)}
 
-    def pseudo_holen(self, kennung: str) -> Pseudo:
+    def pseudo_holen(self, kennung: object) -> Pseudo:
         p = self.pseudo.get(str(kennung or ""))
         if p is None:
-            raise Fehler("Dieses Dokument ist nicht mehr im Speicher. Bitte noch einmal hineinziehen.", 404)
+            raise Fehler("Dieses Dokument ist nicht mehr in Arbeit. Bitte im Akten-Eingang erneut «pseudonymisieren» wählen.", 404)
         p.beruehrt = time.time()
         return p
 
@@ -270,6 +484,9 @@ class Bedienung:
                 v.bestaetigen(fund, d.get("typ") or None)
             elif art == "verwerfen" and fund is not None:
                 v.verwerfen(fund)
+            elif art == "alle_verwerfen":       # was nach der Durchsicht noch offen ist, bleibt stehen: ein Entscheid für alle
+                for offen in v.kandidaten():
+                    v.verwerfen(offen)
             elif art == "angabe":
                 v.angabe_entscheiden(str(d.get("angabe") or ""), bool(d.get("ersetzen")))
             elif art == "ergaenzen":
@@ -288,40 +505,317 @@ class Bedienung:
             raise Fehler(str(e)) from e
         return {"vorgang": d.get("vorgang")}
 
-    def pseudo_abschliessen(self, d: dict) -> dict:
-        """Das Ergebnis geht in die PII-Prüfung und in den Fall. Die Zuordnungstabelle geht in die Ablage ausserhalb des Projekts."""
+    def pseudo_uebernehmen(self, d: dict) -> dict:
+        """Das Ergebnis ersetzt die Datei im Akten-Eingang. Der Klartext verlässt den Speicher, die neuen Paare kommen zur Zuordnung
+        des Eingangs. Findet die PII-Prüfung im Ergebnis noch Personendaten, bleibt alles, wie es ist."""
         p = self.pseudo_holen(d.get("vorgang"))
-        fall = self._fall_id(str(d.get("fall") or "").strip())
-        neu = not (fall_pfad(fall) / "fall.json").exists()
+        korb = self.korb(p.ziel)
+        e = korb.eintraege.get(p.eintrag)
+        if e is None:
+            with self.sperre:
+                self.pseudo.pop(str(d.get("vorgang")), None)
+            raise Fehler("Diese Datei liegt nicht mehr im Akten-Eingang.", 404)
         ergebnis = p.vorgang.ergebnis()
         funde, platzhalter = pii_pruefen(ergebnis.text)
-        name = f"{Path(p.name).stem}_pseudonymisiert.txt"
         if any(f.stufe == "sperre" for f in funde):
-            return {"aufgenommen": False, "fall": fall, "ausgabe": pii_bericht(name, funde, platzhalter),
-                    "meldung": "Die PII-Prüfung findet im Ergebnis noch Personendaten. Bitte die genannten Stellen im Dokument ergänzen. Es wurde nichts aufgenommen."}
-        aufnahme = self._aufnehmen(fall, name, ergebnis.text.encode("utf-8"),
-                                   {k: d.get(k) for k in ("titel", "auftrag", "kuerzel", "klassifizierung")} if neu else None)
-        if not aufnahme["aufgenommen"]:
-            return {**aufnahme, "meldung": "Das Ergebnis wurde nicht aufgenommen."}
-        tabelle = self.zuordnung_pfad(fall)
-        tabelle.parent.mkdir(parents=True, exist_ok=True)
-        for ordner in (self.ablage, tabelle.parent):
-            try:
-                os.chmod(ordner, 0o700)
-            except OSError:
-                pass
-        ps.zuordnung_schreiben(tabelle, ergebnis.zuordnung)
+            return {"uebernommen": False, "ausgabe": pii_bericht(e.name, funde, platzhalter),
+                    "meldung": "Die PII-Prüfung findet im Ergebnis noch Personendaten. Bitte die genannten Stellen im Dokument ergänzen. Es wurde nichts übernommen."}
         with self.sperre:
+            # Paare aus Dokumenten, die seit dem Beginn übernommen wurden, bleiben erhalten: Die Tabelle des Eingangs wächst nur
+            bekannt = {platzhalter_ for platzhalter_, _ in korb.zuordnung}
+            korb.zuordnung += [paar for paar in ergebnis.zuordnung if paar[0] not in bekannt]
+            e.text, e.inhalt = ergebnis.text, None
+            e.ersetzt = (e.ersetzt or 0) + sum(ergebnis.ersetzt.values())
+            e.vorgang = None
+            self._pruefen(e)
             self.pseudo.pop(str(d.get("vorgang")), None)        # der Klartext verlässt den Speicher
-        self.vermerken(fall, "Fall angelegt" if neu else "Dokument aufgenommen", f"Dokument {name}, lokal pseudonymisiert ohne Sprachmodell")
-        return {**aufnahme, "ersetzt": sum(ergebnis.ersetzt.values()), "platzhalter": len(ergebnis.zuordnung), "neu": len(ergebnis.neu),
-                "offen": ergebnis.offen, "klaerung": len(ergebnis.klaerung), "zuordnung": str(tabelle),
-                "meldung": f"Fall {fall} angelegt." if neu else "Dokument aufgenommen."}
+        return {"uebernommen": True, "ziel": p.ziel, "ersetzt": sum(ergebnis.ersetzt.values()), "neu": len(ergebnis.neu), "offen": ergebnis.offen,
+                "klaerung": len(ergebnis.klaerung),
+                "meldung": f"Übernommen: {sum(ergebnis.ersetzt.values())} Fundstellen ersetzt." + (f" {ergebnis.offen} Kandidaten blieben stehen." if ergebnis.offen else "")}
 
     def pseudo_verwerfen(self, d: dict) -> dict:
         with self.sperre:
-            self.pseudo.pop(str(d.get("vorgang") or ""), None)
-        return {"meldung": "Das Dokument ist aus dem Speicher entfernt."}
+            p = self.pseudo.pop(str(d.get("vorgang") or ""), None)
+            if p is not None:
+                e = self.koerbe.get(p.ziel, Korb()).eintraege.get(p.eintrag)
+                if e is not None:
+                    e.vorgang = None
+        return {"meldung": "Abgebrochen. Die Datei liegt unverändert im Akten-Eingang.", "ziel": p.ziel if p is not None else ""}
+
+    # ---- In den Fall aufnehmen: über tools/fall.py, das selbst noch einmal prüft
+    def _zielname(self, e: Eintrag, neutral: bool, zaehler: dict, vergeben: set) -> str:
+        """Der Name, unter dem die Textfassung in den Eingang des Falls kommt. Neutral heisst: Der Name der Datei sagt nichts
+        über ihren Inhalt (rapport-01.txt). Ein Dateiname nennt sonst leicht eine Person, und er steht in jedem Protokoll."""
+        text_endung = e.endung if e.endung in (".md", ".csv", ".tsv", ".json", ".xml", ".html", ".htm", ".log", ".yaml", ".yml") else ".txt"
+        if neutral:
+            while True:
+                zaehler[e.rolle] = zaehler.get(e.rolle, 0) + 1
+                name = f"{e.rolle}-{zaehler[e.rolle]:02d}{text_endung}"
+                if name.lower() not in vergeben:
+                    break
+        else:
+            # Eine Textdatei behält ihren Namen. Aus rapport.docx wird rapport.docx.txt, wie tools/fall.py seine Lesefassung nennt
+            stamm = Path(e.name).stem if e.endung == text_endung else e.name
+            if e.ersetzt is not None:
+                stamm = Path(e.name).stem + "_pseudonymisiert"
+            name, nr = f"{stamm}{text_endung}", 1
+            while name.lower() in vergeben:
+                nr += 1
+                name = f"{stamm} ({nr}){text_endung}"
+        vergeben.add(name.lower())
+        return name
+
+    def korb_aufnehmen(self, d: dict) -> dict:
+        """Nimmt Dateien des Akten-Eingangs in einen Fall auf: einen neuen (Fall-ID, Titel) oder den, zu dem der Eingang gehört.
+        Aufgenommen wird die Textfassung, und nur, wenn die PII-Prüfung nichts findet. Was Personendaten enthält oder sich nicht
+        lesen lässt, bleibt im Eingang und wird beim Namen genannt. tools/fall.py prüft jede Datei selbst noch einmal."""
+        ziel = str(d.get("ziel") or "").strip()
+        korb = self.korb(ziel)
+        fall = self._fall_id(ziel or str(d.get("fall") or "").strip())
+        neu = not ziel
+        if neu and (fall_pfad(fall) / "fall.json").exists():
+            raise Fehler(f"Den Fall «{fall}» gibt es schon. Weitere Dokumente lassen sich im Fall unter «Akten» nachziehen.")
+        if neu and not str(d.get("titel") or "").strip():
+            raise Fehler("Ein neuer Fall braucht einen Titel.")
+        for feld in ("titel", "auftrag", "kuerzel"):
+            if any(f.stufe == "sperre" for f in pii_pruefen(str(d.get(feld) or ""))[0]):
+                raise Fehler("Titel, Auftrag und Kürzel stehen in jedem Dokument der Akte. Darin steckt eine Angabe, die nach Personendaten aussieht.")
+        neutral = str(d.get("neutral", "1")) not in ("", "0", "false")
+        with self.sperre:
+            auswahl = self._auswahl(korb, d, alle=True)
+            if not auswahl:
+                raise Fehler("Der Akten-Eingang ist leer. Bitte zuerst Dateien hineinziehen.")
+            if any(e.vorgang for e in auswahl):
+                raise Fehler("Eine der gewählten Dateien wird gerade pseudonymisiert. Bitte zuerst übernehmen oder abbrechen.")
+            bereit = sorted((e for e in auswahl if e.stand == "sauber"), key=lambda e: e.rolle != "rapport")
+            zurueck = [e for e in auswahl if e.stand != "sauber"]
+            if not bereit:
+                return {"aufgenommen": False, "fall": fall, "anzahl": 0, "zurueck": [e.kurz() for e in zurueck],
+                        "meldung": "Keine der gewählten Dateien lässt sich aufnehmen: Sie enthalten Personendaten oder lassen sich nicht lesen. Es wurde nichts angelegt."}
+            vergeben = {n.lower() for n in sum(eingang_stand(fall_pfad(fall)), [])} if not neu else set()
+            zaehler: dict = {}
+            if neutral and not neu:     # neutrale Namen zählen hinter denen weiter, die im Fall schon liegen
+                for name in vergeben:
+                    m = re.fullmatch(r"(rapport|beilage)-(\d+)\.\w+", name)
+                    if m:
+                        zaehler[m.group(1)] = max(zaehler.get(m.group(1), 0), int(m.group(2)))
+            namen = {e.id: self._zielname(e, neutral, zaehler, vergeben) for e in bereit}
+            if not neutral:
+                for e in bereit:
+                    if any(f.stufe == "sperre" for f in pii_pruefen(namen[e.id])[0]):
+                        raise Fehler("Im Namen einer Datei steckt eine Angabe, die nach Personendaten aussieht. Bitte neutrale Dateinamen verwenden oder umbenennen.")
+            with Zwischenablage() as ordner:
+                dateien = []
+                for e in bereit:
+                    datei = ordner / namen[e.id]
+                    datei.write_text(e.text or "", encoding="utf-8")
+                    dateien.append(str(datei))
+                if neu:
+                    befehl = ["tools/fall.py", "neu", fall, "--titel", " ".join(str(d.get("titel") or fall).split()), "--rapport", *dateien]
+                    for schalter, feld in (("--auftrag", "auftrag"), ("--kuerzel", "kuerzel"), ("--klassifizierung", "klassifizierung")):
+                        if str(d.get(feld) or "").strip():
+                            befehl += [schalter, " ".join(str(d[feld]).split())]
+                else:
+                    befehl = ["tools/fall.py", "aufnehmen", fall, *dateien]
+                code, ausgabe = werkzeug_lauf(befehl, 600)
+                ausgabe = ausgabe.replace(str(ordner) + os.sep, "").replace(str(ordner), "(Zwischenablage)")
+            if not (fall_pfad(fall) / "fall.json").is_file():
+                return {"aufgenommen": False, "fall": fall, "anzahl": 0, "ausgabe": ausgabe, "meldung": "Der Fall liess sich nicht anlegen."}
+            im_fall = set(eingang_stand(fall_pfad(fall))[0])
+            drin = [e for e in bereit if namen[e.id] in im_fall]
+            tabelle, tabelle_hinweis = self._zuordnung_sichern(fall, korb) if drin and korb.zuordnung else (None, "")
+            namensliste = self._dateinamen_sichern(fall, [(namen[e.id], e.name, e.ordner) for e in drin]) if drin else None
+            for e in drin:
+                korb.eintraege.pop(e.id, None)
+            # Der Eingang zum neuen Fall wird der Eingang dieses Falls: Was noch darin liegt, gehört jetzt zu ihm
+            neu = neu and (fall_pfad(fall) / "fall.json").is_file()
+            if neu:
+                self.koerbe.pop("", None)
+                if korb.eintraege:
+                    self.koerbe[fall] = korb
+                    for p in self.pseudo.values():      # eine Pseudonymisierung, die noch läuft, zieht mit um
+                        if p.ziel == "":
+                            p.ziel = fall
+        lokal = sum(1 for e in drin if e.ersetzt is not None)
+        bleibt = [e for e in zurueck if e.stand == "nicht_lesbar"]
+        arten: dict = {}
+        for e in bleibt:
+            arten[e.endung or "ohne Endung"] = arten.get(e.endung or "ohne Endung", 0) + 1
+        angabe = (f"{len(drin)} Dokument(e): {len(drin) - lokal} geschwärzt angeliefert, {lokal} lokal pseudonymisiert ohne Sprachmodell"
+                  + (f". Nicht lesbar und nicht übergeben: {', '.join(f'{n} × {a}' for a, n in sorted(arten.items()))}" if arten else "")
+                  + (f". {len(zurueck) - len(bleibt)} mit Personendaten zurückgehalten" if len(zurueck) > len(bleibt) else ""))
+        if drin:
+            self.vermerken(fall, "Fall angelegt" if neu else "Dokumente aufgenommen", angabe)
+        return {"aufgenommen": bool(drin), "angelegt": neu, "fall": fall, "anzahl": len(drin), "namen": [namen[e.id] for e in drin], "ausgabe": ausgabe,
+                "zurueck": [e.kurz() for e in zurueck], "bleibt": len(korb.eintraege), "zuordnung": str(tabelle) if tabelle is not None else "",
+                "dateinamen": str(namensliste) if namensliste is not None else "",
+                "meldung": ((f"Fall {fall} angelegt, " if neu else "") + f"{len(drin)} Dokument(e) aufgenommen."
+                            + (f" {len(zurueck)} bleiben im Akten-Eingang: Personendaten oder nicht lesbar." if zurueck else "")
+                            + (f" {tabelle_hinweis}" if tabelle_hinweis else "")) if drin
+                else (f"Fall {fall} ist angelegt, aber kein Dokument wurde aufgenommen, siehe Ausgabe. Die Dateien liegen im Akten-Eingang dieses Falls."
+                      if neu else "Nichts aufgenommen, siehe Ausgabe.")}
+
+    def _ablage_ordner(self, fall: str) -> Path:
+        """Der Ordner eines Falls in der Ablage ausserhalb des Projekts, nur für diesen Benutzer lesbar."""
+        ordner = self.ablage / self._fall_id(fall)
+        ordner.mkdir(parents=True, exist_ok=True)
+        for o in (self.ablage, ordner):
+            try:
+                os.chmod(o, 0o700)
+            except OSError:
+                pass
+        return ordner
+
+    def _dateinamen_sichern(self, fall: str, paare: list[tuple[str, str, str]]) -> Path:
+        """Hält in der Ablage fest, welche hochgeladene Datei unter welchem Namen im Fall liegt. Im Fall steht nur der neue Name:
+        Der ursprüngliche kann eine Person nennen, und er stünde sonst in jedem Protokoll."""
+        datei = self._ablage_ordner(fall) / "dateinamen.csv"
+        neu = not datei.is_file()
+
+        def zelle(wert: str) -> str:        # eine Tabellenkalkulation hält sonst für eine Formel, was mit = + - @ beginnt
+            return "'" + wert if wert[:1] in ("=", "+", "-", "@") else wert
+        with open(datei, "a", newline="", encoding="utf-8") as f:
+            schreiber = csv.writer(f, delimiter=";", lineterminator="\n")
+            if neu:
+                schreiber.writerow(["im_fall", "hochgeladen_als", "aus", "aufgenommen"])
+            for im_fall, original, ordner in paare:
+                schreiber.writerow([im_fall, zelle(original), zelle(ordner), datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+        try:
+            os.chmod(datei, 0o600)
+        except OSError:
+            pass
+        return datei
+
+    def _zuordnung_sichern(self, fall: str, korb: Korb) -> tuple[Path, str]:
+        """Schreibt die Zuordnung des Akten-Eingangs in die Tabelle des Falls, in der Ablage ausserhalb des Projekts. Steht dort schon
+        eine Tabelle, bleibt jedes ihrer Paare erhalten. Meint ein Platzhalter dort etwas anderes (die Tabelle wurde ausserhalb der
+        Oberfläche geändert) oder lässt sie sich nicht lesen, entsteht eine eigene Datei daneben: Überschrieben wird nichts."""
+        tabelle = self._ablage_ordner(fall) / "zuordnung.csv"
+        bestehend: list | None = []
+        if tabelle.is_file():
+            try:
+                bestehend = ps.zuordnung_lesen(tabelle)
+            except (ValueError, OSError):
+                bestehend = None
+        if bestehend is None or any(dict(bestehend).get(platzhalter, klar) != klar for platzhalter, klar in korb.zuordnung):
+            eigene = tabelle.with_name(f"zuordnung-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
+            ps.zuordnung_schreiben(eigene, korb.zuordnung)
+            return eigene, ("Die Zuordnungstabelle des Falls passt nicht zu diesem Akten-Eingang: Sie wurde ausserhalb der Oberfläche geändert oder lässt sich "
+                            "nicht lesen. Die Paare aus diesem Eingang stehen deshalb in einer eigenen Datei daneben. Beim Zurückführen bitte beide beachten.")
+        bekannt = {platzhalter for platzhalter, _ in bestehend}
+        ps.zuordnung_schreiben(tabelle, bestehend + [paar for paar in korb.zuordnung if paar[0] not in bekannt])
+        return tabelle, ""
+
+    # ---- Der Eingang eines Falls: entfernen, verschieben, von Hand Kopiertes prüfen
+    def _durch(self, d: dict) -> str:
+        durch = " ".join(str(d.get("durch") or "").split())
+        if not durch:
+            raise Fehler("Bitte angeben, wer das veranlasst (Feld «Durch»).")
+        return durch
+
+    def _namen(self, d: dict) -> list[str]:
+        namen = d.get("namen")
+        if isinstance(namen, str):
+            namen = [n for n in namen.split("\n") if n]
+        if not namen or not all(isinstance(n, str) for n in namen):
+            raise Fehler("Bitte zuerst Dokumente auswählen.")
+        return namen
+
+    def eingang_entfernen(self, d: dict) -> dict:
+        fall, namen, durch = self._fall_id(str(d.get("fall") or "")), self._namen(d), self._durch(d)
+        grund = " ".join(str(d.get("grund") or "").split())
+        if not grund:
+            raise Fehler("Bitte angeben, warum die Dokumente entfernt werden (Feld «Grund»).")
+        try:
+            entfernt = fallwerkzeug.entfernen(fall, [n for n in namen if (fall_pfad(fall) / "eingang" / n).is_file()], durch=durch, grund=grund, weg="Oberfläche")
+        except (fallwerkzeug.Fehler, FileNotFoundError, ValueError) as e:
+            raise Fehler(str(e).replace("--durch", "«Durch»").replace("--grund", "«Grund»")) from e
+        self.vermerken(fall, "Dokumente aus dem Eingang entfernt", f"{len(entfernt)} Datei(en), durch {durch}, Grund: {grund}")
+        return {"meldung": f"{len(entfernt)} Datei(en) aus dem Eingang von Fall {fall} entfernt. Das Register der PII-Prüfung hält fest, was entfernt wurde.", "entfernt": entfernt}
+
+    def eingang_pruefen(self, d: dict) -> dict:
+        """Ein Dokument, das von Hand in den Eingang kopiert wurde, geht nachträglich durch die PII-Prüfung. Besteht es, gilt es als geprüft."""
+        fall, namen = self._fall_id(str(d.get("fall") or "")), self._namen(d)
+        fall_daten(fall)
+        eingang = fall_pfad(fall) / "eingang"
+        ungeprueft = set(eingang_stand(fall_pfad(fall))[1])
+        dateien = [str(eingang / n) for n in namen if n in ungeprueft]
+        if not dateien:
+            raise Fehler("Keines der gewählten Dokumente ist ungeprüft.")
+        code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
+        jetzt = eingang_stand(fall_pfad(fall))
+        geprueft = [n for n in namen if n in jetzt[0]]
+        if geprueft:
+            self.vermerken(fall, "Dokumente nachträglich geprüft", f"{len(geprueft)} von Hand kopierte Datei(en) haben die PII-Prüfung bestanden")
+        return {"gelungen": code == 0, "ausgabe": ausgabe.replace(str(PROJEKT) + os.sep, ""),
+                "meldung": f"{len(geprueft)} von {len(dateien)} Dokument(en) haben die PII-Prüfung bestanden." + ("" if code == 0 else " Die übrigen enthalten Personendaten: bitte entfernen und pseudonymisiert neu aufnehmen.")}
+
+    def eingang_verschieben(self, d: dict) -> dict:
+        """Verschiebt geprüfte Dokumente in einen anderen Fall: dort aufnehmen (mit PII-Prüfung), hier entfernen."""
+        fall, ziel, namen, durch = self._fall_id(str(d.get("fall") or "")), self._fall_id(str(d.get("nach") or "")), self._namen(d), self._durch(d)
+        if ziel == fall:
+            raise Fehler("Quelle und Ziel sind derselbe Fall.")
+        fall_daten(fall)
+        fall_daten(ziel)
+        eingang = fall_pfad(fall) / "eingang"
+        geprueft = set(eingang_stand(fall_pfad(fall))[0])
+        # Von einem Paar aus Original und Lesefassung wandert die Lesefassung: Agenten lesen immer sie
+        waehlbar: list[str] = []
+        for n in namen:
+            if Path(n).suffix.lower() in GEWANDELT and (eingang / f"{n}.txt").is_file():
+                n = f"{n}.txt"
+            if n in geprueft and n not in waehlbar:
+                waehlbar.append(n)
+        if not waehlbar:
+            raise Fehler("Keines der gewählten Dokumente lässt sich verschieben. Ungeprüfte Dokumente bitte zuerst prüfen.")
+        # Liegt im Zielfall schon ein Dokument gleichen Namens, kommt das verschobene unter dem nächsten freien Namen an.
+        # Mit neutralen Namen ist das die Regel: Jeder Fall hat sein beilage-01.txt. Überschrieben wird nie
+        vorher = {n.lower() for n in sum(eingang_stand(fall_pfad(ziel)), [])}
+        vergeben, plan = set(vorher), {}
+        for n in waehlbar:
+            neutral, neu, nr = re.fullmatch(r"(rapport|beilage)-(\d+)(\.\w+)", n), n, 1
+            while neu.lower() in vergeben:
+                nr += 1
+                neu = f"{neutral.group(1)}-{int(neutral.group(2)) + nr - 1:02d}{neutral.group(3)}" if neutral else f"{Path(n).stem} ({nr}){Path(n).suffix}"
+            vergeben.add(neu.lower())
+            plan[n] = neu
+        with Zwischenablage() as ordner:
+            for n, neu in plan.items():
+                shutil.copyfile(eingang / n, ordner / neu)
+            code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", ziel, *[str(ordner / neu) for neu in plan.values()]], 600)
+            ausgabe = ausgabe.replace(str(ordner) + os.sep, "").replace(str(ordner), "(Zwischenablage)")
+        dort = set(eingang_stand(fall_pfad(ziel))[0])
+        angekommen = [n for n, neu in plan.items() if neu in dort and neu.lower() not in vorher]
+        umbenannt = [f"{n} liegt dort als {plan[n]}" for n in angekommen if plan[n] != n]
+        if angekommen:
+            fallwerkzeug.entfernen(fall, angekommen, durch=durch, grund=f"verschoben nach Fall {ziel}", weg="Oberfläche")
+            self.vermerken(fall, "Dokumente verschoben", f"{len(angekommen)} Datei(en) nach Fall {ziel}, durch {durch}" + (f" ({'; '.join(umbenannt)})" if umbenannt else ""))
+            self.vermerken(ziel, "Dokumente aufgenommen", f"{len(angekommen)} Datei(en) verschoben aus Fall {fall}, durch {durch}")
+        return {"gelungen": bool(angekommen), "ausgabe": ausgabe.replace(str(PROJEKT) + os.sep, ""), "namen": {n: plan[n] for n in angekommen},
+                "meldung": f"{len(angekommen)} von {len(waehlbar)} Dokument(en) nach Fall {ziel} verschoben."
+                           + (" Dort lag schon ein Dokument gleichen Namens: " + "; ".join(umbenannt) + "." if umbenannt else "")
+                           + ("" if len(angekommen) == len(waehlbar) else " Die übrigen haben die PII-Prüfung nicht bestanden, siehe Ausgabe.")}
+
+    def fall_loeschen(self, d: dict) -> dict:
+        """Löscht einen Fall, in dem noch nichts abgefragt wurde. Ein Fall mit Protokolleinträgen bleibt: Er ist Beweismaterial."""
+        fall, durch = self._fall_id(str(d.get("fall") or "")), self._durch(d)
+        sitzung = self.ermittlungen.get(fall)
+        if sitzung is not None and sitzung.als_dict()["status"] in ("laeuft", "wartet"):
+            raise Fehler("Zu diesem Fall läuft eine Ermittlung. Bitte zuerst anhalten.")
+        try:
+            grund = fallwerkzeug.loeschbar(fall)        # zuerst, was grundsätzlich dagegen spricht: Abfragen, Befunde, der Musterfall
+            if grund:
+                raise Fehler(grund)
+            if fall in self.koerbe and self.koerbe[fall].eintraege:
+                raise Fehler("Im Akten-Eingang dieses Falls liegen noch Dateien, die nicht aufgenommen sind. Bitte zuerst unter «Akten» aufnehmen oder entfernen.")
+            fallwerkzeug.loeschen(fall, durch=durch, weg="Oberfläche")
+        except (fallwerkzeug.Fehler, FileNotFoundError, ValueError) as e:
+            raise Fehler(str(e).replace("--durch", "«Durch»")) from e
+        with self.sperre:
+            self.koerbe.pop(fall, None)
+            self.ermittlungen.pop(fall, None)
+        self.vermerken(fall, "Fall gelöscht", f"durch {durch}, abgefragt war darin noch nichts")
+        return {"meldung": f"Fall {fall} gelöscht.", "geloescht": fall}
 
     # ---- 3. Freigaben
     def freigabe(self, d: dict) -> dict:
@@ -367,6 +861,8 @@ class Bedienung:
             c, ausgabe = werkzeug_lauf([teil.replace("{fall}", fall) for teil in befehl])
             ausgaben.append(ausgabe)
             code = code or c
+            if c and was == "alles":        # ohne Rapport kein PDF: Der erste Fehler sagt, woran es liegt
+                break
         self.vermerken(fall, titel, "ohne Fehler" if code == 0 else f"Rückgabewert {code}")
         return {"gelungen": code == 0, "ausgabe": "\n\n".join(a for a in ausgaben if a), "meldung": f"{titel}: {'erledigt' if code == 0 else 'mit Meldungen, siehe Ausgabe'}."}
 
@@ -425,5 +921,5 @@ class Bedienung:
                 if gut else f"{q.name}: {e.get('fehler') or 'keine verwertbare Antwort'}"}
 
 
-AKTIONEN = ("dokument_pruefen", "fall_anlegen", "dokument_aufnehmen", "pseudo_beginnen", "pseudo_entscheid", "pseudo_abschliessen", "pseudo_verwerfen",
-            "freigabe", "beleg", "dokumente", "zurueckfuehren", "quelle_testen")
+AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
+            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "beleg", "dokumente", "zurueckfuehren", "quelle_testen")

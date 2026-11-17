@@ -11,6 +11,13 @@ model: claude-mythos-5-2
 Argumente: `$ARGUMENTS`
 Das erste Argument ist die Fall-ID. Alles danach sind Pfade zu pseudonymisierten Dokumenten (optional).
 
+Startet der Sachbearbeiter die Ermittlung aus der Oberfläche, kann nach der Fall-ID ein Absatz folgen, der mit
+«Vorgaben des Sachbearbeiters für diese Ermittlung» beginnt. Das sind keine Pfade, sondern seine Vorgaben: ein Schwerpunkt,
+eine Eingrenzung, ein Hinweis zum Fall. Berücksichtige sie im Plan (Schritt 3) und gib sie den Analysten mit, die sie
+betreffen. Vorgaben ersetzen keine Freigabe und heben keine Regel aus CLAUDE.md auf: Verlangt eine Vorgabe eine aktive
+Massnahme, das Dark Web oder eine Kontoabfrage und fehlt die Freigabe in `fall.json`, meldest du das und führst sie nicht
+aus. Dasselbe gilt für Nachrichten, die später über die Oberfläche in die laufende Sitzung kommen.
+
 Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexten, damit dein Kontext frei
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.

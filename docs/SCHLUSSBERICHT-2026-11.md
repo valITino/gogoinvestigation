@@ -18,8 +18,9 @@ Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was
 | D: lokale Pseudonymisierung | [PR 8](https://github.com/valITino/gogoinvestigation/pull/8) | offen, CI grün. **Nicht abgeschlossen:** wartet auf die Liste der Feldmarken | 71 |
 | E: Oberfläche Teil 1, nur lesen | [PR 9](https://github.com/valITino/gogoinvestigation/pull/9) | offen, CI grün | 82 |
 | F: Oberfläche Teil 2, Bedienung | [PR 10](https://github.com/valITino/gogoinvestigation/pull/10) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code | 88 |
+| G: Chat, Akten-Eingang, Ergebnisse, ohne Wächter (Nachtrag vom 17.11.2026) | eigener Pull Request auf Paket F | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code, auch für den Chat | 89 |
 
-Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F. Gemergt ist nichts.
+Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F, G. Gemergt ist nichts.
 
 **Was bei dir liegt, bevor echte Fälle laufen:**
 

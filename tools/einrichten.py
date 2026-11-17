@@ -963,10 +963,10 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
     ui.liste("Noch offen" if bereit else "Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
     if not bereit:
         return 1
-    ui.paare("Loslegen", [
-        ("Oberfläche starten", f"{PY} tools/oberflaeche.py   (öffnet den Browser: Akten hochladen, ermitteln, Ergebnisse holen)"),
-        ("Musterfall ansehen", f"{PY} tools/oberflaeche.py MUSTER-2026-001"),
-        ("Oder am Terminal", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung 2026-0001"),
+    ui.liste("So geht es weiter", plattform.WEITER, nummeriert=True)
+    ui.paare("Ausserdem", [
+        ("Zum Ausprobieren", f"{PY} tools/oberflaeche.py MUSTER-2026-001   (der Musterfall, erfunden)"),
+        ("Am Terminal statt im Browser", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung 2026-0001"),
         ("Stand prüfen", f"{PY} tools/pruefen.py"),
         ("Einstellungen ändern", SETUP),
     ])

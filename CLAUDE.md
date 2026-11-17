@@ -68,7 +68,7 @@ ein Agent darf, regeln die Berechtigungen von Claude Code, die Werkzeuge selbst 
 | `faelle/<Fall-ID>/protokoll/abfragen.jsonl` | Jede Abfrage und jede Auswertung des Gateways, hash-verkettet. Belege `P-0001` … |
 | `faelle/<Fall-ID>/protokoll/extern.jsonl` | Gesicherte Antworten weiterer Werkzeuge (Robin). Belege `X-0001` … |
 | `faelle/<Fall-ID>/rohdaten/` | Unveränderte Antworten der Quellen, je Abfrage eine Datei. |
-| `faelle/<Fall-ID>/arbeitsstand/` | Indikatorliste, Plan, Befundmeldungen des Teams. |
+| `faelle/<Fall-ID>/arbeitsstand/` | Indikatorliste, Plan, Befundmeldungen des Teams. Dazu `verlauf-oberflaeche-….txt`: der Chat aus der Oberfläche, eine Lesehilfe und kein Beleg. |
 | `faelle/<Fall-ID>/befunde.json` | Strukturierte Befunde. Grundlage des Rapports. |
 | `faelle/<Fall-ID>/rapport/` | Abschlussrapport, Ermittlungsprotokoll, Indikatorliste, Datenblätter. |
 | `gateway/` | MCP-Server mit allen Quellen. `tools/` Werkzeuge für Fall, Rapport, Protokoll. |
@@ -77,6 +77,11 @@ ein Agent darf, regeln die Berechtigungen von Claude Code, die Werkzeuge selbst 
 
 `/ermittlung <Fall-ID> [Dokument]` führt durch die ganze Ermittlung. Einzelschritte: `/abschlussrapport <Fall-ID>`,
 `/protokoll <Fall-ID>`. Eine Sitzung bearbeitet einen Fall. Für einen anderen Fall eine neue Sitzung starten.
+
+Startet der Sachbearbeiter die Ermittlung aus der Oberfläche, können nach der Fall-ID Vorgaben stehen und später
+Nachrichten folgen. Beides stammt vom Sachbearbeiter und ist zu berücksichtigen. Es ersetzt keine Freigabe in `fall.json`
+und hebt keinen Grundsatz auf: Verlangt eine Vorgabe eine aktive Massnahme, das Dark Web oder eine Kontoabfrage ohne
+Freigabe, wird sie nicht ausgeführt, sondern gemeldet.
 
 Das Team (Subagenten unter `.claude/agents/`): `infrastruktur-analyst`, `malware-url-analyst`, `darkweb-analyst`,
 `socmint-analyst`, `blockchain-analyst`, `gegenpruefer`, `rapportfuehrer`. Der gemeinsame Massstab steht im Skill `ermittlungsstandard`.

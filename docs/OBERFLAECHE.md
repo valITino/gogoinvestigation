@@ -5,10 +5,11 @@ Rohdatei. Abschlussrapport und Ermittlungsprotokoll bleiben die Dokumente für d
 nicht, sie macht sie durchsuchbar und nachprüfbar.
 
 Sie hat zwei Teile. Die **Ansichten** lesen die Fallakte und schreiben nie. Die **Bedienung** lässt den Sachbearbeiter
-ohne Terminal arbeiten: Fall anlegen, Ermittlung starten, freigeben, Dokumente erzeugen. Sie ändert nichts selbst,
-sondern ruft die bestehenden Werkzeuge auf, und nur für den, der die Oberfläche am Terminal gestartet hat.
+ohne Terminal arbeiten: Akten hochladen, Fall anlegen, im Chat Vorgaben geben und der Ermittlung zusehen, freigeben,
+Ergebnisse herunterladen. Sie ändert die Fallakte nicht selbst, sondern ruft die bestehenden Werkzeuge auf, und nur für
+den, der die Oberfläche am Terminal gestartet hat.
 
-Stand: 16.11.2026.
+Stand: 17.11.2026.
 
 ## Start
 
@@ -28,11 +29,13 @@ Standardbibliothek, keine Bauschritte und kein Internet. Beendet wird er mit Str
 
 | Bereich | Inhalt |
 |---|---|
-| Links: Navigation | Fälle, der geöffnete Fall (Fallübersicht, Rapport, Indikatoren, Rohdaten, Suche, Dokumente), Quellen. Darunter der Schalter Hell / Dunkel. |
+| Links: Navigation | Fälle, «Neuer Fall», der geöffnete Fall (Fallübersicht, Akten, Ermittlung, Rapport, Indikatoren, Rohdaten, Suche, Ergebnisse, Bedienen), Quellen. «Neuer Fall», «Ermittlung» und «Bedienen» erscheinen nur, wenn die Oberfläche bedienbar ist. Darunter der Schalter Hell / Dunkel. |
 | Oben: Kopf des Falls | Fall-ID, Titel, Freigaben (erteilt oder nicht, durch wen, wann) und die Schrittleiste. |
 | Schrittleiste | Fall angelegt, Indikatoren, Plan, Abfragen, Gegenprüfung, Rapport. Jeder Schritt sagt, woran die Oberfläche ihn erkennt (zum Beispiel «12 von 13 Befunden gegengeprüft»). Fehlt ein Schritt in der Akte, steht «nicht abgelegt». |
 | Mitte | Die Ansichten, siehe unten. |
 | Rechts: Arbeitsspur | Das Abfrageprotokoll, laufend nachgeführt (alle drei Sekunden). Filter: Abfragen, «kein Treffer», Fehlschläge, Auswertungen, Freigaben. Darunter Zahl der Einträge und Stand der Protokollkette. |
+| Rechts unten: Chat | Nur bedienbar: der Chat mit der Ermittlung, klein und einklappbar. In der Ansicht «Ermittlung» steht er gross in der Mitte. |
+| Über allem: Rückfrage | Nur bedienbar: Braucht Claude Code eine Zustimmung, erscheint ein Fenster, in jeder Ansicht. |
 
 Jede Ansicht hat eine feste Adresse. Sie lässt sich als Lesezeichen ablegen und weitergeben, solange die Oberfläche
 auf demselben Rechner läuft:
@@ -48,7 +51,9 @@ auf demselben Rechner läuft:
 | `#/fall/<Fall-ID>/roh/P-0007` | Die Rohdatei zu einem Beleg |
 | `#/fall/<Fall-ID>/rohdaten` | Alle Rohdateien |
 | `#/fall/<Fall-ID>/suche/<Suchtext>` | Suche über den ganzen Fall |
-| `#/fall/<Fall-ID>/dokumente` und `…/dokument/Abschlussrapport` | Dokumente der Akte |
+| `#/fall/<Fall-ID>/ergebnisse` und `…/dokument/Abschlussrapport` | Ergebnisse: Unterlagen ansehen und herunterladen |
+| `#/fall/<Fall-ID>/akten` | Was im Eingang des Falls liegt. Bedienbar: dazu der Akten-Eingang für weitere Dokumente |
+| `#/neu`, `#/fall/<Fall-ID>/ermittlung`, `…/bedienen`, `…/zurueck` | Bedienung, siehe dort |
 | `#/quellen` | Verzeichnis der Quellen und Begriffe |
 
 Jede Tabelle lässt sich sortieren (Klick auf die Spaltenüberschrift), filtern (Feld über der Tabelle) und als CSV
@@ -137,11 +142,18 @@ Eine Rohdatei, die nach der Abfrage verändert wurde, ist rot markiert: in der A
 Sucht im ganzen Fall: Indikatoren, Befunde, Protokoll (Quelle, Werkzeug, Ziel, Zweck, Fehlermeldung) und den Inhalt
 der Rohdateien. Gross- und Kleinschreibung spielen keine Rolle.
 
-### 6. Dokumente
+### 6. Ergebnisse
 
-Abschlussrapport, Ermittlungsprotokoll und Datenblätter: ansehen, als PDF holen, dazu `indikatoren.csv` und
-`Ermittlungsprotokoll.csv`. Bei jedem Dokument steht, ob es dem Stand der Daten entspricht oder älter ist und warum
-(«seit der Erzeugung kamen 3 Protokolleinträge dazu», «befunde.json wurde seit der Erzeugung geändert»).
+Abschlussrapport, Ermittlungsprotokoll und Datenblätter: ansehen, als HTML und PDF herunterladen, dazu
+`indikatoren.csv`, `Ermittlungsprotokoll.csv` und `befunde.json`. Bei jedem Dokument steht, ob es dem Stand der Daten
+entspricht oder älter ist und warum («seit der Erzeugung kamen 3 Protokolleinträge dazu», «befunde.json wurde seit der
+Erzeugung geändert»). Alles zusammen gibt es als Archiv, siehe «Ergebnisse und Archiv» unter «Bedienung». Die frühere
+Ansicht «Dokumente» gibt es unter ihrer Adresse weiter.
+
+### 7. Akten
+
+Was im Eingang des Falls liegt: jedes Dokument mit dem Stand der PII-Prüfung (geprüft, übersteuert, nicht geprüft) und
+der Grösse. Im Modus «nur lesen» ist das alles. Bedienbar steht darüber der Akten-Eingang, siehe «Bedienung».
 
 ## Darsteller: Wie aus einer Rohantwort eine Ansicht wird
 
@@ -298,8 +310,9 @@ gehört deshalb auf den Arbeitsplatz des Sachbearbeiters und nicht auf einen Ser
 
 ## Bedienung
 
-Mit der Bedienung arbeitet der Sachbearbeiter ohne Terminal: Dokument hineinziehen, Ermittlung starten, zusehen,
-freigeben, Rapport holen. Ein Terminal braucht es nur noch für den Start.
+Mit der Bedienung arbeitet der Sachbearbeiter ohne Terminal: Akten hineinziehen, wo nötig nochmals pseudonymisieren,
+Fall anlegen, Vorgaben geben, der Ermittlung zusehen, Rückfragen beantworten, Ergebnisse ansehen und herunterladen.
+Ein Terminal braucht es nur noch für den Start.
 
 ### Wann die Oberfläche bedienbar ist
 
@@ -316,19 +329,169 @@ etwas. Es steht in keiner Datei des Projekts und nicht in der Umgebung der Sitzu
 
 Die Oberfläche läuft im Modus **«nur lesen»**, wenn sie ohne Terminal gestartet wird, aus Claude Code heraus oder mit
 `--nur-lesen`. Dann gibt es kein POST, und die Seiten zeigen keine Formulare. Ein Agent, der die Oberfläche selbst
-startet, bekommt so kein Geheimnis in die Hand. Ein zweites Browserfenster kann lesen, aber nicht bedienen.
+startet, bekommt so kein Geheimnis in die Hand. Ein zweites Browserfenster kann lesen, aber nicht bedienen: Es sieht
+weder den Akten-Eingang noch den Chat.
 
-### Was sich bedienen lässt
+### Der Ablauf
+
+| Schritt | Wo | Was geschieht |
+|---|---|---|
+| 1. Akten hineinziehen | «Neuer Fall» | Dateien, ein Ordner oder ein ZIP. Jede Datei wird sofort gelesen und auf Personendaten geprüft. In einen Fall kommt noch nichts. |
+| 2. Nachbessern | lokaler Bildschirm | Was die erste Pseudonymisierung übersehen hat, wird ersetzt: auf dem eigenen Rechner, ohne Sprachmodell. |
+| 3. Fall anlegen | «Neuer Fall» | Fall-ID und Titel. In den Fall kommt die Textfassung dessen, was die PII-Prüfung besteht. |
+| 4. Ermitteln | «Ermittlung» | Vorgaben in den Chat, starten, zusehen. Nachrichten jederzeit, Rückfragen als Fenster. |
+| 5. Ergebnisse holen | «Ergebnisse» | Ansehen, einzeln herunterladen oder alles als ein Archiv, samt Sitzungsprotokoll. |
+| 6. Zurückführen | «Bedienen» | Der Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. |
+
+### Akten-Eingang
+
+Der Akten-Eingang nimmt den Rapport und seine Beilagen auf, bevor es einen Fall gibt («Neuer Fall»), und weitere
+Dokumente zu einem bestehenden Fall («Akten»). Hineinziehen lassen sich einzelne Dateien, mehrere auf einmal, ein ganzer
+Ordner mit Unterordnern oder ein ZIP. Die Knöpfe «Dateien wählen» und «Ordner wählen» tun dasselbe.
+
+Was hochgeladen ist, liegt im Speicher der Oberfläche und nirgends sonst, bis es in einen Fall aufgenommen oder entfernt
+wird. Wird die Oberfläche beendet, ist der Akten-Eingang leer.
+
+| Format | Wie es gelesen wird |
+|---|---|
+| Text: `.txt`, `.md`, `.csv`, `.json`, `.xml`, `.html`, `.log` und ähnliche | als Text (UTF-8, UTF-16 mit Kennung) |
+| Word `.docx`, OpenDocument `.odt` `.ods` `.odp`, Excel `.xlsx`, PowerPoint `.pptx`, `.rtf` | der Text des Dokuments, ohne Zusatzpakete. Aus Tabellen wird je Blatt eine Tabelle mit Tabulatoren, aus Folien je Folie ein Abschnitt samt Notizen. |
+| PDF | mit `pdftotext` (die Einrichtung installiert es). Ein gescanntes PDF ohne Text gilt als nicht lesbar. |
+| E-Mail `.eml` | Kopfzeilen (Von, An, Kopie, Datum, Betreff, Message-ID), Namen der Anhänge und der Text. Jeder Anhang wird ein eigenes Dokument. |
+| ZIP | wird entpackt, auch ein ZIP im ZIP (zwei Ebenen). Was Betriebssysteme hineinlegen (`__MACOSX`, `.DS_Store`), zählt nicht. Einträge mit Passwort bleiben draussen und werden genannt. |
+| Bilder, Ton, Video, `.doc`, `.xls`, `.ppt`, `.msg`, andere Archive | **nicht lesbar.** Die Seite sagt, warum, und was stattdessen geht (zum Beispiel «als .docx oder .pdf speichern»). |
+
+Je Datei zeigt die Tabelle den Namen, den Ordner, aus dem sie kam, die Grösse und das Ergebnis der PII-Prüfung:
+
+- **bereit:** Die Prüfung findet nichts. Die Seite nennt die Zahl der Platzhalter. Namen erkennt die Prüfung nicht von
+  selbst, deshalb lohnt der Blick auf den lokalen Bildschirm auch bei Dokumenten, die als bereit gelten.
+- **Personendaten:** Die Prüfung findet eine Telefonnummer, eine AHV-Nummer, eine IBAN, ein Geburtsdatum, ein
+  Kontrollschild oder eine Kreditkartennummer. Der Bericht zeigt die Fundstellen maskiert. Die Datei geht so nicht in
+  einen Fall. E-Mail-Adressen und Strassenadressen meldet die Prüfung als Hinweis: Sie sperren nicht, weil sie auch zur
+  Täterseite gehören können.
+- **nicht lesbar:** Was sich nicht lesen lässt, lässt sich nicht prüfen. Die Datei geht nicht in den Fall und nicht an
+  das Sprachmodell. Sie bleibt beim Sachbearbeiter. Im Sitzungsprotokoll steht, wie viele Dateien welcher Art nicht
+  übergeben wurden, ohne ihre Namen.
+
+**Auswählen.** Jede Zeile hat einen Haken, die Kopfzeile einen für alle. «Alle» meint, was nach dem Filter der Tabelle
+zu sehen ist. Mit gedrückter Umschalttaste wählt ein Klick den ganzen Bereich seit dem letzten Haken. Für die Auswahl
+gibt es: «Nochmals pseudonymisieren», «Als Rapport», «Als Beilage», «Entfernen» und «Verschieben» in den Akten-Eingang
+eines anderen Falls. Ohne Auswahl sind diese Knöpfe aus. Eine einzelne Datei lässt sich umbenennen, die Endung bleibt.
+
+**In den Fall aufnehmen.** Aufgenommen wird, was gewählt und bereit ist. Ist nichts gewählt: alles, was bereit ist. Beim
+Knopf steht jeweils, wie viele Dateien das sind. Was Personendaten enthält oder nicht lesbar ist, bleibt im Akten-Eingang
+liegen und wird genannt.
+
+- **In den Fall kommt die Textfassung, nie das Original.** In einem Original können Angaben stecken, die niemand sieht:
+  der Verfasser in den Eigenschaften, eingebettete Bilder, der Änderungsverlauf.
+- **Neutrale Dateinamen** sind die Vorgabe: `rapport-01.txt`, `beilage-01.txt`, `beilage-02.csv`. Ein Dateiname nennt
+  leicht eine Person, und er steht in jedem Protokoll. Welche hochgeladene Datei unter welchem Namen im Fall liegt, hält
+  die Ablage ausserhalb des Projekts fest (`<Ablage>/<Fall-ID>/dateinamen.csv`). Wer die Namen behalten will, nimmt den
+  Haken weg: Dann prüft die Oberfläche jeden Namen wie ein Dokument.
+- Die Aufnahme läuft über `tools/fall.py`, das jede Datei selbst noch einmal prüft und im Register des Eingangs einträgt.
+- Ein Dokument überschreibt nie ein anderes. Gibt es den Namen im Fall schon, bekommt das neue eine Nummer.
+
+**Was im Fall liegt.** Unter «Akten» steht auch der Eingang des Falls. Gewählte Dokumente lassen sich entfernen (mit
+«Durch» und «Grund», das Register hält es fest) oder in einen anderen Fall verschieben (dort mit PII-Prüfung
+aufgenommen, hier entfernt). Liegt dort schon ein Dokument gleichen Namens, kommt das verschobene unter der nächsten
+freien Nummer an. Ein Dokument, das jemand von Hand in den Eingang kopiert hat, erscheint als «nicht geprüft»: Es lässt
+sich nachträglich prüfen oder entfernen. Von seinem Namen bleibt nach dem Entfernen nichts im Register, nur die Prüfsumme.
+
+Grenzen des Akten-Eingangs: 60 MB je Datei, 600 MB und 2000 Dateien je Eingang.
+
+### Nochmals pseudonymisieren
+
+Die Akten kommen pseudonymisiert aus dem Haus. Hat die erste Pseudonymisierung etwas übersehen, bessert der
+Sachbearbeiter hier nach: Dateien anhaken und «Nochmals pseudonymisieren», oder der Knopf in der Zeile. Mehrere gewählte
+Dokumente kommen nacheinander («Dokument 2 von 5»).
+
+Der Bildschirm zeigt den Text mit markierten Fundstellen: was ersetzt wird, was noch offen ist (Kandidaten), was stehen
+bleibt. Technische Indikatoren sind eigens gekennzeichnet und bleiben immer stehen. Annehmen, verwerfen, ergänzen: Jede
+Eingabe rechnet neu, damit sich eine Angabe im ganzen Dokument fortpflanzt. Dahinter steht dieselbe Bibliothek wie hinter
+`tools/pseudonymisieren.py`, ohne Sprachmodell und ohne Netz.
+
+- **Platzhalter von anderer Hand bleiben.** Steht im Dokument schon `[PERSON_08]`, bleibt das so. Neue Platzhalter
+  zählen hinter der höchsten Nummer weiter, die im Akten-Eingang und in den Dokumenten des Falls vorkommt: Eine Nummer
+  meint nie zwei Angaben.
+- **Gleiche Angabe, gleicher Platzhalter**, über alle Dokumente desselben Akten-Eingangs und, bei einem bestehenden Fall,
+  über dessen Zuordnungstabelle.
+- **«Übernehmen»** schickt das Ergebnis durch die PII-Prüfung. Besteht es, ersetzt es die Datei im Akten-Eingang, und der
+  Klartext verlässt den Speicher. Besteht es nicht, bleibt alles, wie es war, und die Seite zeigt die Stellen maskiert.
+- **«Abbrechen»** lässt die Datei, wie sie war.
+- Die Zuordnungstabelle entsteht in der Ablage ausserhalb des Projekts, sobald die Akten in den Fall aufgenommen sind
+  (`<Ablage>/<Fall-ID>/zuordnung.csv`). Sie enthält, was hier ersetzt wurde. Platzhalter von anderer Hand kennt sie
+  nicht: Für sie gilt die Zuordnung, die im Haus geführt wird.
+
+### Ermittlung und Chat
+
+Die Ansicht «Ermittlung» zeigt den Stand der Sitzung von Claude Code, den Chat und darunter, welcher Analyst woran
+arbeitet. In allen anderen Ansichten eines Falls steht derselbe Chat klein am rechten Rand, unter der Arbeitsspur. Er
+lässt sich einklappen.
+
+- **Vorgaben.** Vor dem Start nimmt das Feld Vorgaben auf: ein Schwerpunkt, eine Eingrenzung, ein Hinweis. Sie gehen
+  mit dem Auftrag `/ermittlung <Fall-ID>` an Claude Code. Der Skill berücksichtigt sie im Plan. Vorgaben ersetzen keine
+  Freigabe.
+- **Jeder Schritt im Verlauf.** Antworten der Ermittlung, jeder Auftrag an einen Analysten, jeder Werkzeugaufruf mit
+  Ziel, Beleg (`P-0007`, anklickbar) und Ergebnis (Treffer, kein Treffer, Fehlschlag), jede Rückfrage mit ihrem
+  Entscheid. «Jeden Schritt zeigen» blendet die Einzelschritte aus, wenn nur die Nachrichten interessieren.
+- **Nachrichten.** Arbeitet die Sitzung nicht, setzt eine Nachricht sie fort. Arbeitet sie, wartet die Nachricht auf das
+  Ende des laufenden Auftrags und lässt sich bis dahin zurücknehmen, oder sie unterbricht ihn («Jetzt unterbrechen und
+  senden»). Strg+Eingabe sendet.
+- **Anhalten, fortsetzen, neu starten.** Anhalten beendet den laufenden Schritt. Fortsetzen nimmt dieselbe Sitzung
+  wieder auf, auch nach einem Neustart der Oberfläche: Sie findet die letzte Sitzung zum Fall im Sitzungsprotokoll.
+- **Was hier steht, liest das Sprachmodell.** Jede Eingabe geht durch dieselbe PII-Prüfung wie ein Dokument. Findet sie
+  etwas, geht nichts hinaus, und die Meldung zeigt die Stelle maskiert.
+- **Am Ende.** Hat die Ermittlung Befunde und einen Rapport hinterlassen, erzeugt die Oberfläche Ermittlungsprotokoll,
+  PDF und Datenblätter und bietet «Ergebnisse ansehen» an.
+
+Jede Nachricht, jede Vorgabe und die Antwort der Ermittlung am Ende eines Auftrags stehen im Sitzungsprotokoll. Den
+ganzen Verlauf legt die Oberfläche zusätzlich als Textdatei im Arbeitsstand des Falls ab
+(`arbeitsstand/verlauf-oberflaeche-<Zeit>.txt`). Die Datei ist eine Lesehilfe, kein Beleg: Belegt ist, was im
+Sitzungsprotokoll und in der Protokollkette steht.
+
+### Rückfragen
+
+Braucht ein Werkzeugaufruf eine Zustimmung, erscheint ein Fenster über der Ansicht, in jeder Ansicht und auch, wenn
+gerade ein anderer Fall offen ist. Es nennt den Fall, das Werkzeug und die Eingabe im Wortlaut. Der Titel des
+Browser-Reiters zeigt die Rückfrage an.
+
+- **Erlauben** gilt für diesen einen Aufruf. **Ablehnen** auch. Ohne Antwort innert 30 Minuten gilt die Frage als abgelehnt.
+- **«Erst nachsehen»** blendet das Fenster aus und lässt einen Balken stehen. Die Ermittlung wartet.
+- Mehrere Rückfragen (Hauptsitzung und Analysten) kommen nacheinander, in der Reihenfolge ihres Eingangs.
+- Eine Rückfrage stellt Claude Code für jeden Aufruf, den die Einstellungen des Projekts weder erlauben noch verbieten.
+  Erlaubt sind die passiven Abfragen, die Werkzeuge für Fall, Rapport und Protokoll und das Schreiben der Arbeitsdateien
+  eines Falls (`arbeitsstand/`, `befunde.json`, `rapport/`). Aktive Massnahmen, die Websuche und alles Übrige fragen nach.
+- Über Aufrufe von Robin (Dark Web) entscheidet die Freigabe «darkweb» des Falls, ohne Fenster.
+
+### Ergebnisse und Archiv
+
+Die Ansicht «Ergebnisse» sammelt, was die Ermittlung hinterlassen hat:
+
+- **Ansehen:** Rapport, Indikatoren, Rohdaten, Fallübersicht und Suche, je mit einem Satz, was dort zu finden ist.
+- **Unterlagen:** Abschlussrapport, Ermittlungsprotokoll und Datenblätter, je mit Stand, zum Ansehen und als HTML und
+  PDF zum Herunterladen. Dazu die Indikatorliste und das Protokoll als CSV und die Befunde als JSON. «Alle Unterlagen neu
+  erzeugen» ruft die Werkzeuge des Projekts auf.
+- **Alles mitnehmen:** drei Archive (ZIP).
+
+| Archiv | Inhalt |
+|---|---|
+| Unterlagen und Sitzungsprotokoll | Rapport, Protokoll und Datenblätter (HTML und PDF), CSV, Befunde. Dazu je Sitzung die Zeilen des Sitzungsprotokolls, die diesen Fall betreffen, und der Verlauf aus dem Chat. |
+| Nur die Unterlagen | wie oben, ohne Sitzungsprotokoll |
+| Die ganze Fallakte | alles oben, dazu `fall.json`, die Dokumente des Eingangs, die Protokollkette, der Arbeitsstand und alle Rohdaten |
+
+Jedes Archiv enthält `INHALT.txt`: jede Datei mit Grösse und SHA-256, der Stand der Protokollkette und, was fehlt oder
+älter ist als die Daten. Das Archiv entsteht im Speicher und liest die Fallakte nur. Es enthält die pseudonymisierte
+Akte, keinen Klartext.
+
+### Weitere Funktionen
 
 | Funktion | Was geschieht | Womit |
 |---|---|---|
-| **Neuer Fall** | Dokument hineinziehen, Fall-ID und Titel. «Schon geschwärzt»: PII-Prüfung, dann in den Fall. «Klartext»: zuerst der lokale Bildschirm der Pseudonymisierung. Lehnt die PII-Prüfung ab, zeigt die Seite die Stellen maskiert, und es entsteht nichts. | `tools/fall.py neu`, `tools/pii_pruefung.py`, `tools/_pseudo.py` |
-| **Weiteres Dokument** | Dasselbe für einen bestehenden Fall. Bei Klartext gilt die Zuordnungstabelle des Falls weiter: gleiche Angabe, gleicher Platzhalter. | `tools/fall.py aufnehmen` |
-| **Ermittlung** | Starten, anhalten, fortsetzen. Sichtbar ist, welcher Analyst woran arbeitet. Neue Ergebnisse erscheinen laufend in Arbeitsspur und Ansichten. | Claude Code mit `/ermittlung <Fall-ID>` |
-| **Freigaben** | Aktive Massnahmen, Dark Web und Kontoabfragen per Klick, mit «Durch» und «Grundlage». Fragt Claude Code für eine einzelne aktive Massnahme nach, erscheint die Frage als Dialog. | `tools/fall.py` (Funktion `freigabe_setzen`) |
+| **Freigaben** | Aktive Massnahmen, Dark Web und Kontoabfragen per Klick, mit «Durch» und «Grundlage». | `tools/fall.py` (Funktion `freigabe_setzen`) |
 | **Abklärung von Hand** | Formular für Indikator, Quelle, Zeit und Wortlaut. Der Eintrag geht in die Kette und ist als «von Hand erfasst» gekennzeichnet. | `tools/beleg.py` |
-| **Dokumente** | Abschlussrapport, Ermittlungsprotokoll, Datenblätter und PDF neu erzeugen, Kette prüfen. Die Seite zeigt die Ausgabe des Werkzeugs. | `tools/rapport.py`, `protokoll.py`, `anhang.py`, `pdf.py`, `audit_pruefen.py` |
+| **Dokumente** | Abschlussrapport, Ermittlungsprotokoll, Datenblätter und PDF einzeln neu erzeugen, Kette prüfen. Die Seite zeigt die Ausgabe des Werkzeugs. | `tools/rapport.py`, `protokoll.py`, `anhang.py`, `pdf.py`, `audit_pruefen.py` |
 | **Zurückführen** | Der fertige Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. | `tools/reidentifizieren.py` |
+| **Fall löschen** | Nur, solange nichts abgefragt wurde: keine Protokolleinträge, keine Rohdaten, keine Befunde. Nie der Musterfall. Für eine falsche Fall-ID. | `tools/fall.py` (Funktion `loeschen`) |
 | **Quellen** | Welche bereit sind und welche fehlen, eine Testabfrage je Quelle, das Kontingent von urlscan.io, Stand der lokalen Listen. Von Schlüsseln nur der Name der Variablen. | wie `tools/pruefen.py --live` |
 
 Jeder dieser Schritte steht im Sitzungsprotokoll des Falls (`protokoll/sitzungen/`), mit Zeit und dem Vermerk
@@ -339,20 +502,24 @@ in `fall.json` (`"weg": "Oberfläche"`).
 
 Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung.
 
-1. Das Dokument geht vom Browser an den Server und liegt dort im Speicher. Word- und PDF-Dateien liegen für das Auslesen
-   kurz in einem Ordner ausserhalb des Projekts, der danach verschwindet.
-2. Der Bildschirm «Pseudonymisieren» zeigt den Text mit markierten Fundstellen: was ersetzt wird, was noch offen ist
-   (Kandidaten), was stehen bleibt. Technische Indikatoren sind eigens gekennzeichnet und bleiben immer stehen.
-   Annehmen, verwerfen, ergänzen: Jede Eingabe rechnet neu, damit sich eine Angabe im ganzen Dokument fortpflanzt.
-   Dahinter steht dieselbe Bibliothek wie hinter `tools/pseudonymisieren.py`, ohne Sprachmodell und ohne Netz.
-3. Erst das Ergebnis geht in die PII-Prüfung und über `tools/fall.py` in den Fall.
-4. Die Zuordnungstabelle geht in die Ablage ausserhalb des Projektordners (`<Ablage>/<Fall-ID>/zuordnung.csv`, nur für
-   den Benutzer lesbar). Sie steht in keinem Protokoll. Die Vorgabe `OSINT-Ablage` sperren die Berechtigungen für Agenten.
+1. Eine hochgeladene Datei geht vom Browser an den Server, als Rohinhalt und nur mit dem Geheimnis. Sie liegt dort im
+   Speicher: das Original und seine Textfassung. Für das Auslesen eines PDF, das `pdftotext` nicht aus dem Speicher
+   liest, liegt es kurz in einem Ordner ausserhalb des Projekts, der danach verschwindet.
+2. Auf dem Bildschirm «Pseudonymisieren» entscheidet der Sachbearbeiter. Mit «Übernehmen» ersetzt das Ergebnis die
+   Datei im Akten-Eingang, und das Original verlässt den Speicher.
+3. Erst das Ergebnis geht über `tools/fall.py` in den Fall. Für die Übergabe liegt die Textfassung kurz in einem Ordner
+   ausserhalb des Projekts.
+4. Die Zuordnungstabelle und die Liste der Dateinamen gehen in die Ablage ausserhalb des Projektordners
+   (`<Ablage>/<Fall-ID>/`, nur für den Benutzer lesbar). Sie stehen in keinem Protokoll. Die Vorgabe `OSINT-Ablage`
+   sperren die Berechtigungen für Agenten. Steht in der Ablage schon eine Tabelle, bleibt jedes ihrer Paare erhalten.
+   Passt sie nicht zu dem, was hier ersetzt wurde (jemand hat sie ausserhalb der Oberfläche geändert), entsteht eine
+   eigene Datei daneben: Überschrieben wird nichts.
 5. Zurückführen schreibt den Rapport mit echten Angaben ebenfalls in die Ablage und zeigt ihn nur auf dem Bildschirm
    «Zurückführen».
 
-Echte Angaben zeigt die Oberfläche nur auf diesen zwei Bildschirmen. Beide tragen das Band **«lokal, Klartext»**, und
-ihren Inhalt gibt der Server nur gegen das Geheimnis heraus. Überall sonst stehen Platzhalter.
+Echte Angaben kann die Oberfläche auf drei Bildschirmen zeigen: im Akten-Eingang (die Namen hochgeladener Dateien, nie
+ihren Inhalt), auf dem Bildschirm der Pseudonymisierung und beim Zurückführen. Alle drei tragen das Band
+**«lokal, Klartext»**, und ihren Inhalt gibt der Server nur gegen das Geheimnis heraus. Überall sonst stehen Platzhalter.
 
 ### Claude Code steuern
 
@@ -371,18 +538,19 @@ claude -p "/ermittlung <Fall-ID>" --output-format stream-json --verbose
   darunter das Gateway des Projekts (`osint`), sind die Einstellungen des Projekts nicht geladen, und Berechtigungen
   und Protokoll gälten nicht. Die Oberfläche beendet die Sitzung dann sofort und sagt es.
 - **Modelle.** Kein Schalter für das Modell. Es bleibt, wie das Projekt es festlegt.
-- **Rückfragen.** Verlangen die Einstellungen für ein Werkzeug eine Rückfrage (aktive Massnahmen), ruft Claude Code das
-  Werkzeug `rueckfrage` eines kleinen MCP-Servers auf (`tools/ui/rueckfrage.py`). Der gibt die Frage an die Oberfläche
-  weiter, und sie erscheint im Browser als Dialog. Erlauben gilt für diesen einen Aufruf. Ohne Antwort innert
-  30 Minuten gilt die Frage als abgelehnt. Die Karte, mit der sich der MCP-Server bei der Oberfläche ausweist, taugt nur
-  zum Fragen: Erlauben kann nur das Browserfenster mit dem Geheimnis. Eine Rückfrage stellt Claude Code für jeden
-  Aufruf, den die Einstellungen des Projekts weder erlauben noch verbieten, nicht nur für aktive Massnahmen. Die
-  Antwort geht als ein Textblock mit JSON zurück, wie die Dokumentation es verlangt.
+- **Vorgaben und Nachrichten.** Vorgaben folgen der Fall-ID im ersten Auftrag als eigener Absatz. Eine Nachricht geht
+  als neuer Auftrag an dieselbe Sitzung (`--resume <Sitzung>`). Unterbricht sie einen laufenden Auftrag, beendet die
+  Oberfläche zuerst den Prozess und setzt die Sitzung dann mit der Nachricht fort.
+- **Rückfragen.** Braucht ein Aufruf eine Zustimmung, ruft Claude Code das Werkzeug `rueckfrage` eines kleinen
+  MCP-Servers auf (`tools/ui/rueckfrage.py`). Der gibt die Frage an die Oberfläche weiter, und sie erscheint im Browser
+  als Fenster. Die Karte, mit der sich der MCP-Server bei der Oberfläche ausweist, taugt nur zum Fragen: Erlauben kann
+  nur das Browserfenster mit dem Geheimnis. Die Antwort geht als ein Textblock mit JSON zurück, wie die Dokumentation
+  es verlangt.
 - **Anhalten und fortsetzen.** Anhalten beendet den Prozess. Claude Code bricht dabei den laufenden Schritt ab. Was bis
   dahin abgefragt wurde, steht im Protokoll. Fortsetzen nimmt dieselbe Sitzung wieder auf (`--resume`) und gibt ihr
   den Auftrag weiterzumachen.
 - **Wer woran arbeitet** liest die Oberfläche aus der JSON-Ausgabe: je Analyst der letzte Werkzeugaufruf und die Zahl
-  der Schritte.
+  der Schritte. Beleg und Ergebnis einer Abfrage liest sie aus der Antwort des Werkzeugs.
 
 **Abrechnung: Abo oder API.** Eine Sitzung aus der Oberfläche rechnet über denselben Zugang ab wie `claude` am Terminal
 desselben Benutzers. Einen eigenen API-Schlüssel braucht dieser Weg nicht. Stand: Dokumentation von Claude Code
@@ -394,8 +562,8 @@ gelesen am 16.11.2026).
   nebeneinander arbeiten.
 - **Mit einem Console-Konto angemeldet oder `ANTHROPIC_API_KEY` gesetzt:** Abrechnung über die API, nach Verbrauch. Ist
   die Variable gesetzt, nimmt Claude Code im Skriptbetrieb immer den Schlüssel, auch wenn ein Abo angemeldet ist.
-- Die Seite «Bedienen» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen ist.
-  Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
+- Die Ansicht «Ermittlung» sagt vor dem Start, über welchen Zugang abgerechnet wird, soweit es an der Umgebung abzulesen
+  ist. Sie nennt nur den Namen der Variablen. Einen `apiKeyHelper` in den Einstellungen des Benutzers sieht sie nicht.
 - **Nicht gewählt: das Agent SDK für Python.** Seine Dokumentation verweist für die Anmeldung auf API-Schlüssel, also
   Abrechnung nach Verbrauch, und es wäre eine neue Pflicht-Abhängigkeit. Es startet dieselbe Kommandozeile.
 
@@ -407,38 +575,46 @@ die Dokumentation an, dass der Skriptbetrieb künftig von sich aus ohne die Eins
 als Vorgabe) und dann nur noch mit API-Schlüssel läuft. Die Oberfläche merkt das am Start der Sitzung und beendet sie,
 statt ohne Berechtigungen und Protokoll zu arbeiten.
 
-**Die Probe am eigenen Arbeitsplatz.** Dass eine aus der Oberfläche gestartete Sitzung wirklich unter den
-Berechtigungen des Projekts läuft, zeigt ein Befehl mit dem echten Claude Code:
+**Die Probe am eigenen Arbeitsplatz.** Ob der Weg mit dem echten Claude Code trägt, zeigt ein Befehl:
 
 ```bash
 python3 tools/oberflaeche.py --sitzungsprobe          # am Terminal, verbraucht etwas Kontingent
 ```
 
-Er startet zwei kurze Sitzungen auf demselben Weg wie «Ermittlung starten». In der ersten soll Claude Code zwei
-gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei anfassen). In der zweiten soll es ein
-Werkzeug aufrufen, das eine Rückfrage verlangt, und die Probe lehnt ab. Erwartet wird: beide Befehle abgelehnt,
-`fall.json` unverändert, die Rückfrage kommt bei der Oberfläche an. Die Probe nennt dazu, über welchen Zugang
-abgerechnet wird und welche MCP-Server Claude Code geladen hat.
+Er startet vier kurze Sitzungen auf demselben Weg wie «Ermittlung starten» und ändert nichts am Fall:
+
+1. **Ablauf.** Claude Code ruft einmal `fall_status` auf. Geprüft wird: Meldet es Sitzung und Modell, ist das Gateway
+   geladen, kommt die Antwort an, läuft der Aufruf ohne Rückfrage, und hat der Protokoll-Hook mitgeschrieben.
+2. **Fortsetzen.** Dieselbe Sitzung wird wieder aufgenommen, wie es eine Nachricht aus dem Chat tut.
+3. **Verbote.** Claude Code soll zwei gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei
+   lesen). Erwartet wird: beide abgelehnt, `fall.json` unverändert.
+4. **Rückfrage.** Claude Code soll ein Werkzeug aufrufen, das eine Zustimmung verlangt. Die Probe lehnt jede Rückfrage ab.
+
+Die Probe nennt dazu, über welchen Zugang abgerechnet wird und welche MCP-Server Claude Code geladen hat.
 
 ### Schutz der Bedienung
 
 | Schutz | Wie er umgesetzt ist |
 |---|---|
-| Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST mit JSON und trägt das Geheimnis in einer Kopfzeile. Ohne es antwortet der Server mit 403 und ändert nichts. Host-Kopf und Herkunft prüft er wie beim Lesen. |
-| Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen und keinen Beleg erfassen. |
-| Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. |
-| Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Pseudonymisieren und Zurückführen verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
+| Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST und trägt das Geheimnis in einer Kopfzeile: Angaben als JSON, eine Datei als Rohinhalt. Ohne es antwortet der Server mit 403 und ändert nichts. Eine Datei liest er erst ein, wenn das Geheimnis stimmt. Host-Kopf und Herkunft prüft er wie beim Lesen. |
+| Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen, keinen Beleg erfassen und seine eigene Rückfrage nicht beantworten. |
+| Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. Die eine Datei, die sie selbst in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand. |
+| Der Chat geht durch die PII-Prüfung | Vorgaben und Nachrichten prüft die Oberfläche wie ein Dokument, bevor sie an Claude Code gehen. Titel, Auftrag und Kürzel eines Falls ebenso. |
+| Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Entfernen, Löschen, Pseudonymisieren und Zurückführen verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
 | Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
 
 **Grenzen dieses Schutzes.** Einen Wächter, der jeden Werkzeugaufruf vorab prüft, gibt es seit dem 17.11.2026 nicht
 mehr. Ein Agent, der die Funktionen hinter der Oberfläche aus einem Shell-Befehl aufruft (zum Beispiel
 `freigabe_setzen`), braucht dafür kein Geheimnis. Ein solcher Befehl steht aber auf keiner Erlaubt-Liste: Claude Code
-legt ihn dem Menschen vor, in einer Sitzung aus der Oberfläche als Dialog mit dem Befehl im Wortlaut. Wer ihn erlaubt,
+legt ihn dem Menschen vor, in einer Sitzung aus der Oberfläche als Fenster mit dem Befehl im Wortlaut. Wer ihn erlaubt,
 hat entschieden. Wer Claude Code so einstellt, dass es nicht mehr fragt, hat diese Schicht abgeschaltet.
 Ein Programm mit den Rechten des Benutzers, das gezielt den Speicher des Servers ausliest oder den
 Startcode in der halben Sekunde zwischen Start und Browserfenster aus der Prozessliste fischt, hält er nicht auf. Der
 zweite Fall fiele auf: Das Browserfenster des Sachbearbeiters könnte dann nicht bedienen und sagt es.
+Die PII-Prüfung erkennt Muster (Telefonnummern, AHV-, Konto- und Kartennummern, Geburtsdaten, Kontrollschilder), keine Namen. Ein
+Name, der in einem hochgeladenen Dokument oder im Chat stehen bleibt, geht an das Sprachmodell. Dagegen hilft nur der
+Blick des Sachbearbeiters auf dem lokalen Bildschirm.
 
 ## Anhang für die Akte
 
@@ -457,12 +633,24 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
 
 - **Die Steuerung von Claude Code ist nur gegen ein Programm geprüft, das Claude Code spielt.** Mit dem echten Claude
   Code ist weder die Form seiner JSON-Ausgabe noch der Weg der Rückfrage gesehen, und keine Ermittlung ist je aus der
-  Oberfläche gelaufen. Schalter, Antwortform der Rückfrage und die Meldung der MCP-Server beim Start folgen der
-  Dokumentation (gelesen am 16.11.2026). Nicht nachgelesen ist, ob die Variable `MCP_TOOL_TIMEOUT` eine Rückfrage
-  wirklich 30 Minuten warten lässt. Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
+  Oberfläche gelaufen. Dasselbe gilt für den Chat: dass Vorgaben nach der Fall-ID beim Skill ankommen, dass `--resume`
+  mit einer Nachricht die Sitzung fortsetzt und dass die Erlaubt-Regeln für die Arbeitsdateien eines Falls greifen.
+  Schalter, Antwortform der Rückfrage und die Meldung der MCP-Server beim Start folgen der Dokumentation (gelesen am
+  16.11.2026). Nicht nachgelesen ist, ob die Variable `MCP_TOOL_TIMEOUT` eine Rückfrage wirklich 30 Minuten warten
+  lässt. Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
-- **Eine Rückfrage auf einmal.** Stellt Claude Code eine zweite, während die erste offen ist, gilt die zweite als abgelehnt.
+- **Der Akten-Eingang lebt im Speicher.** Was hochgeladen, aber noch nicht in einen Fall aufgenommen ist, ist nach dem
+  Beenden der Oberfläche weg. Dasselbe gilt für eine Pseudonymisierung, die noch nicht übernommen ist.
+- **Formate.** Gelesen werden Text, Word (.docx), OpenDocument, Excel (.xlsx), PowerPoint (.pptx), RTF, E-Mail (.eml)
+  und PDF mit Text. Bilder, Ton, gescannte PDF und die alten Office-Formate nicht: Es gibt keine Texterkennung. Die
+  Textfassung eines Office-Dokuments enthält den Text, nicht das Layout, keine Kommentare und keine Bilder.
+- **Ordner hineinziehen** stützt sich auf eine Schnittstelle des Browsers (`webkitGetAsEntry`, `webkitdirectory`), die
+  alle grossen Browser kennen. Geprüft ist Chromium.
+- **Nachrichten warten auf das Ende eines Auftrags.** Claude Code nimmt im Skriptbetrieb keine Eingabe in einen
+  laufenden Auftrag an. Eine Nachricht wartet deshalb oder unterbricht den Auftrag.
+- **Der Verlauf im Chat** zeigt, was Claude Code in seiner JSON-Ausgabe meldet. Nach einem Neustart der Oberfläche ist
+  der Chat leer, der bisherige Verlauf liegt als Textdatei im Arbeitsstand des Falls und im Archiv.
 - **Ein Fenster.** Bedienen lässt sich die Oberfläche aus dem Fenster, das sie beim Start öffnet. Wer es schliesst und
   die Sitzung des Browsers verliert, startet die Oberfläche neu.
 - **Grosse Rohdateien.** Rohdateien über 3 MB ordnet die Oberfläche nicht zu und durchsucht sie nicht. Sie zeigt den

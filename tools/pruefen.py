@@ -437,9 +437,9 @@ def main() -> int:
         ui.erledigt("Einsatzbereit", f"mit {len(bereit)} von {len(QUELLEN)} Quellen", breit=0)
     ui.liste("Nächste Schritte", list(dict.fromkeys(schritte)), nummeriert=True)
     if not noetig_fehlt:
-        ui.paare("Loslegen", [("Oberfläche starten", f"{PY} tools/oberflaeche.py   (alles Weitere im Browser: Akten hochladen, ermitteln, Ergebnisse holen)"),
-                              ("Oder am Terminal", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung <Fall-ID>"),
-                              ("Einstellungen ändern", SETUP)])
+        ui.liste("So geht es weiter", plattform.WEITER, nummeriert=True)
+        ui.paare("Ausserdem", [("Am Terminal statt im Browser", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung <Fall-ID>"),
+                               ("Einstellungen ändern", SETUP)])
     return 1 if noetig_fehlt else 0
 
 

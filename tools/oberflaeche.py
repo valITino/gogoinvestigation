@@ -10,13 +10,13 @@
                                                      (Vorgabe: OSINT-Ablage im Benutzerordner)
     python3 tools/oberflaeche.py --selbstpruefung    kurz starten, die Hauptseiten abrufen, wieder beenden (für die CI)
     python3 tools/oberflaeche.py --sitzungsprobe [Fall-ID]
-                                                     Probe mit dem echten Claude Code, am Terminal: Zwei kurze Sitzungen starten wie aus der
-                                                     Oberfläche und zeigen, dass gesperrte Aufrufe abgelehnt werden und eine Rückfrage ankommt
+                                                     Probe mit dem echten Claude Code, am Terminal: Vier kurze Sitzungen starten wie aus der
+                                                     Oberfläche und zeigen, ob der Weg trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage)
 
 Ein lokaler Server in Python, erreichbar nur über 127.0.0.1. Eine Seite, keine fremden Inhalte, läuft ohne Internet.
 Beenden mit Strg+C. Was die Oberfläche zeigt und wie sie geschützt ist: docs/OBERFLAECHE.md.
 
-Bedienen (Fall anlegen, Ermittlung starten, freigeben, Dokumente erzeugen) lässt sich die Oberfläche nur, wenn ein Mensch
+Bedienen (Akten hochladen, Fall anlegen, Ermittlung starten und im Chat begleiten, freigeben, Ergebnisse holen) lässt sich die Oberfläche nur, wenn ein Mensch
 sie an einem Terminal startet, und nur aus dem Browserfenster, das sich dabei öffnet: Beim Start entsteht ein Geheimnis,
 das nur im Speicher des Servers und in diesem Browserfenster liegt. Ohne Terminal oder aus Claude Code heraus gestartet,
 läuft sie im Modus «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen.
@@ -63,16 +63,19 @@ def selbstpruefung(port: int) -> int:
     oeffner = urllib.request.build_opener(urllib.request.ProxyHandler({}))      # nie über einen Proxy: Es geht nur um den eigenen Rechner
     try:
         fehler = []
-        wege = ["/", "/app.js", "/app.css", "/basis.css", "/api/faelle", "/api/quellen"]
+        wege = ["/", "/app.js", "/app.css", "/bedienung.css", "/basis.css", "/api/faelle", "/api/quellen", "/api/neu"]
         for fall in daten.faelle():
             if fall["muster"]:
-                wege += [f"/api/fall/{fall['id']}/{a}" for a in ("kopf", "uebersicht", "rapport", "indikatoren", "rohdaten", "dokumente", "spur")]
+                wege += [f"/api/fall/{fall['id']}/{a}" for a in ("kopf", "uebersicht", "akten", "rapport", "indikatoren", "rohdaten", "dokumente", "ergebnisse", "verlauf", "spur")]
+                wege.append(f"/fall/{fall['id']}/paket.zip?teile=unterlagen")
         for weg in wege:
             try:
                 with oeffner.open(basis + weg, timeout=60) as r:
                     inhalt = r.read()
                     if r.status != 200 or not inhalt:
                         fehler.append(f"{weg}: HTTP {r.status}")
+                    elif weg.endswith("unterlagen") and not inhalt.startswith(b"PK"):
+                        fehler.append(f"{weg}: kein ZIP-Archiv")
                     elif weg.startswith("/api/") and "fehler" in json.loads(inhalt):
                         fehler.append(f"{weg}: {json.loads(inhalt)['fehler']}")
             except Exception as e:      # jede Art von Fehlschlag zählt
@@ -108,11 +111,12 @@ def sitzungsprobe(fall: str, grund: str, ablage: str | None) -> int:
     except daten.NichtGefunden as e:
         print(f"FEHLER: {e}", file=sys.stderr)
         return 2
-    print(f"Die Probe startet Claude Code zweimal kurz im Projektordner, auf demselben Weg wie «Ermittlung starten», am Fall {fall}.\n"
-          "Erste Sitzung: Claude Code soll zwei gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei anfassen).\n"
-          "Zweite Sitzung: Claude Code soll ein Werkzeug aufrufen, das eine Rückfrage verlangt. Die Probe lehnt die Rückfrage ab.\n"
-          "Erwartet wird: beide Befehle abgelehnt, fall.json unverändert, die Rückfrage kommt bei der Oberfläche an.\n"
-          "Das verbraucht etwas Kontingent des angemeldeten Kontos.\n" + sitzung_modul.abrechnung()["text"])
+    print(f"Die Probe startet Claude Code viermal kurz im Projektordner, auf demselben Weg wie «Ermittlung starten», am Fall {fall}.\n"
+          "1. Ablauf: Claude Code ruft einmal fall_status auf. Geprüft wird die Form der Ausgabe, ob das Gateway geladen ist und ob der Protokoll-Hook mitschreibt.\n"
+          "2. Fortsetzen: Dieselbe Sitzung wird wieder aufgenommen, wie es eine Nachricht aus dem Chat tut.\n"
+          "3. Verbote: Claude Code soll zwei gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei lesen).\n"
+          "4. Rückfrage: Claude Code soll ein Werkzeug aufrufen, das eine Zustimmung verlangt. Die Probe lehnt jede Rückfrage ab.\n"
+          "Am Fall ändert die Probe nichts. Sie verbraucht etwas Kontingent des angemeldeten Kontos.\n" + sitzung_modul.abrechnung()["text"])
     if input("Starten? Zur Bestätigung «ja» eingeben: ").strip().lower() != "ja":
         print("Nicht gestartet.")
         return 1
@@ -124,7 +128,8 @@ def sitzungsprobe(fall: str, grund: str, ablage: str | None) -> int:
     finally:
         server.shutdown()
         server.server_close()
-    print("\nErgebnis: " + ("Die Schutzmechanismen haben gegriffen." if code == 0 else "Mindestens ein Punkt ist offen, siehe oben."))
+    print("\nErgebnis: " + ("Der Weg trägt: Ausgabe, Hooks, Fortsetzen, Verbote und Rückfrage verhalten sich wie erwartet." if code == 0
+                            else "Mindestens ein Punkt ist offen, siehe oben. Bis er geklärt ist, die Ermittlung am Terminal starten."))
     return code
 
 

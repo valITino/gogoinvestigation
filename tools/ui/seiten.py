@@ -232,12 +232,15 @@ def kopf(fall: daten.Fall) -> str:
 
 # --------------------------------------------------------------------------- Ansichten
 
-def faelle_seite() -> str:
+def faelle_seite(bedienbar: bool = False) -> str:
     zeilen = [[f'<a href="{pfad(f["id"])}">{esc(f["id"])}</a>' + (' <span class="marke z-warnung">Muster</span>' if f["muster"] else ""), esc(f["titel"]),
                zeit(f["eroeffnet"]), esc(f["sachbearbeiter"]), esc(f["klassifizierung"])] for f in daten.faelle()]
-    return ("<h1>Fälle</h1><p class='unter'>Alle Fallakten in diesem Arbeitsplatz. Die Oberfläche liest sie nur.</p>"
+    neu = ('<p><a class="knopf haupt" href="#/neu">Neuer Fall</a> <span class="klein">Akten hineinziehen, prüfen, wo nötig nochmals pseudonymisieren, Fall anlegen.</span></p>'
+           if bedienbar else "")
+    return ("<h1>Fälle</h1><p class='unter'>Alle Fallakten in diesem Arbeitsplatz." + ("" if bedienbar else " Die Oberfläche liest sie nur.") + "</p>" + neu
             + (tabelle(["Fall", "Titel", "Eröffnet", "Sachbearbeitung", "Klassifizierung"], zeilen, "Fälle") if zeilen else
-               "<p>Noch kein Fall angelegt. Ein Fall entsteht mit <code>python3 tools/fall.py neu &lt;Fall-ID&gt; --titel \"…\" --rapport &lt;Dokument&gt;</code>.</p>"))
+               "<p>Noch kein Fall angelegt." + ("" if bedienbar else " Ein Fall entsteht in der bedienbaren Oberfläche unter «Neuer Fall» oder mit "
+                                                "<code>python3 tools/fall.py neu &lt;Fall-ID&gt; --titel \"…\" --rapport &lt;Dokument&gt;</code>.") + "</p>"))
 
 
 def quellen_seite() -> str:
@@ -508,9 +511,77 @@ def dokumente_seite(fall: daten.Fall) -> str:
 
 def dokument_seite(fall: daten.Fall, name: str) -> str:
     fall.dokument(f"{name}.html")
+    fid = quote(fall.id)
+    pdf = f' · <a href="/fall/{fid}/dokument/{esc(name)}.pdf" download>PDF holen</a>' if (fall.pfad / "rapport" / f"{name}.pdf").is_file() else ""
     return (f'<h1>{esc(name)}</h1><p class="unter nicht-drucken">Das gespeicherte Dokument der Akte, unverändert. '
-            f'<a href="{pfad(fall.id, "dokumente")}">zurück zu den Dokumenten</a></p>'
-            f'<iframe class="dokument" title="{esc(name)}" src="/fall/{quote(fall.id)}/dokument/{esc(name)}.html" sandbox="allow-same-origin"></iframe>')
+            f'<a href="{pfad(fall.id, "ergebnisse")}">zurück zu den Ergebnissen</a> · <a href="/fall/{fid}/dokument/{esc(name)}.html?holen=1" download>HTML holen</a>{pdf}</p>'
+            f'<iframe class="dokument" title="{esc(name)}" src="/fall/{fid}/dokument/{esc(name)}.html" sandbox="allow-same-origin"></iframe>')
+
+
+ARCHIVE = (("unterlagen,sitzung", "Unterlagen und Sitzungsprotokoll", "Rapport, Ermittlungsprotokoll und Datenblätter (HTML und PDF), Indikatorliste, Befunde. "
+            "Dazu das Sitzungsprotokoll: jeder Auftrag, jeder Werkzeugaufruf, jede Rückfrage mit Antwort, und der Verlauf aus dem Chat."),
+           ("unterlagen", "Nur die Unterlagen", "Rapport, Ermittlungsprotokoll und Datenblätter (HTML und PDF), Indikatorliste, Befunde."),
+           ("unterlagen,sitzung,akte", "Die ganze Fallakte", "Alles oben, dazu fall.json, die Dokumente des Eingangs, die Protokollkette, der Arbeitsstand und "
+            "alle Rohdaten: die unveränderten Antworten der Quellen."))
+WEGE = (("rapport", "Rapport", "Befunde filtern und aufklappen bis zum Beleg, Beziehungsgraf, Geldfluss, Zeitachse."),
+        ("indikatoren", "Indikatoren", "Je Indikator ein Datenblatt: jeder Wert mit Quelle, Abfragezeit und Beleg."),
+        ("rohdaten", "Rohdaten", "Die Antworten der Quellen, unverändert, mit Prüfsumme."),
+        ("uebersicht", "Fallübersicht", "Kennzahlen, offene Punkte und die Abdeckung Indikator × Quelle."),
+        ("suche", "Suche", "Im ganzen Fall: Indikatoren, Befunde, Protokoll und Rohdaten."))
+
+
+def ergebnisse_seite(fall: daten.Fall, bedienbar: bool = False) -> str:
+    """Alles, was die Ermittlung hinterlassen hat, an einem Ort: ansehen, einzeln holen, als ein Archiv mitnehmen."""
+    from tools import protokoll as protokollwerkzeug
+    from tools.ui import formulare
+    fid = quote(fall.id)
+    dokumente = fall.dokumente()
+    h = ["<h1>Ergebnisse</h1><p class='unter'>Was die Ermittlung hinterlassen hat: ansehen, einzeln holen oder alles zusammen mitnehmen.</p>"]
+    if not any(d["html"] for d in dokumente):
+        h.append('<p class="banner">Zu diesem Fall sind noch keine Unterlagen erzeugt. Sie entstehen am Ende der Ermittlung'
+                 + (", oder hier mit «Alle Unterlagen neu erzeugen»." if bedienbar else ".") + "</p>")
+    veraltet = [d["titel"] for d in dokumente if d["html"] and d["aktuell"] is False]
+    if veraltet:
+        h.append(f'<p class="banner">Älter als die Daten: {esc(", ".join(veraltet))}. ' + ("Mit «Alle Unterlagen neu erzeugen» entsteht der aktuelle Stand." if bedienbar else "") + "</p>")
+    h.append('<h2>Ansehen</h2><div class="wege">' + "".join(
+        f'<a class="weg" href="{pfad(fall.id, ziel)}"><b>{esc(titel)}</b><span>{esc(text)}</span></a>' for ziel, titel, text in WEGE) + "</div>")
+    zeilen = []
+    for d in dokumente:
+        stand = '<span class="marke z-leer">noch nicht erzeugt</span>' if not d["html"] else \
+            f'<span class="marke z-{"gut" if d["aktuell"] else "warnung"}">{"✓" if d["aktuell"] else "?" if d["aktuell"] is None else "!"} {esc(d["vermerk"])}</span>'
+        ansehen = f'<a href="{pfad(fall.id, "dokument", d["name"])}">ansehen</a>' if d["html"] else "–"
+        holen = " · ".join(([f'<a href="/fall/{fid}/dokument/{d["name"]}.html?holen=1" download>HTML</a>'] if d["html"] else [])
+                           + ([f'<a href="/fall/{fid}/dokument/{d["name"]}.pdf" download>PDF</a>'] if d["pdf"] else [])) or "–"
+        zeilen.append([esc(d["titel"]), stand, ansehen, holen + ('' if d["pdf"] or not d["html"] else ' <span class="klein">(noch kein PDF)</span>')])
+    for name, titel in (("indikatoren.csv", "Indikatorliste"), ("Ermittlungsprotokoll.csv", "Ermittlungsprotokoll als Tabelle")):
+        da = (fall.pfad / "rapport" / name).is_file()
+        zeilen.append([esc(titel), '<span class="marke z-gut">✓ vorhanden</span>' if da else '<span class="marke z-leer">noch nicht erzeugt</span>', "–",
+                       f'<a href="/fall/{fid}/dokument/{name}" download>CSV</a>' if da else "–"])
+    befunde = (fall.pfad / "befunde.json").is_file()
+    zeilen.append(["Befunde, strukturiert", '<span class="marke z-gut">✓ vorhanden</span>' if befunde else '<span class="marke z-leer">noch nicht geschrieben</span>',
+                   f'<a href="{pfad(fall.id, "rapport")}">im Rapport</a>' if befunde else "–", f'<a href="/fall/{fid}/befunde.json" download>JSON</a>' if befunde else "–"])
+    h.append("<h2>Unterlagen</h2>" + tabelle(["Dokument", "Stand", "Ansehen", "Herunterladen"], zeilen, "Unterlagen", klasse="schlicht"))
+    if bedienbar:
+        h.append('<div class="knopfzeile">' + formulare.formular("dokumente", "", "Alle Unterlagen neu erzeugen", verborgen={"fall": fall.id, "was": "alles"}, danach="neu-laden", klasse="klein-form")
+                 + "</div><p class='klein'>Erzeugt Abschlussrapport, Ermittlungsprotokoll, PDF und Datenblätter aus dem Stand der Daten. Einzeln: unter «Bedienen».</p>")
+    h.append("<h2>Alles mitnehmen</h2><ul class='archive'>" + "".join(
+        f'<li><a class="knopf{" haupt" if i == 0 else ""}" href="/fall/{fid}/paket.zip?teile={teile}" download>{esc(titel)} (ZIP)</a><span class="klein">{esc(text)}</span></li>'
+        for i, (teile, titel, text) in enumerate(ARCHIVE)) + "</ul>"
+        "<p class='klein'>Jedes Archiv enthält die Datei INHALT.txt: jede Datei mit Grösse und Prüfsumme, dazu der Stand der Protokollkette. "
+        "Die Unterlagen sind pseudonymisiert. Den Rapport mit echten Angaben gibt es unter «Bedienen», «Zurückführen»: Er bleibt ausserhalb des Projektordners.</p>")
+    zeilen_s, meldungen = protokollwerkzeug.sitzungen_laden(fall.id)
+    eigene = [z for z in zeilen_s if z.get("fall") == fall.id]
+    sitzungen = sorted({str(z.get("sitzung") or "") for z in eigene})
+    kette = fall.kette()
+    verlaeufe = len(list((fall.pfad / "arbeitsstand").glob("verlauf-oberflaeche-*.txt"))) if (fall.pfad / "arbeitsstand").is_dir() else 0
+    h.append("<h2>Protokoll der Sitzung</h2><ul>"
+             f"<li>Sitzungsprotokoll: {len(eigene)} Einträge aus {len(sitzungen)} Sitzung{'en' if len(sitzungen) != 1 else ''}. "
+             "Der Protokoll-Hook schreibt es mit: Aufträge, Werkzeugaufrufe, Analysten, Schritte über die Oberfläche, Rückfragen mit Antwort.</li>"
+             f"<li>Verlauf aus dem Chat: {verlaeufe} Datei{'en' if verlaeufe != 1 else ''} im Arbeitsstand des Falls. Eine Lesehilfe, kein Beleg.</li>"
+             f"<li>Protokollkette der Abfragen: <span class='z-{'gut' if kette['ok'] else 'kritisch'}'>{'✓ unversehrt' if kette['ok'] else '✕ gebrochen'}</span>, "
+             f"{len(fall.eintraege())} Einträge. Lesbar aufbereitet im Ermittlungsprotokoll.</li>"
+             + "".join(f"<li class='z-kritisch'>{esc(m)}</li>" for m in meldungen) + "</ul>")
+    return "\n".join(h)
 
 
 def rapport_seite(fall: daten.Fall) -> str:

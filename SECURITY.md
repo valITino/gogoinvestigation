@@ -22,6 +22,8 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
 - Eine Änderung am Protokoll, die `tools/audit_pruefen.py` nicht erkennt, über das hinaus, was dort als Grenze steht.
 - Ein Weg, auf dem ein Agent die Oberfläche bedient: sich eine Freigabe erteilt, eine Rückfrage selbst beantwortet,
   an das Geheimnis des Starts kommt oder Klartext und Zuordnungstabelle zu sehen bekommt.
+- Ein Weg, auf dem der Inhalt einer hochgeladenen Datei, ihr ursprünglicher Name oder eine Eingabe im Chat ohne
+  PII-Prüfung in eine Fallakte, in ein Protokoll oder zu einem Sprachmodell gelangt.
 
 ## Grenzen, die bekannt sind
 
@@ -40,7 +42,11 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   Sachbearbeiters. Das hält Agenten auf, die über die Werkzeuge von Claude Code arbeiten. Ein Programm mit den
   Rechten des Benutzers, das den Speicher des Servers ausliest, hält es nicht auf. Einzelheiten:
   `docs/OBERFLAECHE.md`, «Schutz der Bedienung».
-- Die Steuerung von Claude Code aus der Oberfläche ist mit dem echten Claude Code noch nicht geprüft. Die Probe dafür:
-  `python3 tools/oberflaeche.py --sitzungsprobe`.
+- Der Akten-Eingang der Oberfläche hält hochgeladene Dateien im Speicher des Servers, bis sie in einen Fall
+  aufgenommen oder entfernt sind. In den Fall geht nur die Textfassung dessen, was die PII-Prüfung besteht. Die
+  Prüfung erkennt Muster (Telefonnummern, AHV-, Konto- und Kartennummern, Geburtsdaten, Kontrollschilder), keine Namen.
+  Ein Name, der in einem Dokument oder in einer Eingabe im Chat stehen bleibt, erreicht das Sprachmodell.
+- Die Steuerung von Claude Code aus der Oberfläche ist mit dem echten Claude Code noch nicht geprüft, auch nicht der
+  Chat (Vorgaben, Nachrichten, Fortsetzen). Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
 
 Unterstützt wird der Stand auf `main`.
