@@ -1322,12 +1322,28 @@ def _():
         vorher = len([a for a in w.aufrufe if "api.blockscout.com/137/" in a])
         kruf(krypto.krypto_transaktionen, kw.evm("taeter"), kette="polygon")
         assert len([a for a in w.aufrufe if "api.blockscout.com/137/" in a]) == vorher == 1, "nach der Abweisung fragt das Gateway dort für diese Kette nicht mehr"
+        # Weist auch die öffentliche Instanz der Kette ab (HTTP 403 mit einer Prüfseite, so gesehen am 16. und 17.11.2026), liegt das
+        # nicht am Schlüssel: Diese Anfrage ging ohne ihn hinaus. Der Grund im Protokoll schickt niemanden zum Schlüssel.
+        w = kwelt()
+        w.evm_konto("taeter", wei=3 * ETH1)
+        w.abgewiesen.add("polygon.blockscout.com")
+        os.environ["BLOCKSCOUT_API_KEY"] = w.blockscout_key
+        r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="polygon")
+        oeffentlich = [e for e in kprotokoll().values() if (e.get("antwort") or {}).get("status") == 403]
+        assert r["ergebnis"] == "fehler" and oeffentlich and all("apikey" not in e["anfrage"]["url"] for e in oeffentlich), (r, oeffentlich)
+        assert all("ging ohne Schlüssel hinaus" in e["fehler"] and "Schlüssel nicht an" not in e["fehler"] and "in .env prüfen" not in e["fehler"]
+                   for e in oeffentlich), [e["fehler"] for e in oeffentlich]
+        assert "ging ohne Schlüssel hinaus" in r["fehler"] and "ETHERSCAN_API_KEY" in r["fehler"], r["fehler"]
+        deute = krypto_ketten._blockscout_fehler
+        assert "nimmt den Schlüssel nicht an" in deute(403, None, True) and "ging ohne Schlüssel hinaus" in deute(429, None, False), "mit Schlüssel bleibt der Hinweis auf den Schlüssel"
+        os.environ.pop("BLOCKSCOUT_API_KEY", None)
+        assert deute(403, None, False) == krypto_ketten._BLOCKSCOUT_403 and deute(429, None, False) == krypto_ketten._BLOCKSCOUT_429, "ohne eingerichteten Schlüssel gilt der Rat, einen einzutragen"
         kwelt()
         os.environ["BLOCKSCOUT_API_KEY"] = "proapi_falsch"
         r = kruf(krypto.krypto_adresse, kw.evm("taeter"), kette="ethereum")
         assert r["ergebnis"] == "fehler" and "BLOCKSCOUT_API_KEY in .env prüfen" in r["fehler"] and "proapi_falsch" not in json.dumps(r), r
     finally:
-        del os.environ["BLOCKSCOUT_API_KEY"]
+        os.environ.pop("BLOCKSCOUT_API_KEY", None)
 
 
 @test("Krypto: Fällt eine Quelle aus, springt die Ausweichquelle ein, und «nicht geprüft» wird nie zu «kein Eintrag»")

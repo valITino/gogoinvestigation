@@ -36,6 +36,9 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   dass ein Shell-Befehl nach Zustimmung des Menschen Fallakte, Schlüsseldatei oder Grundlagen anfasst, und dass
   Robin am Terminal ohne Freigabe `darkweb` läuft, wenn der Mensch den Aufruf erlaubt. Wer Claude Code so startet,
   dass es nicht mehr nachfragt, schaltet die Rückfrage ab.
+- Ist Robin eingeschaltet, verbindet sich der Rechner zu Beginn jeder Sitzung mit dem Tor-Netz, auch ohne Freigabe
+  `darkweb`: Claude Code startet den Container, und Tor läuft darin sofort an (nach dem Startskript des Projekts,
+  nicht im Betrieb geprüft). Gesucht und gelesen wird erst mit Freigabe. Ohne Robin einrichten: `--ohne-robin`.
 - Die Hash-Kette macht Veränderungen erkennbar, sie verhindert sie nicht. Eine Kürzung am Ende fällt erst auf, wenn
   der letzte Kettenwert ausserhalb des Systems hinterlegt wurde (`tools/audit_pruefen.py --erwartet`).
 - Die Bedienung der Oberfläche schützt ein Geheimnis im Speicher des Servers und im Browserfenster des

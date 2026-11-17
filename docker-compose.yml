@@ -13,5 +13,6 @@ services:
       - DISABLE_GUI=true
     restart: unless-stopped
 
-# Robin (Dark-Web-Suche über Tor) läuft nicht dauerhaft. Claude Code startet den Container bei Bedarf
-# selbst (siehe .mcp.json). Tor läuft im Robin-Container, auf dem Rechner braucht es kein Tor.
+# Robin (Dark-Web-Suche über Tor) läuft nicht dauerhaft. Claude Code startet den Container zu Beginn jeder
+# Sitzung selbst und entfernt ihn an ihrem Ende (siehe .mcp.json). Tor läuft im Robin-Container: Auf dem Rechner
+# braucht es weder Tor noch SOCKS5. Der Container muss das Tor-Netz erreichen (docs/QUELLEN.md, «Robin»).

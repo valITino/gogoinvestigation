@@ -80,6 +80,8 @@ class Welt:
         self.aus: set[str] = set()           # Hosts, die gerade «gestört» sind
         self.gestoert: set[str] = set()      # Teile einer Adresse (Host, Pfad, Anfrage), bei denen nur dieser eine Abruf scheitert
         self.gedrosselt: set[str] = set()    # ebenso, aber die Quelle antwortet mit HTTP 429 und bittet, drei Sekunden zu warten
+        # Hosts, die Programme mit einer Prüfseite abweisen (HTTP 403). So antwortete polygon.blockscout.com am 16. und 17.11.2026.
+        self.abgewiesen: set[str] = set()
         self.blockscout_key = "proapi_selbsttest0001"
         self.blockscout_ketten: set[str] = set()     # Ketten, die über den Zugang mit Schlüssel gefragt wurden
         # Ketten, die der kostenlose Schlüssel nicht deckt. So antwortete der echte Dienst am 16.11.2026 für Polygon und Base.
@@ -389,6 +391,9 @@ class Welt:
             return httpx.Response(503, text="Service Unavailable")
         if any(teil.lower() in str(anfrage.url).lower() for teil in self.gedrosselt):
             return httpx.Response(429, text="Too Many Requests", headers={"Retry-After": "3", "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0"})
+        if host in self.abgewiesen:
+            return httpx.Response(403, text='<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head><body></body></html>',
+                                  headers={"content-type": "text/html; charset=UTF-8"})
         if host == "api.blockscout.com":         # Zugang mit Schlüssel: /{chain_id}/api/…, ohne gültigen Schlüssel keine Antwort
             if frage.get("apikey") != [self.blockscout_key]:
                 return _json({"message": "Invalid or missing API key"}, 401)

@@ -294,7 +294,7 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 | Bitcoin (mempool.space), Krypto-Zuordnung (OFAC, TRM Labs, Ransomwhere, WalletExplorer), Krypto-Kurse (DefiLlama, EZB) | keine | | Laufen sofort. |
 | Etikettenliste (GraphSense TagPacks) | keine | liegt im Repo | Lokal, fester Stand mit Prüfsumme. Die elf Massenlisten (rund 12 MB) holt einmal `python3 tools/listen.py laden`. |
 | Web-Check | keine | eigene Instanz, die Einrichtung startet sie | Adresse in `WEBCHECK_URL`. |
-| Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container. Eigener Fork: `ROBIN_IMAGE` setzen. |
+| Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container: Auf dem Rechner braucht es weder Tor noch SOCKS5. Der Container muss das Tor-Netz erreichen, siehe [Hinweise je Quelle](docs/QUELLEN.md#hinweise-je-quelle). Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
 Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, und für eigene Instanzen der
@@ -1023,6 +1023,9 @@ Was ihr wissen müsst:
 - **Dritt-Software läuft mit.** Robin und Web-Check sind fremde Projekte. Robin bringt in seinen
   Werkzeugbeschreibungen eigene Arbeitsanweisungen an das Modell mit. Für den Einsatz in einer Behörde: Forks
   prüfen, Abbilder selbst bauen und auf eine Version festlegen (`ROBIN_IMAGE`).
+- **Mit Robin verbindet sich der Rechner zu Beginn jeder Sitzung mit dem Tor-Netz,** auch ohne Freigabe `darkweb`:
+  Claude Code startet den Container, und Tor läuft darin sofort an. Gesucht und gelesen wird erst mit Freigabe.
+  Wer das an einem Arbeitsplatz nicht will, richtet ihn ohne Robin ein (`--ohne-robin`).
 
 ## Fehler beheben
 
@@ -1052,6 +1055,7 @@ Was ihr wissen müsst:
 | Dokument wird nicht aufgenommen (Sperrfunde) | Personendaten übersehen, oder Fehlalarm | Nachpseudonymisieren. Bei Fehlalarm am Terminal: `--trotzdem "Begründung" --durch "Kürzel"` |
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
 | Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
+| Robin meldet `tor_bootstrapping` | Tor startet noch (bis zwei Minuten nach Beginn der Sitzung), oder das Netz lässt Tor nicht zu | Kurz warten und noch einmal fragen. Bleibt es dabei: Der Container muss das Tor-Netz direkt erreichen, siehe `docs/QUELLEN.md` |
 | «Protokoll … ABWEICHUNGEN» | Protokoll oder Rohdatei wurde verändert | Nicht reparieren. Vorfall klären. |
 
 Meldungen der Einrichtung: `/tmp/osint-setup/` (unter Windows `%TEMP%\osint-setup\`), je Schritt eine Datei:
@@ -1223,6 +1227,11 @@ Endpunkt führt [docs/QUELLEN.md](docs/QUELLEN.md).
   gebaut, die elf Massenlisten über `tools/listen.py laden` geholt und gegen die Prüfsummen geprüft, bekannte
   Adressen nachgeschlagen (eine WannaCry-Adresse, ein Vertrag von Tornado Cash, Reserve-Adressen zweier Börsen).
 
+- Nachprüfung am 17.11.2026: je eine Testabfrage an 21 Quellen, dieselben Abfragen wie bei `tools/pruefen.py --live`.
+  Alle 21 Werkzeuge antworteten. Nicht wiederholt: RIPEstat und Chainabuse (Obergrenze der Prüfung), Wayback Machine
+  (am 16.11.2026 nicht erreichbar). Einzelheiten und ein dabei behobener Fehlertext zu Blockscout stehen in
+  [docs/SCHLUSSBERICHT-2026-11.md](docs/SCHLUSSBERICHT-2026-11.md), Abschnitt 2.
+
 - Eine Durchsicht von Code und Repo samt unabhängiger Gegenprüfung in einer Kopie ohne Netz (16.11.2026). Was sie
   gefunden hat, was behoben ist und was als Vorschlag offen bleibt, steht in
   [docs/REVIEW-2026-11.md](docs/REVIEW-2026-11.md). Den Wächter, den die Durchsicht mitgeprüft hat, gibt es seit
@@ -1315,7 +1324,8 @@ MCP-Server als Belege in die Fallakte.
 - **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie die Installation von
   Docker, ob über `--docker-installieren` oder über die Frage «Dienste».
   Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
-- **Robin im Betrieb.** Robin ist nie gelaufen.
+- **Robin im Betrieb.** Robin ist nie gelaufen. Was es vom Rechner und vom Netz braucht, steht in
+  `docs/QUELLEN.md` nach den Unterlagen des Projekts (gelesen am 17.11.2026), nicht nach eigener Beobachtung.
 - **Web-Check mit einem bösartigen Ziel.** Die Prüfungen liefen gegen example.com. Wie `threats`, `block-lists` und
   `breaches` bei einem Treffer antworten, ist nicht gesehen.
 

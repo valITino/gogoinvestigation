@@ -18,7 +18,7 @@ Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was
 | D: lokale Pseudonymisierung | [PR 8](https://github.com/valITino/gogoinvestigation/pull/8) | offen, CI grün. **Nicht abgeschlossen:** wartet auf die Liste der Feldmarken | 71 |
 | E: Oberfläche Teil 1, nur lesen | [PR 9](https://github.com/valITino/gogoinvestigation/pull/9) | offen, CI grün | 82 |
 | F: Oberfläche Teil 2, Bedienung | [PR 10](https://github.com/valITino/gogoinvestigation/pull/10) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code | 88 |
-| G: Chat, Akten-Eingang, Ergebnisse, ohne Wächter (Nachtrag vom 17.11.2026) | eigener Pull Request auf Paket F | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code, auch für den Chat | 89 |
+| G: Chat, Akten-Eingang, Ergebnisse, ohne Wächter (Nachtrag vom 17.11.2026) | [PR 11](https://github.com/valITino/gogoinvestigation/pull/11) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code, auch für den Chat | 89 |
 
 Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F, G. Gemergt ist nichts.
 
@@ -75,6 +75,19 @@ Dokumentation der Anbieter.
 **Hosts, die aus der Prüfumgebung nicht erreichbar waren:** `web.archive.org` (Verbindung brach ab),
 `dam-api.bfs.admin.ch` (Abruf von der Berechtigungsprüfung der Sitzung abgelehnt), `opendata.swiss` und
 `ckan.opendata.swiss` (HTTP 403). Nichts davon wurde wiederholt oder umgangen.
+
+**Nachprüfung am 17.11.2026 (07:17 UTC).** Je eine harmlose Testabfrage an 21 Quellen, dieselben Abfragen wie bei
+`tools/pruefen.py --live`: Shodan, Shodan InternetDB, VirusTotal, AbuseIPDB, proxycheck.io, ipapi.is, urlquery,
+urlscan.io (Kontingent), ransomware.live, Ahmia, Telegram (Web-Vorschau), 4chan, Mastodon, Bitcoin, Ethereum
+(Blockscout), TRON (TronGrid), Krypto-Zuordnung, GraphSense TagPacks, Krypto-Kurse, Etherscan, Tronscan. Alle 21
+Werkzeuge antworteten. Im Protokoll stehen dafür 91 Einträge (P-1059 bis P-1149): 88 mit Ergebnis, einer «kein
+Treffer», zwei Fehlschläge. Beide Fehlschläge betreffen Blockscout für Polygon (HTTP 402 am Zugang mit Schlüssel,
+HTTP 403 an der öffentlichen Instanz). Etherscan sprang wie vorgesehen ein. Dabei gefunden und behoben: Für die
+Abweisung an der öffentlichen Instanz nannte das Protokoll den Schlüssel als Grund, obwohl die Anfrage ohne ihn
+hinausging (P-0923, P-1126). Nicht wiederholt: RIPEstat und Chainabuse (Obergrenze der Prüfung), Wayback Machine (am
+16.11.2026 nicht erreichbar). Nicht bereit: Spur, RapidAPI Telegram und Iknaio GraphSense (kein Schlüssel), Web-Check
+(keine Instanz in der Prüfumgebung). Robin: weiterhin nie gelaufen. Was es vom Netz braucht, steht neu in
+`docs/QUELLEN.md`.
 
 ## 3. Die neuen Quellen
 

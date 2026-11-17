@@ -333,6 +333,26 @@ echo 'ROBIN_IMAGE=robin-intern' >> .env
 ./setup.sh
 ```
 
+Was Robin vom Rechner und vom Netz braucht. Die Angaben stammen aus Startskript, Quelltext und Fehlerhilfe des
+Projekts (gelesen am 17.11.2026). Im Betrieb geprüft sind sie nicht, und das festgelegte Abbild ist älter als
+dieser Stand.
+
+- **Kein Tor und kein SOCKS5 auf dem Rechner.** Tor läuft im Container. Robin spricht es dort über
+  `socks5h://127.0.0.1:9050` an, der Port ist nach aussen nicht veröffentlicht. `OSINT_PROXY` hat damit nichts zu
+  tun: Die Einstellung lenkt nur die Abfragen des Gateways.
+- **Der Container muss das Tor-Netz direkt erreichen.** Robin kennt keine Einstellung für Brücken (Bridges:
+  Zugänge für Netze, die Tor sperren) und keine für einen vorgeschalteten Proxy. In einem Netz, das Tor sperrt oder
+  nur über einen Web-Proxy nach aussen lässt, kommt Tor nicht hoch. Dann braucht es ein Netz, das Tor zulässt,
+  oder ein eigenes Abbild mit eigener Tor-Konfiguration (`ROBIN_IMAGE`).
+- **Claude Code startet den Container zu Beginn jeder Sitzung** und entfernt ihn an ihrem Ende. Von Hand ist
+  nichts zu starten. Tor läuft dabei sofort an und verbindet sich mit dem Tor-Netz, auch wenn der Fall keine
+  Freigabe `darkweb` hat. Gesucht und gelesen wird erst mit einem Werkzeugaufruf, und der braucht die Freigabe. Wer
+  diese Verbindung an einem Arbeitsplatz nicht will, richtet ihn ohne Robin ein: `./setup.sh --ohne-robin`.
+- **Tor braucht nach dem Start zehn Sekunden bis zwei Minuten.** Bis dahin melden `robin_search` und
+  `robin_scrape` den Stand `tor_bootstrapping` und tun nichts. `robin_health` zeigt, ob Tor läuft und welche
+  Suchmaschinen antworten. Bleibt es bei `tor_bootstrapping`, erreicht der Container das Tor-Netz nicht.
+- **Ein Schlüssel für ein Sprachmodell ist nicht nötig.** Ohne ihn fragt Robin beim Start keinen Anbieter an.
+
 **4chan.** Die Lese-API liefert den Katalog eines Boards. Gesucht wird lokal darin. Threads verschwinden nach
 kurzer Zeit, `chan_thread` sichert sie in den Rohdaten.
 

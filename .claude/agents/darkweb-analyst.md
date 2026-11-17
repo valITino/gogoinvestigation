@@ -30,7 +30,9 @@ was Stufe 2 klären könnte. Die Oberfläche lehnt einen Robin-Aufruf ohne Freig
 Claude Code den Sachbearbeiter.
 
 Mit Freigabe:
-1. `robin_health`: Läuft Tor, welche Suchmaschinen antworten?
+1. `robin_health`: Läuft Tor, welche Suchmaschinen antworten? Meldet Robin `tor_bootstrapping`, startet Tor noch
+   (bis zwei Minuten nach Beginn der Sitzung): Erledige zuerst Stufe 1 und frag danach noch einmal. Bleibt es nach
+   drei Versuchen dabei, erreicht der Rechner das Tor-Netz nicht. Melde das als Lücke und versuch es nicht weiter.
 2. `robin_search` mit einem engen Suchbegriff (Domain, Gruppenname, Hash). Keine Platzhalter, keine Personennamen.
 3. **Vor jedem `robin_scrape`: `onion_sperrliste` für die Adresse.** Steht sie auf der Liste, öffnest du sie nicht
    und meldest sie unter Auffälligkeiten. Öffne auch sonst keine Seite, deren Titel oder Beschreibung auf
