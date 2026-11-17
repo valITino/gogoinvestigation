@@ -85,9 +85,9 @@ def akten_seite(bedienung, ziel: str) -> str:
     kopf = (f"<h1>Akten · {esc(ziel)}</h1><p class='unter'>Weitere Dokumente nachziehen, und was im Eingang des Falls liegt.</p>" if ziel else
             "<h1>Neuer Fall</h1><p class='unter'>Akten hineinziehen, prüfen, wo nötig nochmals pseudonymisieren, Fall anlegen.</p>")
     h = [kopf, KLARTEXT_BAND,
-         f'<div class="ablegen gross" data-hochladen data-ziel="{esc(ziel)}" tabindex="0"><p><b>Dateien, Ordner oder ZIP hierher ziehen</b></p>'
-         '<p><label class="knopf">Dateien wählen<input type="file" multiple data-dateien hidden></label> '
-         '<label class="knopf">Ordner wählen<input type="file" webkitdirectory multiple data-ordner hidden></label></p>'
+         f'<div class="ablegen gross" data-hochladen data-ziel="{esc(ziel)}"><p><b>Dateien, Ordner oder ZIP hierher ziehen</b></p>'
+         '<p><label class="knopf">Dateien wählen<input type="file" multiple data-dateien></label> '
+         '<label class="knopf">Ordner wählen<input type="file" webkitdirectory multiple data-ordner></label></p>'
          '<p class="klein">Rapport und Beilagen, auch gemischt: Text, Word, PDF, OpenDocument, Excel, PowerPoint, RTF, E-Mail (.eml), CSV, JSON. Ein ZIP wird entpackt, '
          "die Anhänge einer E-Mail werden eigene Dokumente. Jede Datei wird sofort gelesen und auf Personendaten geprüft. In den Fall kommt hier noch nichts.</p>"
          '<ul class="hochladen-stand" aria-live="polite"></ul></div>']

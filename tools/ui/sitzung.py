@@ -192,6 +192,7 @@ class Sitzung:
         self.wartend: list[dict] = []           # Nachrichten des Sachbearbeiters, die auf das Ende des laufenden Auftrags warten
         self.karte = secrets.token_urlsafe(24)  # nur zum Fragen: Der MCP-Server der Sitzung weist sich damit aus
         self.prozess: subprocess.Popen | None = None
+        self.leser: threading.Thread | None = None     # liest die Ausgabe des laufenden Laufs und schliesst ihn ab
         self.ordner: Path | None = None
         self.sperre = threading.RLock()
         self.gewollt_beendet = False
@@ -263,7 +264,8 @@ class Sitzung:
             self.status = "laeuft"
             self.version += 1
             prozess, ordner = self.prozess, self.ordner
-        threading.Thread(target=self._lesen, args=(prozess, ordner), daemon=True).start()
+        self.leser = threading.Thread(target=self._lesen, args=(prozess, ordner), daemon=True)
+        self.leser.start()
         threading.Thread(target=self._fehlerkanal, args=(prozess,), daemon=True).start()
 
     # ---- Ausgabe von Claude Code lesen: eine JSON-Zeile je Ereignis
@@ -579,6 +581,11 @@ def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     vorgaben = eingabe_pruefen(d.get("vorgaben"), "Die Vorgabe")
     s = Sitzung(b, fall, int(d.get("_port") or 0))
     if alt is not None:         # der Chat bleibt stehen, die Ermittlung beginnt neu
+        with alt.sperre:        # was noch auf die alte Sitzung wartete, geht nicht an die neue: Es gilt als zurückgenommen
+            wartende, alt.wartend = alt.wartend, []
+        for w in wartende:
+            alt.aendern(w["eintrag"], wartet=False, zurueck=True)
+            b.vermerken(fall, "Nachricht nicht zugestellt", f"{kurz(w['text'], 300)} (die Ermittlung wurde neu gestartet)", sitzung=alt.kennung)
         s.verlauf, s.nummer, s.version = alt.verlauf, alt.nummer, alt.version + 1
     b.ermittlungen[fall] = s
     s.notieren("sachbearbeiter", f"Ermittlung starten: /ermittlung {fall}" + (f"\n\n{vorgaben}" if vorgaben else ""), "sachbearbeiter")

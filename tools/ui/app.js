@@ -185,24 +185,31 @@ function abgelegtes(uebertragung) {
   })();
 }
 
+const hochladeSchlange = [];
+let hochladenLaeuft = false;
+
 async function hochladen(zone, eintraege) {
-  if (zone.getAttribute("aria-busy") === "true") return;
   const ziel = zone.dataset.ziel || "", stand = $(".hochladen-stand", zone), meldungen = [];
   if (!eintraege.length) { stand.replaceChildren(el("li", { text: "Darin war keine Datei." })); return; }
+  for (const e of eintraege) hochladeSchlange.push({ ziel, name: e.name, datei: e.datei });
+  if (hochladenLaeuft) return;        // der laufende Durchgang nimmt mit, was eben dazugekommen ist
+  hochladenLaeuft = true;
   zone.setAttribute("aria-busy", "true");
   const zeile = el("li");
   stand.replaceChildren(zeile);
   let angenommen = 0, nr = 0;
-  for (const e of eintraege) {
+  while (hochladeSchlange.length) {
+    const e = hochladeSchlange.shift();
     nr += 1;
-    zeile.textContent = `Datei ${nr} von ${eintraege.length} wird gelesen und geprüft: ${e.name}`;
+    zeile.textContent = `Datei ${nr} von ${nr + hochladeSchlange.length} wird gelesen und geprüft: ${e.name}`;
     if (e.datei.size > DATEI_GROESSE) { meldungen.push(`${e.name}: grösser als ${DATEI_GROESSE / 1048576} MB, nicht angenommen.`); continue; }
     try {
-      const daten = await dateiSenden(ziel, e.name, e.datei);
+      const daten = await dateiSenden(e.ziel, e.name, e.datei);
       angenommen += daten.neu || 0;
       meldungen.push(...(daten.meldungen || []));
     } catch (f) { meldungen.push(`${e.name}: ${f.message}`); }
   }
+  hochladenLaeuft = false;
   zone.removeAttribute("aria-busy");
   zustand.hochgeladen = { ziel, text: `${angenommen} ${angenommen === 1 ? "Datei" : "Dateien"} in den Akten-Eingang gelegt.`, meldungen };
   await laden();
@@ -502,6 +509,7 @@ async function rueckfragenHolen() {
       titelSetzen();
     }
   } catch (e) { /* der nächste Abruf versucht es wieder */ }
+  clearTimeout(zustand.rueckfrageTimer);        // nie zwei Zeitgeber nebeneinander, auch wenn zwei Abrufe sich überholt haben
   zustand.rueckfrageTimer = setTimeout(rueckfragenHolen, 1500);
 }
 

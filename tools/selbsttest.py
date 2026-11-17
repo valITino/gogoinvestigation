@@ -4393,8 +4393,12 @@ def _():
         antwort = json.loads(ui_anfrage(port, "/api/rueckfragen")[2])
         return antwort, Seite(antwort["html"])
 
-    def ruhe() -> None:
-        b.ermittlungen[fall].prozess.wait(timeout=20)       # das Ereignis «result» kommt kurz vor dem Ende des Prozesses
+    def ruhe(welcher: str = fall) -> None:
+        # Das Ereignis «result» kommt kurz vor dem Ende des Prozesses. Danach schreibt die Oberfläche die Antwort ins Sitzungsprotokoll
+        # und den Verlauf in den Arbeitsstand: Fertig ist der Lauf, wenn der Faden zu Ende ist, der seine Ausgabe liest
+        b.ermittlungen[welcher].prozess.wait(timeout=20)
+        b.ermittlungen[welcher].leser.join(timeout=30)
+        assert not b.ermittlungen[welcher].leser.is_alive(), "der Lauf wurde nicht fertig verarbeitet"
     assert stand()["status"] == "aus" and stand()["verlauf"] == [] and stand()["bedienbar"] is True and ui_sitzung.verfuegbar() == "" and dialog()[0] == {"anzahl": 0, "html": ""}
     seite_html = json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]
     assert any(t == "section" and "data-chat" in a and a.get("data-fall") == fall for t, a in Seite(seite_html).elemente) and "Abrechnung: " in Seite(seite_html).text
@@ -4510,9 +4514,28 @@ def _():
     ruhe()
     zurueck = next(z for z in s["verlauf"] if z["text"] == "Zweite, die ich zurücknehme.")
     assert zurueck["zurueck"] is True and zurueck["wartet"] is False and s["wartend"] == [] and not any(t.startswith("Ich fahre fort: Zweite") for t in texte(s))
+    # Wartet eine Nachricht noch, wenn die Ermittlung neu gestartet wird, geht sie nicht an die neue Sitzung: Sie gilt als zurückgenommen
+    os.environ["OSINT_FAKE_KURZ"] = "3"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        warten(lambda x: x["status"] == "laeuft" and texte(x).count("Das dauert kurz.") == 2)
+    finally:
+        os.environ.pop("OSINT_FAKE_KURZ")
+    assert aktion("ermittlung_nachricht", {"fall": fall, "text": "Diese wartet beim Anhalten."})[1].get("wartet") is True
+    assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 200 and [w["text"] for w in warten(lambda x: x["status"] == "angehalten")["wartend"]] == ["Diese wartet beim Anhalten."]
+    ruhe()
+    os.environ["OSINT_FAKE_KURZ"] = "0"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+    finally:
+        os.environ.pop("OSINT_FAKE_KURZ")
+    s = warten(lambda x: x["status"] == "beendet" and texte(x).count("Das dauert kurz.") == 3)
+    ruhe()
+    liegen = next(z for z in s["verlauf"] if z["text"] == "Diese wartet beim Anhalten.")
+    assert liegen["zurueck"] is True and liegen["wartet"] is False and s["wartend"] == [] and not any("Diese wartet beim Anhalten." in t and t.startswith("Ich fahre fort") for t in texte(s))
     sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
     schritte = Counter(z["schritt"] for z in sitzung if z.get("ereignis") == "Oberflaeche" and "Nachricht" in z["schritt"])
-    assert schritte == {"Nachricht an die Ermittlung": 3, "Nachricht an die Ermittlung zugestellt": 1, "Nachricht zurückgenommen": 1}, schritte
+    assert schritte == {"Nachricht an die Ermittlung": 4, "Nachricht an die Ermittlung zugestellt": 1, "Nachricht zurückgenommen": 1, "Nachricht nicht zugestellt": 1}, schritte
     # Anhalten und fortsetzen: dieselbe Sitzung geht weiter
     os.environ["OSINT_FAKE_LANG"] = "1"
     try:
@@ -4555,7 +4578,7 @@ def _():
     ende = time.time() + 30
     while time.time() < ende and "Ich fahre fort: Wo stehen wir?" not in [z["text"] for z in json.loads(ui_anfrage(port, "/api/fall/BEDIEN-0003/verlauf")[2])["verlauf"]]:
         time.sleep(0.1)
-    b.ermittlungen["BEDIEN-0003"].prozess.wait(timeout=20)
+    ruhe("BEDIEN-0003")
     argv = json.loads(lesen(merker))["argv"]
     assert argv[argv.index("--resume") + 1] == frueher and argv[argv.index("-p") + 1] == "Wo stehen wir?", argv
     # Zwei Rückfragen zugleich (Hauptsitzung und ein Analyst): eine nach der andern, in der Reihenfolge ihres Eingangs

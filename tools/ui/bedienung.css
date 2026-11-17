@@ -23,7 +23,8 @@ label.knopf:focus-within{outline:2px solid var(--serie);outline-offset:2px}
 /* Akten-Eingang */
 .ablegen.gross{padding:24px 18px}
 .ablegen[aria-busy=true]{opacity:.7}
-.ablegen input[hidden]{display:none}
+.ablegen label.knopf{position:relative}
+.ablegen input[type=file]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
 ul.hochladen-stand{list-style:none;padding:0;margin:10px 0 0;font-size:13px;text-align:left}
 ul.hochladen-stand:empty{display:none}
 ul.hochladen-stand li{margin:2px 0;overflow-wrap:anywhere}
