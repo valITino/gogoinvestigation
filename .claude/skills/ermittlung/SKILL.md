@@ -47,7 +47,10 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
    - Fall existiert nicht und kein Pfad: nach dem Pfad fragen, anhalten.
    - Wurde zu einem bestehenden Fall ein weiterer Pfad mitgegeben: `python3 tools/fall.py aufnehmen <Fall-ID> <Pfad>`.
 3. Ist der Eingang leer, halte an und sage, wie ein Dokument aufgenommen wird.
-4. Melde in drei bis fünf Zeilen: Titel und Auftrag, welche Freigaben erteilt sind, welche Quellen bereitstehen und
+4. Nennt `fall_status` `proxy_antwortet: false`, halte an. Die Abfragen sollen über einen Proxy laufen, und der antwortet
+   nicht: Keine einzige käme durch. Versuche keine Abfrage und beauftrage keinen Analysten. Gib dem Sachbearbeiter den
+   Text aus `proxy_hinweis` weiter. Am Proxy vorbei wird nie abgefragt.
+5. Melde in drei bis fünf Zeilen: Titel und Auftrag, welche Freigaben erteilt sind, welche Quellen bereitstehen und
    welche fehlen (mit dem Namen des fehlenden Schlüssels), und welche Pflichtquellen der Sachbearbeiter vorgegeben hat.
    Fahre ohne Rückfrage fort.
 

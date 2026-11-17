@@ -36,6 +36,14 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   dass ein Shell-Befehl nach Zustimmung des Menschen Fallakte, Schlüsseldatei oder Grundlagen anfasst, und dass
   Robin am Terminal ohne Freigabe `darkweb` läuft, wenn der Mensch den Aufruf erlaubt. Wer Claude Code so startet,
   dass es nicht mehr nachfragt, schaltet die Rückfrage ab.
+- Ist ein Proxy eingestellt, geht jede Abfrage des Gateways über ihn. Antwortet er nicht, scheitert die Abfrage: Einen
+  Weg am Proxy vorbei gibt es nicht. Ob Tor auf diesem Rechner Verbindungen aufbaut, prüfen Einrichtung und
+  `tools/pruefen.py` mit einer Verbindung über Tor zu `check.torproject.org`, die sie gleich wieder schliessen. Dabei
+  geht nichts aus einem Fall hinaus.
+- Den Vertrauensdialog von Claude Code für den Projektordner beantwortet immer ein Mensch. Die Einrichtung startet
+  Claude Code dafür auf Wunsch, sie trägt das Vertrauen nicht selbst ein. Ob der Ordner bestätigt ist, liest sie aus
+  der Datei von Claude Code ab (`~/.claude.json`, nur die Angabe `hasTrustDialogAccepted` zu diesem Ordner). Sie
+  schreibt dort nie.
 - Pflichtquellen (Quellen, die der Sachbearbeiter für einen Fall vorgibt) lassen sich nur am Terminal oder in der
   Oberfläche setzen und aufheben. Sie führen zu mehr Abfragen bei Dritten, nie zu anderen: Abgefragt werden nur
   Indikatoren des Falls, und eine Pflichtquelle ersetzt keine Freigabe. Ob die Vorgabe erfüllt ist, prüft der Rapport

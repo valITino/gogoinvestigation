@@ -111,13 +111,14 @@ eine Vorgabe: Wer nur Enter drückt, bekommt eine lauffähige Einrichtung ohne M
 
 | Frage | Worum es geht |
 |---|---|
-| Installieren | Erscheint nur, wenn etwas fehlt (Claude Code, `pdftotext`, unter Windows Git for Windows). Nennt, was auf welchem Weg installiert würde. |
+| Installieren | Erscheint nur, wenn etwas fehlt (Claude Code, `pdftotext`, ein Browser für die PDF-Fassung, unter Windows Git for Windows). Nennt, was auf welchem Weg installiert würde. |
 | Modelle | Darf euer Konto Claude Mythos 5.2 nutzen? Mit Ja schaltet die Ermittlung von selbst darauf um, siehe [Modelle je Phase](#modelle-je-phase). |
 | Schlüssel | Liste der Quellen mit ihrem Stand. Eine Quelle öffnen und den Schlüssel einfügen. Die Eingabe bleibt unsichtbar, gezeigt wird nur die Zahl der Zeichen. Mit Entf wird ein Schlüssel entfernt. «Aus einer Datei übernehmen» liest eine vorbereitete Kopie von `.env.example`. |
-| Proxy | Sollen die Abfragen an die Quellen über einen Proxy laufen? Kein Proxy, Tor auf diesem Rechner oder eine eigene Adresse. |
+| Proxy | Sollen die Abfragen an die Quellen über einen Proxy laufen? Kein Proxy, Tor auf diesem Rechner oder eine eigene Adresse. Wer Tor wählt, bekommt es auch: Die Einrichtung installiert und startet es und wartet, bis es Verbindungen aufbaut. Wo sie das nicht kann, nimmt sie die Wahl nicht an. Robin (Dark Web) braucht diesen Proxy nicht, es bringt sein eigenes Tor mit. |
 | Dienste | Web-Check und Robin über Docker. Fehlt Docker, bietet der Assistent unter Debian, Ubuntu und Kali die Installation an. Läuft es nur nicht, lässt sich nach dem Start erneut prüfen. |
 | Anmeldung | Erscheint nur, wenn Claude Code noch nicht angemeldet ist. Auf Wunsch startet die Einrichtung am Ende die Anmeldung im Browser. |
 | Testabfragen | Auf Wunsch geht am Ende je eingerichteter Quelle eine harmlose Abfrage hinaus. Das zeigt sofort, ob Schlüssel, Netz und Proxy stimmen. |
+| Start | Auf Wunsch führt die Einrichtung am Ende bis in die Oberfläche: Sie startet Claude Code einmal im Projektordner, damit ihr dem Ordner vertraut (Ordner bestätigen, die Antwort gebt ihr selbst), und öffnet danach die Oberfläche. Ist der Ordner schon bestätigt, fragt sie nur noch nach der Oberfläche. |
 
 Am Schluss steht die Übersicht. Jede Zeile lässt sich öffnen und ändern. Erst «Einrichten» verändert etwas,
 «Abbrechen» lässt alles, wie es war. Tasten, die vor einer Frage getippt wurden, zählen nicht, und die Übersicht
@@ -136,7 +137,8 @@ auffrischen» (fragt nichts, die Einstellungen bleiben), «Einstellungen ändern
 
 **Ohne Rückfragen.** Ohne Terminal fragt die Einrichtung von selbst nichts, etwa in einem Skript, in einer
 CI-Umgebung oder wenn die Ausgabe in eine Datei geht. Im Terminal erreicht das `--ohne-rueckfragen`. Dann
-gelten die Optionen der Befehlszeile und die Werte aus `.env`, und Fehlendes wird ohne Nachfrage installiert.
+gelten die Optionen der Befehlszeile und die Werte aus `.env`, und Fehlendes wird ohne Nachfrage installiert. Steht
+dort als Proxy Tor auf diesem Rechner (`OSINT_PROXY=socks5h://127.0.0.1:9050`), gehört Tor dazu.
 
 **Wenn das Terminal nicht mitspielt.** `--schlicht` stellt dieselben Fragen als nummerierte Listen, ohne
 Cursorsteuerung und ohne Laufanzeige. Das ist der Weg für Bildschirmleser und sehr alte Terminals. Farben
@@ -153,7 +155,8 @@ Zeichen und ein Wort.
 | Git for Windows, nur unter Windows | Git Bash. Darin führt Claude Code das Sitzungsprotokoll aus. | ja | wird über winget installiert |
 | `pdftotext` (Poppler) | Rapporte als PDF aufnehmen | nein, `.txt` `.md` `.docx` gehen ohne | wird installiert |
 | Docker | Web-Check und Robin (Dark Web) | nein, beides bleibt sonst aus | wird gemeldet. Debian, Ubuntu, Kali: `./setup.sh --docker-installieren` holt es nach |
-| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken | wird gemeldet |
+| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken | Linux und WSL: Chromium wird installiert, über die Paketverwaltung, unter Ubuntu als Snap. Danach druckt die Einrichtung zur Probe eine kleine Seite und sagt, ob es geklappt hat. macOS: wird gemeldet. Windows: Edge gehört zum System. |
+| Tor | Proxy für die Abfragen an die Quellen, nur wenn ihr «Tor auf diesem Rechner» wählt | nein | wird installiert und gestartet (Paket `tor`). Unter Windows direkt nicht: dort einen eigenen Proxy nennen oder WSL nehmen. |
 | Konto für Claude Code | Anmeldung, Zugang zu Fable 5.2 | ja | bleibt bei euch |
 
 «Wird installiert» heisst im Assistenten: nach eurem Ja auf die Frage «Installieren». Ohne Rückfragen
@@ -172,17 +175,24 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 91 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 95 Selbsttests prüfen.
 
-Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
-Zeile mit, die sagt, was gerade geschieht. Am Ende steht, wo ihr steht und wie es weitergeht: ob der Arbeitsplatz
-einsatzbereit ist, was neu eingerichtet wurde, was für euch bleibt, und unter «So geht es weiter» die nächsten vier
-Schritte, vom Start der Oberfläche bis zum Herunterladen der Ergebnisse.
+Auf Wunsch folgen die Anmeldung bei Claude Code, die Testabfragen und der Start: Claude Code einmal im Projektordner,
+danach die Oberfläche. Während längerer Arbeiten läuft eine Zeile mit, die sagt, was gerade geschieht. Am Ende steht,
+wo ihr steht und wie es weitergeht: ob der Arbeitsplatz einsatzbereit ist, was neu eingerichtet wurde und was offen
+bleibt. Unter «So geht es weiter» steht jeder Schritt, der noch zu tun ist, in der Reihenfolge, in der er zu tun ist:
+
+1. Ein neues Terminal öffnen, wenn es eines braucht. Der Grund steht dabei, etwa: Das Konto kam eben erst in die
+   Gruppe `docker`.
+2. Claude Code einmal im Projektordner starten und den Ordner bestätigen. Die Einrichtung liest ab, ob das schon
+   geschehen ist (Zeile «Projektordner»): Dann entfällt der Schritt.
+3. Die Oberfläche starten: `python3 tools/oberflaeche.py`.
+4. Die drei Schritte in der Oberfläche: Fall anlegen, ermitteln, Ergebnisse holen.
 
 ![Ergebnis der Einrichtung](docs/bilder/einrichtung-ergebnis.png)
 
 Das Bild stammt aus einem Lauf vor dem 17.11.2026. Die letzten Zeilen heissen seither «So geht es weiter» und nennen
-zuerst die Oberfläche.
+jeden Schritt bis in die Oberfläche.
 
 Die Prüfung erscheint hier als Kurzfassung, jeder Fehler steht einzeln da. Ausführlich zeigt sie
 `python3 tools/pruefen.py`. Die Meldungen der Installationsprogramme liegen im Ordner `osint-setup` des
@@ -220,8 +230,11 @@ Wunsch mit `OSINT_MYTHOS=ja`. Dann genügt je Laptop ein Befehl, und niemand mus
 - Schlüssel bei den Anbietern besorgen, siehe [Schlüssel](#schlüssel). Eintragen kann sie der Assistent.
 - Bei Claude Code anmelden. Der Assistent startet die Anmeldung auf Wunsch, durch den Browser geht ihr selbst.
   Sonst: `claude` starten und der Anmeldung folgen.
-- Beim ersten Start von `claude` im Projektordner den Vertrauensdialog bestätigen. Erst dann gelten
-  Berechtigungen, Protokoll und MCP-Server.
+- Den Projektordner bestätigen. Claude Code fragt beim ersten Start in einem Ordner, ob es ihm vertrauen soll. Die
+  Einrichtung startet Claude Code dafür auf Wunsch, die Antwort gebt ihr selbst: Ja, dann `/exit`. Erst mit diesem Ja
+  wendet Claude Code die Erlaubnisse des Projekts an (`.claude/settings.json`). Ohne sie fragt es bei jeder Abfrage
+  einzeln nach. Ob der Ordner bestätigt ist, liest die Einrichtung aus der Datei von Claude Code ab (`~/.claude.json`)
+  und zeigt es in der Zeile «Projektordner». Sie schreibt dort nie.
 
 **Kontrolle**
 
@@ -239,7 +252,7 @@ bricht mit einem Hinweis ab.
 
 | Weg | So | Docker |
 |---|---|---|
-| **WSL** | Repository in WSL klonen, dort `./setup.sh`. Es gilt alles, was für Linux gilt. | freie Docker Engine: `./setup.sh --docker-installieren` |
+| **WSL** | Repository in WSL klonen (im Linux-Heimordner, nicht unter `/mnt/c`), dort `./setup.sh`. Es gilt alles, was für Linux gilt. Die Oberfläche öffnet den Browser von Windows. Öffnet sich keiner, steht die Adresse im Terminal. Sie lautet dort auf `localhost`: Unter diesem Namen reicht Windows die Anfrage an WSL weiter. | freie Docker Engine: `./setup.sh --docker-installieren` |
 | **Windows direkt** | `.\setup.cmd` in PowerShell oder der Eingabeaufforderung | Docker Desktop, von Hand |
 
 Für Windows direkt gilt:
@@ -299,6 +312,14 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
 Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, und für eigene Instanzen der
 Block-Explorer `KRYPTO_BITCOIN_API`, `KRYPTO_ETHEREUM_API` (je Kette), `KRYPTO_TRON_API`.
+
+**Proxy.** Mit `OSINT_PROXY` geht jede Abfrage des Gateways über den Proxy, keine an ihm vorbei. Antwortet er nicht,
+kommt deshalb keine einzige durch. Das System sagt es dann an jeder Stelle mit denselben Worten: Die Einrichtung und
+`tools/pruefen.py` melden «nicht einsatzbereit» und lassen die Testabfragen aus, `fall_status` meldet es der
+Ermittlung, die daraufhin anhält, und jede Fehlermeldung des Gateways nennt den Proxy als Ursache. Für Tor auf diesem
+Rechner prüfen Einrichtung und Prüfung zusätzlich, ob Tor Verbindungen ins Netz aufbaut: Sie öffnen über Tor eine
+Verbindung zu `check.torproject.org` und schliessen sie wieder, ohne etwas zu senden. Über Tor können Quellen
+langsamer antworten oder Anfragen abweisen, und Quellen mit Schlüssel erkennen euer Konto in jedem Fall.
 
 Die Schlüssel liest nur das Gateway. Claude Code darf `.env` nicht lesen, und im Protokoll erscheinen
 Schlüssel als `***`.
@@ -1079,6 +1100,11 @@ Was ihr wissen müsst:
 | Strg+V fügt im Assistenten nichts ein (altes Konsolenfenster unter Windows) | Dieses Fenster reicht Strg+V nicht als Text weiter | Rechtsklick fügt ein. Oder Windows Terminal verwenden. |
 | Ein Schlüssel wird mit «enthält keine Leerzeichen» oder «zu kurz» abgewiesen | Beim Kopieren ist etwas mitgekommen oder verloren gegangen | noch einmal kopieren, nur den Schlüssel selbst. Notfalls direkt in `.env` eintragen. |
 | Am Ende steht «Eingerichtet» statt «Einsatzbereit» | Nicht jede Testabfrage kam durch | Die Zeilen mit ✗ nennen den Grund: Schlüssel, Netz oder Proxy. Danach `python3 tools/pruefen.py --live` |
+| Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
+| «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
+| WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
+| WSL: Beim Start der Oberfläche öffnet sich kein Browser | WSL hat keinen eigenen Browser, und der von Windows liess sich nicht starten | die Adresse aus dem Terminal im Browser von Windows öffnen. Sie steht da, sobald die Oberfläche läuft |
+| «Browser für PDF: … die Probe ergab kein PDF» | Der Browser startet ohne Fenster nicht, oder er darf im Projektordner nicht schreiben (ein Snap darf nur in den Benutzerordner) | Projekt im Benutzerordner ablegen oder einen anderen Browser in `OSINT_BROWSER` nennen. Sonst den Rapport im Browser öffnen und als PDF drucken |
 | Einrichtung meldet «Dieser Ordner wurde unter … eingerichtet» | derselbe Ordner unter WSL und unter Windows benutzt | je System ein eigener Klon |
 | Werkzeug meldet «Schlüssel … fehlt in .env» | Quelle nicht eingerichtet | Schlüssel eintragen, Claude Code neu starten |
 | «verweigert den Zugriff (HTTP 401/403)» | Schlüssel falsch, abgelaufen oder Abo deckt den Endpunkt nicht | Schlüssel prüfen, `python3 tools/pruefen.py --live` |
@@ -1106,7 +1132,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 91 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 95 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1142,6 +1168,36 @@ PowerShell 7:
   rund 0,15 Sekunden (96 Indikatoren, alle 29 Quellen vorgegeben).
   **Nicht geprüft:** ob das Team in einer echten Ermittlung die Pflichtquellen abarbeitet. Das hängt an der Steuerung
   mit dem echten Claude Code, die nicht geprüft ist. Geprüft ist, dass der Rapport es merkt, wenn es das nicht tut.
+- Vier gelten der Einrichtung bis zum Start, Stand 17.11.2026. Anlass war die Einrichtung des Eigentümers unter
+  Ubuntu 26.04 in WSL am selben Tag: Als Proxy war «Tor auf diesem Rechner» gewählt, Tor aber nicht installiert, und
+  21 von 25 Testabfragen scheiterten, ohne dass die Meldung die Ursache nannte. Geprüft ist jetzt, mit Attrappen für
+  Paketverwaltung, Dienste und Programme: Der Assistent bietet Tor nur an, wenn es am Ende läuft. Die Einrichtung
+  installiert und startet es und wartet, bis es Verbindungen aufbaut (gegen einen nachgebauten SOCKS-Server: Gefragt
+  wird mit dem Namen des Ziels, dieser Rechner fragt kein DNS). Ein Proxy, der nicht antwortet, heisst in der Meldung
+  des Gateways, in `fall_status` und in `pruefen.py` beim Namen, sein Passwort erscheint nirgends, und am Proxy vorbei
+  geht keine Abfrage. Fehlt ein Browser für PDF, installiert die Einrichtung Chromium (unter Ubuntu als Snap) und
+  druckt zur Probe eine kleine Seite. Der Abschluss nennt jeden Schritt in der Reihenfolge, in der er zu tun ist.
+  Claude Code und die Oberfläche startet die Einrichtung nur auf Wunsch, und nicht, wenn das Konto eben erst in die
+  Gruppe `docker` kam. Ob Claude Code dem Projektordner schon vertraut, liest sie ab und schreibt es nie selbst. Unter
+  WSL öffnet die Oberfläche den Browser von Windows und zeigt die Adresse in jedem Fall, dort mit `localhost`.
+  Die Probe für den Browser lief hier auch echt: Mit `chrome-headless-shell` entstand das PDF in unter einer Sekunde.
+  Der `google-chrome` der Prüfumgebung antwortete ohne Fenster nie (Zeitlimit 45, 20 und 12 Sekunden): Die Probe
+  sagte das, beendete ihn samt seinen Kindprozessen, und danach lief kein Prozess des Browsers mehr und kein Profil
+  blieb liegen.
+  Am 17.11.2026 an den Paketen selbst nachgesehen (Ubuntu 24.04, heruntergeladen und gelesen, nicht installiert): Das
+  Paket `tor` (0.4.9.11) bringt den Dienst `tor.service` und das Startskript `/etc/init.d/tor` mit, startet sich nach
+  der Installation selbst und hört in der Vorgabe auf Port 9050. Ein Paket `chromium` gibt es dort nicht:
+  `chromium-browser` verweist nur auf den Snap und setzt `snapd` voraus. Deshalb der Weg über Snap.
+  Aus den Dokumentationen, gelesen am 17.11.2026: Claude Code wendet die Erlaubnisse eines Projekts erst an, wenn der
+  Mensch dem Ordner vertraut, und hält das in `~/.claude.json` fest (Claude Code, «Project allow rules and workspace
+  trust»). Aus einem Browser von Windows erreicht man einen Server in WSL unter `localhost` (Microsoft, «Accessing
+  network applications with WSL»).
+  **Nicht geprüft:** die echte Installation von Tor und von Chromium (Paket und Snap), der Start von Tor als Dienst
+  mit und ohne systemd, ob der Snap unter WSL ohne Fenster druckt, das Öffnen des Browsers von Windows aus WSL, ab
+  wann die Gruppe `docker` unter WSL gilt, der Start von Claude Code aus der Einrichtung, und ob Claude Code das
+  Vertrauen auf einem echten Arbeitsplatz so ablegt, wie es die Dokumentation sagt. Die Prüfumgebung hat weder WSL noch systemd noch Snap: Das alles liess sich
+  nur mit Attrappen nachstellen. Bei jedem dieser Punkte sagt die Einrichtung selbst, was sie gesehen hat (Zeilen
+  «Tor (Proxy)», «Browser für PDF», «Projektordner»).
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum

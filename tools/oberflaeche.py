@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -41,6 +42,60 @@ if __name__ == "__main__":
     plattform.start()
 
 from tools.ui import bedienung as bedienung_modul, daten, server as ui_server  # noqa: E402
+
+
+# Unter WSL gibt es in Linux meist keinen Browser, wohl aber den von Windows. Diese Wege öffnen dort eine Adresse im
+# Standardbrowser, ohne dass eine Shell sie zerlegt (in der Adresse stehen # und &). Der erste, der sich starten lässt, gilt.
+# Zuerst die beiden Programme, die zu Windows gehören. wslview stammt aus dem Paket wslu, das nicht mehr gepflegt wird: zuletzt.
+WINDOWS_ORDNER = ("/mnt/c/Windows/System32", "/mnt/c/Windows/System32/WindowsPowerShell/v1.0")
+WSL_WEGE = (("rundll32.exe", "url.dll,FileProtocolHandler", "{adresse}"),
+            ("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Process '{adresse}'"),
+            ("wslview", "{adresse}"))
+
+
+def _programm(name: str) -> str | None:
+    """Ein Programm im PATH, sonst an den festen Orten von Windows (WSL hängt sie nicht in jeder Einstellung an den PATH)."""
+    return plattform.programm(name) or next((str(Path(o) / name) for o in WINDOWS_ORDNER if (Path(o) / name).is_file()), None)
+
+
+def basis_adresse(port: int) -> str:
+    """Die Adresse der Oberfläche. Unter WSL mit dem Namen localhost: Unter ihm reicht Windows eine Anfrage aus seinem Browser
+    an einen Server in WSL weiter (Microsoft, «Accessing Linux networking apps from Windows»). Der Server hört weiterhin nur
+    auf 127.0.0.1 und nimmt beide Namen an."""
+    return f"http://{'localhost' if plattform.wsl() else '127.0.0.1'}:{port}/"
+
+
+def browser_oeffnen(adresse: str) -> bool:
+    """Öffnet die Adresse im Browser. Gibt zurück, ob sich einer starten liess. Ob wirklich ein Fenster aufging, weiss unter
+    WSL niemand: Deshalb zeigt der Aufrufer dort die Adresse zusätzlich an."""
+    if plattform.wsl():
+        for programm, *argumente in WSL_WEGE:
+            pfad = _programm(programm)
+            if not pfad:
+                continue
+            try:
+                r = subprocess.run([pfad, *(x.format(adresse=adresse) for x in argumente)], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if r.returncode == 0:
+                return True
+        return False
+    try:
+        return bool(webbrowser.open(adresse))
+    except webbrowser.Error:
+        return False
+
+
+def oeffnen_oder_zeigen(adresse: str) -> None:
+    """Öffnet den Browser. Geht das nicht, oder lässt es sich wie unter WSL nicht feststellen, steht die Adresse im Terminal:
+    Niemand soll eine Option kennen müssen, um in die Oberfläche zu kommen."""
+    offen = browser_oeffnen(adresse)
+    if offen and not plattform.wsl():
+        return
+    wo = "im Browser von Windows" if plattform.wsl() else "in einem Browser auf diesem Rechner"
+    print(("Öffnet sich kein Browserfenster: diese" if offen else "Es liess sich kein Browser öffnen. Diese")
+          + f" Adresse einmal {wo} öffnen:\n  {adresse}", flush=True)
 
 
 def nur_lesen_grund(gewollt: bool) -> str:
@@ -166,7 +221,7 @@ def main() -> int:
     except OSError as e:
         print(f"FEHLER: Der Server liess sich nicht starten: {e}", file=sys.stderr)
         return 2
-    basis = f"http://127.0.0.1:{server.server_address[1]}/"
+    basis = basis_adresse(server.server_address[1])
     adresse = basis + (f"#/fall/{a.fall}" if a.fall else "")
     print(f"Oberfläche läuft: {adresse}")
     if bedienung is None:
@@ -181,7 +236,7 @@ def main() -> int:
             print(f"Zum Bedienen diese Adresse einmal im Browser öffnen: {adresse}")
         print("Beenden mit Strg+C.")
     if not a.ohne_browser:
-        threading.Timer(0.6, lambda: webbrowser.open(adresse)).start()
+        threading.Timer(0.6, oeffnen_oder_zeigen, [adresse]).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

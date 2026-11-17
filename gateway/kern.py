@@ -392,6 +392,18 @@ def schranke(methode: str, url: str, koerper: Any) -> str | None:
     return None
 
 
+async def proxy_stumm(proxy: str) -> bool:
+    """True, wenn ein Proxy eingestellt ist und selbst keine Verbindung annimmt. Dann kommt keine Abfrage durch, und die
+    Ursache ist der Proxy, nicht die Quelle. Dauert die Probe zu lange oder lässt sich die Adresse nicht lesen, gilt:
+    unbekannt, also nicht stumm."""
+    if not proxy or transport is not None:      # in den Selbsttests antwortet eine Attrappe statt des Netzes: kein Proxy im Spiel
+        return False
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(plattform.proxy_antwortet, proxy), 4.0) is False
+    except (asyncio.TimeoutError, OSError):
+        return False
+
+
 async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel: str, ziel_typ: str,
                   url: str, methode: str = "GET", params: dict | None = None,
                   kopf: dict | None = None, json_koerper: dict | None = None,
@@ -495,7 +507,12 @@ async def abfrage(fall_id: str, zweck: str, *, werkzeug: str, quelle: str, ziel:
             fehler = fehler.replace(proxy, "(Proxy)")
         for wert in geheimnisse + [str(v) for v in (params or {}).values() if isinstance(v, str) and len(v) >= 8]:
             fehler = fehler.replace(wert, "***")      # keine Schlüssel in Fehlertexten
-        fehler = " ".join([fehler, hilfe or "Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."])
+        # Mit Proxy geht jede Abfrage über ihn. Antwortet er selbst nicht, ist das die Ursache, nicht die Quelle: Dann sagt die
+        # Meldung genau das, statt bei jeder Quelle einzeln «keine Verbindung». Ohne Proxy weiterzufragen kommt nie in Frage.
+        if await proxy_stumm(proxy):
+            fehler = " ".join([fehler, plattform.PROXY_STUMM, plattform.proxy_rat(proxy)])
+        else:
+            fehler = " ".join([fehler, hilfe or plattform.RAT_VERBINDUNG])
     dauer = int((stoppuhr() - start) * 1000)
 
     # Manche Dienste wiederholen in der Antwort, was man ihnen geschickt hat. Ein Schlüssel darf so nicht in die
