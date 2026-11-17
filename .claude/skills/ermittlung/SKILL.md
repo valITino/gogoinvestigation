@@ -18,6 +18,12 @@ betreffen. Vorgaben ersetzen keine Freigabe und heben keine Regel aus CLAUDE.md 
 Massnahme, das Dark Web oder eine Kontoabfrage und fehlt die Freigabe in `fall.json`, meldest du das und führst sie nicht
 aus. Dasselbe gilt für Nachrichten, die später über die Oberfläche in die laufende Sitzung kommen.
 
+Der Sachbearbeiter kann ausserdem **Pflichtquellen** vorgeben. Sie stehen nicht im Auftrag, sondern in der Fallakte:
+`fall_status` nennt sie unter `pflichtquellen`, samt der Regel und der Liste `offen`. Eine Pflichtquelle wird für jeden
+Indikator aus den Eingangsdokumenten abgefragt, zu dem sie passt. Suchquellen und Quellen für Gruppen und Konten werden
+mindestens einmal im Fall gefragt. Das ist ein Mindestmass: Weitere Quellen wählen die Analysten wie sonst. Pflichtquellen
+ersetzen keine Freigabe und keinen Zweck. Ändern oder aufheben kann sie nur der Sachbearbeiter, du und die Analysten nie.
+
 Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexten, damit dein Kontext frei
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.
@@ -42,7 +48,8 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
    - Wurde zu einem bestehenden Fall ein weiterer Pfad mitgegeben: `python3 tools/fall.py aufnehmen <Fall-ID> <Pfad>`.
 3. Ist der Eingang leer, halte an und sage, wie ein Dokument aufgenommen wird.
 4. Melde in drei bis fünf Zeilen: Titel und Auftrag, welche Freigaben erteilt sind, welche Quellen bereitstehen und
-   welche fehlen (mit dem Namen des fehlenden Schlüssels). Fahre ohne Rückfrage fort.
+   welche fehlen (mit dem Namen des fehlenden Schlüssels), und welche Pflichtquellen der Sachbearbeiter vorgegeben hat.
+   Fahre ohne Rückfrage fort.
 
 ## Phase 1: Indikatoren
 
@@ -55,6 +62,8 @@ und melde die Stelle, ohne den Wert zu wiederholen.
 Schreibe `arbeitsstand/plan.md`:
 - die Fragen aus dem Auftrag, als prüfbare Fragen formuliert,
 - je Analyst: welche Indikatoren, welche Fragen, welche Quellen,
+- bei Pflichtquellen: `fall_status` nach der Extraktion noch einmal aufrufen. `pflichtquellen.offen` nennt jedes Paar aus
+  Quelle und Indikator. Jedes Paar steht im Plan bei dem Analysten, dem das Werkzeug gehört,
 - was sich nicht klären lässt (fehlende Quelle, fehlende Freigabe, nur mit Klarnamen möglich).
 
 Zuteilung:
@@ -85,6 +94,9 @@ Deine Indikatoren:
 - …
 Deine Fragen:
 1. …
+Pflichtquellen (vom Sachbearbeiter vorgegeben, für jeden dieser Indikatoren abzufragen, zu dem sie passen):
+- VirusTotal: I-03
+- …
 Grenzen: nur passive Abfragen. Keine Pivots ausführen, nur vorschlagen. Rückmeldung als Befundmeldung nach Ermittlungsstandard.
 ```
 
@@ -101,6 +113,23 @@ Stationen aus einem Geldfluss, die der `blockchain-analyst` unter «Neue Indikat
 Sammeladresse), trägst du ebenfalls ein, mit `herkunft: "Geldfluss P-…"`. Sie brauchen keine zweite Runde: Der
 Geldfluss hat sie bereits eingeordnet. Die Verfolgung selbst zählt als ein Schritt, auch wenn sie über mehrere
 Stationen führt. Ihre Grenzen (Tiefe, Abfragebudget) setzt das Werkzeug.
+
+## Phase 4b: Pflichtquellen nachhalten
+
+Nur wenn der Sachbearbeiter Pflichtquellen vorgegeben hat. Rufe `fall_status` auf und lies `pflichtquellen.offen`.
+
+- Ist die Liste leer, ist die Vorgabe erfüllt. Fahre fort.
+- Steht dort ein Paar, wurde diese Quelle für diesen Indikator noch nie gefragt. Beauftrage den zuständigen Analysten mit
+  genau diesen Paaren (`…-pflicht.md`). Das ist keine Pivot-Runde und zählt nicht zu den zwei Runden.
+- Eine fehlgeschlagene Abfrage gilt als gefragt. Sie wird nicht wiederholt und kommt unter Lücken.
+- Ein Versuch, den das Gateway ablehnt (fehlende Freigabe), gilt nicht als gefragt. Er wird nicht unternommen, um eine
+  Pflicht abzuhaken.
+- Lässt sich ein Paar nicht erfüllen, weil eine Freigabe oder ein Schlüssel fehlt, meldest du das dem Sachbearbeiter mit
+  dem Namen der Quelle. Er erteilt die Freigabe oder nimmt die Quelle aus der Vorgabe. Bis dahin meldet `rapport.py`
+  das Paar als Mangel, und der Rapport entsteht nur als Entwurf.
+
+Höchstens zwei Durchgänge. Die Vorgabe umgehst du nie: weder durch eine Abfrage ohne Bezug zum Fall noch durch
+eine Notiz, die Quelle sei entbehrlich.
 
 ## Phase 5: Aktive Massnahmen
 
@@ -134,6 +163,7 @@ python3 tools/protokoll.py <Fall-ID>
 ```
 
 Meldet `rapport.py` Mängel, behebt sie der `rapportfuehrer` an der Sache (Beleg ergänzen, herabstufen, streichen).
+Ein Mangel «Pflichtquelle …» lässt sich in `befunde.json` nicht beheben: Er verlangt die Abfrage (Phase 4b).
 Höchstens drei Durchgänge. Bleiben Mängel, erzeuge mit `--entwurf` und sage dem Sachbearbeiter offen, was fehlt.
 
 ## Phase 9: Übergabe

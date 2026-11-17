@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from gateway import plattform  # noqa: E402
+from gateway import pflichtquellen as pq, plattform  # noqa: E402
 from gateway.akte import FAELLE, FREIGABEN, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
 from gateway.quellen import QUELLEN  # noqa: E402
 from tools import protokoll as protokollwerkzeug, rapport  # noqa: E402
@@ -262,6 +262,14 @@ class Fall:
             e = (self.daten.get("freigaben") or {}).get(name) or {}
             aus.append({"name": name, "erteilt": freigabe_erteilt(self.daten, name), "durch": e.get("durch") or "", "am": e.get("am") or "", "vermerk": e.get("vermerk") or ""})
         return aus
+
+    def pflichtquellen(self) -> dict | None:
+        """Der Stand der Pflichtquellen: was der Sachbearbeiter vorgegeben hat und was das Protokoll dazu zeigt. None ohne Vorgabe."""
+        if not pq.vorgabe(self.daten):
+            return None
+        dateien = [self.pfad / "fall.json", self.pfad / "protokoll" / "abfragen.jsonl", self.pfad / "protokoll" / "extern.jsonl",
+                   self.pfad / "arbeitsstand" / "indikatoren.json", self.pfad / "befunde.json"]
+        return self._gemerkt("pflicht", dateien, lambda: pq.stand_fuer(self.daten, self.pfad, self.eintraege()))
 
     # ---- Indikator und seine Belege
     def zu_indikator(self, ind: dict) -> list[dict]:

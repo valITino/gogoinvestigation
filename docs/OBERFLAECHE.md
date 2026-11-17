@@ -339,7 +339,7 @@ weder den Akten-Eingang noch den Chat.
 | 1. Akten hineinziehen | «Neuer Fall» | Dateien, ein Ordner oder ein ZIP. Jede Datei wird sofort gelesen und auf Personendaten geprüft. In einen Fall kommt noch nichts. |
 | 2. Nachbessern | lokaler Bildschirm | Was die erste Pseudonymisierung übersehen hat, wird ersetzt: auf dem eigenen Rechner, ohne Sprachmodell. |
 | 3. Fall anlegen | «Neuer Fall» | Fall-ID und Titel. In den Fall kommt die Textfassung dessen, was die PII-Prüfung besteht. |
-| 4. Ermitteln | «Ermittlung» | Vorgaben in den Chat, starten, zusehen. Nachrichten jederzeit, Rückfragen als Fenster. |
+| 4. Ermitteln | «Ermittlung» | Pflichtquellen anwählen, wenn gewünscht. Vorgaben in den Chat, starten, zusehen. Nachrichten jederzeit, Rückfragen als Fenster. |
 | 5. Ergebnisse holen | «Ergebnisse» | Ansehen, einzeln herunterladen oder alles als ein Archiv, samt Sitzungsprotokoll. |
 | 6. Zurückführen | «Bedienen» | Der Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. |
 
@@ -450,6 +450,38 @@ ganzen Verlauf legt die Oberfläche zusätzlich als Textdatei im Arbeitsstand de
 (`arbeitsstand/verlauf-oberflaeche-<Zeit>.txt`). Die Datei ist eine Lesehilfe, kein Beleg: Belegt ist, was im
 Sitzungsprotokoll und in der Protokollkette steht.
 
+### Pflichtquellen
+
+Über dem Chat steht, eingeklappt, die Auswahl der Pflichtquellen: Quellen, die in dieser Ermittlung gefragt werden
+müssen. Sie ist freiwillig. Ohne Vorgabe wählt das Team die Quellen selbst.
+
+- **Anwählen.** Jede Quelle des Verzeichnisses ist ein Kasten, in drei Gruppen: mit Schlüssel, ohne Schlüssel, Dark
+  Web. Leer lassen, einzeln anwählen, «Alle auswählen» oder «Keine». Neben jedem Namen steht, wofür die Quelle fällig
+  wird (IP-Adressen, Domains, Wallets, «einmal im Fall»).
+- **Was gesperrt ist.** Eine Quelle, deren Schlüssel fehlt, Web-Check ohne laufende Instanz und Robin, solange es an
+  diesem Arbeitsplatz nicht eingeschaltet ist oder dem Fall die Freigabe «Dark Web» fehlt. Der Grund steht dabei. Eine
+  Pflichtquelle ersetzt keine Freigabe.
+- **Speichern.** «Pflichtquellen speichern», oder einfach starten: «Ermittlung starten» übernimmt eine Auswahl, die
+  noch nicht gespeichert ist. Scheitert das Speichern, startet die Ermittlung nicht. Die Vorgabe steht in `fall.json`
+  (`pflichtquellen`, mit Zeit und `"weg": "Oberfläche"`), im Sitzungsprotokoll und im ersten Eintrag des Verlaufs.
+- **Was eine Pflichtquelle bewirkt.** Die Ermittlung liest die Vorgabe mit `fall_status`, samt der Liste dessen, was
+  noch offen ist. Jede Pflichtquelle wird für jeden Indikator aus den Eingangsdokumenten abgefragt, zu dem sie passt,
+  Suchquellen und Quellen für Gruppen und Konten mindestens einmal im Fall. Weitere Quellen bleiben dem Team überlassen.
+- **Der Stand.** Die Kopfzeile der Auswahl zeigt ihn in einer Zeile («8 von 11 erfüllt, 3 offen»). Aufgeklappt steht
+  je Quelle: erfüllt, offen, Fehlschlag, entfällt (kein passender Indikator im Fall) oder noch nicht fällig (die
+  Indikatoren stehen noch nicht fest), mit den offenen Indikatoren und den Belegen. Gelesen wird das aus dem Protokoll.
+  Dieselbe Tabelle steht in der Fallübersicht, auch im Modus «nur lesen».
+- **Während die Ermittlung arbeitet**, ruht die Auswahl. Ändern lässt sie sich, sobald die Ermittlung angehalten
+  oder beendet ist. Der Rapport prüft am Ende die Vorgabe, die dann im Fall steht.
+- **Am Ende.** `tools/rapport.py` prüft die Vorgabe am Protokoll. Was nie gefragt wurde, ist ein Mangel und steht
+  unter den offenen Punkten. Ein Fehlschlag gilt als gefragt und gehört unter die Lücken. Eine Abfrage, die das Gateway
+  abgelehnt hat (fehlende Freigabe), gilt nicht als gefragt. Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4
+  aus.
+
+Wofür eine Quelle fällig wird, steht an einer Stelle im Code (`gateway/quellen.py`, `VORGABEN`). Die Regel ist enger
+als die Abdeckung der Fallübersicht: Dort steht, wozu eine Quelle etwas sagen kann. Hier steht, wofür sie gefragt
+werden muss. Am Terminal zeigt `python3 tools/fall.py quellen <Fall-ID>` dieselbe Liste und den Stand.
+
 ### Rückfragen
 
 Braucht ein Werkzeugaufruf eine Zustimmung, erscheint ein Fenster über der Ansicht, in jeder Ansicht und auch, wenn
@@ -489,6 +521,7 @@ Akte, keinen Klartext.
 | Funktion | Was geschieht | Womit |
 |---|---|---|
 | **Freigaben** | Aktive Massnahmen, Dark Web und Kontoabfragen per Klick, mit «Durch» und «Grundlage». | `tools/fall.py` (Funktion `freigabe_setzen`) |
+| **Pflichtquellen** | In der Ansicht «Ermittlung»: Quellen, die die Ermittlung abfragen muss. Siehe oben. | `tools/fall.py` (Funktion `pflichtquellen_setzen`) |
 | **Abklärung von Hand** | Formular für Indikator, Quelle, Zeit und Wortlaut. Der Eintrag geht in die Kette und ist als «von Hand erfasst» gekennzeichnet. | `tools/beleg.py` |
 | **Dokumente** | Abschlussrapport, Ermittlungsprotokoll, Datenblätter und PDF einzeln neu erzeugen, Kette prüfen. Die Seite zeigt die Ausgabe des Werkzeugs. | `tools/rapport.py`, `protokoll.py`, `anhang.py`, `pdf.py`, `audit_pruefen.py` |
 | **Zurückführen** | Der fertige Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. | `tools/reidentifizieren.py` |
@@ -639,6 +672,13 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Schalter, Antwortform der Rückfrage und die Meldung der MCP-Server beim Start folgen der Dokumentation (gelesen am
   16.11.2026). Nicht nachgelesen ist, ob die Variable `MCP_TOOL_TIMEOUT` eine Rückfrage wirklich 30 Minuten warten
   lässt. Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
+- **Pflichtquellen.** Ob das Team sie in einer echten Ermittlung abarbeitet, ist nicht geprüft: Das hängt an der
+  Steuerung mit dem echten Claude Code. Geprüft ist die Auswertung am Protokoll und dass der Rapport eine Lücke meldet.
+  Zu einem Indikator gehört eine Abfrage, wenn sie seinen Wert zum Ziel hatte, Grundlage einer Auswertung zu ihm ist
+  oder unter seinen Belegen steht. Fragt ein Analyst eine Quelle mit einer anderen Schreibweise des Werts, erkennt die
+  Auswertung das erst, wenn der Beleg beim Indikator eingetragen ist. Die Pflicht hängt an der Indikatorliste, und die
+  erstellt das Team aus den Dokumenten: Übersieht die Extraktion einen Indikator, entsteht für ihn keine Pflicht. Bei
+  Suchquellen und bei Quellen für Gruppen und Konten prüft die Auswertung nur, dass im Fall gefragt wurde, nicht womit.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
 - **Der Akten-Eingang lebt im Speicher.** Was hochgeladen, aber noch nicht in einen Fall aufgenommen ist, ist nach dem

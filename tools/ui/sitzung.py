@@ -42,7 +42,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from gateway import plattform
+from gateway import pflichtquellen, plattform
 from gateway.akte import PROJEKT, SITZUNGEN, fall_daten, fall_pfad, freigabe_erteilt, jsonl_lesen
 from tools.pii_pruefung import bericht as pii_bericht, pruefen as pii_pruefen
 from tools.ui import bedienung as bedienung_modul
@@ -588,9 +588,12 @@ def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
             b.vermerken(fall, "Nachricht nicht zugestellt", f"{kurz(w['text'], 300)} (die Ermittlung wurde neu gestartet)", sitzung=alt.kennung)
         s.verlauf, s.nummer, s.version = alt.verlauf, alt.nummer, alt.version + 1
     b.ermittlungen[fall] = s
-    s.notieren("sachbearbeiter", f"Ermittlung starten: /ermittlung {fall}" + (f"\n\n{vorgaben}" if vorgaben else ""), "sachbearbeiter")
+    pflicht = pflichtquellen.vorgabe(fall_daten(fall))      # sie stehen in fall.json. Die Ermittlung liest sie mit fall_status
+    s.notieren("sachbearbeiter", f"Ermittlung starten: /ermittlung {fall}" + (f"\n\n{vorgaben}" if vorgaben else "")
+               + (f"\n\nPflichtquellen: {', '.join(pflicht)}" if pflicht else ""), "sachbearbeiter")
     s.starten(auftrag_text(fall, vorgaben))
-    b.vermerken(fall, "Ermittlung gestartet", f"/ermittlung {fall}" + (f" · Vorgaben: {kurz(vorgaben, 1500)}" if vorgaben else ""))
+    b.vermerken(fall, "Ermittlung gestartet", f"/ermittlung {fall}" + (f" · Vorgaben: {kurz(vorgaben, 1500)}" if vorgaben else "")
+                + (f" · Pflichtquellen: {', '.join(pflicht)}" if pflicht else ""))
     return {"meldung": "Die Ermittlung ist gestartet. Jeder Schritt erscheint im Chat, neue Ergebnisse in der Arbeitsspur und in den Ansichten."}
 
 

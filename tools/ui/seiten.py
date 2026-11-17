@@ -255,6 +255,56 @@ def quellen_seite() -> str:
             + tabelle(["Quelle", "Wozu", "Stand", "Werkzeuge", "Freigabe nötig", "Hinweis"], zeilen, "Quellen"))
 
 
+PFLICHT_MARKE = {"erfuellt": ("✓ erfüllt", "gut"), "offen": ("○ offen", "kritisch"), "fehlgeschlagen": ("✕ Fehlschlag", "warnung"),
+                 "entfaellt": ("– entfällt", "leer"), "wartet": ("… noch nicht fällig", "leer"), "unbekannt": ("? unbekannt", "kritisch")}
+
+
+def pflichtquellen_kurz(fall: daten.Fall) -> str:
+    """Der Stand der Pflichtquellen in einer Zeile. Leer ohne Vorgabe."""
+    s = fall.pflichtquellen()
+    if not s:
+        return ""
+    z = s["zahlen"]
+    if not z["faellig"]:
+        return "noch nichts fällig"
+    return (f"{z['erfuellt']} von {z['faellig']} erfüllt" + (f", {z['fehlgeschlagen']} fehlgeschlagen" if z["fehlgeschlagen"] else "")
+            + (f", {z['offen']} offen" if z["offen"] else ""))
+
+
+def pflichtquellen_html(fall: daten.Fall, kopf: str = "<h2>Pflichtquellen</h2>") -> str:
+    """Die Pflichtquellen eines Falls und was das Protokoll dazu zeigt: je Quelle, ob sie für jeden passenden Indikator gefragt
+    wurde. Leer ohne Vorgabe. Steht in der Fallübersicht und in der Ansicht «Ermittlung» (dort unter der Auswahl, mit eigenem Kopf)."""
+    s = fall.pflichtquellen()
+    if not s:
+        return ""
+    z = s["zahlen"]
+    wer = ((f" am {esc(rapport.zeit_zeigen(s['am']))}" if s["am"] else "") + (f" durch {esc(s['durch'])}" if s["durch"] else "")
+           + (f", über die {esc(s['weg'])}" if s["weg"] else ""))
+    zeilen = []
+    for r in s["zeilen"]:
+        wort, farbe = PFLICHT_MARKE.get(r["stand"], (r["stand"], "neutral"))
+        if r["einmal"]:
+            faellig = "einmal im Fall" if r["faellig"] else "–"
+        else:
+            faellig = f"{len(r['erfuellt'])} von {len(r['faellig'])} Indikator{'en' if len(r['faellig']) != 1 else ''}" if r["faellig"] else "–"
+        einzel = []
+        for wort_, ids in (("offen", r["offen"]), ("Fehlschlag", r["fehlgeschlagen"])):
+            if ids and not r["einmal"]:
+                einzel.append(f"{wort_}: " + " ".join(f'<a href="{pfad(fall.id, "indikator", i)}">{esc(i)}</a>' for i in ids))
+        if r["grund"]:
+            einzel.append(esc(r["grund"]))
+        belege = list(dict.fromkeys(b for i in r["faellig"] for b in r["belege"].get(i, [])[:1]))
+        zeilen.append([esc(r["quelle"]), f'<span class="marke z-{farbe}">{esc(wort)}</span>', esc(faellig), " · ".join(einzel) or "–",
+                       (" ".join(f'<a href="{pfad(fall.id, "beleg", b)}">{esc(b)}</a>' for b in belege[:8])
+                        + (f" und {len(belege) - 8} weitere" if len(belege) > 8 else "")) if belege else "–"])
+    stand = (f"{z['erfuellt']} von {z['faellig']} fälligen Abfragen erfüllt" + (f", {z['fehlgeschlagen']} fehlgeschlagen" if z["fehlgeschlagen"] else "")
+             + (f", {z['offen']} offen" if z["offen"] else "")) if z["faellig"] else "noch nichts fällig"
+    return (f"{kopf}<p class='klein'>Vorgegeben{wer}. Jede dieser Quellen muss für jeden Indikator aus den Akten gefragt werden, zu dem sie passt. "
+            f"Suchquellen und Quellen für Gruppen und Konten mindestens einmal. Stand laut Protokoll: <b>{esc(stand)}</b>."
+            + ("" if s["bekannt"] else " Die Indikatoren des Falls stehen noch nicht fest.") + "</p>"
+            + tabelle(["Quelle", "Stand", "Fällig", "Einzelheiten", "Belege"], zeilen, "Pflichtquellen", klasse="schlicht"))
+
+
 def uebersicht(fall: daten.Fall) -> str:
     k = fall.kennzahlen()
     r, p = k["rapport"], k["protokoll"]
@@ -272,6 +322,9 @@ def uebersicht(fall: daten.Fall) -> str:
                                                      "Schritte", klasse="schlicht"))
     offen = offene_punkte(fall)
     h.append("<h2>Offene Punkte</h2>" + ("<ul>" + "".join(f"<li>{o}</li>" for o in offen) + "</ul>" if offen else '<p class="klein">Keine.</p>'))
+    pflicht = pflichtquellen_html(fall)
+    if pflicht:
+        h.append(pflicht)
     a = fall.abdeckung()
     h.append("<h2>Abdeckung: Indikator × Quelle</h2>")
     if a["zeilen"]:

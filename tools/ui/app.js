@@ -17,7 +17,7 @@ const el = (name, attribute = {}, ...kinder) => {
 };
 const zustand = { fall: null, ansicht: "", adresse: "", lauf: 0, spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
   bedienung: false, geheimnis: "", auswahl: {}, warteschlange: null, hochgeladen: null, titel: "OSINT-Arbeitsplatz",
-  chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "" }, rueckfrage: "", rueckfrageTimer: null };
+  chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null }, rueckfrage: "", rueckfrageTimer: null };
 const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einzelne Datei im Akten-Eingang
 
 async function antwortLesen(antwort) {
@@ -150,6 +150,7 @@ function bedienungEinrichten(wurzel) {
   });
   for (const zone of $$("[data-hochladen]", wurzel)) hochladenEinrichten(zone);
   for (const bereich of $$("[data-auswahl]", wurzel)) auswahlEinrichten(bereich);
+  for (const feld of $$("[data-pflicht]", wurzel)) pflichtEinrichten(feld);
   const schlange = $("[data-warteschlange]", wurzel), w = zustand.warteschlange;
   if (schlange && w && w.gesamt > 1) schlange.textContent = `Dokument ${w.gesamt - w.ids.length} von ${w.gesamt} · `;
 }
@@ -313,6 +314,50 @@ async function naechstesDokument(ziel) {
   if (location.hash === zurueck) await laden(); else location.hash = zurueck;
 }
 
+/* ---------- Pflichtquellen: vor dem Start anwählen, was die Ermittlung abfragen muss ---------- */
+
+const pflichtGewaehlt = (feld) => $$("input[name=quelle]:checked", feld).map(k => k.value);
+
+function pflichtZeigen(feld) {
+  // Zähler, Marke und der Hinweis, ob die Auswahl vom gespeicherten Stand abweicht
+  const alle = $$("input[name=quelle]", feld), an = pflichtGewaehlt(feld);
+  let gespeichert = [];
+  try { gespeichert = JSON.parse(feld.dataset.gespeichert || "[]"); } catch (e) { /* dann gilt: nichts gespeichert */ }
+  const geaendert = [...gespeichert].sort().join("\n") !== [...an].sort().join("\n");
+  feld.dataset.geaendert = geaendert ? "1" : "";
+  $("[data-pflicht-zahl]", feld).textContent = `${an.length} von ${alle.filter(k => !k.disabled).length} angewählt`;
+  $("[data-pflicht-hinweis]", feld).textContent = geaendert ? "Auswahl geändert, noch nicht gespeichert. Der Start der Ermittlung übernimmt sie." : "";
+  $("[data-pflicht-speichern]", feld).disabled = !geaendert;
+  const marke = $("[data-pflicht-marke]", feld);
+  marke.textContent = gespeichert.length ? (gespeichert.length === 1 ? "1 Quelle vorgegeben" : `${gespeichert.length} Quellen vorgegeben`) : "keine Vorgabe";
+  marke.className = "marke z-" + (gespeichert.length ? "gut" : "leer");
+}
+
+async function pflichtSpeichern(feld) {
+  // Speichert die Auswahl im Fall. Gibt zurück, ob es gelungen ist: Der Start der Ermittlung wartet darauf
+  const ergebnis = $(".ergebnis", feld);
+  try {
+    const daten = await senden("/api/aktion/pflichtquellen", { fall: feld.dataset.fall, quellen: pflichtGewaehlt(feld) });
+    feld.dataset.gespeichert = JSON.stringify(daten.quellen || []);
+    ergebnisZeigen(ergebnis, daten);
+    pflichtZeigen(feld);
+    return true;
+  } catch (e) {
+    ergebnisZeigen(ergebnis, null, e.message);
+    feld.open = true;
+    return false;
+  }
+}
+
+function pflichtEinrichten(feld) {
+  const alle = () => $$("input[name=quelle]", feld);
+  for (const kasten of alle()) kasten.addEventListener("change", () => pflichtZeigen(feld));
+  $("[data-pflicht-alle]", feld).addEventListener("click", () => { for (const k of alle()) if (!k.disabled) k.checked = true; pflichtZeigen(feld); });
+  $("[data-pflicht-keine]", feld).addEventListener("click", () => { for (const k of alle()) k.checked = false; pflichtZeigen(feld); });
+  $("[data-pflicht-speichern]", feld).addEventListener("click", async () => { if (await pflichtSpeichern(feld)) chatHolen(); });
+  pflichtZeigen(feld);
+}
+
 /* ---------- Chat mit der Ermittlung: Vorgaben, Nachrichten, jeder Schritt ---------- */
 
 const STATUS_WORT = { aus: "nicht gestartet", laeuft: "läuft", wartet: "wartet auf eine Antwort", angehalten: "angehalten", beendet: "beendet", fehler: "abgebrochen" };
@@ -343,7 +388,7 @@ function chatEintrag(z, fall) {
 function chatBauen(feld, fall, gross) {
   const c = zustand.chat;
   clearTimeout(c.timer);
-  Object.assign(c, { fall, feld, v: 0, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "" });
+  Object.assign(c, { fall, feld, v: 0, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null });
   feld.replaceChildren();
   feld.classList.add("chat");
   feld.dataset.fall = fall;
@@ -385,9 +430,17 @@ async function chatSenden(aktion, zusatz, textfeld, frage) {
   const knoepfe = $$("[data-chat-knoepfe] button", feld);
   knoepfe.forEach(k => { k.disabled = true; });
   try {
+    // Wer Pflichtquellen angewählt und noch nicht gespeichert hat, meint sie für diesen Start: erst speichern, dann starten
+    const pflicht = aktion === "ermittlung_starten" ? $("[data-pflicht]") : null;
+    if (pflicht && pflicht.dataset.geaendert && !(await pflichtSpeichern(pflicht))) {
+      knoepfe.forEach(k => { k.disabled = false; });
+      ergebnisZeigen(ergebnis, null, "Die Ermittlung ist nicht gestartet: Die Pflichtquellen liessen sich nicht speichern. Der Grund steht bei der Auswahl.");
+      return;
+    }
     const angaben = { fall: c.fall, ...zusatz };
     if (textfeld) angaben[textfeld] = text;
     await senden("/api/aktion/" + aktion, angaben);
+    if (pflicht) pflicht.open = false;       // die Ermittlung läuft: Der Chat bekommt den Platz. Der Stand steht in der Kopfzeile der Auswahl
     if (textfeld) eingabe.value = "";
     ergebnis.replaceChildren();
   } catch (e) { ergebnisZeigen(ergebnis, null, e.message); }
@@ -449,6 +502,11 @@ function chatZeigen(d) {
   const stand = $("#ermittlung"), tafel = $("#ermittlung-wer");        // Stand mit Knöpfen und die Tafel «Wer arbeitet woran» in der Ansicht Ermittlung
   if (stand && d.feld && d.feld !== c.feldStand) { c.feldStand = d.feld; einsetzen(stand, d.feld); bedienungEinrichten(stand); }
   if (tafel && (d.tafel || "") !== c.tafelStand) { c.tafelStand = d.tafel || ""; einsetzen(tafel, d.tafel || ""); }
+  const pflicht = $("#pflicht-stand"), felder = $("[data-pflicht-felder]");       // Pflichtquellen: der Stand laut Protokoll, und die Auswahl ruht, solange gearbeitet wird
+  if (pflicht && (d.pflicht || "") !== c.pflichtStand) { c.pflichtStand = d.pflicht || ""; einsetzen(pflicht, d.pflicht || ""); }
+  if (felder) felder.disabled = d.status === "laeuft" || d.status === "wartet";
+  const kurz = $("[data-pflicht-kurz]");
+  if (kurz) kurz.textContent = d.pflicht_kurz || "";
   if (unten) liste.scrollTop = liste.scrollHeight;        // wer unten war, bleibt unten: auch wenn sich nur die Höhe der Eingabe geändert hat
 }
 

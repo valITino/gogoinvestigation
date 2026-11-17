@@ -4,7 +4,8 @@ Stand 16.11.2026. Der Bericht fasst die sechs Pakete zusammen. Einzelheiten steh
 Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was nicht prüfbar war, steht mit Grund da.
 
 > **Nachtrag vom 17.11.2026.** Mit Paket G ist der Wächter auf Entscheid des Eigentümers entfernt, und die Oberfläche
-> hat ein Chat-Fenster, einen Akten-Eingang für mehrere Dateien und eine Seite «Ergebnisse» bekommen. Was unten zum
+> hat ein Chat-Fenster, einen Akten-Eingang für mehrere Dateien und eine Seite «Ergebnisse» bekommen. Mit Paket H kann
+> der Sachbearbeiter vor dem Start Pflichtquellen vorgeben: Quellen, die die Ermittlung abfragen muss. Was unten zum
 > Wächter und zur Aufbauphase steht, beschreibt den Stand vom 16.11.2026. Der heutige Stand: README, «Schutzmechanismen»
 > und «Stand der Prüfung und Grenzen».
 
@@ -19,8 +20,9 @@ Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was
 | E: Oberfläche Teil 1, nur lesen | [PR 9](https://github.com/valITino/gogoinvestigation/pull/9) | offen, CI grün | 82 |
 | F: Oberfläche Teil 2, Bedienung | [PR 10](https://github.com/valITino/gogoinvestigation/pull/10) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code | 88 |
 | G: Chat, Akten-Eingang, Ergebnisse, ohne Wächter (Nachtrag vom 17.11.2026) | [PR 11](https://github.com/valITino/gogoinvestigation/pull/11) | offen. **Nicht geprüft:** die Steuerung mit dem echten Claude Code, auch für den Chat | 89 |
+| H: Pflichtquellen (Nachtrag vom 17.11.2026) | [PR 12](https://github.com/valITino/gogoinvestigation/pull/12) | offen. **Nicht geprüft:** ob das Team die Pflichtquellen in einer echten Ermittlung abarbeitet | 91 |
 
-Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F, G. Gemergt ist nichts.
+Jeder Pull Request baut auf dem vorigen auf. Reihenfolge beim Mergen: A, B, C, D, E, F, G, H. Gemergt ist nichts.
 
 **Was bei dir liegt, bevor echte Fälle laufen:**
 

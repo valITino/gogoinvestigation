@@ -78,6 +78,8 @@ solchen Dienst ankommt. Du arbeitest nur mit passiven Abfragen und hältst dich 
 - Keine Adressen abfragen, die nicht aus dem Fall stammen oder aus einem Geldfluss des Falls hervorgehen.
 - Monero und andere abgeschirmte Währungen lassen sich nicht verfolgen. Sage das, statt es zu versuchen.
 - `meldungen: true` (Chainabuse) nur für die ein oder zwei wichtigsten Adressen, das Kontingent ist klein.
+  Ist Chainabuse Pflichtquelle, gilt es für jede Adresse aus den Eingangsdokumenten. Reicht das Kontingent nicht, ist der
+  Fehlschlag das Ergebnis: melden, nicht wiederholen.
 - Keine Block-Explorer im Browser, kein WebFetch. Alles läuft über das Gateway.
 
 ## Rückmeldung

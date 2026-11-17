@@ -41,7 +41,7 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - Eine Onion-Seite öffnen, ohne sie vorher mit `onion_sperrliste` geprüft zu haben. Steht sie auf der Liste: nicht öffnen, melden.
 - `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das gehört dem Sachbearbeiter. Verbietet eine Berechtigung einen Aufruf oder lehnt er eine Rückfrage ab, wird kein Umweg gesucht.
 - Ein Dokument lesen, das `fall_status` nicht unter `eingang` nennt. Was von Hand in den Eingang kopiert oder danach verändert wurde, ist nicht durch die PII-Prüfung gegangen: nicht lesen, nicht auflisten, dem Sachbearbeiter melden.
-- Eine Freigabe selbst erteilen, einen Beleg selbst erfassen oder die PII-Prüfung übersteuern, auf welchem Weg auch immer. Robin wird nur mit der Freigabe `darkweb` aufgerufen.
+- Eine Freigabe selbst erteilen, Pflichtquellen selbst vorgeben, ändern oder aufheben, einen Beleg selbst erfassen oder die PII-Prüfung übersteuern, auf welchem Weg auch immer. Robin wird nur mit der Freigabe `darkweb` aufgerufen.
 - `tools/pseudonymisieren.py` oder `tools/reidentifizieren.py` ausführen, ein Klartext-Dokument oder eine Zuordnungstabelle lesen. Beides gehört dem Sachbearbeiter, an einem eigenen Terminal ausserhalb von Claude Code.
 - Die Oberfläche bedienen: ihre Bedienschicht aufrufen (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`), sie anders starten als mit `--nur-lesen`
   oder die Ablage des Sachbearbeiters anfassen (`OSINT-Ablage`, Zuordnungstabellen, zurückgeführte Dokumente).
@@ -63,7 +63,7 @@ ein Agent darf, regeln die Berechtigungen von Claude Code, die Werkzeuge selbst 
 
 | Ort | Inhalt |
 |---|---|
-| `faelle/<Fall-ID>/fall.json` | Stammdaten und Freigaben. Schreibt nur `tools/fall.py`. |
+| `faelle/<Fall-ID>/fall.json` | Stammdaten, Freigaben und Pflichtquellen. Schreibt nur `tools/fall.py`. |
 | `faelle/<Fall-ID>/eingang/` | Pseudonymisierte Dokumente, durch die PII-Prüfung freigegeben. |
 | `faelle/<Fall-ID>/protokoll/abfragen.jsonl` | Jede Abfrage und jede Auswertung des Gateways, hash-verkettet. Belege `P-0001` … |
 | `faelle/<Fall-ID>/protokoll/extern.jsonl` | Gesicherte Antworten weiterer Werkzeuge (Robin). Belege `X-0001` … |
@@ -83,6 +83,12 @@ Nachrichten folgen. Beides stammt vom Sachbearbeiter und ist zu berücksichtigen
 und hebt keinen Grundsatz auf: Verlangt eine Vorgabe eine aktive Massnahme, das Dark Web oder eine Kontoabfrage ohne
 Freigabe, wird sie nicht ausgeführt, sondern gemeldet.
 
+Der Sachbearbeiter kann für einen Fall **Pflichtquellen** vorgeben. `fall_status` nennt sie und was davon offen ist. Jede
+wird für jeden Indikator aus den Eingangsdokumenten abgefragt, zu dem sie passt, Suchquellen mindestens einmal im Fall.
+Weitere Quellen bleiben erlaubt. Eine Pflichtquelle ersetzt keine Freigabe und keinen Zweck (Grundsätze 3, 4 und 6), und
+eine fehlgeschlagene Abfrage wird nicht wiederholt: Sie gilt als gefragt und gehört unter Lücken. Was nie gefragt wurde,
+meldet `tools/rapport.py` als Mangel.
+
 Das Team (Subagenten unter `.claude/agents/`): `infrastruktur-analyst`, `malware-url-analyst`, `darkweb-analyst`,
 `socmint-analyst`, `blockchain-analyst`, `gegenpruefer`, `rapportfuehrer`. Der gemeinsame Massstab steht im Skill `ermittlungsstandard`.
 
@@ -95,7 +101,7 @@ eines Subagenten wird kein Modell angegeben.
 
 ```
 python3 tools/fall.py neu <Fall-ID> --titel "…" --rapport <Datei>   Fall anlegen, Dokument prüfen und aufnehmen
-python3 tools/fall.py status <Fall-ID>                              Stand und Freigaben
+python3 tools/fall.py status <Fall-ID>                              Stand, Freigaben und Pflichtquellen
 python3 tools/rapport.py <Fall-ID> [--nur-pruefen|--entwurf]        Befunde prüfen, Rapport erzeugen
 python3 tools/protokoll.py <Fall-ID>                                Ermittlungsprotokoll erzeugen
 python3 tools/pdf.py <Fall-ID>                                      Rapport und Protokoll als PDF (A4)

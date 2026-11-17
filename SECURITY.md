@@ -36,6 +36,10 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   dass ein Shell-Befehl nach Zustimmung des Menschen Fallakte, Schlüsseldatei oder Grundlagen anfasst, und dass
   Robin am Terminal ohne Freigabe `darkweb` läuft, wenn der Mensch den Aufruf erlaubt. Wer Claude Code so startet,
   dass es nicht mehr nachfragt, schaltet die Rückfrage ab.
+- Pflichtquellen (Quellen, die der Sachbearbeiter für einen Fall vorgibt) lassen sich nur am Terminal oder in der
+  Oberfläche setzen und aufheben. Sie führen zu mehr Abfragen bei Dritten, nie zu anderen: Abgefragt werden nur
+  Indikatoren des Falls, und eine Pflichtquelle ersetzt keine Freigabe. Ob die Vorgabe erfüllt ist, prüft der Rapport
+  am Protokoll. Ein Agent, der eine Abfrage auslässt, fällt damit auf. Eine Abfrage erzwingen kann das System nicht.
 - Ist Robin eingeschaltet, verbindet sich der Rechner zu Beginn jeder Sitzung mit dem Tor-Netz, auch ohne Freigabe
   `darkweb`: Claude Code startet den Container, und Tor läuft darin sofort an (nach dem Startskript des Projekts,
   nicht im Betrieb geprüft). Gesucht und gelesen wird erst mit Freigabe. Ohne Robin einrichten: `--ohne-robin`.
