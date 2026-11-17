@@ -49,7 +49,7 @@ def nur_lesen_grund(gewollt: bool) -> str:
         return "mit --nur-lesen gestartet"
     if os.environ.get("CLAUDECODE") or os.environ.get("CLAUDE_CODE_ENTRYPOINT"):
         return "aus Claude Code heraus gestartet. Bedienen kann sie nur, wer sie selbst an einem Terminal startet"
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if not plattform.terminal(sys.stdin, sys.stdout):
         return "ohne Terminal gestartet. Bedienen kann sie nur, wer sie selbst an einem Terminal startet"
     return ""
 

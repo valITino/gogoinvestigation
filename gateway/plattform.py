@@ -78,6 +78,30 @@ def utf8() -> None:
             strom.reconfigure(encoding="utf-8", errors=fehler)
 
 
+def terminal(*stroeme: object) -> bool:
+    """True, wenn jeder der Ströme an einem echten Terminal hängt. Daran erkennen die Werkzeuge, die nur ein Mensch
+    bedienen darf, dass kein Agent und kein Skript sie aufruft.
+
+    ``isatty()`` allein genügt unter Windows nicht: Für das Gerät NUL meldet es True (gesehen in der CI am 17.11.2026,
+    ein Prozess mit stdin=NUL galt als «am Terminal»). Dort entscheidet, ob Windows für den Griff einen Konsolenmodus kennt.
+    """
+    if not stroeme:
+        return False
+    for strom in stroeme:
+        try:
+            if not strom.isatty():
+                return False
+            if WINDOWS:
+                import ctypes
+                from ctypes import wintypes
+                modus = wintypes.DWORD()
+                if not ctypes.windll.kernel32.GetConsoleMode(wintypes.HANDLE(msvcrt.get_osfhandle(strom.fileno())), ctypes.byref(modus)):
+                    return False
+        except Exception:       # im Zweifel kein Terminal: Die Prüfung schützt, sie darf nicht an einem Sonderfall aufgehen
+            return False
+    return True
+
+
 def start(venv: bool | None = None, projekt: Path = PROJEKT) -> None:
     """Am Anfang jedes Einstiegspunkts aufrufen.
 

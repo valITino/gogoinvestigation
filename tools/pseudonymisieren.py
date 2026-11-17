@@ -286,7 +286,7 @@ def main() -> int:
         print("FEHLER: Dieses Werkzeug zeigt Klartext. Es läuft nicht aus Claude Code heraus, auch nicht über «!». "
               "Bitte in einem eigenen Terminal starten.", file=sys.stderr)
         return 2
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if not plattform.terminal(sys.stdin, sys.stdout):
         print("FEHLER: Pseudonymisiert wird von einem Menschen am Terminal. Ohne Terminal läuft das Werkzeug nicht.", file=sys.stderr)
         return 2
     dokument, zuordnung, ausgabe = Path(a.dokument).expanduser(), Path(a.zuordnung).expanduser(), Path(a.ausgabe).expanduser()

@@ -108,7 +108,7 @@ def main() -> int:
     p.add_argument("--ausgabe", required=True, help="Zielordner ausserhalb des Projektordners")
     a = p.parse_args()
 
-    if not sys.stdin.isatty():
+    if not plattform.terminal(sys.stdin, sys.stdout):
         print("FEHLER: Die Rückführung auf echte Angaben macht ein Mensch am Terminal. Ohne Terminal läuft sie nicht.", file=sys.stderr)
         return 2
     try:

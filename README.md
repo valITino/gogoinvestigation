@@ -1090,6 +1090,11 @@ PowerShell 7:
   Messung an 45 Rapporten. Ein eigener Schritt der CI prüft, dass die Tabellen im README zum Stand des Codes
   passen (`python3 tools/pseudo_messen.py --pruefen`). Nicht geprüft: echte Rapporte, die Liste eurer
   Feldmarken, die Tabellen des BFS und der Dialog in einer Windows-Konsole.
+- Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
+  verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
+  dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
+  17.11.2026 mit umgeleiteter Eingabe weiter (gesehen in der CI). Ein Selbsttest prüft auf allen Systemen die
+  Abweisung mit NUL und unter Windows die Gegenprobe in einer eigenen Konsole.
 - Elf gelten der Oberfläche (`tools/oberflaeche.py`, `tools/ui/`, `tools/anhang.py`), Stand 16.11.2026: Für jedes Werkzeug
   liegt eine Rohantwort als Vorlage im Repo, und keine ihrer Angaben geht verloren (105 Vorlagen, 4431 Angaben, jede
   zugeordnet oder unter «Weitere Angaben»). Jeder gezeigte Wert steht an der genannten Stelle der Rohdatei, in den

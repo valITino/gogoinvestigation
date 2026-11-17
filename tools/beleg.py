@@ -198,7 +198,7 @@ def main(argv: list[str]) -> int:
     try:
         if a.befehl == "zeigen":
             return zeigen(a.fall)
-        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        if not plattform.terminal(sys.stdin, sys.stdout):
             print("FEHLER: Einen Beleg von Hand erfasst ein Mensch am Terminal. Ohne Terminal läuft das Werkzeug nicht.", file=sys.stderr)
             return 2
         fall_daten(a.fall)

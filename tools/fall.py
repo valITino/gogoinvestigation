@@ -56,7 +56,7 @@ def schreiben(datei: Path, daten: dict) -> None:
 
 def am_terminal_bestaetigen(frage: str, erwartet: str) -> None:
     """Verlangt eine Eingabe am Terminal. Ohne Terminal (Agent, Skript) wird abgelehnt."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if not plattform.terminal(sys.stdin, sys.stdout):
         raise Fehler("Diese Entscheidung trifft ein Mensch am Terminal. Ohne Terminal wird sie nicht angenommen.\n"
                      "Bitte den Befehl selbst in einer Shell ausführen."
                      + ("\nUnter Windows in PowerShell oder der Eingabeaufforderung, nicht im Fenster von Git Bash."

@@ -2826,6 +2826,28 @@ def _():
     r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "reidentifizieren.py"), FALL, "--zuordnung", "z.csv", "--ausgabe", "aus"], capture_output=True, text=True,
                        encoding="utf-8", stdin=subprocess.DEVNULL, env=sauber)
     assert r.returncode == 2 and "Terminal" in r.stderr, r.stderr
+    # Unter Windows meldet isatty() auch für das Gerät NUL True (gesehen in der CI am 17.11.2026: Das Werkzeug lief mit stdin=NUL
+    # weiter). Als Terminal gilt deshalb nur, was eines ist, und zwar für Ein- und Ausgabe.
+    with open(os.devnull, encoding="utf-8") as nichts:
+        assert not plattform.terminal(nichts) and not plattform.terminal(sys.stdin, nichts), "das Gerät NUL gilt als Terminal"
+    assert not plattform.terminal(io.StringIO()) and not plattform.terminal(), "ohne Dateigriff und ohne Strom ist es kein Terminal"
+    if WINDOWS:         # die Gegenprobe: In einer eigenen, unsichtbaren Konsole ist es ein Terminal. Sonst käme kein Mensch mehr durch
+        start = subprocess.STARTUPINFO()
+        start.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        start.wShowWindow = 0
+        probe = "import sys; sys.path.insert(0, sys.argv[1]); from gateway import plattform; sys.exit(0 if plattform.terminal(sys.stdin, sys.stdout) else 3)"
+        r = subprocess.run([sys.executable, "-c", probe, str(PROJEKT)], creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=start, env=sauber, timeout=120)
+        assert r.returncode == 0, f"eine echte Windows-Konsole gilt nicht als Terminal (Rückgabewert {r.returncode})"
+    stammdaten = lesen(PROJEKT / "faelle" / FALL / "fall.json")
+    for befehl in ([str(PROJEKT / "tools" / "reidentifizieren.py"), FALL, "--zuordnung", "z.csv", "--ausgabe", "aus"],
+                   [str(PROJEKT / "tools" / "fall.py"), "freigabe", FALL, "aktiv", "--durch", "x", "--vermerk", "y"]):
+        r = subprocess.run([sys.executable, *befehl], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                           encoding="utf-8", env=sauber)
+        assert r.returncode == 2 and "Terminal" in r.stderr, f"{Path(befehl[0]).name} lief ohne Terminal: {r.stderr}"
+    assert lesen(PROJEKT / "faelle" / FALL / "fall.json") == stammdaten, "ohne Terminal wurde eine Freigabe geschrieben"
+    for name in ("fall.py", "beleg.py", "pseudonymisieren.py", "reidentifizieren.py", "oberflaeche.py"):
+        quelle = lesen(REPO / "tools" / name)
+        assert ".isatty()" not in quelle and "plattform.terminal(sys.stdin, sys.stdout)" in quelle, f"tools/{name} prüft das Terminal nicht über plattform.terminal"
     verbote = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]["deny"]
     for py in ("python3", "python"):
         for name in ("pseudonymisieren", "reidentifizieren"):
