@@ -3,45 +3,66 @@
 Für jede Quelle: was abgefragt wird, was der Anbieter dabei erfährt, und worauf sich die Einbindung stützt.
 Die Liste, aus der Gateway, Einrichtung und Selbsttest lesen, ist `gateway/quellen.py`.
 
-**Zur Verlässlichkeit dieser Angaben.** Beim Bau standen keine Schlüssel zur Verfügung. Die Quellen im Abschnitt
-«Über das Gateway» wurden nie live abgefragt. Die Blockchain-Quellen ohne Schlüssel sind gegen die echten Dienste
-geprüft, siehe [Blockchain](#blockchain). Die Spalte «Stützt sich auf» sagt, woher die Endpunkte stammen.
-`python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle. Schlägt eine fehl, steht die Antwort des
-Anbieters in `faelle/SELBSTTEST/rohdaten/`, und der Endpunkt lässt sich in der genannten Datei anpassen.
+**Zur Verlässlichkeit dieser Angaben.** Die Spalte «Stand» sagt, was gegen den echten Dienst gelaufen ist und
+wann. «Geprüft» heisst: Das Werkzeug wurde über das Gateway aufgerufen, und die gekürzte Antwort wurde Feld für
+Feld mit der Rohdatei verglichen (Fallakte `SELBSTTEST`). «Nicht geprüft» nennt den Grund. Die Antwortformen der
+geprüften Dienste stehen als Vorlagen in `tools/_vorlagen.py`, die Selbsttests laufen dagegen.
+`python3 tools/pruefen.py --live` prüft jede eingerichtete Quelle mit einem harmlosen Testwert. Schlägt eine fehl,
+steht die Antwort des Anbieters in `faelle/SELBSTTEST/rohdaten/`, und der Endpunkt lässt sich in der genannten
+Datei anpassen.
 
 ## Über das Gateway
 
-| Quelle | Werkzeug | Abfrage | Stützt sich auf |
+| Quelle | Werkzeug | Abfrage | Stand |
 |---|---|---|---|
-| Shodan | `shodan_host` | `GET api.shodan.io/shodan/host/{ip}` | Dokumentation des Anbieters |
-| | `shodan_dns` | `GET api.shodan.io/dns/domain/{domain}` | Dokumentation des Anbieters |
-| | `shodan_suche` | `GET api.shodan.io/shodan/host/count` oder `/search` | Dokumentation des Anbieters |
-| Shodan InternetDB | `shodan_internetdb` | `GET internetdb.shodan.io/{ip}` | Dokumentation des Anbieters |
-| VirusTotal | `virustotal_ip`, `_domain`, `_datei`, `_url` | `GET www.virustotal.com/api/v3/{ip_addresses,domains,files,urls}/{id}` | Dokumentation des Anbieters (API v3) |
-| | `virustotal_beziehungen` | `GET …/{sammlung}/{id}/{beziehung}` | Dokumentation des Anbieters |
-| Spur | `spur_kontext` | `GET api.spur.us/v2/context/{ip}`, Kopfzeile `Token` | docs.spur.us, beim Bau nachgelesen |
-| AbuseIPDB | `abuseipdb_pruefen`, `_meldungen` | `GET api.abuseipdb.com/api/v2/check` und `/reports`, Kopfzeile `Key` | Dokumentation des Anbieters (API v2) |
-| urlquery | `urlquery_suche`, `_bericht`, `_reputation`, `_status`, `_einreichen` | `api.urlquery.net/public/v1/…`, Kopfzeile `x-apikey` | Quellcode des offiziellen Clients `urlquery/urlquery-cli` |
-| Wayback Machine | `wayback_verlauf` | `GET web.archive.org/cdx/search/cdx` | Dokumentation der CDX-Schnittstelle |
-| | `wayback_abruf` | `GET web.archive.org/web/{zeit}id_/{url}` | Dokumentation |
-| | `wayback_sichern` | `GET web.archive.org/save/{url}` | Dokumentation |
-| Web-Check | `webcheck_passiv`, `webcheck_aktiv` | `GET {WEBCHECK_URL}/api/{prüfung}?url=` | Quellcode `Lissy93/web-check` (Version 2.4.0) |
-| ransomware.live | `ransomware_*` | API PRO: `api-pro.ransomware.live/{victims/recent, victims/search, victims/, groups/{g}, iocs/{g}}`, Kopfzeile `X-API-KEY` | Pfade aus einem Client eines Dritten. **Am wenigsten gesichert.** |
-| | | API v2: `api.ransomware.live/v2/{recentvictims, searchvictims/{x}, groupvictims/{g}, countryvictims/{cc}, group/{g}}` | Dokumentationsseite des Anbieters, beim Bau nachgelesen |
-| Ahmia | `onion_sperrliste` | `GET ahmia.fi/blacklist/banned/`, Vergleich lokal | Adresse aus dem Quellcode von Darkus. Annahme: Die Liste enthält MD5-Werte der Onion-Adressen. |
-| Telegram | `telegram_kanal` | `GET t.me/s/{kanal}` | Öffentliche Web-Vorschau. Aufbau der Seite angenommen. |
-| RapidAPI | `telegram_kanalinfo` | `GET telegram-channel.p.rapidapi.com/channel/info` | Quellcode von TeleGramSint |
-| | `telegram_entitaet`, `telegram_suche` | `GET telegram-scraper-api.p.rapidapi.com/entity/{fetch,search}` | Quellcode von TeleGramSint |
-| 4chan | `chan_katalog`, `chan_thread` | `GET a.4cdn.org/{board}/catalog.json`, `/thread/{nr}.json` | Quellcode von OSINT-Chan, offizielle Lese-API |
-| Mastodon | `mastodon_instanz` | `GET {instanz}/api/v2/instance`, sonst `/api/v1/instance` | Quellcode von Masto, Mastodon-API |
-| | `mastodon_konto` | `GET {instanz}/api/v2/search?type=accounts` oder `/api/v1/accounts/lookup` | Quellcode von Masto, Mastodon-API |
+| Shodan | `shodan_host` | `GET api.shodan.io/shodan/host/{ip}` | geprüft am 16.11.2026 (8.8.8.8, 1.1.1.1) |
+| | `shodan_dns` | `GET api.shodan.io/dns/domain/{domain}` | nicht prüfbar mit einem kostenlosen Konto: HTTP 403 «Requires membership or higher to access». Die Antwortform ist nicht gesehen. |
+| | `shodan_suche` | `GET api.shodan.io/shodan/host/count` oder `/search` | Zählen mit Verteilung geprüft am 16.11.2026 (geht mit kostenlosem Konto). Die Trefferliste (`/search`) ist nicht geprüft, sie kostet Query-Credits. |
+| Shodan InternetDB | `shodan_internetdb` | `GET internetdb.shodan.io/{ip}` | geprüft am 16.11.2026 |
+| VirusTotal | `virustotal_ip`, `_domain`, `_datei`, `_url` | `GET www.virustotal.com/api/v3/{ip_addresses,domains,files,urls}/{id}` | geprüft am 16.11.2026 (8.8.8.8, example.com, Hash der EICAR-Testdatei, `https://example.com/`) |
+| | `virustotal_beziehungen` | `GET …/{sammlung}/{id}/{beziehung}` | geprüft am 16.11.2026 mit `resolutions` einer Domain. Andere Beziehungen sind nicht geprüft, manche verlangen ein Premium-Abo. |
+| Spur | `spur_kontext` | `GET api.spur.us/v2/context/{ip}`, Kopfzeile `Token` | nicht geprüft, kein Schlüssel. Endpunkt nach docs.spur.us. |
+| AbuseIPDB | `abuseipdb_pruefen`, `_meldungen` | `GET api.abuseipdb.com/api/v2/check` und `/reports`, Kopfzeile `Key` | geprüft am 16.11.2026 (8.8.8.8, 1.1.1.1) |
+| urlquery | `urlquery_suche`, `_reputation` | `GET api.urlquery.net/public/v1/search/reports/`, `/reputation/check/`, Kopfzeile `x-apikey` | geprüft am 16.11.2026. Die Suche fragt Felder ab, siehe [Hinweise](#hinweise-je-quelle). |
+| | `urlquery_bericht` | `GET …/report/{id}` | geprüft am 16.11.2026 an einem öffentlichen Bericht: Alarme, Aufrufe, Hosts. Ein Bericht mit heruntergeladenen Dateien (`artifacts.files`) kam nicht vor. |
+| | `urlquery_status`, `_einreichen` | `GET …/submit/status/{id}`, `POST …/submit/url` | nicht geprüft: Beides setzt eine Einreichung voraus, und die ist eine aktive Massnahme. Eine erfundene Kennung beantwortet der Dienst mit HTTP 400. |
+| Wayback Machine | `wayback_verlauf` | `GET web.archive.org/cdx/search/cdx` | nicht prüfbar aus der Prüfumgebung vom 16.11.2026: Die Verbindung zu `web.archive.org` brach jedes Mal ab. Endpunkte nach der Dokumentation der CDX-Schnittstelle. |
+| | `wayback_abruf` | `GET web.archive.org/web/{zeit}id_/{url}` | wie oben |
+| | `wayback_sichern` | `GET web.archive.org/save/{url}` | nicht geprüft (aktive Massnahme) |
+| Web-Check | `webcheck_passiv` | `GET {WEBCHECK_URL}/api/{prüfung}?url=` | geprüft am 16.11.2026 auf einem GitHub-Runner (Workflow «Web-Check live», Abbild vom 15.11.2026): Zwölf der 13 Prüfungen lieferten für example.com ein Ergebnis, `shodan` fehlt in der Instanz der Schlüssel. Hinter einem Proxy gesehen: Der Container startet, das Gateway erreicht die Instanz, die Prüfungen scheitern und das Gateway sagt es. Siehe [Hinweise](#hinweise-je-quelle). |
+| | `webcheck_aktiv` | wie oben | nicht geprüft (aktive Massnahme) |
+| ransomware.live | `ransomware_aktuell`, `_opfer`, `_gruppe`, `_iocs` | API PRO: `api-pro.ransomware.live/{victims/recent, victims/search?q=, victims/?group=, victims/?country=, groups/{g}, iocs/{g}}`, Kopfzeile `X-API-KEY` | alle sechs Pfade geprüft am 16.11.2026 |
+| | | API v2: `api.ransomware.live/v2/{recentvictims, searchvictims/{x}, groupvictims/{g}, countryvictims/{cc}, group/{g}}` | nicht geprüft: laut Anbieter nur für private Nutzung |
+| Ahmia | `onion_sperrliste` | `GET ahmia.fi/blacklist/banned/`, Vergleich lokal | geprüft am 16.11.2026: Die Liste enthielt 60'371 Zeilen, jede ein MD5-Wert. Ein Treffer ist nicht geprüft: Dafür bräuchte es eine gesperrte Adresse. |
+| Telegram | `telegram_kanal` | `GET t.me/s/{kanal}` | geprüft am 16.11.2026 mit dem Kanal `telegram` (20 Beiträge gelesen). Für `breachdetect` zeigte Telegram keine Web-Vorschau mehr, siehe [Hinweise](#hinweise-je-quelle). |
+| RapidAPI | `telegram_kanalinfo` | `GET telegram-channel.p.rapidapi.com/channel/info` | nicht geprüft, kein Schlüssel. Endpunkt aus dem Quellcode von TeleGramSint. |
+| | `telegram_entitaet`, `telegram_suche` | `GET telegram-scraper-api.p.rapidapi.com/entity/{fetch,search}` | nicht geprüft, kein Schlüssel. Kontoabfragen. |
+| 4chan | `chan_katalog`, `chan_thread` | `GET a.4cdn.org/{board}/catalog.json`, `/thread/{nr}.json` | geprüft am 16.11.2026 |
+| Mastodon | `mastodon_instanz` | `GET {instanz}/api/v2/instance`, sonst `/api/v1/instance` | geprüft am 16.11.2026 (mastodon.social, Schnittstelle v2). Der Rückfall auf v1 ist nicht geprüft. |
+| | `mastodon_konto` | `GET {instanz}/api/v2/search?type=accounts` oder `/api/v1/accounts/lookup` | nicht geprüft: Kontoabfrage zu einer Person |
+
+Was die Prüfung vom 16.11.2026 gezeigt hat und seither behoben ist, jeweils mit Selbsttest:
+
+- Das MCP-SDK stellt das Logging des Gateways auf INFO. `httpx` schrieb damit jede Adresse ins Log des MCP-Servers,
+  bei Shodan, Etherscan und Blockscout samt Schlüssel. Im Gateway schweigt `httpx` jetzt.
+- Web-Check meldet eine gescheiterte Prüfung mit HTTP 200. Das Gateway wertete sie als Treffer.
+- ransomware.live: Als Zahl der Opfer stand die Länge der gekürzten Liste da (60) statt der Zahl der Quelle
+  (zum Beispiel 2016). Der Steckbrief einer Gruppe las Felder, die es in der API PRO nicht gibt. Die API PRO
+  wiederholt in jeder Antwort die E-Mail-Adresse des eigenen Kontos: Sie ging an den Agenten und in die Rohdatei.
+- VirusTotal: Bei Beziehungen stand nur die Zahl der gelieferten Einträge da, nicht die Gesamtzahl.
+- Telegram und Wayback: «nichts da» stand im Protokoll als Treffer.
+- urlquery: Die Suche lief im Volltext, und der Bericht las Alarme und Dateien aus Feldern, die es nicht gibt.
+- Der Sitzungs-Hook legte die Antwort jedes MCP-Servers als Beleg `X-…` in den Fall, den die Sitzung zuletzt berührt
+  hatte, auch die von GitHub. Belege sind jetzt nur noch Antworten von Quellen (Robin).
+- Blockscout: siehe [Blockchain](#blockchain).
 
 ## Blockchain
 
 Die Werkzeuge `krypto_…` fragen je nach Kette verschiedene Dienste. Im Abfrageprotokoll steht der Dienst, der
 tatsächlich gefragt wurde, als Werkzeug der einzelnen Abfrage `krypto_abruf`, und darüber die Auswertung des
 aufgerufenen Werkzeugs. «Live geprüft» heisst: Am 13.11.2026 in GitHub Actions gegen den echten Dienst gelaufen,
-wiederholbar mit `python3 tools/krypto_live.py`.
+ohne Schlüssel, wiederholbar mit `python3 tools/krypto_live.py`. Die Zugänge mit Schlüssel (Blockscout, TronGrid,
+Etherscan, Tronscan, Chainabuse) sind am 16.11.2026 mit kostenlosen Schlüsseln geprüft, das steht bei der Zeile.
 
 | Dienst | Wofür | Abfrage | Stützt sich auf |
 |---|---|---|---|
@@ -51,18 +72,18 @@ wiederholbar mit `python3 tools/krypto_live.py`.
 | | Älteste Zahlungen einer Adresse mit über 200 Einträgen, zweiter Versuch bei sehr grossen Adressen | `GET …/api?module=account&action={txlist,tokentx}` mit `startblock` und `sort=asc` | live geprüft. Ohne Schlüssel gedrosselt: zehn Abfragen, dann rund 40 Minuten HTTP 429 (Kopfzeilen `x-ratelimit-limit: 10`, `x-ratelimit-reset` in Millisekunden). |
 | | Etiketten | `GET metadata.services.blockscout.com/api/v1/metadata?addresses=…&chainId=…` | live geprüft (Ethereum) |
 | | Polygon, Arbitrum, Gnosis, Base | dieselben Pfade auf `{kette}.blockscout.com` | Aus dem Rechenzentrum der Prüfung mit HTTP 403 abgewiesen. Nicht geprüft. |
-| | Zugang mit `BLOCKSCOUT_API_KEY`, alle sechs Ketten | dieselben Pfade auf `api.blockscout.com/{chain_id}/api/v2/…` und `api.blockscout.com/{chain_id}/api?module=…`, Schlüssel als `apikey`. Frei: 100'000 Credits am Tag, 20 bis 30 je Abfrage. | Dokumentation des Anbieters. Ohne Schlüssel gesehen: HTTP 402 mit der Aufforderung, einen Schlüssel anzugeben. Mit Schlüssel nicht geprüft. |
+| | Zugang mit `BLOCKSCOUT_API_KEY` | dieselben Pfade auf `api.blockscout.com/{chain_id}/api/v2/…` und `api.blockscout.com/{chain_id}/api?module=…`, Schlüssel als `apikey`. Frei: 100'000 Credits am Tag, 20 bis 30 je Abfrage. | Geprüft am 16.11.2026 mit einem kostenlosen Schlüssel: Ethereum, Optimism, Arbitrum und Gnosis antworten. Polygon und Base weist der Dienst mit HTTP 402 ab («Featured chain 137 requires one of the following plans: Builder, Business, Pro»). Das Gateway nennt den Grund und fragt für diese Ketten die öffentliche Instanz der Kette, danach Etherscan. Ohne Schlüssel antwortet der Zugang mit HTTP 402 und der Aufforderung, einen anzugeben. |
 | | Drossel | Antwort HTTP 429. Das Gateway wartet einmal (Kopfzeile `Retry-After`, sonst sechs Sekunden) und schreibt die Angaben der Quelle zur Drossel ins Protokoll. Laut Anbieter wird der Zugang je Kette ohne Schlüssel eingestellt. | live gesehen |
-| Etherscan | Ketten der Ethereum-Familie, Gegenprüfung | `GET api.etherscan.io/v2/api?chainid=…&module=…&action=…`, dazu `module=proxy` für Transaktion, Quittung und Blockzeit | Dokumentation des Anbieters. Ohne Schlüssel gesehen: nur die Fehlermeldungen. |
-| TronGrid | TRON: Konto, Zahlungen in TRX und Token | `GET api.trongrid.io/v1/accounts/{a}`, `/transactions`, `/transactions/trc20` | live geprüft (ohne Schlüssel) |
+| Etherscan | Ketten der Ethereum-Familie, Gegenprüfung | `GET api.etherscan.io/v2/api?chainid=…&module=…&action=…`, dazu `module=proxy` für Transaktion, Quittung und Blockzeit | Geprüft am 16.11.2026 mit einem kostenlosen Schlüssel: Gegenprüfung einer Ethereum-Transaktion («stimmt überein»), Adresse und Token-Guthaben auf Polygon und Arbitrum. Gnosis und Base lehnt der Dienst im kostenlosen Paket ab («Free API access is not supported for this chain», mit HTTP 200). BNB Smart Chain und Optimism sind nicht geprüft. |
+| TronGrid | TRON: Konto, Zahlungen in TRX und Token | `GET api.trongrid.io/v1/accounts/{a}`, `/transactions`, `/transactions/trc20` | live geprüft, ohne Schlüssel am 13.11.2026 und mit Schlüssel am 16.11.2026 |
 | | Transaktion, Leseaufrufe an Verträge (Sperrliste von Tether, Kürzel und Dezimalstellen fremder Token) | `POST /wallet/gettransactionbyid`, `/wallet/gettransactioninfobyid`, `/wallet/triggerconstantcontract` | live geprüft |
 | OFAC | Sanktionsliste SDN mit Krypto-Adressen | `GET sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV` und `SDN_COMMENTS.CSV`, Ausweichadresse `www.treasury.gov/ofac/downloads/` | live geprüft |
 | TRM Labs | Sanktionsprüfung | `POST api.trmlabs.com/public/v1/sanctions/screening`. Ohne Schlüssel laut Anbieter eine Anfrage je Sekunde, 100 am Tag, höchstens 1 KB je Anfrage. Das Gateway teilt längere Listen auf (rund 15 Adressen je Anfrage). | live geprüft. Grössere Anfragen wies der Dienst mit HTTP 413 ab. |
 | Ransomwhere | bekannte Lösegeld-Adressen (Bitcoin) | `GET api.ransomwhe.re/export` | live geprüft |
 | WalletExplorer | Bitcoin: Zuordnung zu benannten Diensten | `GET www.walletexplorer.com/api/1/address-lookup` | live geprüft |
-| Tronscan | TRON: Etiketten, Risikohinweise | `GET apilist.tronscanapi.com/api/accountv2`, `/api/security/account/data`, Kopfzeile `TRON-PRO-API-KEY` | Dokumentation des Anbieters. Nicht geprüft. |
-| Chainabuse | Betrugsmeldungen | `GET api.chainabuse.com/v0/reports?address=`, Basic-Anmeldung mit dem Schlüssel | Dokumentation des Anbieters. Nicht geprüft. |
-| Iknaio | GraphSense: Etiketten, Cluster | `GET api.ikna.io/{btc,eth,trx}/addresses/{a}/tag_summary`, `/entity`, Kopfzeile `Authorization` | Dokumentation von GraphSense. Nicht geprüft. |
+| Tronscan | TRON: Etiketten, Risikohinweise | `GET apilist.tronscanapi.com/api/accountv2`, `/api/security/account/data`, Kopfzeile `TRON-PRO-API-KEY` | Geprüft am 16.11.2026: Für die Adresse einer Börse stehen `publicTag` und `addressTag` in der Antwort («Binance-Hot 2»). Ohne Etikett fehlen beide Felder ganz. Das Feld `name` ist der Name, den sich der Inhaber selbst gegeben hat, und wird nicht als Etikett gewertet. Ein Geldfluss, der bei einem so benannten Dienst endet, ist in der Prüfung nicht vorgekommen. |
+| Chainabuse | Betrugsmeldungen | `GET api.chainabuse.com/v0/reports?address=`, Basic-Anmeldung mit dem Schlüssel | Geprüft am 16.11.2026 mit einer Abfrage: `count`, je Meldung `scamCategory`, `createdAt`, `checked`, `trusted`. |
+| Iknaio | GraphSense: Etiketten, Cluster | `GET api.ikna.io/{btc,eth,trx}/addresses/{a}/tag_summary`, `/entity`, Kopfzeile `Authorization` | nicht geprüft, kein Schlüssel. Endpunkte nach der Dokumentation von GraphSense. |
 | DefiLlama | Kurs in US-Dollar, aktuell und am Stichtag | `GET coins.llama.fi/prices/{current,historical/{zeit}}/{kennung}` | live geprüft |
 | Europäische Zentralbank | Referenzkurse USD und CHF je EUR | `GET data-api.ecb.europa.eu/service/data/EXR/D.USD+CHF.EUR.SP00.A` | live geprüft |
 
@@ -127,22 +148,59 @@ von heute beschreibt den Besitzer von heute.
 **urlquery.** `urlquery_einreichen` steht standardmässig auf `private`. Vor jeder Einreichung sucht der Analyst
 nach vorhandenen Berichten.
 
+Ohne Feldnamen sucht urlquery im Volltext der Berichte ([Hilfe des Anbieters](https://urlquery.net/help/search)). Am
+16.11.2026 lieferte «example.com» so 25'280 Treffer, die obersten ohne Bezug zur Domain. `urlquery_suche` erkennt
+deshalb, ob der Suchtext eine Domain, IP, URL oder ein Hash ist, und fragt die passenden Felder ab, für eine Domain
+`url.domain`, `url.fqdn`, `final.url.*` und `http.url.*`. Mit `art=text` bleibt die Volltextsuche möglich, das
+Ergebnis sagt es dann dazu. Ein Treffer heisst: Der Wert kommt im Bericht vor. In welcher Rolle, zeigt erst der
+Bericht. Dessen Form weicht von dem ab, was beim Bau angenommen war: Alarme stehen je Sensorgruppe unter
+`detection`, Dateien unter `artifacts.files`. Beides ist behoben.
+
+Die Nutzungsbedingungen von urlquery sprechen von «lawful, personal, non-commercial purposes». Ob euer Einsatz
+darunter fällt, klärt ihr mit dem Anbieter.
+
 **Web-Check.** 13 passive und 27 aktive Prüfungen. Passiv: `archives`, `block-lists`, `breaches`, `caa-records`,
 `dns`, `dnssec`, `get-ip`, `rank`, `shodan`, `subdomains`, `threats`, `txt-records`, `whois`. Die Prüfung
 `threats` bleibt nur passiv, solange in der Web-Check-Instanz kein Cloudmersive-Schlüssel hinterlegt ist: Mit
 Schlüssel lässt sie die Seite von Cloudmersive aufrufen. `mail-config` gilt hier als aktiv, weil sie die
 MTA-STS-Richtlinie vom Server des Ziels holt.
 
+Web-Check meldet eine gescheiterte Prüfung mit HTTP 200 und dem Feld `error`, eine ausgelassene mit dem Feld
+`skipped`. Das Gateway deutet beides: `error` ist ein Fehlschlag («nicht geprüft»), `skipped` ist «kein Treffer»,
+wenn es nichts gab («No TXT records for this host»), und ein Fehlschlag, wenn der Instanz ein Schlüssel fehlt oder
+keine der befragten Stellen geantwortet hat. Die Prüfung `shodan` braucht einen Shodan-Schlüssel im Container. Den
+gibt die Einrichtung nicht weiter, die Prüfung meldet deshalb «nicht eingerichtet». Für Shodan gibt es die eigenen
+Werkzeuge `shodan_host` und `shodan_internetdb`.
+
+Die Prüfung `threats` befragt fünf Stellen und antwortet je Stelle. Am 16.11.2026 antworteten zwei (PhishTank,
+NetAPI), drei nicht: Google Safe Browsing und Cloudmersive verlangen einen Schlüssel in der Instanz, URLhaus wies
+die Anfrage mit HTTP 401 ab. Das Gateway nennt das unter `teilweise_nicht_geprueft`: Das Ergebnis gilt dann nur für
+die Stellen, die geantwortet haben. Antwortet keine, ist die Prüfung ein Fehlschlag.
+
+Die Instanz muss DNS, WHOIS und die befragten Dienste selbst erreichen. Hinter einem HTTPS-Proxy tut sie das oft
+nicht: Dann scheitern die meisten Prüfungen, und das Gateway sagt es. `python3 tools/webcheck_live.py` ruft jede
+passive Prüfung einmal auf und zeigt das Urteil samt Rohantwort. Derselbe Lauf wiederholt sich jede Woche im
+Workflow «Web-Check live».
+
 **ransomware.live.** Der Dienst gibt wieder, was Tätergruppen auf ihren Leak-Seiten behaupten. Die schlüssellose
 API v2 ist laut Anbieter für die private Nutzung gedacht. Das Gateway nutzt sie nur, wenn `RANSOMWARE_LIVE_V2=1`
 gesetzt ist. Für den Dienstgebrauch: API PRO mit Schlüssel, Bedingungen des Anbieters lesen.
+
+Listen sind gekürzt: An den Agenten gehen die ersten 60 Einträge in der Reihenfolge der Quelle (neueste zuerst),
+`anzahl` nennt die Zahl der Quelle, `gezeigt` die der gelieferten Einträge. Die ganze Liste liegt in der Rohdatei.
+Die API PRO wiederholt in jeder Antwort unter `client` die E-Mail-Adresse, auf die der Schlüssel lautet. Das
+Gateway ersetzt sie in der Rohdatei durch `***` und vermerkt das im Protokolleintrag (`antwort.bereinigt`). Sonst
+bleibt die Rohdatei, wie die Quelle sie geliefert hat.
 
 **Ahmia-Sperrliste.** Liefert die Liste nichts, was wie eine Liste von MD5-Werten aussieht, meldet das Werkzeug
 einen Fehler und rät vom Öffnen ab. «Nicht auf der Liste» ist keine Unbedenklichkeitserklärung.
 
 **Telegram Breach Monitor.** Die Seite auf osintcabal.org ist eine Hinweisseite auf den Telegram-Kanal
 `breachdetect` und bietet selbst keinen maschinenlesbaren Feed. `telegram_kanal` liest die öffentliche
-Web-Vorschau dieses Kanals (oder jedes anderen öffentlichen Kanals) ohne Telegram-Konto.
+Web-Vorschau eines Kanals ohne Telegram-Konto. Nicht jeder Kanal hat eine: Am 16.11.2026 leitete Telegram für
+`breachdetect` auf die Kanalseite um, ohne Beiträge. Das Werkzeug meldet dann «kein Treffer» mit dem Grund und
+gibt wieder, was die Kanalseite zeigt (Titel, Beschreibung, Zahl der Abonnenten). Das ist eine Lücke, kein
+«nichts gefunden»: Die Beiträge lassen sich so nicht lesen.
 
 **TeleGramSint.** Das Werkzeug ist menügesteuert und für Agenten nicht bedienbar. Übernommen sind drei seiner
 Abfragen. Weggelassen sind die Suche nach Telefonnummern, Mitgliederlisten, Online-Status und Stories:
@@ -157,7 +215,9 @@ dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sp
 `robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
 Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, übernehmen die Hooks: Der
 Wächter verlangt die Freigabe `darkweb`, der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
-Fallakte und verkettet sie. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
+Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
+`.claude/hooks/protokoll_hook.py`, heute Robin). Andere MCP-Server sind Arbeitsmittel: Ihre Aufrufe stehen im
+Sitzungsprotokoll, ihre Antworten sind kein Beleg. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
 
 ```bash
 docker build -t robin-intern /pfad/zu/eurem/robin-fork

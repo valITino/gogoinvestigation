@@ -35,7 +35,8 @@ QUELLEN: tuple[Quelle, ...] = (
            ("shodan_host", "shodan_dns", "shodan_suche"),
            "Offene Ports, Dienste, Zertifikate und Betreiber von IPs; Pivot über Zertifikat und Favicon.",
            ("shodan_host", {"ip": "8.8.8.8"}),
-           "shodan_dns und Trefferlisten von shodan_suche verbrauchen Query-Credits."),
+           "shodan_dns und Trefferlisten von shodan_suche verbrauchen Query-Credits. shodan_dns verlangt eine "
+           "Mitgliedschaft: Mit einem kostenlosen Konto antwortet Shodan mit HTTP 403."),
     Quelle("Shodan InternetDB", None, "kein Schlüssel nötig", ("shodan_internetdb",),
            "Schnellübersicht einer IP ohne Schlüssel.", ("shodan_internetdb", {"ip": "8.8.8.8"})),
     Quelle("VirusTotal", "VIRUSTOTAL_API_KEY", "https://www.virustotal.com/gui/my-apikey",
@@ -79,8 +80,9 @@ QUELLEN: tuple[Quelle, ...] = (
            "Sperrliste für Onion-Adressen. Pflichtprüfung vor dem Öffnen einer Onion-Seite.",
            ("onion_sperrliste", {"onion_adresse": "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion"})),
     Quelle("Telegram (Web-Vorschau)", None, "kein Schlüssel nötig", ("telegram_kanal",),
-           "Öffentliche Kanäle lesen, z. B. den Breach-Feed 'breachdetect'.",
-           ("telegram_kanal", {"kanal": "breachdetect"})),
+           "Öffentliche Kanäle lesen, soweit Telegram für sie eine Web-Vorschau zeigt.",
+           ("telegram_kanal", {"kanal": "telegram"}),
+           "Getestet wird mit dem Kanal von Telegram selbst. Für 'breachdetect' zeigte Telegram am 16.11.2026 keine Vorschau mehr."),
     Quelle("RapidAPI Telegram", "RAPIDAPI_KEY", "https://rapidapi.com (APIs 'Telegram Channel' und 'Telegram Scraper API' abonnieren)",
            ("telegram_kanalinfo", "telegram_entitaet", "telegram_suche"),
            "Stammdaten zu Telegram-Kanälen und -Konten (Funktionen aus TeleGramSint).",
@@ -102,7 +104,8 @@ QUELLEN: tuple[Quelle, ...] = (
     Quelle("Ethereum (Blockscout)", "BLOCKSCOUT_API_KEY", "https://dev.blockscout.com (kostenlos)", (),
            "Ethereum-Familie samt USDT und USDC: Guthaben, Zahlungen, Geldfluss, Etiketten von Börsen.",
            ("krypto_transaktion", {"tx": "0x55ae6a400fb41abe493f5f70bba0d6aa4386e2b082ad3ffc851bf22a3dfa7e9b", "kette": "ethereum"}),
-           "Läuft auch ohne Schlüssel, dann gedrosselt. Mit Schlüssel auch Base, Arbitrum, Polygon, Gnosis. "
+           "Läuft auch ohne Schlüssel, dann gedrosselt. Mit dem kostenlosen Schlüssel auch Arbitrum und Gnosis. "
+           "Für Polygon und Base verlangt Blockscout ein bezahltes Paket. "
            "Blockscout stellt den Zugang ohne Schlüssel nach eigener Angabe ein.",
            auch_ohne=True),
     Quelle("TRON (TronGrid)", "TRONGRID_API_KEY", "https://www.trongrid.io (kostenlos)", (),
@@ -117,9 +120,9 @@ QUELLEN: tuple[Quelle, ...] = (
            "Gegenwert in CHF, EUR und USD am Tag der Zahlung (DefiLlama, Referenzkurse der EZB).",
            ("krypto_kurs", {"wert": "BTC", "datum": "2024-01-15", "betrag": "0.5"})),
     Quelle("Etherscan", "ETHERSCAN_API_KEY", "https://etherscan.io/apidashboard (kostenlos)", (),
-           "Weitere Ketten der Ethereum-Familie (Polygon, Arbitrum, Gnosis) und Gegenprüfung von Ethereum-Transaktionen.",
+           "Weitere Ketten der Ethereum-Familie (Polygon, Arbitrum) und Gegenprüfung von Ethereum-Transaktionen.",
            ("krypto_adresse", {"adresse": "0x28C6c06298d514Db089934071355E5743bf21d60", "kette": "polygon"}),
-           "BNB Smart Chain, Base und Optimism verlangen bei Etherscan ein bezahltes Abo."),
+           "Gnosis, Base, BNB Smart Chain und Optimism verlangen bei Etherscan ein bezahltes Abo."),
     Quelle("Tronscan", "TRONSCAN_API_KEY", "https://docs.tronscan.org/getting-started/api-keys (kostenlos)", (),
            "Namen von Börsen und Diensten für TRON-Adressen, Risikohinweise.",
            ("krypto_zuordnung", {"adressen": ["TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"], "quellen": ["tronscan"]}),

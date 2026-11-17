@@ -326,4 +326,7 @@ async def virustotal_beziehungen(fall: Fall, zweck: Zweck,
         eintraege.append(_lesbar({"id": e.get("id"), "typ": e.get("type"),
                                   **nimm(attr, "ip_address", "host_name", "date", "meaningful_name",
                                          "type_description", "last_analysis_stats", "creation_date")}))
-    return a.als_dict({"anzahl": len(eintraege), "eintraege": eintraege})
+    # «gesamt» ist die Zahl, die VirusTotal nennt (meta.count). «anzahl» sind die gelieferten Einträge, höchstens limit.
+    gesamt = ((a.daten or {}).get("meta") or {}).get("count")
+    return a.als_dict({**({"gesamt": gesamt} if isinstance(gesamt, int) else {}), "anzahl": len(eintraege),
+                       "eintraege": eintraege})

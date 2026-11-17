@@ -80,11 +80,15 @@ def eintrag(e: dict, quelle: str, ziel: str, ergebnis: str, durch: str | None, t
             f"<tr class='technik'><td></td><td colspan='4' class='klein mono'>{'<br>'.join(technik)}</td></tr></tbody>")
 
 
-def sitzungen_laden(fall_id: str) -> tuple[list[dict], list[str]]:
-    """Alle Einträge der Sitzungen, die diesen Fall berührt haben, plus Meldungen zur Kettenprüfung."""
+def sitzungen_laden(fall_id: str, nur: set[str] | None = None) -> tuple[list[dict], list[str]]:
+    """Alle Einträge der Sitzungen, die diesen Fall berührt haben, plus Meldungen zur Kettenprüfung.
+    ``nur``: Es zählen allein diese Sitzungen. Das braucht der Musterfall: Er soll bei jedem Bau gleich ausfallen,
+    auch wenn auf dem Rechner eine andere Sitzung seinen Ordner berührt hat (etwa beim Weiterbauen des Projekts)."""
     eintraege: list[dict] = []
     meldungen: list[str] = []
     for datei in sorted(SITZUNGEN.glob("*.jsonl")) if SITZUNGEN.is_dir() else []:
+        if nur is not None and datei.stem not in nur:
+            continue
         try:
             zeilen = jsonl_lesen(datei)
         except json.JSONDecodeError:
@@ -294,7 +298,9 @@ def main(argv: list[str]) -> int:
         print(f"FEHLER: {e}", file=sys.stderr)
         return 2
     abfragen = jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")
-    sitzung, sitzungsmeldungen = sitzungen_laden(fall_id)
+    # Der Musterfall nennt in fall.json die eine Sitzung, aus der er besteht. Echte Fälle haben den Eintrag nicht:
+    # Bei ihnen zählt jede Sitzung, die den Fall berührt hat.
+    sitzung, sitzungsmeldungen = sitzungen_laden(fall_id, set(fall["sitzungen"]) if fall.get("muster") and fall.get("sitzungen") else None)
     akteure = {z["protokoll_id"]: z for z in sitzung if z.get("protokoll_id") and z.get("fall") == fall_id}
     for e in abfragen:          # die Abfragen hinter einer Auswertung hat derselbe Agent ausgelöst wie die Auswertung
         if e.get("art") == "auswertung" and e["id"] in akteure:

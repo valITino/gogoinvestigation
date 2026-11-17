@@ -337,11 +337,24 @@ _BLOCKSCOUT_429 = ("Blockscout drosselt Abfragen ohne Schlüssel (HTTP 429). Abh
                    "(kostenlos, https://dev.blockscout.com), oder später an derselben Stelle fortsetzen.")
 _BLOCKSCOUT_KEY = ("Blockscout nimmt den Schlüssel nicht an oder das Tageskontingent ist aufgebraucht (HTTP {status}). "
                    "BLOCKSCOUT_API_KEY in .env prüfen, Verbrauch auf https://dev.blockscout.com ansehen.")
+_BLOCKSCOUT_PLAN = ("Blockscout bietet diese Kette im Paket dieses Schlüssels nicht an (HTTP 402). Gesehen am 16.11.2026: "
+                    "Der kostenlose Schlüssel deckt Ethereum, Optimism, Arbitrum und Gnosis, für Polygon und Base verlangt "
+                    "Blockscout ein bezahltes Paket. Das Gateway versucht dafür die öffentliche Instanz der Kette und Etherscan.")
+# Ketten, die der Zugang mit Schlüssel abgewiesen hat, weil das Paket sie nicht deckt. Für sie gilt bis zum
+# Neustart des Gateways der Weg ohne Schlüssel (öffentliche Instanz der Kette).
+_OHNE_PLAN: set[str] = set()
 
 
-def _blockscout_fehler(status: int) -> str | None:
+def _plan_fehlt(status: int, daten: Any) -> bool:
+    """Blockscout mit Schlüssel: «Featured chain 137 requires one of the following plans: Builder, Business, Pro»."""
+    return status == 402 and isinstance(daten, dict) and "plan" in str(daten.get("error") or "").lower()
+
+
+def _blockscout_fehler(status: int, daten: Any = None) -> str | None:
     """Fehlertext für die Zustände, die bei Blockscout am Zugang liegen und nicht an der Frage."""
     mit_schluessel = bool(einstellung("BLOCKSCOUT_API_KEY"))
+    if _plan_fehlt(status, daten):
+        return _BLOCKSCOUT_PLAN
     if status in (401, 402) or (status in (403, 429) and mit_schluessel):
         return _BLOCKSCOUT_KEY.format(status=status)
     if status == 403:
@@ -358,7 +371,7 @@ def evm_anbieter(kette: Kette) -> list[dict]:
     schluessel = einstellung("BLOCKSCOUT_API_KEY")
     if eigen:
         liste.append({"quelle": "Blockscout (eigene Instanz)", "art": "blockscout", "basis": eigen.rstrip("/")})
-    elif schluessel and kette.blockscout:       # der Weg, den Blockscout für Programme vorsieht: eine Adresse, Kette in der Zahl
+    elif schluessel and kette.blockscout and kette.name not in _OHNE_PLAN:      # der Weg, den Blockscout für Programme vorsieht: eine Adresse, Kette in der Zahl
         liste.append({"quelle": "Blockscout", "art": "blockscout", "basis": f"{BLOCKSCOUT_API}/{kette.chain_id}", "apikey": schluessel})
     elif kette.blockscout:
         liste.append({"quelle": "Blockscout", "art": "blockscout", "basis": kette.blockscout})
@@ -366,14 +379,14 @@ def evm_anbieter(kette: Kette) -> list[dict]:
         liste.append({"quelle": "Etherscan", "art": "etherscan", "basis": "https://api.etherscan.io/v2/api"})
     if not liste:
         raise Abbruch(f"{kette.anzeige} lässt sich nur mit einem Etherscan-Schlüssel abfragen (ETHERSCAN_API_KEY in .env, "
-                      "https://etherscan.io/apidashboard). BNB Smart Chain und Base verlangen dort ein bezahltes Abo.")
+                      "https://etherscan.io/apidashboard). Gnosis, Base und BNB Smart Chain verlangen dort ein bezahltes Abo.")
     return liste
 
 
 def _liste_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
     """Blockscout in der Form von Etherscan: erst die Zustände, die am Zugang liegen, dann der Inhalt."""
-    if _blockscout_fehler(status):
-        return "fehler", _blockscout_fehler(status)
+    if _blockscout_fehler(status, daten):
+        return "fehler", _blockscout_fehler(status, daten)
     return _etherscan_form(status, daten, text)
 
 
@@ -398,8 +411,8 @@ def _etherscan_form(status: int, daten: Any, text: str | None) -> tuple[str, str
 
 
 def _v2_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
-    if _blockscout_fehler(status):
-        return "fehler", _blockscout_fehler(status)
+    if _blockscout_fehler(status, daten):
+        return "fehler", _blockscout_fehler(status, daten)
     if status == 422:
         return "fehler", "Blockscout weist die Anfrage zurück (HTTP 422): Adresse oder Transaktions-ID hat nicht die erwartete Form."
     if status == 200 and daten is None:
@@ -424,7 +437,14 @@ async def _evm_liste(v: Vorgang, kette: Kette, modul: str, aktion: str, ziel: st
                 **({"geheim": ("apikey",)} if a.get("apikey") else {})}})
     if not anbieter:
         raise Abbruch(f"Für {kette.anzeige} ist kein passender Anbieter eingerichtet.")
+    vorher = len(v.fehlschlaege)
     a = await _reihum(v, anbieter, ziel, ziel_typ, schritt, cache_h=cache_h, deutung=_liste_deutung)
+    if (kette.name not in _OHNE_PLAN and kette.blockscout
+            and any(f["quelle"] == "Blockscout" and f["fehler"] == _BLOCKSCOUT_PLAN for f in v.fehlschlaege[vorher:])):
+        _OHNE_PLAN.add(kette.name)       # das Paket des Schlüssels deckt die Kette nicht: einmal über die öffentliche Instanz
+        _gesperrt(v).discard("Blockscout")
+        if a.ergebnis == "fehler":
+            return await _evm_liste(v, kette, modul, aktion, ziel, ziel_typ, schritt, cache_h, nur, **params)
     if a.ergebnis == "fehler":
         raise Quellfehler(a, aktion)
     ergebnis = (a.daten or {}).get("result") if isinstance(a.daten, dict) else None
@@ -446,6 +466,9 @@ async def _evm_v2(v: Vorgang, kette: Kette, pfad: str, ziel: str, ziel_typ: str,
         zugang["zeitlimit"] = 25.0
     a = await v.hole(bs[0]["quelle"], ziel, ziel_typ, bs[0]["basis"] + "/api/v2" + pfad, schritt=schritt,
                      cache_h=cache_h, deutung=_v2_deutung, nochmal=geduld and not hat_ersatz, **zugang)
+    if bs[0].get("apikey") and _plan_fehlt(a.status, a.daten) and kette.blockscout:
+        _OHNE_PLAN.add(kette.name)       # das Paket des Schlüssels deckt die Kette nicht: über die öffentliche Instanz der Kette
+        return await _evm_v2(v, kette, pfad, ziel, ziel_typ, schritt, cache_h, params, geduld)
     if a.ergebnis == "fehler" and hat_ersatz:
         _gesperrt(v).add(bs[0]["quelle"])
         return None

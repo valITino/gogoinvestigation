@@ -51,13 +51,20 @@ def _rl() -> tuple[str, dict, bool]:
         "gedacht. Wer sie nutzen darf, setzt RANSOMWARE_LIVE_V2=1.")
 
 
-def _opfer(daten: Any) -> list[dict]:
+RL_KONTO = ("client",)       # Feld, in dem die API PRO die E-Mail-Adresse des eigenen Kontos wiederholt
+RL_ZEIGEN = 60
+
+
+def _opfer(daten: Any) -> tuple[int, list[dict]]:
+    """Gibt (Zahl der Einträge laut Quelle, gekürzte Liste) zurück. Die Zahl stammt aus der Antwort, nicht aus
+    der Länge der gekürzten Liste: Eine Gruppe mit 2016 Opfern hat nicht 60."""
+    gesamt = None
     if isinstance(daten, dict):
+        gesamt = daten.get("count") if isinstance(daten.get("count"), int) else None
         daten = daten.get("victims") or daten.get("results") or daten.get("data") or []
+    eintraege = [v for v in (daten or []) if isinstance(v, dict)]
     liste = []
-    for v in (daten or [])[:60]:
-        if not isinstance(v, dict):
-            continue
+    for v in eintraege[:RL_ZEIGEN]:
         liste.append({k: w for k, w in {
             "opfer": saeubern(v.get("victim") or v.get("post_title"), 120),
             "gruppe": v.get("group") or v.get("group_name"),
@@ -69,7 +76,16 @@ def _opfer(daten: Any) -> list[dict]:
             "beschreibung": saeubern(v.get("description"), 240),
             "fundstelle": v.get("claim_url") or v.get("post_url") or v.get("url"),
         }.items() if w})
-    return liste
+    return (gesamt if gesamt is not None else len(eintraege)), liste
+
+
+def _opfer_befund(daten: Any) -> dict:
+    gesamt, opfer = _opfer(daten)
+    befund: dict[str, Any] = {"anzahl": gesamt, "gezeigt": len(opfer), "opfer": opfer}
+    if gesamt > len(opfer):
+        befund["hinweis"] = (f"Die Quelle führt {gesamt} Einträge. Gezeigt sind die ersten {len(opfer)} in der Reihenfolge "
+                             "der Quelle (neueste zuerst). Alle stehen in der Rohdatei.")
+    return befund
 
 
 @werkzeug
@@ -98,32 +114,37 @@ async def ransomware_opfer(fall: Fall, zweck: Zweck,
         url, params, ziel, typ = ((f"{basis}/victims/", {"country": cc}) if pro
                                   else (f"{basis}/countryvictims/{cc}", None)) + (cc, "land")
     a = await abfrage(fall, zweck, werkzeug="ransomware_opfer", quelle="ransomware.live", ziel=ziel,
-                      ziel_typ=typ, url=url, params=params, kopf=kopf, cache_h=6)
+                      ziel_typ=typ, url=url, params=params, kopf=kopf, cache_h=6, eigene_angaben=RL_KONTO)
     if a.ergebnis != "ok":
         return a.als_dict()
-    opfer = _opfer(a.daten)
-    return a.als_dict({"anzahl": len(opfer), "opfer": opfer}, hinweis=FREMD)
+    return a.als_dict(_opfer_befund(a.daten), hinweis=FREMD)
 
 
 @werkzeug
 async def ransomware_gruppe(fall: Fall, zweck: Zweck, gruppe: str) -> dict:
-    """ransomware.live: Steckbrief einer Ransomware-Gruppe mit Beschreibung und bekannten
-    Leak-Seiten (Onion-Adressen, Erreichbarkeit, letzter Stand)."""
+    """ransomware.live: Steckbrief einer Ransomware-Gruppe mit Beschreibung, erster und letzter Sichtung,
+    Zahl der geführten Opfer und bekannten Leak-Seiten (Onion-Adressen, erreichbar oder beschlagnahmt)."""
     g = pruef_muster(gruppe.lower(), r"[a-z0-9 ._-]{2,40}", "gruppe")
     basis, kopf, pro = _rl()
     a = await abfrage(fall, zweck, werkzeug="ransomware_gruppe", quelle="ransomware.live", ziel=g,
                       ziel_typ="gruppe", url=f"{basis}/groups/{g}" if pro else f"{basis}/group/{g}",
-                      kopf=kopf, cache_h=6)
+                      kopf=kopf, cache_h=6, eigene_angaben=RL_KONTO)
     if a.ergebnis != "ok":
         return a.als_dict()
     d = a.daten[0] if isinstance(a.daten, list) and a.daten else a.daten
     if not isinstance(d, dict):
         return a.als_dict(ergebnis="kein_treffer")
     d = d.get("group") if isinstance(d.get("group"), dict) else d
-    seiten = [nimm(s, "fqdn", "slug", "title", "available", "updated", "lastscrape", "type")
-              for s in (d.get("locations") or [])[:25] if isinstance(s, dict)]
-    return a.als_dict({"name": d.get("name") or g, "beschreibung": saeubern(d.get("description"), 900),
-                       "leak_seiten": seiten, "weiteres": kappen(nimm(d, "profile", "meta", "stats"), 2, 10, 200)},
+    alle = [s for s in (d.get("locations") or []) if isinstance(s, dict)]
+    # API PRO nennt je Seite fqdn, slug, title, type, available, captcha, seized. Die API v2 kennt dazu updated und lastscrape.
+    seiten = [nimm(s, "fqdn", "slug", "title", "type", "available", "seized", "captcha", "updated", "lastscrape")
+              for s in alle[:25]]
+    name = d.get("name") or (d.get("group") if isinstance(d.get("group"), str) else None) or g
+    return a.als_dict({"name": name, "beschreibung": saeubern(d.get("description"), 900),
+                       **nimm(d, "firstseen", "lastseen", "added_date", "victims", "url", "negotiation_count",
+                              "ransomnotes_count"),
+                       "leak_seiten_anzahl": len(alle), "leak_seiten": seiten,
+                       "weiteres": kappen(nimm(d, "tools", "ttps", "vulnerabilities", "profile", "meta", "stats"), 3, 12, 200)},
                       hinweis=FREMD)
 
 
@@ -136,8 +157,11 @@ async def ransomware_iocs(fall: Fall, zweck: Zweck, gruppe: str) -> dict:
     if not pro:
         raise Abbruch("ransomware_iocs gibt es nur mit RANSOMWARE_LIVE_API_KEY (API PRO).")
     a = await abfrage(fall, zweck, werkzeug="ransomware_iocs", quelle="ransomware.live", ziel=g,
-                      ziel_typ="gruppe", url=f"{basis}/iocs/{g}", kopf=kopf, cache_h=6)
-    return a.als_dict(kappen(a.daten, 4, 150, 200) if a.ergebnis == "ok" else None, hinweis=FREMD)
+                      ziel_typ="gruppe", url=f"{basis}/iocs/{g}", kopf=kopf, cache_h=6, eigene_angaben=RL_KONTO)
+    if a.ergebnis != "ok":
+        return a.als_dict()
+    daten = {k: v for k, v in a.daten.items() if k not in RL_KONTO} if isinstance(a.daten, dict) else a.daten
+    return a.als_dict(kappen(daten, 4, 150, 200), hinweis=FREMD)
 
 
 @werkzeug
@@ -146,11 +170,10 @@ async def ransomware_aktuell(fall: Fall, zweck: Zweck) -> dict:
     basis, kopf, pro = _rl()
     a = await abfrage(fall, zweck, werkzeug="ransomware_aktuell", quelle="ransomware.live", ziel="neueste Opfer",
                       ziel_typ="uebersicht", url=f"{basis}/victims/recent" if pro else f"{basis}/recentvictims",
-                      kopf=kopf, cache_h=1)
+                      kopf=kopf, cache_h=1, eigene_angaben=RL_KONTO)
     if a.ergebnis != "ok":
         return a.als_dict()
-    opfer = _opfer(a.daten)
-    return a.als_dict({"anzahl": len(opfer), "opfer": opfer}, hinweis=FREMD)
+    return a.als_dict(_opfer_befund(a.daten), hinweis=FREMD)
 
 
 # --------------------------------------------------------------------------- Ahmia-Sperrliste
@@ -223,6 +246,27 @@ class _Kanalleser(HTMLParser):
             self._text.append(data)
 
 
+def _vorschau_deutung(status: int, daten: Any, text: str | None) -> tuple[str, str | None] | None:
+    """Ohne Web-Vorschau leitet Telegram auf die Kanalseite um und antwortet mit HTTP 200. Ein Beitrag der
+    Vorschau trägt das Attribut data-post. Fehlt es, gibt es nichts zu lesen: «kein Treffer», auch im Protokoll."""
+    if status == 200 and 'data-post="' not in (text or ""):
+        return "kein_treffer", None
+    return None
+
+
+_OG = re.compile(r'<meta property="og:(title|description)" content="([^"]*)"')
+
+
+def _kanalseite(html: str) -> dict | None:
+    """Was die Kanalseite (t.me/<kanal>) ohne Vorschau zeigt: Titel, Beschreibung, Zahl der Abonnenten."""
+    if "tgme_page_title" not in html:
+        return None
+    angaben = {name: saeubern(html_text(wert), 300) for name, wert in _OG.findall(html)}
+    extra = re.search(r'<div class="tgme_page_extra">(.*?)</div>', html, re.S)
+    return {k: v for k, v in {"titel": angaben.get("title"), "beschreibung": angaben.get("description"),
+                              "angabe": saeubern(html_text(extra.group(1)), 80) if extra else None}.items() if v}
+
+
 @werkzeug
 async def telegram_kanal(fall: Fall, zweck: Zweck,
                          kanal: Annotated[str, Field(description="Öffentlicher Kanalname ohne @, z. B. breachdetect")] = "breachdetect",
@@ -230,20 +274,28 @@ async def telegram_kanal(fall: Fall, zweck: Zweck,
                          vor: Annotated[int | None, Field(description="Ältere Beiträge vor dieser Beitragsnummer")] = None) -> dict:
     """Telegram: die neuesten Beiträge eines öffentlichen Kanals über dessen Web-Vorschau lesen,
     ohne Telegram-Konto. Standard ist 'breachdetect', der Kanal hinter dem Telegram Breach Monitor
-    (Meldungen zu neuen Datenlecks). Das Stichwort wird lokal gefiltert und nicht übermittelt."""
+    (Meldungen zu neuen Datenlecks). Das Stichwort wird lokal gefiltert und nicht übermittelt.
+    Nicht jeder Kanal hat eine Web-Vorschau: Dann ist das Ergebnis 'kein_treffer' mit dem Grund, und unter
+    'kanalseite' steht, was Telegram ohne Vorschau zeigt (Titel, Beschreibung, Zahl der Abonnenten)."""
     k = pruef_muster(kanal.lstrip("@"), r"[A-Za-z][A-Za-z0-9_]{3,31}", "kanal")
     a = await abfrage(fall, zweck, werkzeug="telegram_kanal", quelle="Telegram (Web-Vorschau)",
                       ziel=f"@{k}" + (f" / Stichwort '{stichwort}' lokal gefiltert" if stichwort else ""),
                       ziel_typ="kanal", url=f"https://t.me/s/{k}", params={"before": vor}, endung="html",
-                      cache_h=0.5)
+                      cache_h=0.5, deutung=_vorschau_deutung)
+    if a.ergebnis == "kein_treffer":
+        seite = _kanalseite(a.text or "")
+        if seite:
+            return a.als_dict({"kanal": k, "anzahl": 0, "beitraege": [], "kanalseite": seite},
+                              grund="Der Kanal existiert, Telegram zeigt für ihn aber keine Web-Vorschau und leitet auf "
+                                    "die Kanalseite um. Seine Beiträge lassen sich ohne Telegram-Konto nicht lesen.",
+                              hinweis=FREMD)
+        return a.als_dict({"kanal": k, "anzahl": 0, "beitraege": []},
+                          grund="Kanal existiert nicht, ist privat oder hat keine Web-Vorschau.")
     if a.ergebnis != "ok":
         return a.als_dict()
     leser = _Kanalleser()
     leser.feed(a.text or "")
     beitraege = [b for b in leser.beitraege if b["text"] or b["links"]]
-    if not beitraege:
-        return a.als_dict({"anzahl": 0, "beitraege": []}, ergebnis="kein_treffer",
-                          hinweis="Kanal existiert nicht, ist privat oder hat keine Web-Vorschau.")
     if stichwort:
         s = stichwort.lower()
         beitraege = [b for b in beitraege if s in b["text"].lower() or any(s in l.lower() for l in b["links"])]
