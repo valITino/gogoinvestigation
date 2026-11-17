@@ -4821,7 +4821,8 @@ def _():
                  e(6, "krypto_abruf", "OFAC", "SDN-Liste"),
                  e(7, "krypto_zuordnung", "Gateway", btc, art="auswertung", grundlage=["P-0006"], quellen=["OFAC"]),
                  e(8, "krypto_abruf", "TronGrid", tx),
-                 e(9, "krypto_abruf", "Chainabuse", "1 Adresse(n)")]
+                 e(9, "krypto_abruf", "Chainabuse", "1 Adresse(n)"),
+                 e(10, "shodan_host", "Shodan", "198.51.100.23", "abgelehnt")]
     fall = {"pflichtquellen": {"quellen": ["4chan", "Shodan", "VirusTotal", "RIPEstat", "Krypto-Zuordnung", "Chainabuse", "Bitcoin (mempool.space)", "TRON (TronGrid)",
                                            "Ethereum (Blockscout)", "ransomware.live", "Gibtsnicht"], "am": "2026-11-17T08:00:00+01:00", "durch": "MUS"}}
     with pflicht_umgebung():
@@ -4831,8 +4832,9 @@ def _():
 
         def bild(name: str) -> tuple:
             return z[name]["stand"], z[name]["faellig"], z[name]["erfuellt"], z[name]["fehlgeschlagen"], z[name]["offen"]
-        # Fällig ist, was aus den Eingangsdokumenten stammt und abgefragt werden darf: kein Pivot, nichts von der Seite der Geschädigten
-        assert bild("Shodan") == ("offen", ["I-01", "I-02"], ["I-01"], [], ["I-02"]), bild("Shodan")
+        # Fällig ist, was aus den Eingangsdokumenten stammt und abgefragt werden darf: kein Pivot, nichts von der Seite der Geschädigten.
+        # Was das Gateway abgelehnt hat (P-0010: fehlende Freigabe oder Schranke), hat die Quelle nie erreicht: Das ist nicht gefragt
+        assert bild("Shodan") == ("offen", ["I-01", "I-02"], ["I-01"], [], ["I-02"]) and "I-02" not in z["Shodan"]["belege"], z["Shodan"]
         # «Kein Treffer» ist gefragt. Ein Fehlschlag ist gefragt und steht als Fehlschlag da. Eine URL gilt mit und ohne Schrägstrich am Ende
         assert bild("VirusTotal") == ("fehlgeschlagen", ["I-01", "I-02", "I-03"], ["I-01", "I-03"], ["I-02"], []), bild("VirusTotal")
         assert bild("RIPEstat") == ("offen", ["I-01", "I-02"], ["I-02"], [], ["I-01"]), "ein Zusatz hinter dem Ziel gehört zur selben Abfrage"

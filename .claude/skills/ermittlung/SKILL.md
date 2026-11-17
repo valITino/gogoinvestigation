@@ -122,6 +122,8 @@ Nur wenn der Sachbearbeiter Pflichtquellen vorgegeben hat. Rufe `fall_status` au
 - Steht dort ein Paar, wurde diese Quelle für diesen Indikator noch nie gefragt. Beauftrage den zuständigen Analysten mit
   genau diesen Paaren (`…-pflicht.md`). Das ist keine Pivot-Runde und zählt nicht zu den zwei Runden.
 - Eine fehlgeschlagene Abfrage gilt als gefragt. Sie wird nicht wiederholt und kommt unter Lücken.
+- Ein Versuch, den das Gateway ablehnt (fehlende Freigabe), gilt nicht als gefragt. Er wird nicht unternommen, um eine
+  Pflicht abzuhaken.
 - Lässt sich ein Paar nicht erfüllen, weil eine Freigabe oder ein Schlüssel fehlt, meldest du das dem Sachbearbeiter mit
   dem Namen der Quelle. Er erteilt die Freigabe oder nimmt die Quelle aus der Vorgabe. Bis dahin meldet `rapport.py`
   das Paar als Mangel, und der Rapport entsteht nur als Entwurf.

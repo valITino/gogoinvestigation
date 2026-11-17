@@ -380,7 +380,8 @@ python3 tools/fall.py quellen 2026-0412 --pflicht "Shodan, VirusTotal"   # oder 
 - **Nachprüfbar.** Ob eine Pflichtquelle gefragt wurde, liest das System aus dem Protokoll, nicht aus dem Bericht des
   Teams. Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4 aus, und er lässt sich erst abschliessen, wenn
   zu jedem fälligen Indikator eine Abfrage im Protokoll steht. Ein Fehlschlag (Kontingent, Störung) gilt als gefragt
-  und steht als Lücke da. Er wird nicht in Schleife wiederholt.
+  und steht als Lücke da. Er wird nicht in Schleife wiederholt. Was das Gateway selbst abgelehnt hat, etwa weil eine
+  Freigabe fehlt, hat die Quelle nie erreicht und gilt nicht als gefragt.
 - **Keine Freigabe durch die Hintertür.** Vorgeben lässt sich nur, was eingerichtet ist. Robin verlangt dazu die
   Freigabe `darkweb`. Aktive Massnahmen und Kontoabfragen bleiben an ihre Freigabe gebunden.
 - **Nur der Sachbearbeiter.** Vorgeben, ändern und aufheben verlangen ein Terminal oder die Oberfläche. Ein Agent
@@ -1127,12 +1128,18 @@ PowerShell 7:
   Feldmarken, die Tabellen des BFS und der Dialog in einer Windows-Konsole.
 - Zwei gelten den Pflichtquellen (`gateway/pflichtquellen.py`), Stand 17.11.2026: die Regeln an erfundenen
   Indikatoren und Protokolleinträgen (fällig ist nur, was aus den Eingangsdokumenten stammt und abgefragt werden darf;
-  «kein Treffer» und ein Fehlschlag gelten als gefragt; hinter einer Auswertung zählen die Abfragen ihrer Grundlage;
+  «kein Treffer» und ein Fehlschlag gelten als gefragt, eine vom Gateway abgelehnte Abfrage nicht; hinter einer
+  Auswertung zählen die Abfragen ihrer Grundlage;
   eine Bitcoin-Adresse passt nur zu Bitcoin; Monero ergibt keine Pflicht; Robin zählt erst, wenn es gesucht hat),
   vorgeben nur für eingerichtete Quellen und für Robin nur mit Freigabe, kein Vorgeben ohne Terminal, `fall_status`
   nennt den Agenten die offenen Paare, und am Musterfall: Der Rapport meldet drei Mängel, solange drei Abfragen
   fehlen, und keinen, wenn alles gefragt ist. In der Oberfläche: Speichern nur mit Geheimnis und nicht, während die
   Ermittlung arbeitet. Der Musterfall selbst hat keine Vorgabe und bleibt Byte für Byte gleich.
+  Dazu eine Gegenprobe mit echten Einträgen (17.11.2026): Am Protokoll der Testabfragen (Fall `SELBSTTEST`, 1149
+  Einträge, nur öffentlich bekannte Indikatoren) erkennt die Auswertung die Abfragen von 25 der 29 Quellen, eine davon
+  als Fehlschlag (Wayback Machine, von der Prüfumgebung aus nicht erreichbar). Zu Spur, RapidAPI Telegram und Iknaio
+  gibt es ohne Schlüssel keine Einträge, zu Robin auch nicht: Robin ist nie gelaufen. Die Auswertung brauchte dafür
+  rund 0,15 Sekunden (96 Indikatoren, alle 29 Quellen vorgegeben).
   **Nicht geprüft:** ob das Team in einer echten Ermittlung die Pflichtquellen abarbeitet. Das hängt an der Steuerung
   mit dem echten Claude Code, die nicht geprüft ist. Geprüft ist, dass der Rapport es merkt, wenn es das nicht tut.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),

@@ -9,7 +9,9 @@ Ohne Vorgabe wählen die Analysten die Quellen selbst, nach den Indikatoren und 
 
 Was «passt» heisst, steht je Quelle in gateway/quellen.py (VORGABEN). Ob eine Pflicht erfüllt ist, liest dieses Modul aus
 dem Protokoll. Eine Abfrage gehört zu einem Indikator, wenn sie seinen Wert zum Ziel hatte, wenn sie Grundlage einer
-Auswertung zu ihm ist oder wenn der Indikator sie unter seinen Belegen führt.
+Auswertung zu ihm ist oder wenn der Indikator sie unter seinen Belegen führt. Gefragt ist eine Quelle, wenn die Anfrage
+hinausging: mit Treffer, ohne Treffer oder mit einem Fehlschlag. Was das Gateway selbst abgelehnt hat (fehlende Freigabe,
+Schranke), hat die Quelle nie erreicht und zählt nicht.
 
     waehlbar(fall)                               was sich vorgeben lässt, mit Bereitschaft
     stand(fall, indikatoren, eintraege, pfad)    was fällig ist, was erfüllt, was fehlgeschlagen, was offen
@@ -34,6 +36,7 @@ from .quellen import QUELLEN, ROBIN, VORGABEN, Vorgabe
 
 SCHLUESSEL = "pflichtquellen"
 BRAUCHBAR = ("ok", "kein_treffer")
+NIE_GESENDET = ("abgelehnt",)           # das Gateway liess die Anfrage nicht hinaus (fehlende Freigabe, Schranke): Die Quelle wurde nie gefragt
 ABGELEITET = ("pivot", "geldfluss")     # so beginnt die Herkunft eines Indikators, der nicht aus einem Eingangsdokument stammt
 FAMILIEN = ("bitcoin", "evm", "tron")
 TYP_NAME = {"ip": "IP-Adressen", "domain": "Domains", "url": "URLs", "hash": "Datei-Hashes", "wallet": "Wallets", "transaktion": "Zahlungen",
@@ -272,7 +275,8 @@ def stand(fall: dict, indikatoren: list[dict], eintraege: list[dict], pfad: Path
                            "grund": "Diese Quelle steht nicht im Verzeichnis. Der Sachbearbeiter nimmt sie aus der Vorgabe."})
             continue
         namen = {name, *v.im_protokoll}
-        gilt = lambda e: e.get("quelle") in namen and e.get("art") != "auswertung" and (not v.werkzeuge or e.get("werkzeug") in v.werkzeuge)  # noqa: E731
+        gilt = lambda e: (e.get("quelle") in namen and e.get("art") != "auswertung" and e.get("ergebnis") not in NIE_GESENDET  # noqa: E731
+                          and (not v.werkzeuge or e.get("werkzeug") in v.werkzeuge))
         passend = [i for i in eingang if passt(v, i)]
         zeile = {"quelle": name, "einmal": v.einmal, "faellig": [], "erfuellt": [], "fehlgeschlagen": [], "offen": [], "belege": {}, "grund": ""}
         w = bereit.get(name) or {}

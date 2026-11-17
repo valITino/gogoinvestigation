@@ -474,8 +474,9 @@ müssen. Sie ist freiwillig. Ohne Vorgabe wählt das Team die Quellen selbst.
 - **Während die Ermittlung arbeitet**, ruht die Auswahl. Ändern lässt sie sich, sobald die Ermittlung angehalten
   oder beendet ist. Der Rapport prüft am Ende die Vorgabe, die dann im Fall steht.
 - **Am Ende.** `tools/rapport.py` prüft die Vorgabe am Protokoll. Was nie gefragt wurde, ist ein Mangel und steht
-  unter den offenen Punkten. Ein Fehlschlag gilt als gefragt und gehört unter die Lücken. Der Abschlussrapport weist
-  die Pflichtquellen in Abschnitt 4 aus.
+  unter den offenen Punkten. Ein Fehlschlag gilt als gefragt und gehört unter die Lücken. Eine Abfrage, die das Gateway
+  abgelehnt hat (fehlende Freigabe), gilt nicht als gefragt. Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4
+  aus.
 
 Wofür eine Quelle fällig wird, steht an einer Stelle im Code (`gateway/quellen.py`, `VORGABEN`). Die Regel ist enger
 als die Abdeckung der Fallübersicht: Dort steht, wozu eine Quelle etwas sagen kann. Hier steht, wofür sie gefragt
@@ -675,7 +676,9 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Steuerung mit dem echten Claude Code. Geprüft ist die Auswertung am Protokoll und dass der Rapport eine Lücke meldet.
   Zu einem Indikator gehört eine Abfrage, wenn sie seinen Wert zum Ziel hatte, Grundlage einer Auswertung zu ihm ist
   oder unter seinen Belegen steht. Fragt ein Analyst eine Quelle mit einer anderen Schreibweise des Werts, erkennt die
-  Auswertung das erst, wenn der Beleg beim Indikator eingetragen ist.
+  Auswertung das erst, wenn der Beleg beim Indikator eingetragen ist. Die Pflicht hängt an der Indikatorliste, und die
+  erstellt das Team aus den Dokumenten: Übersieht die Extraktion einen Indikator, entsteht für ihn keine Pflicht. Bei
+  Suchquellen und bei Quellen für Gruppen und Konten prüft die Auswertung nur, dass im Fall gefragt wurde, nicht womit.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
 - **Der Akten-Eingang lebt im Speicher.** Was hochgeladen, aber noch nicht in einen Fall aufgenommen ist, ist nach dem

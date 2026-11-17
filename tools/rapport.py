@@ -21,7 +21,8 @@ Der Rapport wird nur erzeugt, wenn jede Aussage belegt ist. Geprüft wird unter 
     der zum Wert gehört.
   - Jeder Befund hat eine Erklärung in einfachen Worten und ist gegengeprüft.
   - Hat der Sachbearbeiter Pflichtquellen vorgegeben, wurde jede für jeden passenden Indikator aus den Eingangsdokumenten
-    abgefragt. Ein Fehlschlag zählt als gefragt und steht im Rapport. Nie gefragt ist ein Mangel.
+    abgefragt. Ein Fehlschlag zählt als gefragt und steht im Rapport. Nie gefragt ist ein Mangel, und was das Gateway
+    abgelehnt hat, ist nie gefragt.
   - Das Abfrageprotokoll ist unverändert (Hash-Kette).
 Rückgabewert 0: erzeugt. 1: Mängel, nichts erzeugt. 2: Fall oder befunde.json fehlt.
 """
