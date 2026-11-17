@@ -1058,7 +1058,7 @@ def _():
         assert "baut aber noch keine Verbindungen" in text and s.offen and not s.noetig, text
         # Läuft Tor am Ende nicht, sagt die Zeile, woran es liegt, und der Schritt dazu nennt, was in genau dieser Lage hilft
         rufe, text, s = lauf_tor(lage={"installierbar": False})
-        assert rufe == [] and plattform.FEHLT in text and "nicht selbst installieren" in text and s.noetig == ["ein Proxy, der antwortet"], (rufe, text)
+        assert rufe == [] and text.startswith(plattform.FEHLT + " ") and "nicht selbst installieren" in text and s.noetig == ["ein Proxy, der antwortet"], (rufe, text)
         assert "So käme keine Abfrage durch" in text and s.offen[0].startswith("Tor von Hand installieren und starten."), (text, s.offen)
         rufe, text, s = lauf_tor(nichts_installieren=True)
         assert rufe == [] and s.noetig == ["ein Proxy, der antwortet"], (rufe, text)
@@ -1163,7 +1163,9 @@ def _():
         rufe, text, s = lauf_browser(LINUX, False, nach_installation=False)
         assert rufe == ["installieren"] and "liess sich nicht installieren" in text and "als PDF speichern" in text, (rufe, text)
         rufe, text, s = lauf_browser(LINUX, True, probe="Der Browser hat kein PDF geschrieben.")
-        assert rufe == ["probe"] and "die Probe ergab kein PDF" in text and plattform.GUT not in text, (rufe, text)
+        # Geprüft wird das Zeichen am Zeilenanfang, nicht irgendwo im Text: In der schlichten Windows-Konsole heisst «gut» ok,
+        # und das steckt auch im Wort Protokoll.
+        assert rufe == ["probe"] and "die Probe ergab kein PDF" in text and text.startswith(plattform.AUS + " "), (rufe, text)
         rufe, text, s = lauf_browser(LINUX, False, nichts_installieren=True)
         assert rufe == [] and f"installiert Chromium, wenn sie darf: {plattform.SETUP} Rapport und Protokoll gibt es trotzdem" in text, (rufe, text)
         rufe, text, s = lauf_browser(LINUX, True, nur_pruefen=True)
