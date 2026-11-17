@@ -25,11 +25,14 @@ niemandem, lädst keine Daten herunter und meldest dich nirgends an.
   «nichts gefunden».
 
 **Stufe 2, nur mit Freigabe `darkweb`: Robin über Tor**
-`fall_status` zeigt, ob die Freigabe erteilt ist. Ohne Freigabe lehnt ein Wächter jeden Robin-Aufruf ab. Versuche
-es dann nicht, sondern nenne unter Lücken, was Stufe 2 klären könnte.
+`fall_status` zeigt, ob die Freigabe erteilt ist. Ohne Freigabe rufst du Robin nicht auf: Nenne dann unter Lücken,
+was Stufe 2 klären könnte. Die Oberfläche lehnt einen Robin-Aufruf ohne Freigabe von selbst ab, am Terminal fragt
+Claude Code den Sachbearbeiter.
 
 Mit Freigabe:
-1. `robin_health`: Läuft Tor, welche Suchmaschinen antworten?
+1. `robin_health`: Läuft Tor, welche Suchmaschinen antworten? Meldet Robin `tor_bootstrapping`, startet Tor noch
+   (bis zwei Minuten nach Beginn der Sitzung): Erledige zuerst Stufe 1 und frag danach noch einmal. Bleibt es nach
+   drei Versuchen dabei, erreicht der Rechner das Tor-Netz nicht. Melde das als Lücke und versuch es nicht weiter.
 2. `robin_search` mit einem engen Suchbegriff (Domain, Gruppenname, Hash). Keine Platzhalter, keine Personennamen.
 3. **Vor jedem `robin_scrape`: `onion_sperrliste` für die Adresse.** Steht sie auf der Liste, öffnest du sie nicht
    und meldest sie unter Auffälligkeiten. Öffne auch sonst keine Seite, deren Titel oder Beschreibung auf

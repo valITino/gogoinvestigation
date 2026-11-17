@@ -1,0 +1,62 @@
+{
+ "ip": "185.220.101.1",
+ "rir": "RIPE",
+ "is_bogon": false,
+ "is_mobile": false,
+ "is_satellite": false,
+ "is_anycast": false,
+ "is_crawler": false,
+ "is_datacenter": false,
+ "is_tor": true,
+ "is_proxy": true,
+ "is_vpn": false,
+ "is_abuser": true,
+ "company": {
+  "name": "Artikel10 e.V.",
+  "abuser_score": "1 (Very High)",
+  "domain": "artikel10.org",
+  "type": "business",
+  "network": "185.220.101.0 - 185.220.101.31",
+  "netname": "ARTIKEL10"
+ },
+ "abuse": {
+  "name": "Meldestelle (für die Vorlage ersetzt)",
+  "address": "Anschrift (für die Vorlage ersetzt)",
+  "email": "kontakt@beispiel.example",
+  "phone": "+00 00 000 00 00"
+ },
+ "asn": {
+  "asn": 60729,
+  "abuser_score": "0.3021 (Very High)",
+  "route": "185.220.101.0/24",
+  "descr": "TORSERVERS-NET - Stiftung Erneuerbare Freiheit, DE",
+  "country": "de",
+  "active": true,
+  "org": "Stiftung Erneuerbare Freiheit",
+  "domain": "renewablefreedom.org",
+  "abuse": "kontakt@beispiel.example",
+  "type": "business",
+  "created": "2013-05-22",
+  "updated": "2024-02-12",
+  "rir": "RIPE"
+ },
+ "location": {
+  "is_eu_member": true,
+  "calling_code": "49",
+  "currency_code": "EUR",
+  "continent": "EU",
+  "country": "Germany",
+  "country_code": "DE",
+  "state": "State of Berlin",
+  "city": "Berlin",
+  "latitude": 52.52,
+  "longitude": 13.405,
+  "zip": "10886",
+  "timezone": "Europe/Berlin",
+  "local_time": "2026-11-16T12:17:10+01:00",
+  "local_time_unix": 1794827830,
+  "is_dst": false,
+  "utcoffset": "+01:00",
+  "accuracy": "MEDIUM"
+ }
+}

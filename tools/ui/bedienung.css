@@ -1,0 +1,119 @@
+/* Bedienung der Oberfläche: Akten-Eingang, Auswahl, Chat, Rückfrage, Ergebnisse.
+   Eine eigene Datei, damit der Anhang für die Akte davon unberührt bleibt: tools/anhang.py bettet app.css ein. */
+
+/* Rechter Rand: oben die Arbeitsspur, darunter der Chat */
+#rand{border-left:1px solid var(--rand);background:var(--flaeche);display:flex;flex-direction:column;height:100vh;min-width:0}
+#rand[hidden]{display:none}
+#rahmen:has(#rand[hidden]){grid-template-columns:210px minmax(0,1fr)}
+#spur{border-left:0;height:auto;flex:1;min-height:0}
+#chatrand{border-top:2px solid var(--achse);max-height:60%}
+#chatrand[hidden]{display:none}
+@media (max-width:1100px){#rand{display:none}}
+
+/* Knöpfe, und Verweise, die wie Knöpfe aussehen */
+a.knopf,label.knopf{display:inline-block;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:4px 12px;text-decoration:none;cursor:pointer}
+a.knopf:hover,label.knopf:hover{background:var(--seite)}
+a.knopf.haupt,button.haupt,form.uebernehmen .knoepfe button,form.aufnehmen .knoepfe button{background:var(--serie);border-color:var(--serie);color:#fff;font-weight:600}
+a.knopf.haupt:hover,button.haupt:hover,form.uebernehmen .knoepfe button:hover,form.aufnehmen .knoepfe button:hover{background:var(--serie);filter:brightness(1.1)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.klein-knopf{font-size:12.5px;padding:1px 8px}
+form.still .knoepfe button{font-weight:400}
+label.knopf:focus-within{outline:2px solid var(--serie);outline-offset:2px}
+
+/* Akten-Eingang */
+.ablegen.gross{padding:24px 18px}
+.ablegen[aria-busy=true]{opacity:.7}
+.ablegen label.knopf{position:relative}
+.ablegen input[type=file]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+ul.hochladen-stand{list-style:none;padding:0;margin:10px 0 0;font-size:13px;text-align:left}
+ul.hochladen-stand:empty{display:none}
+ul.hochladen-stand li{margin:2px 0;overflow-wrap:anywhere}
+ul.hochladen-stand .meldung{font-weight:600}
+.auswahlleiste{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 2px;position:sticky;top:0;background:var(--flaeche);padding:6px 0;z-index:2}
+.auswahlleiste .trenner{width:1px;height:20px;background:var(--achse);margin:0 4px}
+.auswahlleiste select{max-width:220px}
+#ermittlung-wer:empty{display:none}
+table.auswahltabelle th:first-child,table.auswahltabelle td:first-child{width:30px;text-align:center}
+table.auswahltabelle tr.gewaehlt{background:var(--serie-hell)}
+table.auswahltabelle input[type=checkbox]{width:16px;height:16px;margin:0;vertical-align:middle}
+table.auswahltabelle details summary{cursor:pointer}
+
+/* Ergebnisse */
+.wege{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:10px 0}
+a.weg{display:block;border:1px solid var(--rand);border-radius:8px;padding:10px 14px;text-decoration:none;color:inherit}
+a.weg:hover{border-color:var(--serie);background:var(--seite)}
+a.weg b{display:block;margin-bottom:2px}
+a.weg span{font-size:13px;color:var(--tinte-2)}
+ul.archive{list-style:none;padding:0}
+ul.archive li{display:grid;grid-template-columns:minmax(290px,auto) 1fr;gap:6px 16px;align-items:center;margin:8px 0}
+ul.archive a.knopf{text-align:center}
+
+/* Chat mit der Ermittlung */
+.chat{display:flex;flex-direction:column;min-height:0}
+.chat.gross{border:1px solid var(--rand);border-radius:10px;margin:10px 0 14px}
+#ermittlung .ermittlung{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+#ermittlung .ermittlung p.stand{margin:0}
+#ermittlung .ermittlung .knopfzeile{margin:0}
+#ermittlung .ermittlung .knopfzeile:empty{display:none}
+#ermittlung .ermittlung form.klein-form{margin:0 6px 0 0}
+#ermittlung .ermittlung .banner{flex-basis:100%;margin:0}
+.chat-kopf{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--raster)}
+.chat-kopf h2{font-size:15px;margin:0;border:0;padding:0;flex:1}
+#chatrand .chat-kopf h2{font-size:14px}
+ol.chat-verlauf{list-style:none;margin:0;padding:8px 14px;overflow:auto;flex:1;min-height:80px;font-size:13.5px}
+.chat.gross ol.chat-verlauf{max-height:calc(100vh - 570px);min-height:200px}
+ol.chat-verlauf li{margin:6px 0}
+.chat-wer{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--tinte-2);margin-bottom:2px}
+.chat-text{white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--rand);border-radius:10px;padding:7px 11px;background:var(--seite)}
+li.c-sachbearbeiter{margin-left:12%}
+li.c-sachbearbeiter .chat-text{background:var(--serie-hell);border-color:var(--serie)}
+li.c-sachbearbeiter.wartet .chat-text{border-style:dashed}
+li.c-sachbearbeiter.zurueck .chat-text{text-decoration:line-through;opacity:.6}
+li.c-claude{margin-right:6%}
+.chat-zeile{display:flex;flex-wrap:wrap;gap:3px 8px;align-items:baseline;font-size:12.5px;color:var(--tinte-2);overflow-wrap:anywhere}
+.chat-zeile time{font-size:11.5px;color:var(--gedaempft)}
+.chat-zeile .mono{font-size:12px}
+.chat-quelle{font-weight:600}
+li.c-fehler .chat-zeile{color:var(--kritisch)}
+li.c-rueckfrage .chat-zeile,li.c-oberflaeche .chat-zeile{color:var(--tinte)}
+.chat.ohne-schritte li.c-schritt,.chat.ohne-schritte li.c-auftrag{display:none}
+.chat-wartend{padding:0 14px}
+.chat-wartend p{margin:2px 0}
+form.chat-eingabe{padding:8px 14px 10px;border-top:1px solid var(--raster)}
+form.chat-eingabe textarea{width:100%;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:8px;padding:6px 9px;resize:vertical}
+form.chat-eingabe .knopfzeile{margin:6px 0 0}
+form.chat-eingabe .ergebnis .banner{white-space:pre-wrap;margin:6px 0 0}
+.chat.zu ol.chat-verlauf,.chat.zu .chat-wartend,.chat.zu form.chat-eingabe,.chat.zu .chat-kopf label{display:none}
+.chat.zu .chat-kopf{border-bottom:0}
+
+/* Pflichtquellen: Auswahl vor dem Start und Stand laut Protokoll */
+details.pflicht{border:1px solid var(--rand);border-radius:10px;margin:10px 0;padding:0 14px}
+details.pflicht[open]{padding-bottom:10px}
+details.pflicht summary{cursor:pointer;padding:8px 0}
+details.pflicht summary b{font-size:15px}
+fieldset.pflicht-felder{border:0;margin:0;padding:0;min-width:0}
+fieldset.pflicht-felder:disabled{opacity:.6}
+fieldset.pflicht-felder>p{margin:2px 0 8px}
+.pflicht-gruppen{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2px 24px;margin:8px 0;max-height:min(60vh,540px);overflow:auto;
+  border-top:1px solid var(--raster);border-bottom:1px solid var(--raster);padding:4px 0}
+.pflicht-gruppe h4{margin:6px 0 4px;font-size:13px;color:var(--tinte-2)}
+label.pflicht-quelle{display:block;padding:2px 0 2px 24px;text-indent:-24px;cursor:pointer;overflow-wrap:anywhere}
+label.pflicht-quelle.gesperrt{color:var(--gedaempft);cursor:default}
+label.pflicht-quelle input{width:16px;height:16px;margin:0 4px 0 0;vertical-align:-3px}
+#pflicht-stand:empty{display:none}
+#pflicht-stand h3{font-size:14px;margin:12px 0 4px}
+
+/* Rückfrage: in jeder Ansicht, über allem anderen */
+#rueckfrage-ebene{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;z-index:50;padding:20px}
+#rueckfrage-ebene[hidden]{display:none}
+#rueckfrage-ebene .rueckfrage{background:var(--flaeche);max-width:720px;width:100%;max-height:86vh;overflow:auto;margin:0;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+#rueckfrage-ebene pre.rohtext{max-height:36vh}
+button#rueckfrage-hinweis{width:100%;border:0;cursor:pointer}
+
+/* Meldung, die einen Wechsel der Ansicht übersteht */
+#hinweis{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(720px,90vw);background:var(--tinte);color:var(--flaeche);border-radius:8px;
+  padding:9px 12px 9px 16px;display:flex;gap:12px;align-items:flex-start;z-index:40;box-shadow:0 6px 22px rgba(0,0,0,.3);font-size:14px}
+#hinweis[hidden]{display:none}
+#hinweis button{background:none;border:0;color:inherit;font-size:18px;line-height:1;padding:0 4px}
+
+@media print{#rand,#rueckfrage-ebene,#hinweis,.auswahlleiste,.ablegen{display:none}}

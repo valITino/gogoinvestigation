@@ -1,0 +1,4 @@
+{
+ "hasWaf": true,
+ "waf": "Cloudflare"
+}

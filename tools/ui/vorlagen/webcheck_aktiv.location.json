@@ -1,0 +1,16 @@
+{
+ "ip": "203.0.113.7",
+ "city": "Amsterdam",
+ "region": "North Holland",
+ "region_code": "NH",
+ "country_name": "Netherlands",
+ "country_code": "NL",
+ "postal": "1012",
+ "latitude": 52.37,
+ "longitude": 4.89,
+ "timezone": "Europe/Amsterdam",
+ "asn": "AS64500",
+ "org": "Beispiel Hosting AG",
+ "currency": "EUR",
+ "languages": "nl-NL"
+}

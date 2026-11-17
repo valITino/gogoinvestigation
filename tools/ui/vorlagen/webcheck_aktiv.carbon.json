@@ -1,0 +1,21 @@
+{
+ "statistics": {
+  "adjustedBytes": 1024.5,
+  "energy": 2e-06,
+  "co2": {
+   "grid": {
+    "grams": 0.0009,
+    "litres": 0.0005
+   },
+   "renewable": {
+    "grams": 0.0007,
+    "litres": 0.0004
+   }
+  }
+ },
+ "cleanerThan": 0.97,
+ "rating": "A+",
+ "green": false,
+ "bytes": 1356,
+ "scanUrl": "https://example.org"
+}

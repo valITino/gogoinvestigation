@@ -80,6 +80,8 @@ class Welt:
         self.aus: set[str] = set()           # Hosts, die gerade «gestört» sind
         self.gestoert: set[str] = set()      # Teile einer Adresse (Host, Pfad, Anfrage), bei denen nur dieser eine Abruf scheitert
         self.gedrosselt: set[str] = set()    # ebenso, aber die Quelle antwortet mit HTTP 429 und bittet, drei Sekunden zu warten
+        # Hosts, die Programme mit einer Prüfseite abweisen (HTTP 403). So antwortete polygon.blockscout.com am 16. und 17.11.2026.
+        self.abgewiesen: set[str] = set()
         self.blockscout_key = "proapi_selbsttest0001"
         self.blockscout_ketten: set[str] = set()     # Ketten, die über den Zugang mit Schlüssel gefragt wurden
         # Ketten, die der kostenlose Schlüssel nicht deckt. So antwortete der echte Dienst am 16.11.2026 für Polygon und Base.
@@ -371,10 +373,12 @@ class Welt:
         null = "-0- "
         sdn = [f'36,"AEROCARIBBEAN AIRLINES",{null},"CUBA",{null},{null},{null},{null},{null},{null},{null},{null}']
         kommentare = []
-        for nr, name, programm, adressen in self.ofac:
+        for eintrag in self.ofac:
+            nr, name, programm, adressen = eintrag[:4]
+            typ = f'"{eintrag[4]}"' if len(eintrag) > 4 else null       # «individual» bei natürlichen Personen, sonst leer (-0-)
             bemerkung = "; ".join(("" if i == 0 else "alt. ") + f"Digital Currency Address - {w} {a}" for i, (w, a) in enumerate(adressen)) + "."
             vorn, hinten = bemerkung[:250], bemerkung[250:]
-            sdn.append(f'{nr},"{name}",{null},"{programm}",{null},{null},{null},{null},{null},{null},{null},"{vorn}"')
+            sdn.append(f'{nr},"{name}",{typ},"{programm}",{null},{null},{null},{null},{null},{null},{null},"{vorn}"')
             if hinten:
                 kommentare.append(f'{nr},"{hinten}"')
         return "\r\n".join(sdn) + "\r\n", "\r\n".join(kommentare) + ("\r\n" if kommentare else "")
@@ -387,6 +391,9 @@ class Welt:
             return httpx.Response(503, text="Service Unavailable")
         if any(teil.lower() in str(anfrage.url).lower() for teil in self.gedrosselt):
             return httpx.Response(429, text="Too Many Requests", headers={"Retry-After": "3", "x-ratelimit-limit": "5", "x-ratelimit-remaining": "0"})
+        if host in self.abgewiesen:
+            return httpx.Response(403, text='<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head><body></body></html>',
+                                  headers={"content-type": "text/html; charset=UTF-8"})
         if host == "api.blockscout.com":         # Zugang mit Schlüssel: /{chain_id}/api/…, ohne gültigen Schlüssel keine Antwort
             if frage.get("apikey") != [self.blockscout_key]:
                 return _json({"message": "Invalid or missing API key"}, 401)

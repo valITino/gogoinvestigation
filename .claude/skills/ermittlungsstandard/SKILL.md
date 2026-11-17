@@ -15,6 +15,12 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
 4. Günstig vor teuer: zuerst Quellen ohne Kontingent (InternetDB, Wayback, Web-Check passiv), dann die mit Kontingent.
    `shodan_suche` zuerst mit `nur_zaehlen=true`.
 5. Dieselbe Abfrage nicht wiederholen. Das Gateway liefert sie 24 Stunden aus dem Fall-Cache.
+6. **Pflichtquellen.** Nennt `fall_status` unter `pflichtquellen` Quellen, hat der Sachbearbeiter sie vorgegeben. Für jeden
+   deiner Indikatoren aus den Eingangsdokumenten fragst du jede davon, die zu ihm passt, auch wenn dir eine andere
+   Quelle genügt hätte. `pflichtquellen.offen` ist die Arbeitsliste. Der Zweck nennt die Vorgabe und die Fundstelle:
+   «Pflichtquelle laut Vorgabe. IP aus Rapport Ziff. 3: Betreiber?» Schlägt die Abfrage fehl, wiederholst du sie nicht:
+   Sie gilt als gefragt und gehört unter Lücken. Fehlt eine Freigabe oder ein Schlüssel, meldest du das und umgehst es nie.
+   Pivots sind ausgenommen. Eine Suchquelle (4chan, Telegram, Robin) fragst du mindestens einmal, mit einem Begriff aus dem Fall.
 
 ## Ergebnis lesen
 
@@ -31,6 +37,23 @@ Die Werkzeuge `krypto_…` bündeln mehrere Abfragen zu einem Ergebnis. Ihre `pr
 unter `belege` stehen die einzelnen Abfragen dahinter, jede mit eigener Nummer. Für eine einzelne Tatsache
 (eine Zahlung, ein Listeneintrag) kannst du die Abfrage selbst zitieren, für das Gesamtbild die Auswertung.
 `quellenstand` sagt je Quelle, ob sie geprüft werden konnte.
+
+`ip_einordnung` und `urlscan_ergebnis` bündeln ebenso. `ip_einordnung` rufst du für jede IP-Adresse eines Falls auf,
+bevor du etwas über ihren Anschluss sagst. Sein Wert zum Anonymisierungsdienst ist genau einer von drei:
+
+| Wert | Bedeutung | Was du schreibst |
+|---|---|---|
+| `ja` | Mindestens eine Quelle führt die Adresse als Ausgang eines VPN, Proxys, des Tor-Netzes oder als Residential Proxy. | Dienst und Art, wie die Quelle sie nennt. Sind die Quellen uneinig, sagst du das. Ansatzpunkt ist zuerst der Betreiber des Dienstes. |
+| `kein Hinweis` | Mindestens eine Quelle hat geantwortet, keine führt die Adresse. | «Kein Hinweis auf einen Anonymisierungsdienst». Nie «kein VPN», nie «nein»: Die Quellen erkennen Residential Proxies nur lückenhaft. |
+| `nicht geprüft` | Keine Quelle eingerichtet, oder keine hat geantwortet. | «Nicht geprüft», mit Grund. Die Abklärung lässt sich nachholen. |
+
+Die Auskunft gilt für den Abfragezeitpunkt. Die Tat lag früher: Nenne beide Zeiten und was die Quellen zur Tatzeit
+sagen. Hinter einem Privat- oder Mobilfunkanschluss, den eine Quelle als Proxy führt, steht voraussichtlich ein
+Unbeteiligter.
+
+Eine Abklärung, die der Sachbearbeiter von Hand gemacht hat, erfasst er selbst am Terminal (`tools/beleg.py`). Sie
+trägt eine Nummer `X-…`, ist als «von Hand erfasst» gekennzeichnet und zählt für die Einordnung einer IP wie eine
+weitere Stimme. Du erfasst keine Belege und bittest auch nicht darum, es an deiner Stelle zu tun: Du meldest, was fehlt.
 
 Belegnummern: Abfragen des Gateways tragen `P-0001` und folgende (Feld `protokoll_id`). Antworten anderer
 Werkzeuge wie Robin sichert der Sitzungs-Hook, sie tragen `X-0001` und folgende. Die Nummer wird dir nach dem
@@ -106,12 +129,17 @@ kennzeichnest sie mit `Z` (2026-09-28T10:15:00Z). Die Umrechnung in Ortszeit mac
 ## Grenzen jeder Zuordnung
 
 - Eine IP hinter VPN, Proxy, Tor oder Mobilfunk-NAT führt nicht zu einem Anschluss.
+- Auch eine IP ohne Hinweis auf einen Anonymisierungsdienst führt nicht sicher zum Nutzer: Über das Gerät eines
+  Unbeteiligten kann ein Residential Proxy laufen, den keine Quelle kennt. Der Anschlussinhaber ist nie der Täter,
+  nur weil die Verbindung von seinem Anschluss kam.
 - Hosting-IPs wechseln den Kunden. Was heute dort läuft, lief vor einem Monat vielleicht nicht.
 - Ein Benutzername auf zwei Plattformen ist ein Hinweis auf dieselbe Person, kein Nachweis.
 - Dass ein Indikator bei einer Quelle fehlt, heisst nur, dass diese Quelle ihn nicht kennt.
 - Eine Wallet-Adresse gehört niemandem erkennbar. Den Inhaber kennt nur ein Dienst, bei dem er Kunde ist.
   Wer eine Adresse kontrolliert, kann zudem wechseln (Verkauf, Weitergabe des Schlüssels).
 - Über Sammeladressen von Börsen, Mischdienste und Tauschprogramme hinweg lässt sich Geld nicht belastbar zuordnen.
+- Etiketten aus einer lokalen Liste (GraphSense TagPacks) geben den Stand ihres Datums wieder. Eine Adresse kann
+  seither den Besitzer gewechselt haben.
 
 ## Befundmeldung
 
@@ -141,6 +169,9 @@ Beziehungen
 
 Zeitpunkte
 - 2026-09-26T07:41:00Z: <Ereignis>. Beleg: P-0011.
+
+Pflichtquellen (nur wenn der Sachbearbeiter welche vorgegeben hat)
+- <Quelle>: abgefragt für I-03 (P-0007) und I-04 (P-0011). Nicht möglich für I-05: <Grund> (P-0012).
 
 Pivot-Vorschläge (nicht selbst ausgeführt)
 - <neuer Indikator>, gefunden in P-0009, Verbindung: <wie>. Vorschlag: <welche Abfrage, warum>.

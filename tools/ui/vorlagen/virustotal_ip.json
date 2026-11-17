@@ -1,0 +1,482 @@
+{
+ "data": {
+  "id": "8.8.8.8",
+  "type": "ip_address",
+  "links": {
+   "self": "https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8"
+  },
+  "attributes": {
+   "country": "US",
+   "total_votes": {
+    "harmless": 300,
+    "malicious": 60
+   },
+   "tags": [
+    "suspicious-udp"
+   ],
+   "whois_date": 1793880899,
+   "rdap": {
+    "object_class_name": "ip network",
+    "handle": "NET-8-8-8-0-2",
+    "start_address": "8.8.8.0",
+    "end_address": "8.8.8.255",
+    "ip_version": "v4",
+    "name": "GOGL",
+    "type": "DIRECT ALLOCATION",
+    "parent_handle": "NET-8-0-0-0-0",
+    "status": [
+     "active"
+    ],
+    "links": [
+     {
+      "href": "https://rdap.arin.net/registry/ip/8.8.8.0",
+      "rel": "self",
+      "type": "application/rdap+json",
+      "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+      "title": "",
+      "media": "",
+      "href_lang": []
+     },
+     {
+      "href": "https://whois.arin.net/rest/net/NET-8-8-8-0-2",
+      "rel": "alternate",
+      "type": "application/xml",
+      "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+      "title": "",
+      "media": "",
+      "href_lang": []
+     }
+    ],
+    "notices": [
+     {
+      "title": "Terms of Service",
+      "description": [
+       "By using the ARIN RDAP/Whois service, you are agreeing to the RDAP/Whois Terms of Use"
+      ],
+      "links": [
+       {
+        "href": "https://www.arin.net/resources/registry/whois/tou/",
+        "rel": "terms-of-service",
+        "type": "text/html",
+        "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+        "title": "",
+        "media": "",
+        "href_lang": []
+       }
+      ],
+      "type": ""
+     },
+     {
+      "title": "Whois Inaccuracy Reporting",
+      "description": [
+       "If you see inaccuracies in the results, please visit: "
+      ],
+      "links": [
+       {
+        "href": "https://www.arin.net/resources/registry/whois/inaccuracy_reporting/",
+        "rel": "inaccuracy-report",
+        "type": "text/html",
+        "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+        "title": "",
+        "media": "",
+        "href_lang": []
+       }
+      ],
+      "type": ""
+     }
+    ],
+    "events": [
+     {
+      "event_action": "last changed",
+      "event_date": "2023-12-28T17:24:56-05:00",
+      "event_actor": "",
+      "links": []
+     },
+     {
+      "event_action": "registration",
+      "event_date": "2023-12-28T17:24:33-05:00",
+      "event_actor": "",
+      "links": []
+     }
+    ],
+    "rdap_conformance": [
+     "nro_rdap_profile_0",
+     "rdap_level_0"
+    ],
+    "entities": [
+     {
+      "object_class_name": "entity",
+      "handle": "GOGL",
+      "vcard_array": [
+       {
+        "name": "version",
+        "type": "text",
+        "values": [
+         "4.0"
+        ],
+        "parameters": {}
+       },
+       {
+        "name": "fn",
+        "type": "text",
+        "values": [
+         "Google LLC"
+        ],
+        "parameters": {}
+       }
+      ],
+      "roles": [
+       "registrant"
+      ],
+      "entities": [
+       {
+        "object_class_name": "entity",
+        "handle": "ABUSE5250-ARIN",
+        "vcard_array": [
+         {
+          "name": "version",
+          "type": "text",
+          "values": [
+           "4.0"
+          ],
+          "parameters": {}
+         },
+         {
+          "name": "adr",
+          "parameters": {
+           "label": [
+            "1600 Amphitheatre Parkway\nMountain View\nCA\n94043\nUnited States"
+           ]
+          },
+          "type": "text",
+          "values": [
+           "",
+           ""
+          ]
+         }
+        ],
+        "roles": [
+         "abuse"
+        ],
+        "remarks": [
+         {
+          "title": "Registration Comments",
+          "description": [
+           "Please note that the recommended way to file abuse complaints are located in the following links.",
+           ""
+          ],
+          "links": [],
+          "type": ""
+         }
+        ],
+        "links": [
+         {
+          "href": "https://rdap.arin.net/registry/entity/ABUSE5250-ARIN",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+          "title": "",
+          "media": "",
+          "href_lang": []
+         },
+         {
+          "href": "https://whois.arin.net/rest/poc/ABUSE5250-ARIN",
+          "rel": "alternate",
+          "type": "application/xml",
+          "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+          "title": "",
+          "media": "",
+          "href_lang": []
+         }
+        ],
+        "events": [
+         {
+          "event_action": "last changed",
+          "event_date": "2026-08-19T14:34:18-04:00",
+          "event_actor": "",
+          "links": []
+         },
+         {
+          "event_action": "registration",
+          "event_date": "2015-11-06T15:36:35-05:00",
+          "event_actor": "",
+          "links": []
+         }
+        ],
+        "status": [
+         "validated"
+        ],
+        "port43": "whois.arin.net",
+        "public_ids": [],
+        "entities": [],
+        "as_event_actor": [],
+        "networks": [],
+        "autnums": [],
+        "url": "",
+        "lang": "",
+        "rdap_conformance": []
+       },
+       {
+        "object_class_name": "entity",
+        "handle": "ZG39-ARIN",
+        "vcard_array": [
+         {
+          "name": "version",
+          "type": "text",
+          "values": [
+           "4.0"
+          ],
+          "parameters": {}
+         },
+         {
+          "name": "adr",
+          "parameters": {
+           "label": [
+            "1600 Amphitheatre Parkway\nMountain View\nCA\n94043\nUnited States"
+           ]
+          },
+          "type": "text",
+          "values": [
+           "",
+           ""
+          ]
+         }
+        ],
+        "roles": [
+         "technical",
+         "administrative"
+        ],
+        "links": [
+         {
+          "href": "https://rdap.arin.net/registry/entity/ZG39-ARIN",
+          "rel": "self",
+          "type": "application/rdap+json",
+          "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+          "title": "",
+          "media": "",
+          "href_lang": []
+         },
+         {
+          "href": "https://whois.arin.net/rest/poc/ZG39-ARIN",
+          "rel": "alternate",
+          "type": "application/xml",
+          "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+          "title": "",
+          "media": "",
+          "href_lang": []
+         }
+        ],
+        "events": [
+         {
+          "event_action": "last changed",
+          "event_date": "2026-11-10T07:16:42-05:00",
+          "event_actor": "",
+          "links": []
+         },
+         {
+          "event_action": "registration",
+          "event_date": "2000-11-30T13:54:08-05:00",
+          "event_actor": "",
+          "links": []
+         }
+        ],
+        "status": [
+         "validated"
+        ],
+        "port43": "whois.arin.net",
+        "public_ids": [],
+        "entities": [],
+        "remarks": [],
+        "as_event_actor": [],
+        "networks": [],
+        "autnums": [],
+        "url": "",
+        "lang": "",
+        "rdap_conformance": []
+       }
+      ],
+      "remarks": [
+       {
+        "title": "Registration Comments",
+        "description": [
+         "Please note that the recommended way to file abuse complaints are located in the following links. ",
+         ""
+        ],
+        "links": [],
+        "type": ""
+       }
+      ],
+      "links": [
+       {
+        "href": "https://rdap.arin.net/registry/entity/GOGL",
+        "rel": "self",
+        "type": "application/rdap+json",
+        "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+        "title": "",
+        "media": "",
+        "href_lang": []
+       },
+       {
+        "href": "https://whois.arin.net/rest/org/GOGL",
+        "rel": "alternate",
+        "type": "application/xml",
+        "value": "https://rdap.arin.net/registry/ip/8.8.8.8",
+        "title": "",
+        "media": "",
+        "href_lang": []
+       }
+      ],
+      "events": [
+       {
+        "event_action": "last changed",
+        "event_date": "2019-10-31T15:45:45-04:00",
+        "event_actor": "",
+        "links": []
+       },
+       {
+        "event_action": "registration",
+        "event_date": "2000-03-30T00:00:00-05:00",
+        "event_actor": "",
+        "links": []
+       }
+      ],
+      "port43": "whois.arin.net",
+      "public_ids": [],
+      "as_event_actor": [],
+      "status": [],
+      "networks": [],
+      "autnums": [],
+      "url": "",
+      "lang": "",
+      "rdap_conformance": []
+     }
+    ],
+    "port43": "whois.arin.net",
+    "cidr0_cidrs": [
+     {
+      "v4prefix": "8.8.8.0",
+      "length": 24,
+      "v6prefix": ""
+     }
+    ],
+    "country": "",
+    "arin_originas0_originautnums": [],
+    "remarks": []
+   },
+   "last_analysis_stats": {
+    "malicious": 1,
+    "suspicious": 0,
+    "undetected": 38,
+    "harmless": 53,
+    "timeout": 0
+   },
+   "last_analysis_date": 1794816675,
+   "reputation": 566,
+   "as_owner": "Google LLC",
+   "jarm": "29d3fd00029d29d00042d43d00041d8f924f5255cbc229bc55efa16391dad6",
+   "last_https_certificate_date": 1794816687,
+   "first_seen_date": 1695911274,
+   "regional_internet_registry": "ARIN",
+   "continent": "NA",
+   "last_https_certificate": {
+    "cert_signature": {
+     "signature_algorithm": "sha256RSA",
+     "signature": "7116b405067a08ce341ce6bb532394994e09cbd8fde9942648417c0a163c70de28307dc1e1c9fcacef9446ed622998f55cc0a1aa6c7f2992396ee17d4c4926a2e6cbc306984800f6a88d8191303a212cdd6ca6333916a468a724c682cfd17b43064e74ff6a20e7af788ef5d42d65349e36807b82d9e9018a0bf44d21bee1928277741e778f704c1995f395e97442337023dea5b0951d5efb8ce76bd0e1608e22c379e9f859efd3f15b706585ef9c696cb03dabcb365f78b8d4b3f6ff3b7c002309daa3c2a0c263279324301d70ff19c08aceba3d1210329c84aeb57dc01cbc72bda66c7488256c4992faebe9996d1782fcdd64ffb1b9898e72e2eae88d71431b"
+    },
+    "extensions": {
+     "key_usage": [
+      "digitalSignature",
+      "keyEncipherment"
+     ],
+     "extended_key_usage": [
+      "serverAuth"
+     ],
+     "CA": false,
+     "subject_key_identifier": "284b7879868ba2d11f532b005c3021320061e935",
+     "authority_key_identifier": {
+      "keyid": "de1b1eed7915d43e3724c321bbec34396d42b230"
+     },
+     "ca_information_access": {
+      "CA Issuers": "http://i.pki.goog/wr2.crt"
+     },
+     "subject_alternative_name": [
+      "dns.google",
+      "dns.google.com"
+     ],
+     "certificate_policies": [
+      "2.23.140.1.2.1"
+     ],
+     "crl_distribution_points": [
+      "http://c.pki.goog/wr2/oBFYYahzgVI.crl"
+     ],
+     "1.3.6.1.4.1.11129.2.4.2": "0481f900f70075004c63dc98e59c1dab88f61e8a3ddeae8fab44a3377b5f9b94"
+    },
+    "validity": {
+     "not_after": "2027-01-26 08:29:32",
+     "not_before": "2026-11-03 08:29:33"
+    },
+    "size": 1440,
+    "version": "V3",
+    "public_key": {
+     "algorithm": "RSA",
+     "rsa": {
+      "modulus": "9b54df9e95ec886bf5d44be61d807135faf6f6ad9f96920e775adf393b66308ee827b1e1a89cfbb1ce2fc6c172be33edace9ff63d55d093c98338df331da9b2d9df76ade965dbddf5ef874d1ffd2b3d2d11d44c56eeaed257a8c8300d49d5bc754d9e02d77ef7e9428bb94f04dc5128ea80eaf0369a3cf0f319a0e764865f5bf65f607ba576133400070f928da331e25dfb06e444d868f8ec4ac26ad1786c1a49aa7e6104e9e33ab3935be9809fe18515d2befd606e26cca89a484165ca54fa2a02a8a360c8a87908d7df6fa2f3713f29da618c9e510b099163517e0517c109560f9dd7eb8ad492b2c4fad7f0d476a968a3d05eebbe136cdc43c642777db6883",
+      "exponent": "10001",
+      "key_size": 2048
+     }
+    },
+    "thumbprint_sha256": "eae0983719c088effaf76aeb59a9a5ec8c947f2f7024681576d5414fea79142f",
+    "thumbprint": "97bc39c77fd8149006acee7b81a7423ac41507bf",
+    "serial_number": "ba929751329d3db509db32fe627af6b8",
+    "issuer": {
+     "C": "US",
+     "O": "Google Trust Services",
+     "CN": "WR2"
+    },
+    "subject": {
+     "CN": "dns.google"
+    }
+   },
+   "asn": 15169,
+   "whois": "NetRange: 8.8.8.0 - 8.8.8.255\nCIDR: 8.8.8.0/24\nNetName: GOGL\nNetHandle: NET-8-8-8-0-2\nParent: NET8 (NET-8-0-0-0-0)\nNetType: Direct Allocation\nOriginAS: \nOrganization: Google LLC (GOGL)\nRegDate: 2023-12-28\nUpdated: 2023-12-28\nRef: https://rdap.arin.net/registry/ip/8.8.8.0\nOrgName: Google LLC\nOrgId: GOGL\nAddress: 1600 Amphitheatre Parkway\nCity: Mountain View\nStateProv: CA\nPostalCode: 94043\nCountry: US\nRegDate: 2000-03-30\nUpdated: 2019-10-31\nComment: Please note that the recommended way to file abuse complaints are located in the following links. \nComment: \nComment: To report abuse and illegal ac … (für die Vorlage gekürzt)",
+   "crowdsourced_context": [
+    {
+     "details": "Observed in an Android Debug Bridge honeypot command captured by Synthient Helios; used as part of ADB exploitation.",
+     "severity": "high",
+     "timestamp": 1793426937,
+     "title": "ADB.Exploitation",
+     "source": "Synthient"
+    },
+    {
+     "timestamp": 1694383565,
+     "details": "AsyncRAT botnet C2 server (confidence level: 100%)",
+     "title": "ThreatFox IOCs for 2023-09-10",
+     "severity": "medium",
+     "source": "ArcSight Threat Intelligence"
+    }
+   ],
+   "last_analysis_results": {
+    "Acronis": {
+     "method": "blacklist",
+     "engine_name": "Acronis",
+     "category": "harmless",
+     "result": "clean"
+    },
+    "0xSI_f33d": {
+     "method": "blacklist",
+     "engine_name": "0xSI_f33d",
+     "category": "undetected",
+     "result": "unrated"
+    },
+    "Abusix": {
+     "method": "blacklist",
+     "engine_name": "Abusix",
+     "category": "harmless",
+     "result": "clean"
+    }
+   },
+   "last_modification_date": 1794823935,
+   "network": "8.8.8.0/24"
+  }
+ }
+}

@@ -1,0 +1,85 @@
+{
+ "werkzeug": "krypto_adresse",
+ "parameter": {
+  "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "kette": "bitcoin"
+ },
+ "grundlage": [
+  "P-0076",
+  "P-0077",
+  "P-0078",
+  "P-0079",
+  "P-0080",
+  "P-0081",
+  "P-0082",
+  "P-0083"
+ ],
+ "befund": {
+  "adresse": "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L",
+  "kette": "bitcoin",
+  "guthaben": {
+   "betrag": "0",
+   "einheit": "BTC"
+  },
+  "erhalten": "0.5",
+  "ausgegeben": "0.5",
+  "transaktionen": 2,
+  "zahlungseingaenge": 1,
+  "davon_ausgegeben": 1,
+  "letzte_bewegung": "2026-10-03T21:05:00Z",
+  "erste_bewegung": "2026-10-03T13:42:00Z",
+  "etiketten": [
+   {
+    "quelle": "Ransomwhere",
+    "art": "ransomware",
+    "name": "MusterLocker",
+    "detail": "1 erfasste Zahlung(en), im Datensatz seit 2021-07-08",
+    "beleg": "P-0081"
+   },
+   {
+    "quelle": "WalletExplorer",
+    "art": "hinweis",
+    "name": "Unbenannte Wallet",
+    "detail": "gehört zur Wallet 008f8ef05279fff2, der WalletExplorer keinen Namen gibt",
+    "beleg": "P-0083"
+   }
+  ],
+  "auffaellig": [
+   "ransomware"
+  ],
+  "quellenstand": {
+   "OFAC": {
+    "ergebnis": "ok",
+    "beleg": "P-0078",
+    "adressen_in_liste": 3
+   },
+   "GraphSense TagPacks": {
+    "ergebnis": "ok",
+    "beleg": "P-0080",
+    "hinweis": "Die Massenlisten (481322 Adressen: Reserve-Adressen der Börse BitMEX, Adressen aus Erpresser-Spam, Mining-Adressen, CoinJoin-Adressen von Samourai) sind nicht geladen. Nachholen: python3 tools/listen.py laden",
+    "stand": "83754852bd65",
+    "datum": "2026-11-05",
+    "umfang": "Kern",
+    "eintraege": 31718,
+    "sha256": "4f60077149157b3a6701b95ce17f2f9c86cdb455025493e075041350e060db9b"
+   },
+   "Ransomwhere": {
+    "ergebnis": "ok",
+    "beleg": "P-0081",
+    "adressen_in_liste": 1
+   },
+   "TRM Labs": {
+    "ergebnis": "ok",
+    "beleg": "P-0082"
+   },
+   "WalletExplorer": {
+    "ergebnis": "ok",
+    "beleg": "P-0083"
+   },
+   "Iknaio": {
+    "ergebnis": "aus",
+    "hinweis": "IKNAIO_API_KEY fehlt."
+   }
+  }
+ }
+}

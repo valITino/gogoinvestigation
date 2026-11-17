@@ -15,7 +15,14 @@ Der Rapport wird nur erzeugt, wenn jede Aussage belegt ist. Geprüft wird unter 
   - Sicherheit 'hoch' stützt sich auf mindestens zwei verschiedene Quellen. Bei einer Auswertung des Gateways
     (Geldfluss, Zuordnung) zählen die Quellen, aus denen ihre Tatsachen stammen.
   - Ein Geldfluss-Diagramm verweist auf eine Auswertung von krypto_geldfluss in der Fallakte.
+  - Jede IP-Adresse trägt den Wert, ob sie der Ausgang eines Anonymisierungsdienstes ist: «ja», «kein Hinweis» oder
+    «nicht geprüft». Der Wert muss zu dem passen, was ip_einordnung oder eine von Hand erfasste Abklärung in der
+    Fallakte ergeben hat. Eine Empfehlung an einen Zugangsanbieter nennt die betroffene IP und bekommt den Vorbehalt,
+    der zum Wert gehört.
   - Jeder Befund hat eine Erklärung in einfachen Worten und ist gegengeprüft.
+  - Hat der Sachbearbeiter Pflichtquellen vorgegeben, wurde jede für jeden passenden Indikator aus den Eingangsdokumenten
+    abgefragt. Ein Fehlschlag zählt als gefragt und steht im Rapport. Nie gefragt ist ein Mangel, und was das Gateway
+    abgelehnt hat, ist nie gefragt.
   - Das Abfrageprotokoll ist unverändert (Hash-Kette).
 Rückgabewert 0: erzeugt. 1: Mängel, nichts erzeugt. 2: Fall oder befunde.json fehlt.
 """
@@ -33,14 +40,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gateway import plattform  # noqa: E402
+from gateway import pflichtquellen, plattform  # noqa: E402
 
 if __name__ == "__main__":
     plattform.start()
 
-from gateway.akte import FREIGABE_TEXT, FREIGABEN, belege_lesen, fall_daten, fall_pfad, freigabe_erteilt, kette_pruefen  # noqa: E402
-from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, esc, geldfluss, graf, graf_legende,  # noqa: E402
-                         kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
+from gateway.akte import (FREIGABE_TEXT, FREIGABEN, IP_VORBEHALT, IP_WERTE, VON_HAND, belege_lesen, fall_daten, fall_pfad,  # noqa: E402
+                          freigabe_erteilt, kette_pruefen)
+from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, csv_sicher, esc, geldfluss, graf,  # noqa: E402
+                         graf_legende, kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
 
 try:
     ZONE = plattform.zeitzone()
@@ -62,10 +70,105 @@ PRUEFUNG = {"bestaetigt": ("✓ Gegenprüfung: bestätigt", "var(--gut)"),
 BRAUCHBAR = ("ok", "kein_treffer")
 
 
+# --------------------------------------------------------------------------- Einordnung der IP-Adressen
+
+ZUGANG = re.compile(r"zugangsanbieter|access[- ]?provider|internet[- ]?anbieter|anschlussinhaber|fernmeldedienst", re.I)
+
+
+def _einmal(werte: list) -> list:
+    return list(dict.fromkeys(w for w in werte if w))
+
+
+def ip_stand(ip: str, protokoll: dict[str, dict], pfad: Path | None) -> dict:
+    """Was die Fallakte zur Frage sagt, ob eine IP der Ausgang eines Anonymisierungsdienstes ist (VPN, Proxy, Tor,
+    Residential Proxy). Gelesen werden die Rohdateien aller Auswertungen von ip_einordnung und aller von Hand erfassten
+    Abklärungen zu dieser Adresse. Nichts davon stammt aus befunde.json.
+
+    Führt eine Stimme die Adresse, heisst der Wert «ja», auch wenn eine andere sie nicht führt (dann mit Vermerk
+    «Quellen uneinig»). «kein Hinweis» ist kein «nein». Ohne verwertbare Stimme: «nicht geprüft»."""
+    stimmen: list[dict] = []
+    for e in protokoll.values():
+        if e.get("ziel") != ip or e.get("ergebnis") != "ok":
+            continue
+        gateway = e.get("art") == "auswertung" and e.get("werkzeug") == "ip_einordnung"
+        if not gateway and not (e.get("art") == "von_hand" and e.get("werkzeug") == VON_HAND):
+            continue
+        try:
+            roh = json.loads((pfad / e["antwort"]["rohdaten"]).read_text(encoding="utf-8"))  # type: ignore[operator]
+        except (KeyError, OSError, ValueError, TypeError):
+            stimmen.append({"beleg": e["id"], "wert": None, "von_hand": not gateway})
+            continue
+        if gateway:
+            b = roh.get("befund") or {}
+            a = b.get("anonymisierung") or {}
+            stimmen.append({"beleg": e["id"], "von_hand": False, "wert": a.get("wert"), "vermerk": a.get("vermerk"),
+                            "residential": bool(a.get("residential")), "dienste": a.get("dienste") or [], "arten": a.get("arten") or [],
+                            "quellen": a.get("geantwortet") or [], "abfragezeit": b.get("abfragezeit"), "tatzeit": b.get("tatzeit"),
+                            "netz": b.get("netz") or {}, "anschlussart": b.get("anschlussart") or [], "erklaerung": b.get("erklaerung")})
+        else:
+            a = roh.get("anonymisierung") or {}
+            stimmen.append({"beleg": e["id"], "von_hand": True, "wert": a.get("wert"), "residential": bool(a.get("residential")),
+                            "dienste": [a["dienst"]] if a.get("dienst") else [], "arten": [a["art"]] if a.get("art") else [],
+                            "quellen": [f"{roh.get('quelle')} (von Hand erfasst)"], "abfragezeit": roh.get("abgeklaert_am"),
+                            "tatzeit": roh.get("tatzeit"), "durch": roh.get("erfasst_durch"), "wortlaut": roh.get("wortlaut")})
+    werte = [s.get("wert") for s in stimmen]
+    wert = "ja" if "ja" in werte else "kein Hinweis" if "kein Hinweis" in werte else "nicht geprüft"
+    ja = [s for s in stimmen if s.get("wert") == "ja"]
+    uneinig = bool(ja) and ("kein Hinweis" in werte or any(s.get("vermerk") for s in ja))
+    return {"wert": wert, "vermerk": "Quellen uneinig" if uneinig else None, "stimmen": stimmen,
+            "belege": [s["beleg"] for s in stimmen], "unlesbar": [s["beleg"] for s in stimmen if s.get("wert") not in IP_WERTE],
+            "residential": any(s.get("residential") for s in ja), "dienste": _einmal([d for s in ja for d in s.get("dienste") or []]),
+            "arten": _einmal([x for s in ja for x in s.get("arten") or []]),
+            "quellen": _einmal([q for s in (ja or stimmen) if s.get("wert") in ("ja", "kein Hinweis") for q in s.get("quellen") or []])}
+
+
+def ip_vorbehalt(ip: str, stand: dict, an_zugang: bool) -> str | None:
+    """Der Satz, den der Rapport zu einer Empfehlung setzt, die eine IP betrifft. Fester Wortlaut je Wert, damit er nie fehlt
+    und nie abgeschwächt wird. Eine Person nennt er nie: Eine IP-Adresse identifiziert niemanden."""
+    if stand["wert"] == "ja":
+        wer = ", ".join(stand["quellen"]) or "den befragten Quellen"
+        if "Tor" in stand["arten"]:
+            t = (f"Zu {ip}: Die Adresse ist laut {wer} ein Ausgang des Tor-Netzes. Ein Begehren an den Netzbetreiber oder an den "
+                 "Betreiber des Ausgangs führt nicht zum Nutzer: Der Ausgang kennt die Herkunft der Verbindungen nicht.")
+        else:
+            dienst = ", ".join(stand["dienste"]) or "von den Quellen nicht benannt"
+            art = f" ({', '.join(stand['arten'])})" if stand["arten"] else ""
+            t = (f"Zu {ip}: Die Adresse ist laut {wer} der Ausgang eines Anonymisierungsdienstes{art}. Zuerst ist der Betreiber des "
+                 f"Dienstes anzugehen ({dienst}): Nur er kann wissen, wer zur Tatzeit über die Adresse kam. Der Netzbetreiber oder "
+                 "Zugangsanbieter nennt nur den Kunden, dem die Adresse zugeteilt ist.")
+        if stand["residential"]:
+            t += (" Bei einem Residential Proxy läuft der Dienst über das Gerät eines Anschlussinhabers, der davon in der Regel "
+                  "nichts weiss. Er ist voraussichtlich unbeteiligt.")
+        if stand["vermerk"]:
+            t += " Die Quellen sind uneinig."
+        return t
+    if stand["wert"] == "nicht geprüft":
+        return (f"Zu {ip}: Ob die Adresse zu einem Anonymisierungsdienst gehört, ist nicht geprüft. {IP_VORBEHALT} Die Abklärung vor "
+                "einem Begehren nachholen: mit dem Werkzeug ip_einordnung, oder von Hand und als Beleg erfasst (tools/beleg.py).")
+    if an_zugang:
+        return (f"Zu {ip}: Kein Hinweis auf einen Anonymisierungsdienst (befragt: {', '.join(stand['quellen']) or '–'}). "
+                f"Das ist kein «nein». {IP_VORBEHALT}")
+    return None
+
+
+def empfehlung_ips(e: dict, indikatoren: dict) -> list[dict]:
+    """Die IP-Indikatoren, die eine Empfehlung betrifft: unter 'indikatoren' genannt oder im Text ausgeschrieben."""
+    text = str(e.get("text") or "")
+    genannt = [indikatoren[i] for i in e.get("indikatoren") or [] if i in indikatoren and indikatoren[i].get("typ") == "ip"]
+    im_text = [i for i in indikatoren.values() if i.get("typ") == "ip" and i.get("wert")
+               and re.search(rf"(?<![\d.]){re.escape(str(i['wert']))}(?![\d])", text)]
+    return list({i.get("id"): i for i in genannt + im_text}.values())
+
+
+def an_zugangsanbieter(e: dict) -> bool:
+    return e.get("adressat") == "zugangsanbieter" or bool(ZUGANG.search(str(e.get("text") or "")))
+
+
 # --------------------------------------------------------------------------- Prüfung
 
-def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[str], list[str]]:
-    """Gibt (Mängel, Hinweise) zurück. Mängel verhindern den Rapport."""
+def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | None = None) -> tuple[list[str], list[str]]:
+    """Gibt (Mängel, Hinweise) zurück. Mängel verhindern den Rapport. ``pfad`` ist der Ordner der Fallakte: Von dort
+    kommen die Rohdateien, aus denen die Einordnung der IP-Adressen gelesen wird."""
     maengel: list[str] = []
     hinweise: list[str] = []
     indikatoren = {i.get("id"): i for i in b.get("indikatoren") or []}
@@ -103,6 +206,25 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
         belege_pruefen(wo, i.get("belege"))
         if i.get("bewertung") in ("boesartig", "verdaechtig") and not i.get("belege"):
             maengel.append(f"{wo}: Bewertung '{i.get('bewertung')}' ohne Beleg.")
+        if i.get("typ") == "ip" and i.get("wert"):
+            # Hinter einer IP kann ein Unbeteiligter stehen. Deshalb trägt jede IP den Wert, und er stammt aus der Fallakte
+            stand = ip_stand(str(i["wert"]), protokoll, pfad)
+            a = i.get("anonymisierung") if isinstance(i.get("anonymisierung"), dict) else {}
+            woher = ", ".join(stand["belege"]) or "keine Einordnung in der Fallakte"
+            if a.get("wert") not in IP_WERTE:
+                maengel.append(f"{wo}: 'anonymisierung.wert' fehlt. Jede IP-Adresse trägt genau einen von: {', '.join(IP_WERTE)}. "
+                               f"Der Wert kommt aus dem Werkzeug ip_einordnung oder aus einer von Hand erfassten Abklärung (laut Fallakte: «{stand['wert']}», {woher}).")
+            elif a["wert"] != stand["wert"]:
+                maengel.append(f"{wo}: 'anonymisierung.wert' ist «{a['wert']}», die Fallakte ergibt «{stand['wert']}» ({woher}). "
+                               "Der Wert wird aus dem Ergebnis übernommen, nie aus der Erinnerung. «kein Hinweis» ist kein «nein».")
+            for pid in a.get("belege") or []:
+                if pid not in stand["belege"]:
+                    maengel.append(f"{wo}: 'anonymisierung.belege' nennt {pid}. Das ist keine Einordnung dieser IP "
+                                   "(Auswertung von ip_einordnung oder von Hand erfasste Abklärung).")
+            if stand["belege"] and not a.get("belege"):
+                maengel.append(f"{wo}: 'anonymisierung.belege' fehlt. In der Fallakte liegt dazu: {woher}.")
+            for pid in stand["unlesbar"]:
+                maengel.append(f"{wo}: Die Einordnung {pid} liegt nicht lesbar in der Fallakte.")
 
     for f in befunde:
         wo = f"Befund {f.get('id')}"
@@ -124,6 +246,12 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
                            f"(vorhanden: {', '.join(sorted(q for q in quellen if q)) or 'keine'}). Sonst 'mittel'.")
         if art == "hypothese" and f.get("sicherheit") == "hoch":
             maengel.append(f"{wo}: Eine Hypothese kann nicht Sicherheit 'hoch' haben.")
+        if f.get("sicherheit") == "hoch" and any((protokoll.get(pid) or {}).get("werkzeug") == "krypto_geldfluss"
+                                                 and (protokoll.get(pid) or {}).get("art") == "auswertung" for pid in f.get("belege") or []):
+            # Zwei Explorer bestätigen die einzelnen Zahlungen. Welcher Teil eines Betrags über mehrere Stationen wohin ging, ist
+            # trotzdem eine Zuordnung nach einem Verfahren, keine Beobachtung.
+            maengel.append(f"{wo}: stützt sich auf einen Geldfluss über mehrere Stationen. Diese Zuordnung ist eine Bewertung nach einem "
+                           "Verfahren und höchstens 'mittel'. Eine einzelne Zahlung belegt krypto_transaktion, dann ist 'hoch' möglich.")
         for iid in f.get("indikatoren") or []:
             if iid not in indikatoren:
                 maengel.append(f"{wo}: verweist auf unbekannten Indikator {iid}.")
@@ -173,8 +301,20 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
         for bid in g.get("befunde") or []:
             if bid not in {f.get("id") for f in befunde}:
                 maengel.append(f"{wo}: verweist auf unbekannten Befund {bid}.")
+    for n, e in enumerate(b.get("empfehlungen") or [], 1):
+        wo = f"Empfehlung {n}"
+        for iid in e.get("indikatoren") or []:
+            if iid not in indikatoren:
+                maengel.append(f"{wo}: verweist auf unbekannten Indikator {iid}.")
+        if an_zugangsanbieter(e) and not empfehlung_ips(e, indikatoren):
+            maengel.append(f"{wo}: richtet sich an einen Zugangsanbieter, nennt aber keine IP-Adresse des Falls. Unter 'indikatoren' "
+                           "die betroffene IP angeben. Der Rapport setzt dann den Vorbehalt dazu, der zu ihrer Einordnung gehört.")
     if not b.get("luecken"):
         hinweise.append("'luecken' ist leer. Wirklich alles geklärt? Offene Punkte und Grenzen gehören in den Rapport.")
+    if pfad is not None:        # was der Sachbearbeiter vorgegeben hat, muss gefragt worden sein: laut Protokoll, nicht laut Rapport
+        pflicht = pflicht_stand(pfad, b, list(protokoll.values()))
+        maengel.extend(pflichtquellen.maengel(pflicht))
+        hinweise.extend(pflichtquellen.hinweise(pflicht))
     genutzt = verwendete_belege(b, protokoll)
     ungenutzt = [p for p, e in protokoll.items() if p not in genutzt and e.get("ergebnis") in BRAUCHBAR
                  and not (e.get("antwort") or {}).get("aus_cache")]
@@ -182,6 +322,19 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool) -> tuple[list[st
         hinweise.append(f"{len(ungenutzt)} Abfrage(n) tauchen im Rapport nicht auf: {', '.join(ungenutzt[:12])}"
                         f"{' …' if len(ungenutzt) > 12 else ''}. Auch Abfragen ohne Treffer sind ein Ergebnis.")
     return maengel, hinweise
+
+
+def pflicht_stand(pfad: Path, b: dict, eintraege: list[dict], fall: dict | None = None) -> dict | None:
+    """Der Stand der Pflichtquellen eines Falls, oder None ohne Vorgabe. Die Vorgabe steht in fall.json. Die Indikatoren kommen aus
+    der Extraktion und aus befunde.json zusammen: So fällt keiner aus der Pflicht, weil er im Rapport fehlt."""
+    if fall is None:
+        try:
+            fall = json.loads((pfad / "fall.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    if not pflichtquellen.vorgabe(fall):
+        return None
+    return pflichtquellen.stand(fall, pflichtquellen.indikatoren_laden(pfad, b), eintraege, pfad)
 
 
 def verwendete_belege(b: dict, protokoll: dict[str, dict] | None = None) -> set[str]:
@@ -303,7 +456,7 @@ def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
                  '<th class="zahl">Anteil</th><th>Begründung</th></tr>')
         for x in enden[:30]:
             farbe = FLUSS_KLASSEN[_FLUSS_ART.get(x.get("art"), "offen")][1]
-            wer = f"{x['station']} · <span class='mono'>{esc(kurz_adresse(str(x.get('adresse', ''))))}</span>" if x.get("station") else "–"
+            wer = f"{esc(str(x['station']))} · <span class='mono'>{esc(kurz_adresse(str(x.get('adresse', ''))))}</span>" if x.get("station") else "–"
             h.append(f"<tr><td class='nw'>{marke(x.get('bezeichnung', ''), farbe)}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
                      + f"</td><td class='nw'>{wer}</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td>"
                      f"<td class='zahl nw'>{esc(str(x.get('anteil', '')))} %</td><td class='klein'>{esc(ortszeit(x.get('grund') or ''))}"
@@ -316,7 +469,7 @@ def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
         h.append('<div class="tabelle-breit"><table><tr><th>Nr.</th><th>Adresse</th><th>Rolle</th><th class="zahl">Betrag</th><th>Etiketten und Hinweise</th></tr>')
         for x in stationen[:60]:
             zusatz = ortszeit("; ".join((x.get("etiketten") or []) + (x.get("hinweise") or [])))
-            h.append(f"<tr><td class='nw'>{x.get('nr')}</td><td class='mono'>{esc(str(x.get('adresse', '')))}</td>"
+            h.append(f"<tr><td class='nw'>{esc(str(x.get('nr', '')))}</td><td class='mono'>{esc(str(x.get('adresse', '')))}</td>"
                      f"<td class='nw'>{esc(_FLUSS_WORT.get(x.get('art'), str(x.get('art'))))}" + (f"<div class='klein'>{esc(x['name'])}</div>" if x.get("name") else "")
                      + f"</td><td class='zahl nw'>{esc(zahl_ch(x.get('betrag', '')))} {esc(einheit)}</td><td class='klein'>{esc(zusatz)}</td></tr>")
         h.append("</table></div>")
@@ -328,11 +481,135 @@ def geldfluss_abschnitt(g: dict, protokoll: dict[str, dict], pfad: Path) -> str:
     return "".join(h)
 
 
+STRICH = "<span class='klein'>–</span>"
+IP_MARKE = {"ja": ("ja", "var(--warnung)"), "kein Hinweis": ("kein Hinweis", "var(--neutral)"), "nicht geprüft": ("nicht geprüft", "var(--kritisch)")}
+
+
+def _netz_text(netz: dict) -> str:
+    """Netz in einer Zeile: Präfix, AS, Inhaber, Land, Meldestelle. Nur was die Quellen genannt haben."""
+    inhaber = next((str(netz[f]) for f in ("inhaber", "as_inhaber", "betreiber", "organisation", "netzname")
+                    if netz.get(f) and not str(netz[f]).upper().startswith("ORG-")), "")
+    stelle = netz.get("meldestelle")
+    teile = [netz.get("praefix"), netz.get("as"), inhaber, netz.get("land"),
+             f"Meldestelle {', '.join(stelle) if isinstance(stelle, list) else stelle}" if stelle else None]
+    return " · ".join(str(x) for x in teile if x)
+
+
+def ip_abschnitt(indikatoren: list[dict], protokoll: dict[str, dict], pfad: Path) -> str:
+    """Tabelle «Einordnung der IP-Adressen». Jede Angabe stammt aus den Rohdateien der Auswertungen, nicht aus befunde.json."""
+    ips = [i for i in indikatoren if i.get("typ") == "ip" and i.get("wert")]
+    if not ips:
+        return ""
+    h = ["<h3>Einordnung der IP-Adressen</h3>"
+         "<p class='klein'>Für jede IP-Adresse ist festgehalten, ob sie der Ausgang eines Anonymisierungsdienstes ist (VPN, Proxy, Tor, "
+         "Residential Proxy). «ja» heisst: Mindestens eine Quelle führt die Adresse. «kein Hinweis» heisst: Die befragten Quellen "
+         "führen sie nicht. Das ist kein «nein». «nicht geprüft» heisst: Keine Quelle konnte dazu befragt werden. "
+         f"{esc(IP_VORBEHALT)} Die Auskunft gilt für den Abfragezeitpunkt, nicht ohne Weiteres für die Tatzeit.</p>"
+         '<div class="tabelle-breit"><table><tr><th>Nr.</th><th>IP-Adresse und Netz</th><th>Art des Anschlusses</th>'
+         "<th>Anonymisierungsdienst</th><th>Abfrage und Tatzeit</th><th>Belege</th></tr>"]
+    for i in ips:
+        stand = ip_stand(str(i["wert"]), protokoll, pfad)
+        stimmen = [s for s in stand["stimmen"] if s.get("wert") in IP_WERTE]
+        letzte = next((s for s in reversed(stimmen) if not s["von_hand"]), {})        # Netz und Anschlussart: die jüngste Auswertung
+        text, farbe = IP_MARKE[stand["wert"]]
+        zusatz = []
+        if stand["wert"] == "ja":
+            zusatz.append("; ".join(x for x in (", ".join(stand["arten"]), ("Dienst: " + ", ".join(stand["dienste"])) if stand["dienste"] else "") if x)
+                          or "Art und Dienst von der Quelle nicht benannt")
+            zusatz.append("Laut " + ", ".join(stand["quellen"]))
+            if stand["residential"]:
+                zusatz.append("Privat- oder Mobilfunkanschluss: Inhaber voraussichtlich unbeteiligt")
+        elif stand["wert"] == "kein Hinweis":
+            zusatz.append("Befragt: " + ", ".join(stand["quellen"]))
+        else:
+            zusatz.append("Keine Quelle konnte befragt werden")
+        if stand["vermerk"]:
+            zusatz.append(stand["vermerk"])
+        for s in stimmen:
+            if s["von_hand"]:
+                zusatz.append(f"Von Hand erfasst ({s['beleg']}) durch {s.get('durch') or '?'}")
+        arten = "<br>".join(f"{esc(str(x.get('art')))} <span class='klein'>({esc(str(x.get('quelle')))})</span>" for x in letzte.get("anschlussart") or [])
+        zeiten = "<br>".join(f"{'von Hand, ' if s['von_hand'] else ''}Abfrage {esc(zeit_zeigen(s.get('abfragezeit')) or '–')}"
+                             + (f"<br>Tatzeit {esc(zeit_zeigen(s['tatzeit']))}" if s.get("tatzeit") else "") for s in stimmen[-2:])
+        h.append(f"<tr><td class='nw'><a class='beleg' href='#{esc(i.get('id', ''))}'>{esc(i.get('id', ''))}</a></td>"
+                 f"<td><span class='mono'>{esc(str(i['wert']))}</span><div class='klein'>{esc(_netz_text(letzte.get('netz') or {})) or '–'}</div></td>"
+                 f"<td>{arten or STRICH}</td>"
+                 f"<td>{marke(text, farbe)}<div class='klein'>{esc('. '.join(zusatz))}</div></td>"
+                 f"<td class='klein'>{zeiten or '–'}</td><td>{beleg_links(stand['belege'], protokoll)}</td></tr>")
+        erklaerung = letzte.get("erklaerung") or next((s.get("wortlaut") and f"Von Hand erfasste Abklärung, Wortlaut der Quelle: «{s['wortlaut']}»"
+                                                       for s in stimmen if s["von_hand"]), "")
+        if erklaerung:
+            h.append(f"<tr><td></td><td colspan='5'><div class='einfach'><b>Einfach erklärt:</b> {esc(ortszeit(str(erklaerung)))}</div></td></tr>")
+    h.append("</table></div>")
+    return "".join(h)
+
+
+PFLICHT_MARKE = {"erfuellt": ("✓ abgefragt", "var(--gut)"), "fehlgeschlagen": ("✕ Fehlschlag", "var(--warnung)"),
+                 "offen": ("○ nicht abgefragt", "var(--kritisch)"), "entfaellt": ("– entfällt", "var(--neutral)"),
+                 "wartet": ("… noch nicht fällig", "var(--neutral)"), "unbekannt": ("? unbekannt", "var(--kritisch)")}
+
+
+def pflicht_abschnitt(s: dict | None, protokoll: dict[str, dict]) -> str:
+    """Die Pflichtquellen im Rapport: was der Sachbearbeiter vorgegeben hat und was das Protokoll dazu zeigt."""
+    if not s:
+        return ""
+    wer = f" am {zeit_zeigen(s['am'])}" if s.get("am") else ""
+    wer += f" durch {s['durch']}" if s.get("durch") else ""
+    wer += f", über die {s['weg']}" if s.get("weg") else ""
+    h = [f"<h3>Pflichtquellen</h3><p>Für diesen Fall waren Quellen vorgegeben{esc(wer)}. Jede davon war für jeden Indikator aus den "
+         "Eingangsdokumenten abzufragen, zu dem sie etwas sagen kann. Suchquellen und Quellen für Gruppen und Konten mindestens einmal. "
+         "Die Tabelle zeigt, was das Protokoll dazu enthält.</p>",
+         '<div class="tabelle-breit"><table><tr><th>Quelle</th><th>Fällig für</th><th>Stand</th><th>Belege</th></tr>']
+    for z in s["zeilen"]:
+        text, farbe = PFLICHT_MARKE.get(z["stand"], (z["stand"], None))
+        if z["einmal"]:
+            faellig = "einmal im Fall" if z["faellig"] else "–"
+        else:
+            faellig = " ".join(f'<a class="beleg" href="#{esc(i)}">{esc(i)}</a>' for i in z["faellig"]) or "–"
+        belege = list(dict.fromkeys(b for i in z["faellig"] for b in z["belege"].get(i, [])[:1]))
+        zusatz = []
+        if z["stand"] != "erfuellt" and z["erfuellt"] and not z["einmal"]:
+            zusatz.append(f"abgefragt für {len(z['erfuellt'])} von {len(z['faellig'])}")
+        if z["fehlgeschlagen"] and not z["einmal"]:
+            zusatz.append("Fehlschlag für " + ", ".join(z["fehlgeschlagen"]))
+        if z["offen"] and not z["einmal"]:
+            zusatz.append("nicht abgefragt für " + ", ".join(z["offen"]))
+        if z["grund"]:
+            zusatz.append(z["grund"])
+        h.append(f"<tr><td>{esc(z['quelle'])}</td><td>{faellig}</td><td>{marke(text, farbe)}"
+                 + (f"<div class='klein'>{esc(' · '.join(zusatz))}</div>" if zusatz else "") + "</td>"
+                 f"<td>{beleg_links(belege, protokoll) if belege else STRICH}</td></tr>")
+    h.append("</table></div><p class='klein'>«Abgefragt» heisst: Zu jedem passenden Indikator steht eine Abfrage bei dieser Quelle im Protokoll, "
+             "mit oder ohne Treffer. «Fehlschlag»: Die Quelle wurde gefragt und hat nicht verwertbar geantwortet. «Entfällt»: Der Fall enthält "
+             "keinen Indikator, zu dem die Quelle etwas sagen könnte. Weitere Quellen hat das Team nach eigenem Ermessen gefragt.</p>")
+    return "\n".join(h)
+
+
+def kennzahlen(b: dict, eintraege: list[dict]) -> dict:
+    """Die Zahlen aus Abschnitt 3 des Rapports. Auch die Oberfläche nimmt sie von hier, damit beide nie voneinander abweichen.
+    «Abfragen» sind Anfragen bei Quellen. Auswertungen des Gateways und lokal befragte Listen zählen nicht dazu."""
+    indikatoren = b.get("indikatoren") or []
+    befunde = b.get("befunde") or []
+    abfragen = [e for e in eintraege if e.get("art") not in ("auswertung", "lokal")]
+    return {"indikatoren": len(indikatoren),
+            "bewertung": Counter((i.get("bewertung") or "unbekannt") for i in indikatoren),
+            "abfragen": abfragen,
+            "auswertungen": [e for e in eintraege if e.get("art") == "auswertung"],
+            "listen": [e for e in eintraege if e.get("art") == "lokal"],          # lokal befragte Listen: keine Anfrage nach aussen
+            "quellen": Counter(e.get("quelle") for e in abfragen if e.get("ergebnis") in BRAUCHBAR),
+            "ohne_treffer": sum(1 for e in abfragen if e.get("ergebnis") == "kein_treffer"),
+            "fehlgeschlagen": sum(1 for e in abfragen if e.get("ergebnis") == "fehler"),
+            "abgelehnt": sum(1 for e in abfragen if e.get("ergebnis") == "abgelehnt"),
+            "befunde": len(befunde),
+            "gegengeprueft": sum(1 for f in befunde if f.get("gegenpruefung") in ("bestaetigt", "eingeschraenkt"))}
+
+
 def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand: dict,
           maengel: list[str], hinweise: list[str], entwurf: bool) -> str:
     protokoll = {e["id"]: e for e in eintraege}
     indikatoren = b.get("indikatoren") or []
     befunde = b.get("befunde") or []
+    pflicht = pflicht_stand(fall_pfad(fall_id), b, eintraege, fall)       # vor dem Zählen: Dafür braucht es auch die Auswertungen
     h: list[str] = []
 
     # ---- Kopf
@@ -374,16 +651,13 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
         h.append("</table>")
 
     # ---- 3 Überblick in Zahlen
-    zaehler = Counter((i.get("bewertung") or "unbekannt") for i in indikatoren)
-    auswertungen = [e for e in eintraege if e.get("art") == "auswertung"]
-    eintraege = [e for e in eintraege if e.get("art") != "auswertung"]       # ab hier: nur Abfragen bei Quellen
-    quellen = Counter(e.get("quelle") for e in eintraege if e.get("ergebnis") in BRAUCHBAR)
-    ohne_treffer = sum(1 for e in eintraege if e.get("ergebnis") == "kein_treffer")
-    fehlgeschlagen = sum(1 for e in eintraege if e.get("ergebnis") in ("fehler", "abgelehnt"))
-    geprueft = sum(1 for f in befunde if f.get("gegenpruefung") in ("bestaetigt", "eingeschraenkt"))
+    k = kennzahlen(b, eintraege)
+    zaehler, auswertungen, listen, quellen = k["bewertung"], k["auswertungen"], k["listen"], k["quellen"]
+    eintraege = k["abfragen"]                                               # ab hier: nur Abfragen bei Quellen
+    ohne_treffer, fehlgeschlagen, abgelehnt, geprueft = k["ohne_treffer"], k["fehlgeschlagen"], k["abgelehnt"], k["gegengeprueft"]
     h.append("<h2>3 Überblick in Zahlen</h2><div class='kacheln'>")
     h.append(kachel(len(indikatoren), "Indikatoren", f"{zaehler['boesartig']} bösartig, {zaehler['verdaechtig']} verdächtig"))
-    h.append(kachel(len(eintraege), "Abfragen", f"{ohne_treffer} ohne Treffer, {fehlgeschlagen} nicht ausgeführt"))
+    h.append(kachel(len(eintraege), "Abfragen", f"{ohne_treffer} ohne Treffer, {fehlgeschlagen} fehlgeschlagen" + (f", {abgelehnt} abgelehnt" if abgelehnt else "")))
     h.append(kachel(len(quellen), "Quellen genutzt", f"{len(auswertungen)} Auswertungen daraus" if auswertungen else ""))
     h.append(kachel(len(befunde), "Befunde", f"{geprueft} gegengeprüft"))
     h.append("</div>")
@@ -404,12 +678,21 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
         zeilen = [{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in quellen.most_common()]
         h.append("<figure>" + balken(zeilen, beschriftung="Abfragen je Quelle") +
                  "<figcaption>Verwertbare Abfragen je Quelle (mit und ohne Treffer). Einzelnachweis im Ermittlungsprotokoll.</figcaption></figure>")
+    for quelle in sorted({e.get("quelle") for e in listen}):
+        letzte = [e for e in listen if e.get("quelle") == quelle][-1]
+        stand = (letzte.get("antwort") or {}).get("stand") or {}
+        h.append(f"<p class='klein'>Lokal befragte Liste: {esc(str(quelle))}, Stand {esc(str(stand.get('stand', '?')))} vom "
+                 f"{esc(zeit_zeigen(stand.get('datum')))}, {esc(zahl_ch(str(stand.get('eintraege', '?'))))} Einträge ({esc(str(stand.get('umfang', '?')))}). "
+                 f"Die Adressen wurden auf dem eigenen Rechner nachgeschlagen, es ging dafür keine Anfrage hinaus. Beleg {beleg_links([letzte['id']], protokoll)}. "
+                 "Etiketten einer Liste sind Angaben Dritter und geben den Stand ihres Datums wieder.</p>")
     h.append("<table><tr><th>Freigabe</th><th>Stand</th><th>Bedeutung</th></tr>")
     for name in FREIGABEN:
         e = (fall.get("freigaben") or {}).get(name) or {}
         stand = f"erteilt durch {e.get('durch')} am {zeit_zeigen(e.get('am'))}" if freigabe_erteilt(fall, name) else "nicht erteilt"
         h.append(f"<tr><td>{esc(name)}</td><td>{esc(stand)}</td><td>{esc(FREIGABE_TEXT[name])}</td></tr>")
     h.append("</table>")
+    if pflicht:
+        h.append(pflicht_abschnitt(pflicht, protokoll))
 
     # ---- 5 Indikatoren
     h.append("<h2>5 Indikatoren</h2>")
@@ -426,6 +709,7 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
                      f"<td>{marke(f'{zeichen} {name}', farbe)}" + (f"<div class='klein'>{esc(zahlen)}</div>" if zahlen else "") + "</td>"
                      f"<td>{beleg_links(i.get('belege'), protokoll)}</td></tr>")
         h.append("</table></div>")
+        h.append(ip_abschnitt(indikatoren, protokoll, fall_pfad(fall_id)))
         abuse = [{"name": f"{i['id']} · {i['wert']}", "wert": i["kennzahlen"]["abuse_score"], "anzeige": f"{i['kennzahlen']['abuse_score']} von 100"}
                  for i in indikatoren if isinstance((i.get("kennzahlen") or {}).get("abuse_score"), (int, float))]
         if abuse:
@@ -507,8 +791,13 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
     if b.get("empfehlungen"):
         rang = {"hoch": 0, "mittel": 1, "tief": 2}
         h.append("<table><tr><th>Priorität</th><th>Empfehlung</th></tr>")
+        je_id = {i.get("id"): i for i in indikatoren}
         for e in sorted(b["empfehlungen"], key=lambda e: rang.get(e.get("prioritaet"), 3)):
-            h.append(f"<tr><td>{esc(e.get('prioritaet') or '–')}</td><td>{esc(e.get('text', ''))}</td></tr>")
+            # Betrifft die Empfehlung eine IP, setzt der Rapport den Vorbehalt dazu, der zu ihrer Einordnung gehört
+            saetze = [ip_vorbehalt(str(i["wert"]), ip_stand(str(i["wert"]), protokoll, fall_pfad(fall_id)), an_zugangsanbieter(e))
+                      for i in empfehlung_ips(e, je_id)]
+            vorbehalt = "".join(f"<div class='einfach'>{esc(s)}</div>" for s in saetze if s)
+            h.append(f"<tr><td>{esc(e.get('prioritaet') or '–')}</td><td>{esc(e.get('text', ''))}{vorbehalt}</td></tr>")
         h.append("</table>")
     else:
         h.append('<p class="klein">Keine Empfehlungen.</p>')
@@ -582,7 +871,7 @@ def main(argv: list[str]) -> int:
     b["_sha256"] = hashlib.sha256(roh).hexdigest()
     eintraege = belege_lesen(fall_id)
     kettenstand = kette_pruefen(fall_id)
-    maengel, hinweise = pruefen(b, {e["id"]: e for e in eintraege}, entwurf)
+    maengel, hinweise = pruefen(b, {e["id"]: e for e in eintraege}, entwurf, pfad)
     if not kettenstand["ok"]:
         maengel = [f"Abfrageprotokoll: {f}" for f in kettenstand["fehler"]] + maengel
 
@@ -610,10 +899,13 @@ def main(argv: list[str]) -> int:
         bauen(fall_id, fall, b, eintraege, kettenstand, maengel, hinweise, entwurf and bool(maengel or hinweise)))
     with open(ziel / "indikatoren.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["id", "typ", "wert", "bewertung", "rolle", "herkunft", "belege"])
+        w.writerow(["id", "typ", "wert", "bewertung", "rolle", "herkunft", "belege", "anonymisierungsdienst"])
+        protokoll = {e["id"]: e for e in eintraege}
         for i in b.get("indikatoren") or []:
-            w.writerow([i.get("id"), i.get("typ"), i.get("wert"), i.get("bewertung"), i.get("rolle") or "",
-                        i.get("herkunft") or "", " ".join(i.get("belege") or [])])
+            stand = ip_stand(str(i.get("wert")), protokoll, pfad) if i.get("typ") == "ip" else None
+            w.writerow(csv_sicher([i.get("id"), i.get("typ"), i.get("wert"), i.get("bewertung"), i.get("rolle") or "",
+                                   i.get("herkunft") or "", " ".join(i.get("belege") or []),
+                                   (stand["wert"] + (f" ({stand['vermerk']})" if stand["vermerk"] else "")) if stand else ""]))
     print(f"\nRapport erzeugt: faelle/{fall_id}/rapport/Abschlussrapport.html"
           + (" (ENTWURF)" if entwurf and maengel else ""))
     print(f"Indikatorliste:  faelle/{fall_id}/rapport/indikatoren.csv")

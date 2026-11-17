@@ -1,0 +1,373 @@
+{
+ "client": "sachbearbeiter@behoerde.example",
+ "group": "musterlocker",
+ "added_date": "2022-06-29",
+ "description": "Erfundene Gruppe für den Selbsttest. Betreibt eine Leak-Seite und veröffentlicht dort Namen.",
+ "victims": 2016,
+ "firstseen": "2021-12-26T00:00:00+00:00",
+ "lastseen": "2025-12-05T10:16:00+00:00",
+ "ttps": [],
+ "vulnerabilities": [],
+ "tools": {
+  "CredentialTheft": [
+   "Mimikatz",
+   "LaZagne"
+  ],
+  "Exfiltration": [
+   "Rclone"
+  ],
+  "RMM-Tools": [
+   "AnyDesk"
+  ]
+ },
+ "locations": [
+  {
+   "fqdn": "seite00ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite00ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": true
+  },
+  {
+   "fqdn": "seite01ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite01ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": true
+  },
+  {
+   "fqdn": "seite02ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite02ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": true
+  },
+  {
+   "fqdn": "seite03ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite03ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": true
+  },
+  {
+   "fqdn": "seite04ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite04ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite05ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite05ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite06ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite06ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite07ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite07ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite08ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite08ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite09ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite09ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite10ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite10ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite11ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite11ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite12ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite12ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite13ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite13ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite14ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite14ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite15ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite15ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite16ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite16ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite17ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite17ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite18ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite18ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite19ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite19ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite20ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite20ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite21ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite21ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite22ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite22ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite23ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite23ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite24ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite24ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite25ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite25ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite26ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite26ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite27ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite27ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite28ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite28ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite29ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite29ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite30ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite30ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite31ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite31ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite32ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite32ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite33ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite33ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite34ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite34ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite35ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite35ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite36ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite36ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  },
+  {
+   "fqdn": "seite37ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "title": "Title",
+   "slug": "http://seite37ockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
+   "type": "DLS",
+   "available": false,
+   "captcha": false,
+   "seized": false
+  }
+ ],
+ "has_negotiations": true,
+ "negotiation_count": 45,
+ "has_ransomnote": true,
+ "ransomnotes_count": 5,
+ "victims_hidden": false,
+ "url": "https://www.ransomware.live/group/musterlocker"
+}

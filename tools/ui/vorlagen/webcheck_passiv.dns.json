@@ -1,0 +1,39 @@
+{
+ "A": [
+  "203.0.113.7",
+  "203.0.113.8"
+ ],
+ "AAAA": [
+  "2001:db8::7"
+ ],
+ "MX": [
+  {
+   "exchange": "",
+   "priority": 0
+  }
+ ],
+ "TXT": [
+  [
+   "_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9"
+  ],
+  [
+   "v=spf1 -all"
+  ]
+ ],
+ "NS": [
+  "ns1.example.net",
+  "ns2.example.net"
+ ],
+ "CNAME": [],
+ "SOA": {
+  "nsname": "ns2.example.net",
+  "hostmaster": "dns.example.net",
+  "serial": 2420077714,
+  "refresh": 10000,
+  "retry": 2400,
+  "expire": 604800,
+  "minttl": 1800
+ },
+ "SRV": [],
+ "PTR": []
+}

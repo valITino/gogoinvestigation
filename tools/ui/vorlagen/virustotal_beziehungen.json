@@ -1,0 +1,66 @@
+{
+ "data": [
+  {
+   "id": "8.47.69.10example.com",
+   "type": "resolution",
+   "links": {
+    "self": "https://www.virustotal.com/api/v3/resolutions/8.47.69.10example.com"
+   },
+   "attributes": {
+    "ip_address": "8.47.69.10",
+    "ip_address_last_analysis_stats": {
+     "malicious": 0,
+     "suspicious": 0,
+     "undetected": 62,
+     "harmless": 30,
+     "timeout": 0
+    },
+    "date": 1794646560,
+    "host_name": "example.com",
+    "host_name_last_analysis_stats": {
+     "malicious": 0,
+     "suspicious": 0,
+     "undetected": 32,
+     "harmless": 60,
+     "timeout": 0
+    },
+    "resolver": "CAPE Sandbox"
+   }
+  },
+  {
+   "id": "8.6.112.10example.com",
+   "type": "resolution",
+   "links": {
+    "self": "https://www.virustotal.com/api/v3/resolutions/8.6.112.10example.com"
+   },
+   "attributes": {
+    "ip_address": "8.6.112.10",
+    "ip_address_last_analysis_stats": {
+     "malicious": 0,
+     "suspicious": 0,
+     "undetected": 39,
+     "harmless": 53,
+     "timeout": 0
+    },
+    "date": 1794646560,
+    "host_name": "example.com",
+    "host_name_last_analysis_stats": {
+     "malicious": 0,
+     "suspicious": 0,
+     "undetected": 32,
+     "harmless": 60,
+     "timeout": 0
+    },
+    "resolver": "CAPE Sandbox"
+   }
+  }
+ ],
+ "meta": {
+  "count": 49,
+  "cursor": "Cl4KEQoEZGF0ZRIJCJ6t5darhJcDEkVqEXN-dmlydXN0b3RhbGNsb3VkcjALEgpSZXNvbHV0aW9uIiAyYTA2Ojk4YzE6MzEyMjo4MDAwOjpleGFtcGxlLmNvbQwYACAB"
+ },
+ "links": {
+  "self": "https://www.virustotal.com/api/v3/domains/example.com/resolutions?limit=5",
+  "next": "https://www.virustotal.com/api/v3/domains/example.com/resolutions?limit=5&cursor=Cl4KEQoEZGF0ZRIJCJ6t5darhJcDEkVqEXN-dmlydXN0b3RhbGNsb3VkcjALEgpSZXNvbHV0aW9uIiAyYTA2Ojk4YzE6MzEyMjo4MDAwOjpleGFtcGxlLmNvbQwYACAB"
+ }
+}

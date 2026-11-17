@@ -1,0 +1,18 @@
+{
+ "client": "sachbearbeiter@behoerde.example",
+ "group": "musterlocker",
+ "filter_type": null,
+ "ioc_types": [
+  "ip",
+  "md5"
+ ],
+ "iocs": {
+  "ip": [
+   "203.0.113.10",
+   "203.0.113.11"
+  ],
+  "md5": [
+   "f954f24e6eb85ef1b64e315491dad816"
+  ]
+ }
+}

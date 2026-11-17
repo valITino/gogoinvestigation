@@ -23,6 +23,13 @@ Datei anpassen.
 | | `virustotal_beziehungen` | `GET …/{sammlung}/{id}/{beziehung}` | geprüft am 16.11.2026 mit `resolutions` einer Domain. Andere Beziehungen sind nicht geprüft, manche verlangen ein Premium-Abo. |
 | Spur | `spur_kontext` | `GET api.spur.us/v2/context/{ip}`, Kopfzeile `Token` | nicht geprüft, kein Schlüssel. Endpunkt nach docs.spur.us. |
 | AbuseIPDB | `abuseipdb_pruefen`, `_meldungen` | `GET api.abuseipdb.com/api/v2/check` und `/reports`, Kopfzeile `Key` | geprüft am 16.11.2026 (8.8.8.8, 1.1.1.1) |
+| proxycheck.io | `ip_einordnung` | `GET proxycheck.io/v3/{ip}?key=…&tag=0`, mit Tatzeit in den letzten 60 Tagen zusätzlich `days` und `history=1` | geprüft am 16.11.2026 (8.8.8.8, 1.1.1.1, ein öffentlich gelisteter Tor-Ausgang), mit und ohne Historie. Die Antwort weicht von der Dokumentation ab, siehe [Hinweise](#hinweise-je-quelle). Ein gelöschter Eintrag ohne heutige Erkennung ist nicht gesehen. |
+| ipapi.is | `ip_einordnung` | `POST api.ipapi.is` mit `{"q": ip, "key": …}` | geprüft am 16.11.2026 mit Schlüssel (dieselben drei Adressen) und einmal ohne (gekürzte Antwort). Das Objekt `vpn` trug keine der Adressen: Es steht nach der Dokumentation in der Vorlage. |
+| RIPEstat | `ip_einordnung` | `GET stat.ripe.net/data/{network-info, prefix-overview, whois, abuse-contact-finder}/data.json`, mit Tatzeit auch `routing-history` und `historical-whois` | alle sechs Aufrufe geprüft am 16.11.2026, an einem Netz der RIPE-Datenbank und an zweien bei ARIN und APNIC |
+| urlscan.io | `urlscan_suche` | `GET urlscan.io/api/v1/search/?q=…&size=`, Kopfzeile `API-Key` | geprüft am 16.11.2026: Domain, URL, IP, AS, SHA-256 (fünf Suchen) |
+| | `urlscan_ergebnis` | `GET urlscan.io/api/v1/result/{uuid}/`, `/dom/{uuid}/`, `/screenshots/{uuid}.png` | geprüft am 16.11.2026 an einem öffentlichen Scan von example.com: Ergebnis, Seitentext, Bildschirmfoto (PNG, 1600 × 1200). Ein Scan mit Urteil «bösartig» und einer, der noch läuft (HTTP 404), sind nicht gesehen. |
+| | `urlscan_kontingent` | `GET urlscan.io/api/v1/quotas/` | geprüft am 16.11.2026 |
+| | `urlscan_einreichen` | `POST urlscan.io/api/v1/scan/` mit `{"url": …, "visibility": "private"}` | nicht geprüft (aktive Massnahme). Antwortform nach der Dokumentation. |
 | urlquery | `urlquery_suche`, `_reputation` | `GET api.urlquery.net/public/v1/search/reports/`, `/reputation/check/`, Kopfzeile `x-apikey` | geprüft am 16.11.2026. Die Suche fragt Felder ab, siehe [Hinweise](#hinweise-je-quelle). |
 | | `urlquery_bericht` | `GET …/report/{id}` | geprüft am 16.11.2026 an einem öffentlichen Bericht: Alarme, Aufrufe, Hosts. Ein Bericht mit heruntergeladenen Dateien (`artifacts.files`) kam nicht vor. |
 | | `urlquery_status`, `_einreichen` | `GET …/submit/status/{id}`, `POST …/submit/url` | nicht geprüft: Beides setzt eine Einreichung voraus, und die ist eine aktive Massnahme. Eine erfundene Kennung beantwortet der Dienst mit HTTP 400. |
@@ -40,6 +47,9 @@ Datei anpassen.
 | 4chan | `chan_katalog`, `chan_thread` | `GET a.4cdn.org/{board}/catalog.json`, `/thread/{nr}.json` | geprüft am 16.11.2026 |
 | Mastodon | `mastodon_instanz` | `GET {instanz}/api/v2/instance`, sonst `/api/v1/instance` | geprüft am 16.11.2026 (mastodon.social, Schnittstelle v2). Der Rückfall auf v1 ist nicht geprüft. |
 | | `mastodon_konto` | `GET {instanz}/api/v2/search?type=accounts` oder `/api/v1/accounts/lookup` | nicht geprüft: Kontoabfrage zu einer Person |
+
+Ohne Abfrage nach aussen: `tools/beleg.py` trägt eine Abklärung von Hand als Beleg `X-…` ein (Quelle, Zeitpunkt,
+Wortlaut, wer). Das Gateway ist daran nicht beteiligt, der Eintrag steht in `protokoll/extern.jsonl`.
 
 Was die Prüfung vom 16.11.2026 gezeigt hat und seither behoben ist, jeweils mit Selbsttest:
 
@@ -102,6 +112,33 @@ der Fallakte (rund 6 MB). Lange Bemerkungen setzt OFAC in einer zweiten Datei fo
 fügt beide zusammen, bevor es Adressen sucht. Findet es in der Liste keine einzige Krypto-Adresse, wertet es das
 als Störung und meldet «nicht geprüft», nicht «kein Eintrag».
 
+### Etikettenliste: GraphSense TagPacks
+
+Eine lokale Liste, kein Dienst. Quelle ist das Repo [graphsense/graphsense-tagpacks](https://github.com/graphsense/graphsense-tagpacks)
+der Iknaio Cryptoasset Analytics GmbH und des AIT Austrian Institute of Technology (Österreich), MIT-Lizenz.
+Festgelegt ist der Commit `83754852bd65b697055ae03aceb7b655eefb4259` vom 5.11.2026. Das Verzeichnis
+`gateway/listen/tagpacks.json` nennt jede der 87 Dateien mit Prüfsumme, die Zahl der übernommenen Einträge und bei
+jeder ausgelassenen Datei den Grund.
+
+| Teil | Inhalt | Wo |
+|---|---|---|
+| Kern | 31'718 Einträge aus 61 Dateien: Börsen und ihre Reserve-Adressen, Mischdienste, Märkte, DeFi-Protokolle, Glücksspiel, Lösegeld-, Betrugs- und Phishing-Adressen, Adressen aus Einbrüchen bei Diensten | im Repo, `gateway/listen/tagpacks.csv.gz` (680 KB) |
+| Massenlisten | 481'322 Einträge aus elf Dateien: Reserve-Adressen der Börse BitMEX, Adressen aus Erpresser-Spam, Mining-Adressen, CoinJoin-Adressen von Samourai | nicht im Repo (rund 12 MB). `python3 tools/listen.py laden` holt die Dateien einzeln von raw.githubusercontent.com, prüft jede gegen das Verzeichnis und legt die Tabelle unter `listen/` ab |
+| Ausgelassen | 15 Dateien: zwei mit natürlichen Personen (Sanktionslisten, OFAC lädt das Gateway selbst), sechs aus Etherscan-Etiketten abgeleitete (dessen Bedingungen untersagen die Wiedergabe), zwei mit politischen Zuschreibungen, eine mit Adressen von Privatpersonen, die Beispieldatei, drei ohne Adresse einer verfolgten Kette | |
+
+Übernommen werden Bitcoin, Ethereum und TRON. Ein Eintrag für Ethereum gilt nur auf Ethereum, nicht auf den
+verwandten Ketten. Zuordnung der Kategorien: «Dienst» (dort endet eine Verfolgung, ein Editionsbegehren kann
+ansetzen) ist nur `exchange`, `payment_processor` und `wallet_service`. `mixing_service` und `coinjoin` sind
+Mischdienste. Trägt ein Eintrag einen Missbrauch (`ransomware`, `scam`, `phishing`, `service_hack` und weitere),
+ist die Adresse nie ein Dienst, auch wenn daneben eine Kategorie steht. Alles andere bleibt ein Name ohne Folge
+für die Verfolgung. Geprüft am 16.11.2026: Bau der Tabelle aus allen Dateien, Laden der Massenlisten samt
+Prüfsummen, Nachschlagen bekannter Adressen. Mit Massenlisten braucht das Gateway rund 85 MB Arbeitsspeicher und
+zwei Sekunden zum Einlesen, ohne sie ist beides vernachlässigbar.
+
+Nicht eingebaut ist die Sammlung «eth-labels» (MIT-Lizenz für den Code). Ihre Daten sind nach eigener Angabe aus
+der Etikettenwolke von Etherscan ausgelesen, und die Bedingungen von Etherscan untersagen genau das und die
+Wiedergabe der Etiketten. Iknaio als Abfragequelle bleibt, wie bisher, eine Zugabe mit eigenem Schlüssel.
+
 ## Was der Anbieter erfährt
 
 Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spur.
@@ -110,9 +147,13 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 |---|---|---|
 | Shodan, VirusTotal, Spur, AbuseIPDB, urlquery (Suche), ransomware.live | euren Schlüssel, eure Adresse (oder die des Proxys), den Indikator | nichts |
 | Shodan InternetDB, Wayback Machine | eure Adresse, den Indikator | nichts |
+| `ip_einordnung`: proxycheck.io, ipapi.is | euren Schlüssel, eure Adresse, die IP-Adresse. proxycheck.io legt eine Adresse mit Treffer sonst 180 Tage im Konto ab: Das Gateway bittet mit `tag=0` darum, das zu lassen. Die Tatzeit erfährt proxycheck.io nur als Zahl von Tagen (`days`). | nichts |
+| `ip_einordnung`: RIPEstat | eure Adresse, die IP-Adresse oder ihr Netz, bei einer Tatzeit den Tag, und den Namen der Anwendung (`sourceapp`) | nichts |
+| `urlscan_suche`, `urlscan_ergebnis`, `urlscan_kontingent` | urlscan.io: euren Schlüssel, eure Adresse, den Suchbegriff oder die Kennung des Scans | nichts |
+| `urlscan_einreichen` | urlscan.io: die URL. Der Scan ist «private»: sichtbar für das eigene Konto und für urlscan.io, nicht in der öffentlichen Suche. | einen Besuch von einem Server von urlscan.io |
 | Web-Check passiv | je nach Prüfung DNS-Resolver, RDAP, crt.sh, Tranco und weitere Dritte: eure Adresse und die Domain | nichts vom Webserver. Die Nameserver des Ziels sehen DNS-Anfragen der Resolver. |
 | Web-Check aktiv | | die Adresse eurer Web-Check-Instanz, in seinen Serverprotokollen |
-| `urlquery_einreichen` | urlquery: die URL | einen Besuch von urlquery. Je nach `sichtbarkeit` ist der Bericht öffentlich. |
+| `urlquery_einreichen` | urlquery: die URL. Der Bericht ist «private», das Gateway reicht nie öffentlich ein. | einen Besuch von urlquery |
 | `wayback_sichern` | archive.org: die URL | einen Besuch von archive.org. Die Aufnahme ist öffentlich und bleibt. |
 | `onion_sperrliste` | Ahmia: dass jemand die Liste lädt. **Nicht** die geprüfte Adresse. | nichts |
 | `telegram_kanal`, `chan_*` | Telegram oder 4chan: eure Adresse, Kanal oder Board. **Nicht** das Stichwort, es wird lokal gefiltert. | nichts |
@@ -123,12 +164,20 @@ Passiv heisst nicht unsichtbar. Jede Abfrage hinterlässt beim Anbieter eine Spu
 | WalletExplorer, Tronscan, Chainabuse, Iknaio, Blockscout-Etiketten | eure Adresse, die abgefragten Wallet-Adressen | nichts |
 | TRM Labs | eure Adresse und alle Wallet-Adressen eines Laufs, in Sammelabfragen | nichts |
 | OFAC, Ransomwhere | dass jemand die Liste lädt. **Nicht** die geprüfte Adresse, der Vergleich läuft lokal. | nichts |
+| Etikettenliste (GraphSense TagPacks) | niemand etwas: Die Liste liegt im Repo. Nur wer mit `tools/listen.py laden` die Massenlisten holt, zeigt GitHub, dass dieser Rechner die öffentlichen TagPacks abruft. **Nie** eine geprüfte Adresse. | nichts |
 | DefiLlama, EZB | eure Adresse, Währung und Stichtag. **Nicht** den Betrag und keine Wallet-Adresse. | nichts |
+
+Rohdateien mit HTML einer fremden Seite (Wayback, Telegram, Seitentext von urlscan.io) liegen als `.html.txt` in der
+Akte: unverändert im Inhalt, aber so benannt, dass ein Klick sie als Text zeigt und nicht als Seite öffnet.
 
 Wer einem Explorer nicht zeigen will, welche Adressen in einem Verfahren stehen, betreibt ihn selbst:
 `KRYPTO_BITCOIN_API` nimmt die Adresse einer eigenen Esplora-Schnittstelle (mempool oder electrs),
 `KRYPTO_ETHEREUM_API` und die Entsprechungen je Kette die einer eigenen Blockscout-Instanz, `KRYPTO_TRON_API` die
 einer Schnittstelle nach Art von TronGrid.
+
+Zugangsdaten in der Adresse einer eigenen Instanz (`https://name:passwort@host`) schwärzt das Gateway im Protokoll.
+Einen Schlüssel im Pfad einer solchen Adresse kann es nicht erkennen: Er stünde im Protokoll. Dafür also keinen
+Pfad verwenden, sondern Benutzername und Passwort.
 
 Mit `OSINT_PROXY` in `.env` laufen alle Abfragen des Gateways über einen Proxy. Das Protokoll vermerkt je
 Abfrage, ob ein Proxy verwendet wurde. Web-Check auf dem eigenen Rechner wird immer direkt angesprochen. Für
@@ -145,7 +194,63 @@ von heute beschreibt den Besitzer von heute.
 
 **AbuseIPDB.** Meldungen stammen von jedermann. Der Score fasst zusammen, er beweist nichts.
 
-**urlquery.** `urlquery_einreichen` steht standardmässig auf `private`. Vor jeder Einreichung sucht der Analyst
+**Einordnung einer IP (`ip_einordnung`).** Ein Werkzeug, mehrere Stimmen. Jede Teilabfrage steht einzeln im
+Protokoll (Werkzeug `ip_abruf`), die Auswertung als eigener Eintrag. Der Wert zum Anonymisierungsdienst ist «ja»
+(mindestens eine Quelle führt die Adresse, bei Widerspruch mit dem Vermerk «Quellen uneinig»), «kein Hinweis»
+(mindestens eine Quelle hat geantwortet, keine führt sie) oder «nicht geprüft». Kontaktpersonen aus den Registern
+und aus der Antwort von ipapi.is gibt das Werkzeug nicht weiter: Gebraucht wird, wem das Netz gehört, nicht wer
+dort arbeitet. In den Rohdateien stehen sie, unverändert.
+
+**proxycheck.io.** Betreiber und Sitz nennt der Dienst auf seinen Seiten nicht (Bedingungen, Datenschutz und
+Kontakt gelesen am 16.11.2026). Server laut eigener Angabe in Kanada, Grossbritannien, Deutschland, Finnland, Polen
+und Singapur. Bedingungen vom 12.7.2026: Die Daten dürfen den eigenen Dienst anreichern, das ganze Ergebnis der
+Schnittstelle darf nicht wörtlich weitergegeben werden (der Rapport nennt deshalb nur die einschlägigen Angaben),
+ein kostenloses Konto je Kunde, der Schlüssel bleibt in der Organisation. Den Einsatz durch Behörden regeln sie
+nicht eigens, eine Nennung verlangen sie nicht. Die echte Antwort weicht von der Dokumentation ab: Das Risiko steht
+unter `detections`, der Ort unter `location.country_code` und `city_name`, die Löschung unter
+`detection_history.delisted` und `delist_datetime`. Ein Feld für Residential Proxies gibt es nicht: Sie zeigen sich
+an der Art des Netzes (`Residential`, `Wireless`) zusammen mit einer Erkennung. Der Parameter `history` steht nur im
+Blog des Dienstes vom 11.2.2026, der Dienst nimmt ihn an.
+
+**ipapi.is.** Betreiber ist ein Einzelunternehmer in Berlin (Impressum des Dienstes). Bedingungen vom 3.10.2026: Das
+kostenlose Paket liefert die volle Antwort für jeden zulässigen Zweck, die Nutzung ist intern, einzelne Ergebnisse
+dürfen in eigenen Aufzeichnungen bleiben, Weitergabe der Daten als solche ist ausgeschlossen. Juristische Personen
+des öffentlichen Rechts sind als Kunden genannt. Abgefragte Adressen speichert der Dienst laut seiner Vereinbarung
+zur Auftragsverarbeitung nicht. Ohne Schlüssel antwortet er seit dem 1.9.2026 gekürzt (30 Abfragen am Tag, keine
+Merkmale `is_vpn`, `is_proxy`, `is_tor`) und sperrt einen Anschluss, der nach einer Abweisung weiterfragt. Das
+Gateway fragt deshalb nur mit Schlüssel und wiederholt nach einer Abweisung nicht. Der Schlüssel geht im Körper der
+Anfrage mit, nicht in der Adresse. Laut eigener Dokumentation erkennt `is_proxy` vor allem offene Proxys,
+Residential und mobile Proxys meist nicht.
+
+**RIPEstat.** Betreiber ist das RIPE NCC in Amsterdam, die Vergabestelle für Europa. Kein Schlüssel. Der Dienst
+bittet um einen Namen der Anwendung (`sourceapp`, einstellbar über `OSINT_RIPESTAT_APP`), um höchstens acht
+gleichzeitige Anfragen und ab rund 1'000 Anfragen am Tag um eine Anmeldung. Die Bedingungen nennen Netzanalyse und
+Forschung als Zweck, verbieten die Weitergabe der Daten als eigenes Angebot und verlangen bei Veröffentlichungen
+die Nennung des RIPE NCC. Den Einsatz durch Behörden regeln sie nicht eigens. Wer das Netz zur Tatzeit ankündigte,
+kommt aus den Routing-Daten (alle Register). Wem es damals zugeteilt war, kennt der Dienst nur für Netze der
+RIPE-Datenbank: Für ARIN, APNIC, LACNIC und AFRINIC sagt das Ergebnis, dass nur der heutige Eintrag bekannt ist.
+
+**urlscan.io.** Betreiber ist die urlscan GmbH in Deutschland. Die Suche findet öffentliche Scans, mit dem
+kostenlosen Konto die der letzten 365 Tage. Eine Suche nach einer Domain findet auch Scans, in denen die Domain nur
+nachgeladen wurde. Der Seitentext (`/dom/`) ist Fremdinhalt: Das Werkzeug gibt ihn als Text zurück, gekürzt und
+gekennzeichnet, nie als HTML. Das Bildschirmfoto liegt als PNG in den Rohdaten. Einreichen: nur mit Freigabe
+`aktiv`, nach einer Suche nach vorhandenen Scans, nach einem Blick aufs Kontingent, und immer mit
+`visibility: private`. Dafür gibt es keinen Parameter, und im Kern des Gateways sitzt eine Schranke: Eine
+Einreichung ohne «private» verlässt das Gateway nicht, egal welches Werkzeug sie schickt. Reicht das Kontingent
+für private Scans nicht (kostenlos 50 am Tag, 5 je Minute), wird nicht eingereicht. Meldet der Dienst für den Scan
+eine andere Sichtbarkeit zurück, steht das als Warnung im Ergebnis. Die Bedingungen vom 22.7.2020 sprechen von
+persönlicher, nicht kommerzieller Nutzung. Die Hilfeseite des Dienstes nennt die Nutzung im Arbeitsalltag
+(Sicherheitsbetrieb, Untersuchungen, Berichte) ausdrücklich in Ordnung und bittet bei grossen Mengen um Rückfrage.
+Ob das den Einsatz einer Behörde deckt, entscheidet ihr: im Zweifel den Anbieter fragen oder ein bezahltes Konto nehmen.
+
+**Abklärung von Hand und Spur.** `tools/beleg.py` ist an keine Quelle gebunden. Zum kostenlosen Zugang von Spur
+steht in der Hilfe des Anbieters (gelesen am 16.11.2026): «No. Spur does not offer free or discounted accounts for
+law enforcement or government investigative agencies. Standard commercial licensing applies». Die kostenlose
+Lizenz ist nach den Bedingungen für die eigene Erprobung gedacht. Für Ermittlungen deckt sie das Nachschlagen von
+Hand also nicht: Dafür braucht es eine bezahlte Lizenz.
+
+**urlquery.** `urlquery_einreichen` reicht immer mit dem Zugriff `private` ein. Einen Parameter dafür gibt es nicht mehr,
+und die Schranke im Kern des Gateways lässt eine Einreichung mit anderem Zugriff nicht hinaus. Vor jeder Einreichung sucht der Analyst
 nach vorhandenen Berichten.
 
 Ohne Feldnamen sucht urlquery im Volltext der Berichte ([Hilfe des Anbieters](https://urlquery.net/help/search)). Am
@@ -211,10 +316,13 @@ sind Einzelpersonen unbekannter Herkunft. Vor dem Einsatz prüfen, ob Selektoren
 **Darkus.** Menügesteuert. Seine drei Suchmaschinen (Ahmia, Torch, notEvil) sind in Robin enthalten oder durch
 dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sperrliste.
 
-**Robin.** Eigener MCP-Server, läuft als Container (`apurvsg/robin`), Tor inklusive. Der Analyst nutzt
+**Robin.** Eigener MCP-Server, läuft als Container (`apurvsg/robin`), Tor inklusive. Das Abbild ist auf eine
+Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026), ebenso das von Web-Check (Stand vom 15.11.2026): Was
+läuft, ändert sich nicht von selbst. Ein neuer Stand ist ein bewusster Schritt. Der Analyst nutzt
 `robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
-Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, übernehmen die Hooks: Der
-Wächter verlangt die Freigabe `darkweb`, der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
+Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, gilt: Jeder
+Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask», die Oberfläche lehnt ihn ohne Freigabe `darkweb` von
+selbst ab), und der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
 Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
 `.claude/hooks/protokoll_hook.py`, heute Robin). Andere MCP-Server sind Arbeitsmittel: Ihre Aufrufe stehen im
 Sitzungsprotokoll, ihre Antworten sind kein Beleg. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
@@ -224,6 +332,26 @@ docker build -t robin-intern /pfad/zu/eurem/robin-fork
 echo 'ROBIN_IMAGE=robin-intern' >> .env
 ./setup.sh
 ```
+
+Was Robin vom Rechner und vom Netz braucht. Die Angaben stammen aus Startskript, Quelltext und Fehlerhilfe des
+Projekts (gelesen am 17.11.2026). Im Betrieb geprüft sind sie nicht, und das festgelegte Abbild ist älter als
+dieser Stand.
+
+- **Kein Tor und kein SOCKS5 auf dem Rechner.** Tor läuft im Container. Robin spricht es dort über
+  `socks5h://127.0.0.1:9050` an, der Port ist nach aussen nicht veröffentlicht. `OSINT_PROXY` hat damit nichts zu
+  tun: Die Einstellung lenkt nur die Abfragen des Gateways.
+- **Der Container muss das Tor-Netz direkt erreichen.** Robin kennt keine Einstellung für Brücken (Bridges:
+  Zugänge für Netze, die Tor sperren) und keine für einen vorgeschalteten Proxy. In einem Netz, das Tor sperrt oder
+  nur über einen Web-Proxy nach aussen lässt, kommt Tor nicht hoch. Dann braucht es ein Netz, das Tor zulässt,
+  oder ein eigenes Abbild mit eigener Tor-Konfiguration (`ROBIN_IMAGE`).
+- **Claude Code startet den Container zu Beginn jeder Sitzung** und entfernt ihn an ihrem Ende. Von Hand ist
+  nichts zu starten. Tor läuft dabei sofort an und verbindet sich mit dem Tor-Netz, auch wenn der Fall keine
+  Freigabe `darkweb` hat. Gesucht und gelesen wird erst mit einem Werkzeugaufruf, und der braucht die Freigabe. Wer
+  diese Verbindung an einem Arbeitsplatz nicht will, richtet ihn ohne Robin ein: `./setup.sh --ohne-robin`.
+- **Tor braucht nach dem Start zehn Sekunden bis zwei Minuten.** Bis dahin melden `robin_search` und
+  `robin_scrape` den Stand `tor_bootstrapping` und tun nichts. `robin_health` zeigt, ob Tor läuft und welche
+  Suchmaschinen antworten. Bleibt es bei `tor_bootstrapping`, erreicht der Container das Tor-Netz nicht.
+- **Ein Schlüssel für ein Sprachmodell ist nicht nötig.** Ohne ihn fragt Robin beim Start keinen Anbieter an.
 
 **4chan.** Die Lese-API liefert den Katalog eines Boards. Gesucht wird lokal darin. Threads verschwinden nach
 kurzer Zeit, `chan_thread` sichert sie in den Rohdaten.

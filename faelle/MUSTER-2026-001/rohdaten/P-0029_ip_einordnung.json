@@ -1,0 +1,323 @@
+{
+ "werkzeug": "ip_einordnung",
+ "parameter": {
+  "ip": "198.51.100.23",
+  "tatzeit": "2026-09-29T07:31:00Z",
+  "quellen": null
+ },
+ "grundlage": [
+  "P-0019",
+  "P-0020",
+  "P-0021",
+  "P-0022",
+  "P-0023",
+  "P-0024",
+  "P-0025",
+  "P-0026",
+  "P-0027",
+  "P-0028"
+ ],
+ "befund": {
+  "ip": "198.51.100.23",
+  "abfragezeit": "2026-11-12T08:03:26Z",
+  "tatzeit": "2026-09-29T07:31:00Z",
+  "netz": {
+   "praefix": "198.51.100.0/24",
+   "as": "AS64501",
+   "as_inhaber": "BEISPIEL-TRANSIT Beispiel Transit BV",
+   "angekuendigt": true,
+   "bereich": "198.51.100.0 - 198.51.100.255",
+   "netzname": "BEISPIEL-TRANSIT-DE",
+   "organisation": "ORG-BT1-RIPE",
+   "land": "DE",
+   "status": "ASSIGNED PA",
+   "registriert": "2020-01-14T10:30:00Z",
+   "geaendert": "2024-05-06T08:00:00Z",
+   "register": "RIPE",
+   "meldestelle": [
+    "abuse@beispiel-transit.example"
+   ],
+   "betreiber": "Beispiel Transit BV",
+   "ort": "Frankfurt am Main",
+   "hostname": "host-198-51-100-23.beispiel-transit.example",
+   "zur_tatzeit": {
+    "tatzeit": "2026-09-29T07:31:00Z",
+    "angekuendigt_von": [
+     {
+      "as": "AS64501",
+      "praefix": "198.51.100.0/24",
+      "von": "2026-09-28T00:00:00",
+      "bis": "2026-09-29T07:59:59"
+     }
+    ],
+    "zuteilung": {
+     "gueltig_von": "2024-05-06T08:00:00",
+     "gueltig_bis": "2026-11-12T08:00:00",
+     "fassung": 2,
+     "fassungen_gesamt": 2,
+     "netzname": "BEISPIEL-TRANSIT-DE",
+     "organisation": "ORG-BT1-RIPE",
+     "land": "DE",
+     "status": "ASSIGNED PA"
+    }
+   }
+  },
+  "anschlussart": [
+   {
+    "quelle": "proxycheck.io",
+    "art": "Rechenzentrum"
+   },
+   {
+    "quelle": "ipapi.is",
+    "art": "Rechenzentrum",
+    "merkmale": [
+     "Rechenzentrum"
+    ]
+   },
+   {
+    "quelle": "AbuseIPDB",
+    "art": "Data Center/Web Hosting/Transit"
+   },
+   {
+    "quelle": "Spur",
+    "art": "DATACENTER"
+   }
+  ],
+  "anonymisierung": {
+   "wert": "ja",
+   "geantwortet": [
+    "proxycheck.io",
+    "ipapi.is",
+    "Spur"
+   ],
+   "nicht_geantwortet": [
+    {
+     "quelle": "AbuseIPDB",
+     "grund": "äussert sich zu dieser Frage nicht"
+    }
+   ],
+   "aussagen": [
+    {
+     "quelle": "proxycheck.io",
+     "arten": [
+      "VPN"
+     ],
+     "dienst": "Beispiel VPN",
+     "angebote": [
+      "datacenter_vpns"
+     ],
+     "zuerst": "2026-03-02T10:15:00Z",
+     "zuletzt": "2026-11-11T21:40:00Z",
+     "heute": "geführt",
+     "austrag_geplant": "2026-11-18T21:40:00Z",
+     "residential": false,
+     "beleg": "P-0019"
+    },
+    {
+     "quelle": "ipapi.is",
+     "arten": [
+      "VPN"
+     ],
+     "dienst": "Beispiel VPN",
+     "zuletzt": "2026-11-11T21:40:00Z",
+     "heute": "geführt",
+     "residential": false,
+     "beleg": "P-0020"
+    },
+    {
+     "quelle": "Spur",
+     "arten": [
+      "VPN"
+     ],
+     "dienst": "BEISPIEL_VPN",
+     "residential": false,
+     "beleg": "P-0028"
+    }
+   ],
+   "residential": false,
+   "dienste": [
+    "Beispiel VPN",
+    "BEISPIEL_VPN"
+   ],
+   "arten": [
+    "VPN"
+   ]
+  },
+  "erklaerung": "Die Adresse 198.51.100.23 ist laut proxycheck.io, ipapi.is und Spur der Ausgang eines Anonymisierungsdienstes (VPN). Als Dienst genannt: Beispiel VPN, BEISPIEL_VPN. Über einen solchen Ausgang gehen die Verbindungen vieler Unbekannter. Wer zur Tatzeit über diese Adresse kam, weiss nur der Betreiber des Dienstes, wenn überhaupt. Die Auskunft gilt für den Abfragezeitpunkt (12.11.2026, 09:03). Die Tat lag früher (29.09.2026, 09:31). proxycheck.io: Die Tatzeit liegt zwischen der ersten (2026-03-02T10:15:00Z) und der letzten Sichtung (2026-11-11T21:40:00Z): Die Adresse war zur Tatzeit geführt. Spur: Stand der Quelle am 29.09.2026 (historische Abfrage). Eine IP-Adresse identifiziert niemanden.",
+  "ansatzpunkt": "Zuerst an den Betreiber Beispiel VPN, BEISPIEL_VPN: Nur er kann wissen, wer zur Tatzeit über die Adresse 198.51.100.23 kam. Ein Editionsbegehren an den Netzbetreiber (BEISPIEL-TRANSIT Beispiel Transit BV) nennt nur den Kunden, dem die Adresse zugeteilt ist.",
+  "quellenstand": {
+   "proxycheck.io": {
+    "ergebnis": "ok",
+    "beleg": "P-0019"
+   },
+   "ipapi.is": {
+    "ergebnis": "ok",
+    "beleg": "P-0020"
+   },
+   "RIPEstat": {
+    "ergebnis": "ok",
+    "beleg": "P-0021"
+   },
+   "AbuseIPDB": {
+    "ergebnis": "ok",
+    "beleg": "P-0027"
+   },
+   "Spur": {
+    "ergebnis": "ok",
+    "beleg": "P-0028"
+   }
+  }
+ },
+ "details": {
+  "stimmen": [
+   {
+    "quelle": "proxycheck.io",
+    "beleg": "P-0019",
+    "geantwortet": true,
+    "fuehrt": true,
+    "arten": [
+     "VPN"
+    ],
+    "netz": {
+     "as": "AS64501",
+     "praefix": "198.51.100.0/24",
+     "betreiber": "Beispiel Transit BV",
+     "organisation": "Beispiel Transit BV",
+     "hostname": "host-198-51-100-23.beispiel-transit.example",
+     "land": "DE",
+     "ort": "Frankfurt am Main"
+    },
+    "anschlussart": "Rechenzentrum",
+    "dienst": "Beispiel VPN",
+    "angebote": [
+     "datacenter_vpns"
+    ],
+    "zuerst": "2026-03-02T10:15:00Z",
+    "zuletzt": "2026-11-11T21:40:00Z",
+    "risiko": 66,
+    "sicherheit_der_quelle": 100,
+    "residential": false,
+    "heute": "geführt",
+    "austrag_geplant": "2026-11-18T21:40:00Z",
+    "zur_tatzeit": "Die Tatzeit liegt zwischen der ersten (2026-03-02T10:15:00Z) und der letzten Sichtung (2026-11-11T21:40:00Z): Die Adresse war zur Tatzeit geführt.",
+    "tatzeit_gedeckt": true
+   },
+   {
+    "quelle": "ipapi.is",
+    "beleg": "P-0020",
+    "geantwortet": true,
+    "fuehrt": true,
+    "arten": [
+     "VPN"
+    ],
+    "netz": {
+     "as": "AS64501",
+     "praefix": "198.51.100.0/24",
+     "betreiber": "Beispiel Transit BV",
+     "organisation": "Beispiel Transit BV",
+     "netzname": "BEISPIEL-TRANSIT-DE",
+     "bereich": "198.51.100.0 - 198.51.100.255",
+     "land": "DE",
+     "ort": "Frankfurt am Main",
+     "register": "RIPE",
+     "meldestelle": "abuse@beispiel-transit.example"
+    },
+    "anschlussart": "Rechenzentrum",
+    "dienst": "Beispiel VPN",
+    "zuletzt": "2026-11-11T21:40:00Z",
+    "heute": "geführt",
+    "residential": false,
+    "merkmale": [
+     "Rechenzentrum"
+    ]
+   },
+   {
+    "quelle": "RIPEstat",
+    "beleg": "P-0021",
+    "geantwortet": true,
+    "fuehrt": null,
+    "arten": [],
+    "netz": {
+     "praefix": "198.51.100.0/24",
+     "as": "AS64501",
+     "as_inhaber": "BEISPIEL-TRANSIT Beispiel Transit BV",
+     "angekuendigt": true,
+     "bereich": "198.51.100.0 - 198.51.100.255",
+     "netzname": "BEISPIEL-TRANSIT-DE",
+     "organisation": "ORG-BT1-RIPE",
+     "land": "DE",
+     "status": "ASSIGNED PA",
+     "registriert": "2020-01-14T10:30:00Z",
+     "geaendert": "2024-05-06T08:00:00Z",
+     "register": "RIPE",
+     "meldestelle": [
+      "abuse@beispiel-transit.example"
+     ]
+    },
+    "belege": [
+     "P-0021",
+     "P-0022",
+     "P-0023",
+     "P-0024",
+     "P-0025",
+     "P-0026"
+    ],
+    "zur_tatzeit": {
+     "tatzeit": "2026-09-29T07:31:00Z",
+     "angekuendigt_von": [
+      {
+       "as": "AS64501",
+       "praefix": "198.51.100.0/24",
+       "von": "2026-09-28T00:00:00",
+       "bis": "2026-09-29T07:59:59"
+      }
+     ],
+     "zuteilung": {
+      "gueltig_von": "2024-05-06T08:00:00",
+      "gueltig_bis": "2026-11-12T08:00:00",
+      "fassung": 2,
+      "fassungen_gesamt": 2,
+      "netzname": "BEISPIEL-TRANSIT-DE",
+      "organisation": "ORG-BT1-RIPE",
+      "land": "DE",
+      "status": "ASSIGNED PA"
+     }
+    }
+   },
+   {
+    "quelle": "AbuseIPDB",
+    "beleg": "P-0027",
+    "geantwortet": true,
+    "fuehrt": null,
+    "arten": [],
+    "netz": {
+     "betreiber": "Beispiel Transit BV",
+     "land": "DE"
+    },
+    "anschlussart": "Data Center/Web Hosting/Transit",
+    "meldungen_90_tage": 3
+   },
+   {
+    "quelle": "Spur",
+    "beleg": "P-0028",
+    "geantwortet": true,
+    "fuehrt": true,
+    "arten": [
+     "VPN"
+    ],
+    "netz": {
+     "as": "AS64501",
+     "betreiber": "Beispiel Transit BV",
+     "organisation": "Beispiel Transit BV",
+     "land": "DE"
+    },
+    "anschlussart": "DATACENTER",
+    "heute": null,
+    "dienst": "BEISPIEL_VPN",
+    "residential": false,
+    "zur_tatzeit": "Stand der Quelle am 29.09.2026 (historische Abfrage).",
+    "tatzeit_gedeckt": true
+   }
+  ]
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "internal": [
+  "https://example.org/hilfe",
+  "https://example.org/kontakt"
+ ],
+ "external": [
+  "https://sammler.example.net/z.js"
+ ]
+}

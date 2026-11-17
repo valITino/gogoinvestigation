@@ -33,7 +33,8 @@ if __name__ == "__main__":
 from gateway.akte import fall_pfad  # noqa: E402
 
 DOKUMENTE = ("Abschlussrapport", "Ermittlungsprotokoll")
-KANDIDATEN = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser",
+ZEITLIMIT = 90          # Sekunden je Dokument und Browser
+KANDIDATEN = ["chrome-headless-shell", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge", "brave-browser",
               "msedge", "chrome",
               "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
               "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -46,13 +47,19 @@ if plattform.WINDOWS:   # Edge gehört zu Windows, Chrome und Brave liegen an fe
                    for ort in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA") if os.environ.get(ort)]
 
 
-def browser_finden() -> str | None:
+def browser_alle() -> list[str]:
+    """Alle Browser, die sich finden lassen, in der Reihenfolge der Versuche. OSINT_BROWSER zuerst."""
     gewuenscht = os.environ.get("OSINT_BROWSER", "").strip()
+    gefunden: list[str] = []
     for kandidat in ([gewuenscht] if gewuenscht else []) + KANDIDATEN:
         pfad = shutil.which(kandidat) or (kandidat if Path(kandidat).is_file() else None)
-        if pfad:
-            return pfad
-    return None
+        if pfad and pfad not in gefunden:
+            gefunden.append(pfad)
+    return gefunden
+
+
+def browser_finden() -> str | None:
+    return next(iter(browser_alle()), None)
 
 
 def umwandeln(browser: str, quelle: Path, ziel: Path) -> str | None:
@@ -66,9 +73,10 @@ def umwandeln(browser: str, quelle: Path, ziel: Path) -> str | None:
         if hasattr(os, "geteuid") and os.geteuid() == 0:
             befehl.insert(1, "--no-sandbox")       # Chromium startet als root nur so
         try:
-            r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+            r = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=ZEITLIMIT)
         except subprocess.TimeoutExpired:
-            return "Der Browser hat nach 120 Sekunden nicht geantwortet."
+            return (f"Der Browser {Path(browser).name} hat nach {ZEITLIMIT} Sekunden nicht geantwortet. Das kommt vor, wenn er beim Start "
+                    "auf das Netz wartet. Ausweg: einen anderen Browser in OSINT_BROWSER nennen, etwa chrome-headless-shell.")
         except OSError as e:
             return f"Der Browser liess sich nicht starten: {e}"
     if not ziel.is_file() or ziel.stat().st_size < 1000:
@@ -102,8 +110,8 @@ def main(argv: list[str]) -> int:
         print(f"FEHLER: In {rapport} liegt weder Abschlussrapport.html noch Ermittlungsprotokoll.html.\n"
               f"        Zuerst erzeugen: {plattform.PY} tools/rapport.py {argv[0]}  und  {plattform.PY} tools/protokoll.py {argv[0]}", file=sys.stderr)
         return 2
-    browser = browser_finden()
-    if not browser:
+    browser_liste = browser_alle()
+    if not browser_liste:
         print("FEHLER: Kein Chrome, Chromium, Edge oder Brave gefunden.\n"
               "        Entweder einen davon installieren (oder den Pfad in OSINT_BROWSER setzen),\n"
               f"        oder {rapport / 'Abschlussrapport.html'} im Browser öffnen und als PDF drucken.", file=sys.stderr)
@@ -112,7 +120,13 @@ def main(argv: list[str]) -> int:
     ziel.mkdir(parents=True, exist_ok=True)
     code = 0
     for name in vorhanden:
-        fehler = umwandeln(browser, rapport / f"{name}.html", ziel / f"{name}.pdf")
+        fehler = None
+        while browser_liste:        # scheitert ein Browser, kommt der nächste dran, und er bleibt es für die übrigen Dokumente
+            fehler = umwandeln(browser_liste[0], rapport / f"{name}.html", ziel / f"{name}.pdf")
+            if not fehler or len(browser_liste) == 1:
+                break
+            print(f"Hinweis: {fehler} Nächster Versuch mit {Path(browser_liste[1]).name}.", file=sys.stderr)
+            browser_liste.pop(0)
         if fehler:
             print(f"FEHLER: {name}.pdf nicht erzeugt. {fehler}", file=sys.stderr)
             code = 1

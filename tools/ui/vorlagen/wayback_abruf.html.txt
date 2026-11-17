@@ -1,0 +1,1 @@
+<html><head><title>Kundenportal – Anmeldung</title></head><body><h1>Kundenportal</h1><form><input name="benutzer"><input name="passwort" type="password"></form></body></html>

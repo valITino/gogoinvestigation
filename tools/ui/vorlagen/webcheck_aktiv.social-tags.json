@@ -1,0 +1,12 @@
+{
+ "title": "Kundenportal – Anmeldung",
+ "description": "Melden Sie sich im Kundenportal an.",
+ "keywords": "portal, anmeldung",
+ "canonicalUrl": "https://example.org/login",
+ "ogTitle": "Kundenportal",
+ "ogDescription": "Anmeldung",
+ "ogImage": "https://example.org/logo.png",
+ "ogSiteName": "Kundenportal",
+ "author": "",
+ "generator": "WordPress 6.6"
+}

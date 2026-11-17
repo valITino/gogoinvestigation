@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import socket
 import subprocess
@@ -127,8 +126,7 @@ def umgebung(env: dict[str, str]) -> None:
         schritte.append(f"{SETUP} ausführen (installiert Claude Code), oder von Hand: https://code.claude.com/docs")
     elif version and version < CLAUDE_MIN:
         zeile(AUS, "Claude Code", f"{text}   veraltet")
-        schritte.append(f"Claude Code aktualisieren (claude update). Erst ab {'.'.join(map(str, CLAUDE_MIN))} sperrt es "
-                        "Werkzeugaufrufe, wenn der Wächter selbst ausfällt.")
+        schritte.append(f"Claude Code aktualisieren (claude update). Geprüft ist der Arbeitsplatz ab {'.'.join(map(str, CLAUDE_MIN))}.")
     else:
         zeile(GUT, "Claude Code", text or "installiert")
     if WINDOWS:
@@ -136,7 +134,7 @@ def umgebung(env: dict[str, str]) -> None:
         if bash:
             zeile(GUT, "Git for Windows", f"Git Bash: {bash}")
         else:
-            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash laufen Wächter und Protokoll nicht.")
+            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash läuft das Sitzungsprotokoll nicht.")
             noetig_fehlt.append("Git for Windows")
             schritte.append(f"{SETUP} ausführen (installiert Git for Windows über winget)")
     if not shutil.which("docker"):
@@ -148,7 +146,7 @@ def umgebung(env: dict[str, str]) -> None:
             schritte.append(f"Docker starten, dann {SETUP} erneut (für Web-Check und Robin)")
         else:
             zeile(GUT, "Docker", "läuft")
-            abbild = env.get("ROBIN_IMAGE", "apurvsg/robin:latest")
+            abbild = env.get("ROBIN_IMAGE") or plattform.ROBIN_ABBILD
             code, _ = lauf(["docker", "image", "inspect", abbild], 15)
             zeile(GUT if code == 0 else AUS, "Robin-Abbild", abbild if code == 0 else f"{abbild} nicht geladen ({SETUP} holt es)")
     adresse = env.get("WEBCHECK_URL", "http://127.0.0.1:3000")
@@ -182,19 +180,11 @@ def konfiguration(env: dict[str, str]) -> None:
         except (OSError, json.JSONDecodeError) as e:
             zeile(FEHLT, name, f"fehlerhaft: {e}")
             noetig_fehlt.append(name)
-    for hook in ("start.sh", "waechter.py", "protokoll_hook.py"):
+    for hook in ("start.sh", "protokoll_hook.py"):
         datei = PROJEKT / ".claude" / "hooks" / hook
         if not datei.is_file():
             zeile(FEHLT, f"Hook {hook}", "fehlt")
             noetig_fehlt.append(hook)
-    waechter = PROJEKT / ".claude" / "hooks" / "waechter.py"
-    if waechter.is_file():
-        if re.search(r"^AUFBAUPHASE = True$", waechter.read_text(encoding="utf-8"), re.M):
-            zeile(AUS, "Wächter", "Aufbauphase: Gateway, Tools, Hooks und Einstellungen sind für Agenten änderbar")
-            schritte.append("Keine echten Fälle bearbeiten, solange die Aufbauphase läuft. Beenden: AUFBAUPHASE in "
-                            ".claude/hooks/waechter.py auf False setzen, der Selbsttest nennt den Rest (README, «Schutzmechanismen»).")
-        else:
-            zeile(GUT, "Wächter", "voller Schutz")
     lokal = PROJEKT / ".claude" / "settings.local.json"
     daten: dict = {}
     if lokal.is_file():
@@ -323,13 +313,9 @@ def live_modelle() -> None:
         zeile(AUS, MODELLE["mythos"], f"nicht freigeschaltet, deshalb nicht getestet ({SETUP} --mythos)")
 
 
-def live(bereit: list) -> None:
-    abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
-    if not VENV.is_file():
-        zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
-        return
-    plan = [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]} for q in bereit if q.test]
-    skript = r'''
+# Die Testabfragen laufen in einem eigenen Prozess mit den Paketen des Gateways. Dasselbe Skript nutzt die Oberfläche
+# für den Test einer einzelnen Quelle (tools/ui/bedienung.py).
+LIVE_SKRIPT = r'''
 import asyncio, json, sys
 sys.path.insert(0, sys.argv[1])
 from gateway import server, kern
@@ -346,10 +332,23 @@ async def alle():
             r = await werkzeuge[p["werkzeug"]]("SELBSTTEST", zweck="Live-Test der Einrichtung mit harmlosem Testwert", **p["argumente"])
         except Exception as e:
             r = {"ergebnis": "fehler", "fehler": f"{type(e).__name__}: {e}"}
-        print(json.dumps({"quelle": p["quelle"], "werkzeug": p["werkzeug"], "ergebnis": r.get("ergebnis"), "fehler": r.get("fehler"), "id": r.get("protokoll_id")}, ensure_ascii=False), flush=True)
+        # Ein Werkzeug, das mehrere Quellen bündelt, meldet «ok», auch wenn die eine gefragte Quelle ausfiel. Ihr Stand sagt es.
+        stand = (r.get("befund") or {}).get("quellenstand", {}).get(p["quelle"]) if isinstance(r.get("befund"), dict) else None
+        if isinstance(stand, dict) and stand.get("ergebnis") in ("fehler", "aus"):
+            r = {"ergebnis": "fehler", "fehler": stand.get("hinweis") or "Die Quelle hat nicht verwertbar geantwortet.", "protokoll_id": r.get("protokoll_id")}
+        kurz = r["befund"].get("kurz") if isinstance(r.get("befund"), dict) else None
+        print(json.dumps({"quelle": p["quelle"], "werkzeug": p["werkzeug"], "ergebnis": r.get("ergebnis"), "fehler": r.get("fehler"), "id": r.get("protokoll_id"), "kurz": kurz}, ensure_ascii=False), flush=True)
 asyncio.run(alle())
 '''
-    p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", skript, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
+
+
+def live(bereit: list) -> None:
+    abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
+    if not VENV.is_file():
+        zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
+        return
+    plan = [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]} for q in bereit if q.test]
+    p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", LIVE_SKRIPT, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
     offen = [eintrag["quelle"] for eintrag in plan]
     rat = " Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."      # hängt das Gateway an jeden Verbindungsfehler an
@@ -383,7 +382,7 @@ def kurzfassung(bereit: list, tests: tuple[int, int]) -> list[list[str]]:
     """Die Prüfung in wenigen Zeilen, für die Einrichtung: Was in Ordnung ist, wird zusammengefasst,
     jeder Fehler steht einzeln da."""
     zeilen: list[list[str]] = []
-    for bereich, titel, gut in (("Umgebung", "", ""), ("Konfiguration", "Einstellungen", "Wächter, Protokoll, MCP-Server und Modelle sind eingerichtet")):
+    for bereich, titel, gut in (("Umgebung", "", ""), ("Konfiguration", "Einstellungen", "Protokoll, MCP-Server und Modelle sind eingerichtet")):
         fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == bereich and art == "fehlt"]
         zeilen += fehler or ([["gut", titel, gut]] if titel else [])
     fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == "Selbsttests" and art == "fehlt"]
@@ -438,9 +437,9 @@ def main() -> int:
         ui.erledigt("Einsatzbereit", f"mit {len(bereit)} von {len(QUELLEN)} Quellen", breit=0)
     ui.liste("Nächste Schritte", list(dict.fromkeys(schritte)), nummeriert=True)
     if not noetig_fehlt:
-        ui.paare("Loslegen", [("Fall anlegen", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>"),
-                              ("Ermitteln", "claude   und dort   /ermittlung <Fall-ID>"),
-                              ("Einstellungen ändern", SETUP)])
+        ui.liste("So geht es weiter", plattform.WEITER, nummeriert=True)
+        ui.paare("Ausserdem", [("Am Terminal statt im Browser", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung <Fall-ID>"),
+                               ("Einstellungen ändern", SETUP)])
     return 1 if noetig_fehlt else 0
 
 

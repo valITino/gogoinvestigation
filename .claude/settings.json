@@ -13,11 +13,15 @@
       "mcp__osint__shodan_*",
       "mcp__osint__spur_*",
       "mcp__osint__abuseipdb_*",
+      "mcp__osint__ip_einordnung",
       "mcp__osint__virustotal_*",
       "mcp__osint__urlquery_suche",
       "mcp__osint__urlquery_bericht",
       "mcp__osint__urlquery_reputation",
       "mcp__osint__urlquery_status",
+      "mcp__osint__urlscan_suche",
+      "mcp__osint__urlscan_ergebnis",
+      "mcp__osint__urlscan_kontingent",
       "mcp__osint__wayback_verlauf",
       "mcp__osint__wayback_abruf",
       "mcp__osint__webcheck_passiv",
@@ -27,14 +31,18 @@
       "mcp__osint__chan_*",
       "mcp__osint__mastodon_*",
       "mcp__osint__krypto_*",
-      "mcp__robin__*",
+      "Edit(./faelle/*/arbeitsstand/**)",
+      "Edit(./faelle/*/befunde.json)",
+      "Edit(./faelle/*/rapport/**)",
       "Bash(python3 tools/fall.py neu *)",
       "Bash(python3 tools/fall.py aufnehmen *)",
       "Bash(python3 tools/fall.py status *)",
       "Bash(python3 tools/fall.py liste)",
       "Bash(python3 tools/rapport.py *)",
       "Bash(python3 tools/protokoll.py *)",
+      "Bash(python3 tools/anhang.py *)",
       "Bash(python3 tools/audit_pruefen.py *)",
+      "Bash(python3 tools/beleg.py zeigen *)",
       "Bash(python3 tools/pruefen.py)",
       "Bash(python tools/fall.py neu *)",
       "Bash(python tools/fall.py aufnehmen *)",
@@ -42,13 +50,17 @@
       "Bash(python tools/fall.py liste)",
       "Bash(python tools/rapport.py *)",
       "Bash(python tools/protokoll.py *)",
+      "Bash(python tools/anhang.py *)",
       "Bash(python tools/audit_pruefen.py *)",
+      "Bash(python tools/beleg.py zeigen *)",
       "Bash(python tools/pruefen.py)"
     ],
     "ask": [
       "mcp__osint__urlquery_einreichen",
+      "mcp__osint__urlscan_einreichen",
       "mcp__osint__wayback_sichern",
       "mcp__osint__webcheck_aktiv",
+      "mcp__robin__*",
       "WebFetch",
       "WebSearch"
     ],
@@ -56,6 +68,8 @@
       "Read(./.env)",
       "Read(./.env.local)",
       "Read(./intern/**)",
+      "Read(~/OSINT-Ablage/**)",
+      "Edit(~/OSINT-Ablage/**)",
       "Edit(./protokoll/**)",
       "Edit(./faelle/*/fall.json)",
       "Edit(./faelle/*/protokoll/**)",
@@ -63,6 +77,21 @@
       "Edit(./faelle/*/eingang/**)",
       "Bash(python3 tools/fall.py freigabe *)",
       "Bash(python tools/fall.py freigabe *)",
+      "Bash(python3 tools/fall.py quellen *)",
+      "Bash(python tools/fall.py quellen *)",
+      "Bash(python3 tools/fall.py entfernen *)",
+      "Bash(python tools/fall.py entfernen *)",
+      "Bash(python3 tools/fall.py loeschen *)",
+      "Bash(python tools/fall.py loeschen *)",
+      "Bash(python3 tools/beleg.py erfassen *)",
+      "Bash(python tools/beleg.py erfassen *)",
+      "Bash(python3 tools/pseudonymisieren.py *)",
+      "Bash(python tools/pseudonymisieren.py *)",
+      "Bash(python3 tools/reidentifizieren.py *)",
+      "Bash(python tools/reidentifizieren.py *)",
+      "Bash(*.env)",
+      "Bash(*.env *)",
+      "Bash(*.env.local*)",
       "Bash(curl *)",
       "Bash(wget *)",
       "PowerShell(Invoke-WebRequest *)",
@@ -74,19 +103,6 @@
     ]
   },
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Read|Grep|Bash|PowerShell|Monitor|Edit|Write|NotebookEdit|mcp__robin__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" waechter",
-            "timeout": 20,
-            "onFailure": "block"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "hooks": [

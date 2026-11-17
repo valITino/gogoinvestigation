@@ -1,0 +1,130 @@
+{
+ "city": "Mountain View",
+ "region_code": "CA",
+ "os": null,
+ "tags": [
+  "pqc"
+ ],
+ "ip": 134744072,
+ "isp": "Google LLC",
+ "area_code": null,
+ "longitude": -122.11746,
+ "last_update": "2026-11-16T06:51:24.191279",
+ "ports": [
+  443,
+  53
+ ],
+ "latitude": 38.00881,
+ "hostnames": [
+  "dns.google"
+ ],
+ "country_code": "US",
+ "country_name": "United States",
+ "domains": [
+  "dns.google"
+ ],
+ "org": "Google LLC",
+ "data": [
+  {
+   "data": "\nRecursion: enabled",
+   "hash": -553166942,
+   "opts": {},
+   "timestamp": "2026-11-15T23:30:12.242723",
+   "isp": "Google LLC",
+   "tcp": {
+    "fp": "t1_128_65535_8_MSTNW_df,id0,tos80",
+    "raw": "4580003c000040007006dba9a012ffff9d340000020405840402080a7da437cf43a4d0d501030308"
+   },
+   "_shodan": {
+    "region": "na",
+    "module": "dns-tcp",
+    "ptr": true,
+    "options": {
+     "scan": "yo2aa2JiXjQyPcqh"
+    },
+    "id": "a3007f65-38b4-476e-990e-65ea0ec23c10",
+    "crawler": "ee2ca87eda2faa9cbd554af69719b1fed0f4f462"
+   },
+   "port": 53,
+   "hostnames": [
+    "dns.google"
+   ],
+   "link": "DSL",
+   "location": {
+    "city": "Mountain View",
+    "region_code": "CA",
+    "area_code": null,
+    "longitude": -122.11746,
+    "country_name": "United States",
+    "country_code": "US",
+    "latitude": 38.00881
+   },
+   "dns": {
+    "resolver_hostname": null,
+    "recursive": true,
+    "resolver_id": null,
+    "software": null
+   },
+   "ip": 134744072,
+   "domains": [
+    "dns.google"
+   ],
+   "org": "Google LLC",
+   "os": null,
+   "asn": "AS15169",
+   "transport": "tcp",
+   "ip_str": "8.8.8.8"
+  },
+  {
+   "udp": {
+    "fp": "u1_128_-",
+    "raw": "45000037071300006511700a00236805"
+   },
+   "hash": -553166942,
+   "opts": {
+    "raw": "34ef81820001000000000000026964067365727665720000100003"
+   },
+   "timestamp": "2026-11-16T06:51:24.191279",
+   "isp": "Google LLC",
+   "data": "\nRecursion: enabled",
+   "asn": "AS15169",
+   "port": 53,
+   "hostnames": [
+    "dns.google"
+   ],
+   "location": {
+    "city": "Mountain View",
+    "region_code": "CA",
+    "area_code": null,
+    "longitude": -122.11746,
+    "country_name": "United States",
+    "country_code": "US",
+    "latitude": 38.00881
+   },
+   "dns": {
+    "resolver_hostname": null,
+    "recursive": true,
+    "resolver_id": null,
+    "software": null
+   },
+   "ip": 134744072,
+   "domains": [
+    "dns.google"
+   ],
+   "org": "Google LLC",
+   "os": null,
+   "_shodan": {
+    "region": "",
+    "module": "dns-udp",
+    "ptr": true,
+    "options": {},
+    "id": "39ad933a-4754-4bbe-9074-eb7561e10bac",
+    "crawler": "91597136eb9b132d7cc954511e0d9cbe7ce2e377"
+   },
+   "transport": "udp",
+   "ip_str": "8.8.8.8"
+  }
+ ],
+ "asn": "AS15169",
+ "ip_str": "8.8.8.8"
+}

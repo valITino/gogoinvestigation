@@ -1,0 +1,169 @@
+/* Gestaltung der Oberfläche. Baut auf dem Stil des Abschlussrapports auf (/basis.css aus tools/_html.py):
+   dieselben Farben, dieselben Schriften, dieselben Bausteine. Hier steht nur, was die Oberfläche zusätzlich braucht. */
+
+:root[data-farbe="dunkel"]{--flaeche:#1a1a19;--seite:#0d0d0d;--tinte:#f0efec;--tinte-2:#c3c2b7;--gedaempft:#898781;
+  --raster:#2c2c2a;--achse:#383835;--rand:rgba(255,255,255,.10);--serie:#3987e5;--serie-hell:#0d366b;--marke:#3a3214;
+  --kat-1:#3987e5;--kat-2:#d95926;--kat-3:#199e70;color-scheme:dark}
+:root[data-farbe="hell"]{--flaeche:#fcfcfb;--seite:#f9f9f7;--tinte:#0b0b0b;--tinte-2:#52514e;--gedaempft:#898781;
+  --raster:#e1e0d9;--achse:#c3c2b7;--rand:rgba(11,11,11,.10);--serie:#2a78d6;--serie-hell:#cde2fb;--marke:#fff4cc;
+  --kat-1:#2a78d6;--kat-2:#eb6834;--kat-3:#1baf7a;color-scheme:light}
+
+html,body{height:100%}
+body{overflow:hidden}
+.sprung{position:absolute;left:-999px;top:0;background:var(--flaeche);padding:8px 12px;z-index:9}
+.sprung:focus{left:8px;top:8px}
+#rahmen{display:grid;grid-template-columns:210px minmax(0,1fr) 300px;height:100vh}
+#nav{border-right:1px solid var(--rand);padding:16px 14px;overflow:auto;background:var(--flaeche)}
+#nav .marke-app{font-weight:650;margin-bottom:14px}
+#nav ul{list-style:none;padding:0;margin:0 0 18px}
+#nav li{margin:2px 0}
+#nav li.unter a{padding-left:20px}
+#nav li.gruppe{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--tinte-2);margin:12px 0 4px;padding:0 8px;overflow-wrap:anywhere}
+#nav a{display:block;padding:5px 8px;border-radius:6px;text-decoration:none}
+#nav a:hover{background:var(--seite)}
+#nav a[aria-current]{background:var(--serie-hell);font-weight:600}
+#haupt{display:flex;flex-direction:column;min-width:0;height:100vh}
+#kopf{border-bottom:1px solid var(--rand);background:var(--flaeche);padding:10px 24px 8px}
+#kopf:empty{display:none}
+#mitte{flex:1;overflow:auto;padding:22px 28px 60px;background:var(--flaeche);outline:none}
+#mitte>h1:first-child{margin-top:0}
+#spur{border-left:1px solid var(--rand);background:var(--flaeche);display:flex;flex-direction:column;height:100vh;min-width:0}
+#spur[hidden]{display:none}
+#rahmen:has(#spur[hidden]){grid-template-columns:210px minmax(0,1fr)}
+#spur h2{font-size:15px;margin:0;padding:14px 14px 8px;border:0}
+
+button,select,input[type=search]{font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:3px 9px}
+button{cursor:pointer}
+button:hover{background:var(--seite)}
+:focus-visible{outline:2px solid var(--serie);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--serie-hell);border-color:var(--serie)}
+.farbwahl{font-size:13px;margin-bottom:10px}
+
+/* Kopf des Falls und Schrittleiste */
+.fallkopf{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;justify-content:space-between}
+.fallid{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600}
+.falltitel{font-weight:600}
+.freigaben{display:flex;flex-wrap:wrap;gap:6px}
+.schritte{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:8px 0 0;font-size:13px}
+.schritte li{display:flex;align-items:center;gap:6px;border:1px solid var(--achse);border-radius:999px;padding:1px 10px 1px 3px;margin:0;color:var(--tinte-2)}
+.schritte .nr{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--raster);font-size:11px;color:var(--tinte)}
+.schritte .erledigt .nr{background:var(--gut);color:#fff}
+.schritte .aktuell{border-color:var(--serie);background:var(--serie-hell);color:var(--tinte);font-weight:600}
+.schritte .uebersprungen{border-style:dashed}
+
+/* Zustände: Zeichen und Wort, Farbe kommt dazu */
+.z-gut{color:var(--gut)} .z-kritisch{color:var(--kritisch)} .z-warnung{color:#a86e00} .z-neutral{color:var(--tinte-2)} .z-leer{color:var(--gedaempft)}
+:root[data-farbe="dunkel"] .z-warnung{color:var(--warnung)}
+@media (prefers-color-scheme:dark){:root:not([data-farbe="hell"]) .z-warnung{color:var(--warnung)}}
+.marke.z-gut,.marke.z-kritisch,.marke.z-warnung,.marke.z-neutral,.marke.z-leer{border-color:currentColor}
+.marke.z-boesartig{color:var(--kritisch);border-color:currentColor} .marke.z-verdaechtig{color:#a86e00;border-color:currentColor}
+.marke.z-unauffaellig{color:var(--gut);border-color:currentColor} .marke.z-unbekannt{color:var(--tinte-2)}
+.marke.art{background:var(--seite);font-weight:600}
+
+/* Werte, Felder, Bäume */
+.w{overflow-wrap:anywhere} .w.leer{color:var(--gedaempft);font-style:italic}
+.orig,.einheit{font-size:12px;color:var(--tinte-2)}
+dl.felder{display:grid;grid-template-columns:minmax(170px,28%) 1fr;gap:0;margin:8px 0 14px;font-size:13.5px}
+dl.felder dt{color:var(--tinte-2);padding:5px 12px 5px 0;border-bottom:1px solid var(--raster)}
+dl.felder dd{margin:0;padding:5px 0;border-bottom:1px solid var(--raster);min-width:0}
+details.lang>summary{cursor:pointer;overflow-wrap:anywhere}
+details.lang[open]>summary{color:var(--tinte-2);font-size:12px}
+ul.baum{list-style:none;padding-left:16px;margin:2px 0;font-size:13px;border-left:1px solid var(--raster)}
+ul.baum li{margin:1px 0}
+ul.baum .k{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:var(--tinte-2)}
+ul.baum summary{cursor:pointer}
+td>.k{font-weight:600;overflow-wrap:anywhere}
+.hilfe{display:inline-grid;place-items:center;width:16px;height:16px;border:1px solid var(--achse);border-radius:50%;font-size:11px;color:var(--tinte-2);cursor:help;font-weight:400}
+.hilfe.offen::after{content:attr(data-text);display:block;position:absolute;max-width:340px;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:8px 10px;
+  font-size:13px;color:var(--tinte);z-index:5;margin-top:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:normal;text-align:left}
+.keine{color:var(--tinte-2)} h4{font-size:14px;margin:16px 0 4px}
+pre.rohtext{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--seite);border:1px solid var(--rand);border-radius:8px;padding:12px;max-height:70vh;overflow:auto}
+img.rohbild{max-width:100%;border:1px solid var(--rand);border-radius:8px}
+iframe.dokument{width:100%;height:78vh;border:1px solid var(--rand);border-radius:8px;background:#fff}
+details.technik{margin:10px 0} details.technik>summary{cursor:pointer;color:var(--tinte-2);font-size:13px}
+
+/* Tabellen */
+.tabellenleiste{display:flex;gap:8px;align-items:center;margin:10px 0 0}
+.tabellenleiste input{width:220px;max-width:50%}
+th .sortieren{all:unset;cursor:pointer;display:inline}
+th .sortieren:focus-visible{outline:2px solid var(--serie);outline-offset:2px}
+th[aria-sort="ascending"] .sortieren::after{content:" ▲";font-size:10px}
+th[aria-sort="descending"] .sortieren::after{content:" ▼";font-size:10px}
+table.felder-tab td:first-child{color:var(--tinte-2);width:20%}
+table.abdeckung th .hoch{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-weight:600}
+table.abdeckung td,table.abdeckung th{padding:4px 5px;text-align:center}
+table.abdeckung td:first-child,table.abdeckung th:first-child,table.abdeckung td:nth-child(2),table.abdeckung th:nth-child(2){text-align:left;white-space:nowrap}
+.zelle{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:4px;font-weight:700;border:1px solid transparent}
+.zelle.z-leer{border-color:var(--raster)} .zelle.z-passt-nicht{background:var(--raster);opacity:.45}
+.zelle .nur-text{position:absolute;left:-9999px}
+td>a:has(.zelle){text-decoration:none}
+
+/* Karten: Feststellung, Bewertung und Hypothese sehen verschieden aus */
+.karte.art-feststellung{border-left:4px solid var(--serie)}
+.karte.art-bewertung{border-left:4px double var(--kat-2)}
+.karte.art-hypothese{border-style:dashed}
+.karte.ziel{box-shadow:0 0 0 2px var(--serie)}
+.karte h4{margin:0 0 6px}
+details.belege{margin-top:8px;font-size:13px} details.belege summary{cursor:pointer;color:var(--tinte-2)}
+
+/* Rapport */
+.rapport-leiste,.filterleiste,.bildleiste{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.rapport>h1:first-of-type{margin-top:8px}
+.ausblenden label{display:block;font-size:13px} .ausblenden summary{cursor:pointer}
+.tafel{border:1px solid var(--rand);border-radius:8px;padding:8px 14px;margin:8px 0}
+.zeitleiste svg{margin:4px 0 10px}
+.suchform{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 14px}
+.suchform label{flex-basis:100%;color:var(--tinte-2);font-size:13px} .suchform input{flex:1;min-width:220px;padding:6px 10px}
+
+/* Arbeitsspur */
+.spurfilter{display:flex;flex-wrap:wrap;gap:5px;padding:0 14px 8px;font-size:12px}
+#spurliste{list-style:none;margin:0;padding:0 14px;overflow:auto;flex:1;font-size:13px}
+#spurliste li{border-top:1px solid var(--raster);padding:7px 0;margin:0}
+.spurkopf{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--tinte-2)}
+.spurkopf a{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.spurtext{overflow-wrap:anywhere}
+#spurfuss{border-top:1px solid var(--rand);padding:8px 14px}
+
+@media (max-width:1100px){#rahmen{grid-template-columns:170px minmax(0,1fr)}#spur{display:none}}
+/* Bedienung: Formulare, Rückfrage, der lokale Bildschirm für Klartext */
+form.aktion{margin:10px 0 18px}
+form.aktion.klein-form{display:inline-block;margin:0 6px 6px 0;vertical-align:top}
+form.aktion.klein-form .ergebnis:empty{display:none}
+.felder-raster{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 16px;margin:10px 0}
+.feld label{display:block;font-size:13px;color:var(--tinte-2);margin-bottom:3px}
+.feld.breit{grid-column:1/-1}
+.feld input[type=text],.feld input:not([type]),.feld textarea,.feld select{width:100%;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:5px 8px}
+.knoepfe{margin-top:8px} .knoepfe button{padding:6px 14px;font-weight:600}
+.knopfzeile{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;margin:8px 0}
+.ablegen{border:2px dashed var(--achse);border-radius:10px;padding:18px;text-align:center;margin:10px 0}
+.ablegen.ziel{border-color:var(--serie);background:var(--serie-hell)}
+.ablegen input{display:block;margin:8px auto}
+fieldset.weg{border:1px solid var(--rand);border-radius:8px;margin:10px 0;padding:8px 14px}
+fieldset.weg label{display:block;margin:6px 0}
+.ergebnis .meldung{margin:8px 0;font-weight:600}
+.ergebnis:empty{display:none}
+.rueckfrage{border:2px solid var(--warnung);border-radius:10px;padding:12px 16px;margin:12px 0;background:var(--marke)}
+.rueckfrage h3{margin-top:0}
+#rueckfrage-hinweis{display:block;margin:0;border-radius:0;text-align:center;font-weight:600}
+ol.verlauf{font-size:12.5px;padding-left:18px;max-height:340px;overflow:auto}
+.klartext-band{border:2px solid var(--kritisch);border-left-width:10px;border-radius:8px;padding:10px 14px;margin:10px 0 14px;background:var(--flaeche)}
+.klartext-band b{color:var(--kritisch);text-transform:uppercase;letter-spacing:.04em;margin-right:8px}
+.klartext{display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,2fr);gap:22px;align-items:start}
+.klartext-rand{position:sticky;top:0;max-height:calc(100vh - 150px);overflow:auto;padding-right:4px}
+pre.dokument{white-space:pre-wrap;overflow-wrap:anywhere;font:13.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--seite);border:1px solid var(--rand);border-radius:8px;padding:14px}
+mark.fund{border-radius:3px;padding:0 2px;color:inherit}
+mark.fund.s-ersetzen{background:var(--serie-hell);outline:1px solid var(--serie)}
+mark.fund.s-offen{background:var(--marke);outline:1px dashed var(--warnung)}
+mark.fund.s-lassen{background:transparent;outline:1px dotted var(--gedaempft);text-decoration:line-through;text-decoration-color:var(--gedaempft)}
+mark.fund.ziel,.ziel>mark{outline:3px solid var(--kritisch)}
+.technik{border-bottom:2px solid var(--gut)}
+ul.entscheide{list-style:none;padding:0;font-size:13px}
+button.verweis{border:0;background:none;padding:0;text-decoration:underline;color:inherit;cursor:pointer}
+ul.entscheide li{border-bottom:1px solid var(--raster);padding:6px 0}
+.ermittlung .marke{font-size:13.5px}
+
+@media print{
+  body{overflow:visible} #rahmen{display:block;height:auto} #nav,#spur,.sprung,.tabellenleiste,form.aktion,#rueckfrage-hinweis{display:none} #haupt{height:auto;display:block}
+  #mitte{overflow:visible;padding:0} #kopf{padding:0 0 8px} ul.baum details>summary{list-style:none} iframe.dokument{height:auto}
+  table.abdeckung th .hoch{writing-mode:horizontal-tb;transform:none}
+}

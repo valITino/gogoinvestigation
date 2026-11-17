@@ -33,7 +33,7 @@ if __name__ == "__main__":
     plattform.start()
 
 from gateway.akte import SITZUNGEN, fall_daten, fall_pfad, jsonl_lesen, kette, kette_pruefen  # noqa: E402
-from tools._html import balken, esc, kachel, kuerzen, seite  # noqa: E402
+from tools._html import balken, csv_sicher, esc, kachel, kuerzen, seite  # noqa: E402
 
 try:
     ZONE = plattform.zeitzone()
@@ -119,6 +119,18 @@ def eingabe_kurz(eingabe: object, n: int = 160) -> str:
     return kuerzen(str(eingabe or ""), n)
 
 
+def kennzahlen(abfragen: list[dict]) -> dict:
+    """Die Zahlen im Kopf des Ermittlungsprotokolls. Auch die Oberfläche nimmt sie von hier."""
+    auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
+    echte = [e for e in abfragen if e.get("art") not in ("auswertung", "lokal")]      # Abfragen bei Quellen, ohne lokal befragte Listen
+    return {"auswertungen": auswertungen, "echte": echte,
+            "teil_von": {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []},
+            "ergebnis": Counter(e.get("ergebnis") for e in echte),
+            "cache": sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache")),
+            "aktiv": sum(1 for e in echte if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt"),
+            "je_quelle": Counter(e.get("quelle") for e in echte)}
+
+
 def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], stand: dict,
           sitzungsmeldungen: list[str], akteure: dict[str, dict], extern: list[dict]) -> str:
     h: list[str] = []
@@ -139,12 +151,8 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         h.append("<div class='banner'>✕ Die Integritätsprüfung hat Abweichungen ergeben:<ul>"
                  + "".join(f"<li>{esc(f)}</li>" for f in stand["fehler"] + sitzungsmeldungen) + "</ul></div>")
 
-    auswertungen = [e for e in abfragen if e.get("art") == "auswertung"]
-    echte = [e for e in abfragen if e.get("art") != "auswertung"]           # Abfragen bei Quellen
-    teil_von = {pid: e["id"] for e in auswertungen for pid in e.get("grundlage") or []}
-    zaehler = Counter(e.get("ergebnis") for e in echte)
-    cache = sum(1 for e in echte if (e.get("antwort") or {}).get("aus_cache"))
-    aktiv = sum(1 for e in echte if e.get("art") == "aktiv" and e.get("ergebnis") != "abgelehnt")
+    k = kennzahlen(abfragen)
+    auswertungen, echte, teil_von, zaehler, cache, aktiv = k["auswertungen"], k["echte"], k["teil_von"], k["ergebnis"], k["cache"], k["aktiv"]
     h.append("<div class='kacheln'>")
     h.append(kachel(len(echte), "Abfragen", f"{cache} davon aus dem Fall-Cache"))
     h.append(kachel(zaehler["ok"], "mit Treffer"))
@@ -155,7 +163,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     if auswertungen:
         h.append(kachel(len(auswertungen), "Auswertungen", "aus mehreren Abfragen errechnet"))
     h.append("</div>")
-    je_quelle = Counter(e.get("quelle") for e in echte)
+    je_quelle = k["je_quelle"]
     if je_quelle:
         h.append("<figure>" + balken([{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in je_quelle.most_common()],
                                      beschriftung="Abfragen je Quelle") +
@@ -196,6 +204,12 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                            + (f". Tatsachen aus: {esc(', '.join(e.get('quellen') or []))}" if e.get("quellen") else ""),
                            (f"Beruht auf {len(grundlage)} Abfrage(n): {verweise}" + (f" und {len(grundlage) - 60} weiteren" if len(grundlage) > 60 else ""))
                            if grundlage else "Ohne Abfrage nach aussen"]
+            elif e.get("art") == "lokal":
+                liste = antwort.get("stand") or {}       # nicht «stand»: So heisst der Stand der Protokollkette, den Abschnitt 5 braucht
+                technik = [esc(f"Lokale Liste, keine Anfrage nach aussen. Stand {liste.get('stand', '?')} vom {liste.get('datum', '?')}, "
+                               f"{liste.get('eintraege', '?')} Einträge ({liste.get('umfang', '?')}), SHA-256 der Liste: {antwort.get('sha256') or '?'}")]
+                if e["id"] in teil_von:
+                    technik.append(f"Teil der Auswertung <a href='#{esc(teil_von[e['id']])}'>{esc(teil_von[e['id']])}</a>")
             else:
                 technik = [esc(f"{anfrage.get('methode', '')} {anfrage.get('url', '')}")]
                 if antwort:
@@ -209,7 +223,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
                 technik.append(f"Aus dem Fall-Cache, ursprüngliche Abfrage: <a href='#{esc(antwort['aus_cache'])}'>{esc(antwort['aus_cache'])}</a>")
             if e.get("fehler"):
                 technik.append(f"Meldung: {esc(e['fehler'])}")
-            art = {"aktiv": "aktiv", "auswertung": "Auswertung"}.get(e.get("art"), "passiv")
+            art = {"aktiv": "aktiv", "auswertung": "Auswertung", "lokal": "lokale Liste"}.get(e.get("art"), "passiv")
             marken = f"<span class='marke'>{art}</span>" + (" <span class='marke'>über Proxy</span>" if anfrage.get("proxy") else "")
             h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span><br>{marken}",
                              f"<span class='mono'>{esc(e.get('ziel', ''))}</span><br>{esc(e.get('zweck', ''))}",
@@ -222,15 +236,22 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     # ---- 3 Weitere Werkzeuge
     h.append("<h2>3 Abfragen über weitere Werkzeuge</h2>"
              "<p class='klein'>Aufrufe von MCP-Servern ausserhalb des Gateways, zum Beispiel die Dark-Web-Suche Robin über Tor. "
-             "Der Sitzungs-Hook sichert jede Antwort vollständig in der Fallakte und verkettet sie wie die Abfragen des Gateways.</p>")
+             "Der Sitzungs-Hook sichert jede Antwort vollständig in der Fallakte und verkettet sie wie die Abfragen des Gateways. "
+             "Hier stehen auch Abklärungen, die der Sachbearbeiter von Hand gemacht und mit tools/beleg.py erfasst hat. Sie sind als "
+             "«von Hand erfasst» gekennzeichnet: Ihr Inhalt stammt nicht aus einer protokollierten Abfrage.</p>")
     if extern:
         h.append("<div class='tabelle-breit'><table class='eintraege'>" + KOPFZEILE.replace("Ziel und Zweck", "Eingabe"))
         for e in extern:
             antwort = e.get("antwort") or {}
-            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span>",
-                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span>",
+            hand = e.get("art") == "von_hand"
+            anfrage = e.get("anfrage") or {}
+            h.append(eintrag(e, f"{esc(e.get('quelle', ''))}<br><span class='mono'>{esc(e.get('werkzeug', ''))}</span>"
+                             + ("<br><span class='marke'>von Hand erfasst</span>" if hand else ""),
+                             f"<span class='mono'>{esc(e.get('ziel', ''))}</span>"
+                             + (f"<br>Abgeklärt am {esc(lokal(anfrage.get('abgeklaert_am')))}, erfasst durch {esc(str(anfrage.get('erfasst_durch') or '?'))}" if hand else ""),
+                             "<span class='marke'><span class='punkt' style='background:var(--warnung)'></span>✎ von Hand</span>" if hand else
                              "<span class='marke'><span class='punkt' style='background:var(--gut)'></span>✓ gesichert</span>",
-                             e.get("agent"),
+                             (anfrage.get("erfasst_durch") if hand else None) or e.get("agent"),
                              [f"Rohdaten: <a href='../{esc(antwort.get('rohdaten', ''))}'>{esc(antwort.get('rohdaten', ''))}</a>"
                               f" · SHA-256: {esc(antwort.get('sha256') or '')}, {groesse(antwort.get('bytes'))}"]))
         h.append("</table></div>")
@@ -239,7 +260,7 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
 
     # ---- 4 Sitzungsverlauf
     uebrige = [z for z in sitzung if z.get("werkzeug") and not z["werkzeug"].startswith("mcp__")
-               or z.get("ereignis") in ("SubagentStart", "SubagentStop", "PostModelSwitch")]
+               or z.get("ereignis") in ("SubagentStart", "SubagentStop", "PostModelSwitch", "Oberflaeche")]
     h.append("<h2>4 Sitzungsverlauf</h2>"
              "<p class='klein'>Alle übrigen Schritte der beteiligten Sitzungen: gelesene und geschriebene Dateien, "
              "ausgeführte Befehle, Einsatz der Subagenten.</p>")
@@ -256,7 +277,13 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         h.append("<div class='tabelle-breit'><table><tr><th>Zeit</th><th>Durch</th><th>Schritt</th><th>Angabe</th></tr>")
         for z in uebrige[:grenze]:
             schritt = z.get("werkzeug") or {"SubagentStart": "Subagent gestartet", "SubagentStop": "Subagent beendet",
-                                            "PostModelSwitch": "Modell der Sitzung gewechselt"}.get(z.get("ereignis"), "")
+                                            "PostModelSwitch": "Modell der Sitzung gewechselt",
+                                            "Oberflaeche": f"Oberfläche: {z.get('schritt') or ''}"}.get(z.get("ereignis"), "")
+            if z.get("ereignis") == "Oberflaeche":      # Entscheide des Sachbearbeiters, die über die Oberfläche kamen
+                h.append(f"<tr><td>{esc(lokal(z.get('zeit_utc')))}</td><td>{esc(z.get('agent') or '')}</td>"
+                         f"<td class='mono'>{esc(schritt)}</td><td class='klein'>{esc(eingabe_kurz(z.get('angabe'), 300))} "
+                         "<span class='marke'>über die Oberfläche</span></td></tr>")
+                continue
             fehler = " ✕ fehlgeschlagen" if z.get("ereignis") == "PostToolUseFailure" else ""
             h.append(f"<tr><td>{esc(lokal(z.get('zeit_utc')))}</td><td>{esc(z.get('agent') or '')}</td>"
                      f"<td class='mono'>{esc(schritt)}{fehler}</td><td class='klein'>{esc(eingabe_kurz(z.get('eingabe')))}"
@@ -320,18 +347,20 @@ def main(argv: list[str]) -> int:
                     "dauer_ms", "aus_cache", "durch", "sitzung", "kettenwert", "grundlage"])
         for e in abfragen:
             a, q, wer = e.get("antwort") or {}, e.get("anfrage") or {}, akteure.get(e["id"]) or {}
-            w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
-                        e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), e.get("zweck"), q.get("methode"), q.get("url"),
-                        "ja" if q.get("proxy") else "nein", a.get("status", ""), e.get("ergebnis"), e.get("fehler") or "",
-                        a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", a.get("dauer_ms", ""),
-                        a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette"),
-                        " ".join(e.get("grundlage") or [])])
+            w.writerow(csv_sicher([
+                e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
+                e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), e.get("zweck"), q.get("methode"), q.get("url"),
+                "ja" if q.get("proxy") else "nein", a.get("status", ""), e.get("ergebnis"), e.get("fehler") or "",
+                a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", a.get("dauer_ms", ""),
+                a.get("aus_cache") or "", wer.get("agent") or "", wer.get("sitzung") or "", e.get("kette"),
+                " ".join(e.get("grundlage") or [])]))
         for e in extern:
             a = e.get("antwort") or {}
-            w.writerow([e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
-                        e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), "", "", "", "", "", e.get("ergebnis"), "",
-                        a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
-                        e.get("sitzung") or "", e.get("kette"), ""])
+            w.writerow(csv_sicher([
+                e["id"], e.get("zeit_utc"), e.get("zeit_lokal"), e.get("quelle"), e.get("werkzeug"), e.get("art"),
+                e.get("freigabe") or "", e.get("ziel"), e.get("ziel_typ"), "", "", "", "", "", e.get("ergebnis"), "",
+                a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
+                e.get("sitzung") or "", e.get("kette"), ""]))
     print(f"Protokoll erzeugt: faelle/{fall_id}/rapport/Ermittlungsprotokoll.html ({len(abfragen)} Einträge)")
     print(f"Maschinenlesbar:   faelle/{fall_id}/rapport/Ermittlungsprotokoll.csv")
     if stand["ok"] and not sitzungsmeldungen:

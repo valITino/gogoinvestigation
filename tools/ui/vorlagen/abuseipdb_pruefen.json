@@ -1,0 +1,44 @@
+{
+ "data": {
+  "ipAddress": "8.8.8.8",
+  "isPublic": true,
+  "ipVersion": 4,
+  "isWhitelisted": true,
+  "abuseConfidenceScore": 0,
+  "countryCode": "US",
+  "usageType": "Content Delivery Network",
+  "isp": "Google LLC",
+  "domain": "google.com",
+  "hostnames": [
+   "dns.google"
+  ],
+  "isTor": false,
+  "countryName": "United States of America",
+  "totalReports": 193,
+  "numDistinctUsers": 66,
+  "lastReportedAt": "2026-11-16T09:42:45+00:00",
+  "reports": [
+   {
+    "reportedAt": "2026-11-16T09:42:45+00:00",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "categories": [
+     7
+    ],
+    "reporterId": 28686,
+    "reporterCountryCode": "US",
+    "reporterCountryName": "United States of America"
+   },
+   {
+    "reportedAt": "2026-11-15T16:00:10+00:00",
+    "comment": "Bemerkung des Melders (für die Vorlage ersetzt)",
+    "categories": [
+     14,
+     15
+    ],
+    "reporterId": 173536,
+    "reporterCountryCode": "SK",
+    "reporterCountryName": "Slovakia"
+   }
+  ]
+ }
+}

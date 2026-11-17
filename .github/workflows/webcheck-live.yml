@@ -29,9 +29,9 @@ jobs:
     timeout-minutes: 20
     continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
 
@@ -41,7 +41,7 @@ jobs:
       - name: Web-Check starten
         run: |
           docker compose up -d webcheck
-          docker image inspect lissy93/web-check --format 'Abbild {{index .RepoDigests 0}}, gebaut {{.Created}}'
+          docker inspect osint-webcheck --format 'Abbild {{.Config.Image}}, gestartet {{.State.StartedAt}}'
 
       - name: Jede passive Prüfung einmal gegen example.com
         run: python3 tools/webcheck_live.py --warten 120

@@ -54,12 +54,33 @@ QUELLEN: tuple[Quelle, ...] = (
            ("abuseipdb_pruefen", "abuseipdb_meldungen"),
            "Missbrauchsmeldungen zu IPs mit Score, Kategorien und Zeitpunkten.",
            ("abuseipdb_pruefen", {"ip": "8.8.8.8"})),
+    # ----- Einordnung einer IP: ein Werkzeug, mehrere Stimmen. Die Testabfrage fragt je Quelle nur diese eine
+    Quelle("RIPEstat", None, "kein Schlüssel nötig", ("ip_einordnung",),
+           "Was die Register über eine IP sagen: Präfix, AS, Inhaber, Meldestelle. Mit Tatzeit: wer das Netz damals ankündigte und hielt.",
+           ("ip_einordnung", {"ip": "8.8.8.8", "quellen": ["ripestat"]}),
+           "Betreiber RIPE NCC, Amsterdam. Die frühere Zuteilung gibt es nur für Netze der RIPE-Datenbank. "
+           "Die Anwendung nennt sich im Parameter sourceapp (OSINT_RIPESTAT_APP)."),
+    Quelle("proxycheck.io", "PROXYCHECK_API_KEY", "https://proxycheck.io/dashboard (kostenlos, 1000 Abfragen am Tag)", (),
+           "Ist die IP der Ausgang eines VPN, Proxys oder des Tor-Netzes? Betreiber des Dienstes, erste und letzte Sichtung, 60 Tage Historie.",
+           ("ip_einordnung", {"ip": "8.8.8.8", "quellen": ["proxycheck"]}),
+           "Der Dienst nennt weder Firma noch Sitz. Residential Proxies erkennt er nur lückenhaft."),
+    Quelle("ipapi.is", "IPAPI_API_KEY", "https://ipapi.is/app/signup (kostenlos, 1000 Abfragen am Tag)", (),
+           "Zweite Stimme zur Einordnung einer IP: Art des Anschlusses (Zugangsanbieter, Rechenzentrum, Firma), VPN, Proxy, Tor.",
+           ("ip_einordnung", {"ip": "8.8.8.8", "quellen": ["ipapi"]}),
+           "Ohne Schlüssel liefert der Dienst die Merkmale nicht. Residential Proxies erkennt er laut eigener Doku meist nicht."),
     Quelle("urlquery", "URLQUERY_API_KEY", "https://urlquery.net",
            ("urlquery_suche", "urlquery_bericht", "urlquery_reputation", "urlquery_einreichen",
             "urlquery_status"),
            "Sandbox-Berichte zu URLs: Was tat die Seite beim Aufruf?",
            ("urlquery_reputation", {"url": "https://example.com/"}),
            freigabe={"urlquery_einreichen": "aktiv"}),
+    Quelle("urlscan.io", "URLSCAN_API_KEY", "https://urlscan.io/user/profile (kostenlos)",
+           ("urlscan_suche", "urlscan_ergebnis", "urlscan_kontingent", "urlscan_einreichen"),
+           "Vorhandene Scans von Websites: Was lud die Seite, wohin verband sie sich, wie sah sie aus? Suche nach Domain, IP, URL, Hash, AS.",
+           ("urlscan_kontingent", {}),
+           "Betreiber urlscan GmbH, Deutschland. Die Testabfrage liest nur das Kontingent. Eingereicht wird ausschliesslich mit der "
+           "Sichtbarkeit «private». Das kostenlose Konto durchsucht die Scans der letzten 365 Tage.",
+           freigabe={"urlscan_einreichen": "aktiv"}),
     Quelle("Wayback Machine", None, "kein Schlüssel nötig",
            ("wayback_verlauf", "wayback_abruf", "wayback_sichern"),
            "Frühere Stände von Webseiten: Seit wann gibt es die Seite, was stand dort?",
@@ -116,6 +137,10 @@ QUELLEN: tuple[Quelle, ...] = (
     Quelle("Krypto-Zuordnung", None, "kein Schlüssel nötig", ("krypto_zuordnung",),
            "Wem gehört eine Adresse? Sanktionslisten (OFAC, TRM Labs), Lösegeld-Adressen (Ransomwhere), WalletExplorer.",
            ("krypto_zuordnung", {"adressen": ["12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"]})),
+    Quelle("GraphSense TagPacks", None, "liegt im Repo (gateway/listen), fester Stand mit Prüfsumme", (),
+           "Lokale Etikettenliste für Krypto-Adressen: Börsen, Mischdienste, Märkte, Betrugs- und Lösegeld-Adressen. Keine Adresse verlässt den Rechner.",
+           ("krypto_zuordnung", {"adressen": ["12t9YDPgwueZ9NyMgw519p7AA8isjr6SMw"], "quellen": ["tagpacks"]}),
+           "MIT-Lizenz (Iknaio, AIT). Die elf Massenlisten (rund 12 MB) lädt einmal: python3 tools/listen.py laden"),
     Quelle("Krypto-Kurse", None, "kein Schlüssel nötig", ("krypto_kurs",),
            "Gegenwert in CHF, EUR und USD am Tag der Zahlung (DefiLlama, Referenzkurse der EZB).",
            ("krypto_kurs", {"wert": "BTC", "datum": "2024-01-15", "betrag": "0.5"})),
@@ -140,6 +165,59 @@ QUELLEN: tuple[Quelle, ...] = (
 ROBIN_WERKZEUGE = ("robin_search", "robin_refine", "robin_filter", "robin_scrape", "robin_investigate",
                    "robin_list_models", "robin_health", "robin_list_investigations",
                    "robin_save_investigation")
+
+
+# ----- Pflichtquellen: Was es heisst, wenn der Sachbearbeiter eine Quelle für einen Fall vorgibt (gateway/pflichtquellen.py)
+
+@dataclass(frozen=True)
+class Vorgabe:
+    """Wofür eine Quelle als Pflichtquelle fällig wird und woran das Protokoll erkennt, dass sie gefragt wurde."""
+    typen: tuple[str, ...] = ()         # Indikatortypen, für die sie fällig wird: je Indikator eine Abfrage
+    einmal: bool = False                # Suchquelle, oder ihre Indikatoren sind Namen (Gruppe, Konto): Eine Abfrage im Fall genügt.
+    #                                     Ohne Typen ist sie immer fällig, mit Typen nur, wenn der Fall einen solchen Indikator hat
+    familie: str = ""                   # Blockchain: nur Adressen und Zahlungen dieser Familie (bitcoin, evm, tron)
+    im_protokoll: tuple[str, ...] = ()  # weitere Namen, unter denen ihre Abfragen im Protokoll stehen
+    freigabe: str = ""                  # ohne diese Freigabe des Falls lässt sie sich nicht vorgeben
+    werkzeuge: tuple[str, ...] = ()     # nur diese Werkzeuge zählen als Abfrage (leer: alle)
+
+
+ROBIN = "Robin (Dark Web)"              # so heisst der MCP-Server Robin unter den Pflichtquellen. Im Protokoll: «Robin (Tor)»
+
+# Enger als die Abdeckung der Oberfläche (tools/ui/blaetter.py, QUELLE_TYPEN): Dort steht, wozu eine Quelle etwas sagen kann.
+# Hier steht, wofür sie gefragt werden muss, wenn der Sachbearbeiter sie vorgibt. Deshalb fehlt, was nur mit einem
+# bezahlten Zugang antwortet (Shodan zu Domains) oder das Ziel selbst aufruft (Mastodon zu einer Domain).
+VORGABEN: dict[str, Vorgabe] = {
+    "Shodan": Vorgabe(("ip",)),
+    "Shodan InternetDB": Vorgabe(("ip",)),
+    "VirusTotal": Vorgabe(("ip", "domain", "url", "hash")),
+    "Spur": Vorgabe(("ip",)),
+    "AbuseIPDB": Vorgabe(("ip",)),
+    "RIPEstat": Vorgabe(("ip",)),
+    "proxycheck.io": Vorgabe(("ip",)),
+    "ipapi.is": Vorgabe(("ip",)),
+    "urlquery": Vorgabe(("url", "domain")),
+    "urlscan.io": Vorgabe(("url", "domain", "ip", "hash")),
+    "Wayback Machine": Vorgabe(("url", "domain")),
+    "Web-Check": Vorgabe(("domain",)),
+    "ransomware.live": Vorgabe(("gruppe",), einmal=True),
+    "Ahmia": Vorgabe(("onion",)),
+    "Telegram (Web-Vorschau)": Vorgabe(einmal=True),
+    "RapidAPI Telegram": Vorgabe(("konto",), einmal=True),
+    "4chan": Vorgabe(einmal=True),
+    "Mastodon": Vorgabe(("konto",), einmal=True),
+    "Bitcoin (mempool.space)": Vorgabe(("wallet", "transaktion"), familie="bitcoin",
+                                       im_protokoll=("mempool.space", "Blockstream", "Bitcoin-Explorer (eigene Instanz)")),
+    "Ethereum (Blockscout)": Vorgabe(("wallet", "transaktion"), familie="evm", im_protokoll=("Blockscout", "Blockscout (eigene Instanz)")),
+    "TRON (TronGrid)": Vorgabe(("wallet", "transaktion"), familie="tron", im_protokoll=("TronGrid", "TronGrid (eigene Instanz)")),
+    "Krypto-Zuordnung": Vorgabe(("wallet",), im_protokoll=("OFAC", "TRM Labs", "Ransomwhere", "WalletExplorer")),
+    "GraphSense TagPacks": Vorgabe(("wallet",)),
+    "Krypto-Kurse": Vorgabe(("transaktion",), einmal=True, im_protokoll=("DefiLlama", "EZB")),
+    "Etherscan": Vorgabe(("wallet", "transaktion"), familie="evm"),
+    "Tronscan": Vorgabe(("wallet",), familie="tron"),
+    "Chainabuse": Vorgabe(("wallet",)),
+    "Iknaio GraphSense": Vorgabe(("wallet",), im_protokoll=("Iknaio",)),
+    ROBIN: Vorgabe(einmal=True, im_protokoll=("Robin (Tor)",), freigabe="darkweb", werkzeuge=("robin_search", "robin_scrape")),
+}
 
 
 def alle_werkzeuge() -> set[str]:

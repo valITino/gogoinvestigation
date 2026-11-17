@@ -1,0 +1,276 @@
+{
+ "data": {
+  "id": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+  "type": "file",
+  "links": {
+   "self": "https://www.virustotal.com/api/v3/files/275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+  },
+  "attributes": {
+   "last_analysis_stats": {
+    "malicious": 64,
+    "suspicious": 0,
+    "undetected": 2,
+    "harmless": 0,
+    "timeout": 0,
+    "confirmed-timeout": 0,
+    "failure": 1,
+    "type-unsupported": 7
+   },
+   "meaningful_name": "eicar.com-34726",
+   "tags": [
+    "detect-debug-environment",
+    "direct-cpu-clock-access"
+   ],
+   "total_votes": {
+    "harmless": 2322,
+    "malicious": 432
+   },
+   "last_submission_date": 1794823588,
+   "times_submitted": 1175903,
+   "last_modification_date": 1794823876,
+   "antiy_info": "Trojan/Generic.ASBOL.2A",
+   "crowdsourced_ids_stats": {
+    "high": 0,
+    "medium": 0,
+    "low": 1,
+    "info": 0
+   },
+   "last_analysis_date": 1794823588,
+   "sigma_analysis_results": [
+    {
+     "match_context": [
+      {
+       "values": {
+        "EventID": "4672",
+        "PrivilegeList": "SeAssignPrimaryTokenPrivilege\r\n\t\t\tSeTcbPrivilege\r\n\t\t\tSeSecurityPrivilege\r\n\t\t\tSeTakeOwnershipPrivilege\r\n\t\t\tSeLoadDriverPrivilege\r\n\t\t\tSeBackupPrivilege\r\n\t\t\tSeRestorePrivilege\r\n\t\t\tSeDebugPrivilege\r\n\t\t\tSeAuditPrivilege\r\n\t\t\tSeSystemEnvironmentPrivilege\r\n\t\t\tSeImpersonatePrivilege\r\n\t\t\tSeDelegateSessionUserImpersonatePrivilege",
+        "SubjectUserName": "SYSTEM",
+        "SubjectLogonId": "999",
+        "SubjectUserSid": "S-1-5-18",
+        "SubjectDomainName": "NT AUTHORITY"
+       }
+      },
+      {
+       "values": {
+        "EventID": "4672",
+        "PrivilegeList": "SeAssignPrimaryTokenPrivilege\r\n\t\t\tSeTcbPrivilege\r\n\t\t\tSeSecurityPrivilege\r\n\t\t\tSeTakeOwnershipPrivilege\r\n\t\t\tSeLoadDriverPrivilege\r\n\t\t\tSeBackupPrivilege\r\n\t\t\tSeRestorePrivilege\r\n\t\t\tSeDebugPrivilege\r\n\t\t\tSeAuditPrivilege\r\n\t\t\tSeSystemEnvironmentPrivilege\r\n\t\t\tSeImpersonatePrivilege",
+        "SubjectUserName": "SYSTEM",
+        "SubjectLogonId": "999",
+        "SubjectUserSid": "S-1-5-18",
+        "SubjectDomainName": "NT AUTHORITY"
+       }
+      }
+     ],
+     "rule_level": "low",
+     "rule_description": "Detects logon with \"Special groups\" and \"Special Privileges\" can be thought of as Administrator groups or privileges.",
+     "rule_source": "Sigma Integrated Rule Set (GitHub)",
+     "rule_title": "User with Privileges Logon",
+     "rule_id": "8919a871f4a52b7af785fab44b4665ab6a3637e6ebeeac0288df8a5012a48be2",
+     "rule_author": "Autor der Regel (für die Vorlage ersetzt)"
+    }
+   ],
+   "popular_threat_classification": {
+    "popular_threat_name": [
+     {
+      "count": 58,
+      "value": "eicar"
+     },
+     {
+      "count": 49,
+      "value": "test"
+     }
+    ],
+    "suggested_threat_label": "virus.eicar/test",
+    "popular_threat_category": [
+     {
+      "count": 15,
+      "value": "virus"
+     },
+     {
+      "count": 2,
+      "value": "trojan"
+     }
+    ]
+   },
+   "type_tag": "powershell",
+   "trid": [
+    {
+     "file_type": "EICAR antivirus test file",
+     "probability": 100.0
+    }
+   ],
+   "saferpickle": {
+    "justification": "Not a pickle file",
+    "classification": "unknown"
+   },
+   "first_submission_date": 1148301722,
+   "reputation": 3800,
+   "sigma_analysis_summary": {
+    "Sigma Integrated Rule Set (GitHub)": {
+     "high": 0,
+     "medium": 0,
+     "critical": 0,
+     "low": 1
+    }
+   },
+   "type_tags": [
+    "source",
+    "powershell"
+   ],
+   "size": 68,
+   "type_extension": "ps1",
+   "type_description": "Powershell",
+   "magic": "EICAR virus test files",
+   "first_seen_itw_date": 1339694174,
+   "magika": "POWERSHELL",
+   "sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+   "sigma_analysis_stats": {
+    "high": 0,
+    "medium": 0,
+    "critical": 0,
+    "low": 1
+   },
+   "crowdsourced_ids_results": [
+    {
+     "rule_category": "protocol-command-decode",
+     "alert_severity": "low",
+     "rule_msg": "(tcp) experimental TCP options found",
+     "rule_id": "116:58",
+     "rule_source": "Snort registered user ruleset",
+     "rule_url": "https://www.snort.org/downloads/#rule-downloads",
+     "rule_raw": "alert ( gid:116; sid:58; rev:2; msg:\"(tcp) experimental TCP options found\"; metadata: policy max-detect-ips drop, rule-type decode; classtype:protocol-command-decode;)",
+     "alert_context": [
+      {
+       "src_ip": "8.8.8.8",
+       "src_port": 53
+      }
+     ]
+    }
+   ],
+   "last_analysis_results": {
+    "Bkav": {
+     "method": "blacklist",
+     "engine_name": "Bkav",
+     "engine_version": "8.2.40(8338)",
+     "engine_update": "20261114",
+     "category": "malicious",
+     "result": "W32.EicarTest.Trojan"
+    },
+    "Lionic": {
+     "method": "blacklist",
+     "engine_name": "Lionic",
+     "engine_version": "8.16",
+     "engine_update": "20261116",
+     "category": "malicious",
+     "result": "Test.File.EICAR.y"
+    },
+    "Elastic": {
+     "method": "blacklist",
+     "engine_name": "Elastic",
+     "engine_version": "4.0.299",
+     "engine_update": "20261111",
+     "category": "malicious",
+     "result": "eicar"
+    }
+   },
+   "unique_sources": 3557,
+   "crowdsourced_yara_results": [
+    {
+     "ruleset_id": "0019ab4291",
+     "rule_name": "malw_eicar",
+     "ruleset_name": "MALW_Eicar",
+     "description": "Rule to detect the EICAR pattern",
+     "author": "Autor der Regel (für die Vorlage ersetzt)",
+     "match_date": 1794823795,
+     "ruleset_version": "0019ab4291|fc51a3fe3b450838614a5a5aa327c6bd8689cbb2",
+     "source": "https://github.com/advanced-threat-research/Yara-Rules"
+    },
+    {
+     "ruleset_id": "015dce072d",
+     "rule_name": "Multi_EICAR_ac8f42d6",
+     "ruleset_name": "Multi_EICAR",
+     "author": "Autor der Regel (für die Vorlage ersetzt)",
+     "match_date": 1794823795,
+     "ruleset_version": "015dce072d|195c9611ddb90db599d7ffc1a9b0e8c45688007d",
+     "source": "https://github.com/elastic/protections-artifacts"
+    }
+   ],
+   "sha1": "3395856ce81f2b7382dee72602f798b642f14140",
+   "sandbox_verdicts": {
+    "Zenbox": {
+     "category": "malicious",
+     "malware_classification": [
+      "MALWARE",
+      "TROJAN"
+     ],
+     "sandbox_name": "Zenbox",
+     "malware_names": [
+      "EICAR"
+     ],
+     "confidence": 56
+    },
+    "Lastline": {
+     "category": "malicious",
+     "sandbox_name": "Lastline",
+     "malware_classification": [
+      "MALWARE",
+      "TROJAN"
+     ]
+    },
+    "OS X Sandbox": {
+     "category": "malicious",
+     "confidence": 52,
+     "sandbox_name": "OS X Sandbox",
+     "malware_classification": [
+      "MALWARE",
+      "TROJAN"
+     ],
+     "malware_names": [
+      "EICAR"
+     ]
+    },
+    "Yomi Hunter": {
+     "category": "harmless",
+     "malware_classification": [
+      "CLEAN"
+     ],
+     "sandbox_name": "Yomi Hunter"
+    }
+   },
+   "filecondis": {
+    "raw_md5": "bcf2bafa8b4e580d7c0f48b4c698f596",
+    "dhash": "9300009100008090"
+   },
+   "md5": "44d88612fea8a8f36de82e1278abb02f",
+   "names": [
+    "eicar.com-34726",
+    "eicar.com-30492"
+   ],
+   "tlsh": "T141A022003B0EEE2BA20B00200032E8B00808020E2CE00A3820A020B8C83308803EC228",
+   "ssdeep": "3:a+JraNvsgzsVqSwHq9:tJuOgzsko",
+   "known_distributors": {
+    "distributors": [
+     "OffSec Services Limited"
+    ],
+    "filenames": [
+     "eicar.com"
+    ],
+    "products": [
+     "Kali Linux ISO 64-bit",
+     "BlackArch Linux"
+    ],
+    "data_sources": [
+     "National Software Reference Library (NSRL)"
+    ]
+   },
+   "crowdsourced_ai_results": [
+    {
+     "analysis": "EICAR is a test string used to detect and test antivirus software. It's like a \"dummy virus\" that triggers an antivirus engine to react, demonstrating its ability to identify and neutralize threats.\nHere's the key:\nIt's NOT a real virus: EICAR is harmless and cannot infect your computer.\nIt's a standardized test: Almost all antivirus programs are designed to recognize EICAR as a potential threat, ensuring they're working properly.\n",
+     "category": "code_insight",
+     "verdict": "",
+     "source": "palm",
+     "id": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f-file-palm"
+    }
+   ]
+  }
+ }
+}

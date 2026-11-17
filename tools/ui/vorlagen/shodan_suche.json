@@ -1,0 +1,36 @@
+{
+ "matches": [],
+ "facets": {
+  "country": [
+   {
+    "count": 45963,
+    "value": "RU"
+   },
+   {
+    "count": 20966,
+    "value": "TW"
+   }
+  ],
+  "port": [
+   {
+    "count": 14285,
+    "value": 443
+   },
+   {
+    "count": 7477,
+    "value": 22
+   }
+  ],
+  "org": [
+   {
+    "count": 54187,
+    "value": "Delta Ltd"
+   },
+   {
+    "count": 11410,
+    "value": "G-Core Labs Customer assignment"
+   }
+  ]
+ },
+ "total": 135496
+}

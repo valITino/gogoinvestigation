@@ -1,0 +1,25 @@
+{
+ "domain": "example.org",
+ "tags": [
+  "ipv6"
+ ],
+ "subdomains": [
+  "mail",
+  "www"
+ ],
+ "more": false,
+ "data": [
+  {
+   "subdomain": "www",
+   "type": "A",
+   "value": "203.0.113.7",
+   "last_seen": "2026-11-10T04:12:31.000000"
+  },
+  {
+   "subdomain": "mail",
+   "type": "MX",
+   "value": "mail.example.org",
+   "last_seen": "2026-11-09T22:40:02.000000"
+  }
+ ]
+}

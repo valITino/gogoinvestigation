@@ -1,0 +1,87 @@
+{
+ "status": "ok",
+ "185.220.101.1": {
+  "network": {
+   "asn": "AS60729",
+   "range": "185.220.101.1/28",
+   "hostname": "berlin01.tor-exit.artikel10.org",
+   "provider": "Stiftung Erneuerbare Freiheit",
+   "organisation": "Artikel10 e.V",
+   "type": "Business"
+  },
+  "location": {
+   "continent_name": "Europe",
+   "continent_code": "EU",
+   "country_name": "Germany",
+   "country_code": "DE",
+   "region_name": "State of Berlin",
+   "region_code": "BE",
+   "city_name": "Berlin",
+   "postal_code": "10178",
+   "latitude": 52.52,
+   "longitude": 13.405,
+   "timezone": "Europe/Berlin",
+   "currency": {
+    "name": "Euro",
+    "code": "EUR",
+    "symbol": "€"
+   }
+  },
+  "device_estimate": {
+   "address": 10,
+   "subnet": 1520
+  },
+  "detections": {
+   "proxy": true,
+   "vpn": false,
+   "compromised": true,
+   "scraper": false,
+   "tor": true,
+   "hosting": false,
+   "anonymous": true,
+   "risk": 100,
+   "confidence": 100,
+   "first_seen": "2026-01-31T11:07:48Z",
+   "last_seen": "2026-11-16T09:22:51Z",
+   "times_seen": 19381
+  },
+  "detection_history": {
+   "delisted": false,
+   "delist_datetime": "2026-11-16T11:51:21Z"
+  },
+  "attack_history": {
+   "login_attempt": 8,
+   "vulnerability_probing": 2,
+   "comment_spam": 1
+  },
+  "operator": {
+   "name": "TOR",
+   "url": "https://www.torproject.org/",
+   "anonymity": "high",
+   "popularity": "high",
+   "services": [
+    "residential_proxies",
+    "wireless_proxies"
+   ],
+   "protocols": [
+    "Onion Routing"
+   ],
+   "policies": {
+    "ad_filtering": false,
+    "free_access": true,
+    "paid_access": false,
+    "port_forwarding": false,
+    "logging": false,
+    "anonymous_payments": false,
+    "crypto_payments": false,
+    "traceable_ownership": true
+   },
+   "additional_operators": [
+    "PacketStream",
+    "ASocks"
+   ]
+  },
+  "last_updated": "2026-11-16T09:22:51Z"
+ },
+ "query_time": 8
+}

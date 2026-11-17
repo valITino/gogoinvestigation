@@ -1,14 +1,14 @@
-id;typ;wert;bewertung;rolle;herkunft;belege
-I-01;domain;kundenportal-sicher.example;boesartig;Phishing-Domain;Rapport Ziff. 2;P-0011 P-0013 P-0015
-I-02;url;https://kundenportal-sicher.example/login;boesartig;Phishing-Seite;Rapport Ziff. 2;P-0014 P-0012
-I-03;ip;203.0.113.7;boesartig;Server der Täter;Rapport Ziff. 5;P-0001 P-0002 P-0003 P-0004
-I-04;ip;198.51.100.23;verdaechtig;Anmeldung mit erbeuteten Zugangsdaten;Rapport Ziff. 3;P-0005 P-0006 P-0007
-I-05;hash;d55be28ccdc9c4a065fbbe7ee97d07e964faf02268afa64c47a046d95e3719f4;boesartig;Mailanhang;Rapport Ziff. 4;P-0016 P-0017
-I-06;email;rechnung@kundenportal-sicher.example;verdaechtig;Absender der Phishing-Mail;Rapport Ziff. 2;P-0011 P-0010
-I-07;gruppe;MusterLocker;boesartig;Unterzeichner des Erpresserschreibens;Rapport Ziff. 6;P-0020
-I-08;onion;o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion;verdaechtig;Im Erpresserschreiben genannte Adresse;Rapport Ziff. 6;P-0020 P-0022
-I-09;domain;rechnung-portal.example;verdaechtig;Weitere Domain auf demselben Server;Pivot aus P-0009 (frühere Namensauflösungen von I-03);P-0009
-I-10;wallet;17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L;boesartig;Zahlungsadresse aus dem Erpresserschreiben (Bitcoin);Rapport Ziff. 7;P-0024 P-0059
-I-11;transaktion;ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f;unauffaellig;Lösegeldzahlung der [ORG_01] (Bitcoin);Rapport Ziff. 7;P-0034
-I-12;wallet;1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg;verdaechtig;Mutmassliche Einzahlungsadresse bei einer Börse;Geldfluss P-0051 (erste Station nach der Zahlungsadresse);P-0051
-I-13;wallet;19uHVM1eMUHnmbudt5213JVgjZTVd5xHd;verdaechtig;Adresse, auf der ein Teil des Lösegelds unbewegt liegt;Geldfluss P-0051 (zweite Station);P-0051
+id;typ;wert;bewertung;rolle;herkunft;belege;anonymisierungsdienst
+I-01;domain;kundenportal-sicher.example;boesartig;Phishing-Domain;Rapport Ziff. 2;P-0033 P-0035 P-0037 P-0085 P-0086 P-0087;
+I-02;url;https://kundenportal-sicher.example/login;boesartig;Phishing-Seite;Rapport Ziff. 2;P-0036 P-0034 P-0091;
+I-03;ip;203.0.113.7;boesartig;Server der Täter;Rapport Ziff. 5;P-0001 P-0002 P-0003 P-0004 P-0018;kein Hinweis
+I-04;ip;198.51.100.23;verdaechtig;Anmeldung mit erbeuteten Zugangsdaten;Rapport Ziff. 3;P-0005 P-0006 P-0007 P-0029;ja
+I-05;hash;d55be28ccdc9c4a065fbbe7ee97d07e964faf02268afa64c47a046d95e3719f4;boesartig;Mailanhang;Rapport Ziff. 4;P-0038 P-0039;
+I-06;email;rechnung@kundenportal-sicher.example;verdaechtig;Absender der Phishing-Mail;Rapport Ziff. 2;P-0033 P-0032;
+I-07;gruppe;MusterLocker;boesartig;Unterzeichner des Erpresserschreibens;Rapport Ziff. 6;P-0042;
+I-08;onion;o4zs5d56ycwedt5m3mx6etfbskmbh6vnsfqd7npwgik4e5bnmrdqaaad.onion;verdaechtig;Im Erpresserschreiben genannte Adresse;Rapport Ziff. 6;P-0042 P-0044;
+I-09;domain;rechnung-portal.example;verdaechtig;Weitere Domain auf demselben Server;Pivot aus P-0031 (frühere Namensauflösungen von I-03);P-0031;
+I-10;wallet;17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L;boesartig;Zahlungsadresse aus dem Erpresserschreiben (Bitcoin);Rapport Ziff. 7;P-0046 P-0084;
+I-11;transaktion;ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f;unauffaellig;Lösegeldzahlung der [ORG_01] (Bitcoin);Rapport Ziff. 7;P-0057;
+I-12;wallet;1Fj4fnGt3tqk3TJd9eeFZMfWJxFEtxXWLg;verdaechtig;Mutmassliche Einzahlungsadresse bei einer Börse;Geldfluss P-0075 (erste Station nach der Zahlungsadresse);P-0075;
+I-13;wallet;19uHVM1eMUHnmbudt5213JVgjZTVd5xHd;verdaechtig;Adresse, auf der ein Teil des Lösegelds unbewegt liegt;Geldfluss P-0075 (zweite Station);P-0075;

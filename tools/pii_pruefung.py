@@ -14,6 +14,7 @@ Rückgabewert: 0 sauber, 1 Sperrfunde, 2 Datei nicht lesbar.
 """
 from __future__ import annotations
 
+import io
 import re
 import subprocess
 import sys
@@ -64,7 +65,8 @@ MUSTER = [
     ("IBAN", "sperre", re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,3})?\b"), _iban_gueltig),
     ("Telefonnummer", "sperre", re.compile(
         r"(?<![\w.:/])(?:\+|00)\d{2}[\s.]?(?:\(0\))?[\s.]?\d{2}(?:[\s.]?\d{2,3}){3}(?!\d)"
-        r"|(?<![\w.:/-])0\d{2}[\s.]\d{3}[\s.]\d{2}[\s.]\d{2}(?!\d)"), None),
+        r"|(?<![\w.:/-])0\d{2}[\s./]\d{3}[\s.]\d{2}[\s.]\d{2}(?!\d)"       # 079 123 45 67, 079/123 45 67
+        r"|(?<![\w.:/+-])0[1-9]\d{8}(?![\w-]|\.\d)"), None),                    # 0791234567, ohne Trennzeichen
     ("Geburtsdatum", "sperre", re.compile(
         r"(?i)(?:\bgeb\.?|\bgeboren(?:\s+am)?|\bgeburtsdatum:?|\bjg\.?|\*)\s*\d{1,2}\.\s?\d{1,2}\.\s?(?:19|20)\d{2}\b"), None),
     ("Kontrollschild", "sperre", re.compile(rf"\b(?:{KANTONE})[ ·-]?\d{{3,6}}\b"), None),
@@ -95,43 +97,268 @@ class NichtLesbar(Exception):
     pass
 
 
-def text_lesen(datei: Path) -> str:
-    """Liest Text aus txt/md/csv/json/html/eml, aus .docx (ohne Zusatzpakete) und aus .pdf (pdftotext)."""
-    endung = datei.suffix.lower()
-    if endung == ".docx":
+# Formate, aus denen eine Textfassung entsteht. Geprüft und pseudonymisiert wird der Text, nie das Original.
+GEWANDELT = (".docx", ".pdf", ".odt", ".ods", ".odp", ".xlsx", ".pptx", ".rtf", ".eml")
+BILDER = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".svg")
+NICHT_LESBAR = {
+    **{e: "Bild. Was auf einem Bild steht, kann nicht geprüft werden (keine Texterkennung)." for e in BILDER},
+    **{e: "Ton- oder Videodatei. Ihr Inhalt kann nicht geprüft werden." for e in (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".mp4", ".mov", ".avi", ".mkv", ".webm")},
+    **{e: "Archiv. Die Oberfläche entpackt .zip beim Hochladen. Andere Archive bitte vorher entpacken." for e in (".zip", ".7z", ".rar", ".tar", ".gz", ".tgz", ".bz2", ".xz")},
+    ".doc": "altes Word-Format. Bitte als .docx oder .pdf speichern.",
+    ".xls": "altes Excel-Format. Bitte als .xlsx oder .csv speichern.",
+    ".ppt": "altes PowerPoint-Format. Bitte als .pptx oder .pdf speichern.",
+    ".msg": "Outlook-Nachricht. Bitte aus Outlook als .eml oder .txt speichern.",
+    ".pages": "Pages-Dokument. Bitte als .docx oder .pdf exportieren.",
+    ".numbers": "Numbers-Tabelle. Bitte als .xlsx oder .csv exportieren.",
+}
+ZIP_TEIL = 60 * 1024 * 1024         # grösster Teil eines Office-Dokuments, der entpackt wird
+_XML_ZEICHEN = (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&"))
+
+
+def _xml_text(xml: str) -> str:
+    """Entfernt die Marken und löst die fünf XML-Kürzel auf. Bewusst ohne XML-Parser: Ein Dokument kann ihn nicht überlasten."""
+    text = re.sub(r"<[^>]+>", "", xml)
+    for kurz, zeichen in _XML_ZEICHEN:
+        text = text.replace(kurz, zeichen)
+    return re.sub(r"&#(x[0-9a-fA-F]{1,6}|\d{1,7});", lambda m: _zeichen(m.group(1)), text)
+
+
+def _zeichen(kode: str) -> str:
+    try:
+        return chr(int(kode[1:], 16) if kode.startswith("x") else int(kode))
+    except (ValueError, OverflowError):
+        return ""
+
+
+def _zip_teile(name: str, roh: bytes, muster: str) -> list[tuple[str, str]]:
+    """Die Teile eines Office-Dokuments (ZIP), deren Name zum Muster passt, als Text. Begrenzt die Grösse je Teil."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(roh)) as z:
+            teile = []
+            for info in z.infolist():
+                if not re.fullmatch(muster, info.filename):
+                    continue
+                if info.file_size > ZIP_TEIL:
+                    raise NichtLesbar(f"{name}: Ein Teil des Dokuments ist entpackt grösser als {ZIP_TEIL // (1024 * 1024)} MB.")
+                teile.append((info.filename, z.read(info).decode("utf-8", "replace")))
+            return teile
+    except (zipfile.BadZipFile, KeyError, RuntimeError, OSError, EOFError) as e:
+        raise NichtLesbar(f"{name}: keine gültige {Path(name).suffix.lower()}-Datei ({type(e).__name__}). Ist sie mit einem Passwort geschützt?") from e
+
+
+def _nummer(name: str) -> int:
+    m = re.search(r"(\d+)\.xml$", name)
+    return int(m.group(1)) if m else 0
+
+
+def _docx(name: str, roh: bytes) -> str:
+    xml = "\n".join(text for _n, text in _zip_teile(name, roh, r"word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml"))
+    xml = re.sub(r"</w:p>|<w:br[^>]*/>|</w:tr>", "\n", xml)
+    xml = re.sub(r"<w:tab[^>]*/>|</w:tc>", "\t", xml)
+    return _xml_text(xml)
+
+
+def _odf(name: str, roh: bytes) -> str:
+    xml = "\n".join(text for _n, text in _zip_teile(name, roh, r"content\.xml"))
+    xml = re.sub(r"<text:s text:c=\"(\d{1,3})\"\s*/>", lambda m: " " * int(m.group(1)), xml)
+    xml = re.sub(r"</text:p>|</text:h>|<text:line-break\s*/>|</table:table-row>", "\n", xml)
+    xml = re.sub(r"<text:tab\s*/>|</table:table-cell>", "\t", xml)
+    return _xml_text(xml)
+
+
+def _xlsx(name: str, roh: bytes) -> str:
+    gemeinsam = [_xml_text("".join(re.findall(r"<t\b[^>]*>(.*?)</t>", re.sub(r"<rPh\b.*?</rPh>", "", si, flags=re.S), flags=re.S)))
+                 for _n, xml in _zip_teile(name, roh, r"xl/sharedStrings\.xml") for si in re.findall(r"<si\b[^>]*>(.*?)</si>", xml, flags=re.S)]
+    namen = [_xml_text(n) for _n, xml in _zip_teile(name, roh, r"xl/workbook\.xml") for n in re.findall(r"<sheet\b[^>]*\bname=\"([^\"]*)\"", xml)]
+    aus = []
+    for nr, (_name, xml) in enumerate(sorted(_zip_teile(name, roh, r"xl/worksheets/sheet\d+\.xml"), key=lambda x: _nummer(x[0]))):
+        aus.append(f"Tabelle: {namen[nr] if nr < len(namen) else nr + 1}")
+        for zeile in re.findall(r"<row\b[^>]*>(.*?)</row>", xml, flags=re.S):
+            zellen = []
+            for kopf, inhalt in re.findall(r"<c\b([^>]*?)(?:/>|>(.*?)</c>)", zeile, flags=re.S):
+                wert = re.search(r"<v\b[^>]*>(.*?)</v>", inhalt or "", flags=re.S)
+                if 't="s"' in kopf and wert and wert.group(1).strip().isdigit() and int(wert.group(1)) < len(gemeinsam):
+                    zellen.append(gemeinsam[int(wert.group(1))])
+                elif 't="inlineStr"' in kopf:
+                    zellen.append(_xml_text("".join(re.findall(r"<t\b[^>]*>(.*?)</t>", inhalt or "", flags=re.S))))
+                else:
+                    zellen.append(_xml_text(wert.group(1)) if wert else "")
+            if any(z.strip() for z in zellen):
+                aus.append("\t".join(zellen))
+        aus.append("")
+    return "\n".join(aus)
+
+
+def _pptx(name: str, roh: bytes) -> str:
+    aus = []
+    for teil, xml in sorted(_zip_teile(name, roh, r"ppt/(slides/slide|notesSlides/notesSlide)\d+\.xml"), key=lambda x: (x[0].startswith("ppt/notes"), _nummer(x[0]))):
+        aus.append(("Notizen zu Folie " if "notesSlide" in teil else "Folie ") + str(_nummer(teil)))
+        aus.append(_xml_text(re.sub(r"</a:p>|<a:br\s*/>", "\n", xml)).strip())
+        aus.append("")
+    return "\n".join(aus)
+
+
+_RTF = re.compile(r"\\([a-z]{1,32})(-?\d{1,10})?[ ]?|\\'([0-9a-f]{2})|\\([^a-z])|([{}])|[\r\n]+|(.)", re.I)
+_RTF_ZIELE = frozenset("fonttbl colortbl stylesheet info pict object datastore themedata colorschememapping latentstyles datafield fldinst generator "
+                       "header headerl headerr headerf footer footerl footerr footerf footnote ftnsep ftnsepc aftnsep aftnsepc listtable listoverridetable "
+                       "rsidtbl mmathPr xmlnstbl pgdsctbl revtbl bkmkstart bkmkend shpinst nonshppict filetbl operator author title subject keywords "
+                       "company doccomm manager category".split())
+_RTF_ZEICHEN = {"par": "\n", "sect": "\n\n", "page": "\n\n", "line": "\n", "tab": "\t", "cell": "\t", "row": "\n", "emdash": "—", "endash": "–", "emspace": " ",
+                "enspace": " ", "qmspace": " ", "bullet": "•", "lquote": "‘", "rquote": "’", "ldblquote": "“", "rdblquote": "”"}
+
+
+def _rtf(roh: str) -> str:
+    """Text aus RTF: Steuerwörter fallen weg, Zeichen in Hex- und Unicode-Schreibweise werden gelesen, Absätze werden Zeilen.
+    Schrifttabelle, Bilder, Kopf- und Fusszeilen und die Angaben zum Verfasser gehören nicht zum Text."""
+    stapel: list[tuple[int, bool]] = []
+    aus: list[str] = []
+    ignorieren, ucskip, rest = False, 1, 0
+    for m in _RTF.finditer(roh):
+        wort, zahl, hexa, zeichen, klammer, sonst = m.groups()
+        if klammer:
+            rest = 0
+            if klammer == "{":
+                stapel.append((ucskip, ignorieren))
+            elif stapel:
+                ucskip, ignorieren = stapel.pop()
+        elif zeichen:
+            rest = 0
+            if zeichen == "*":
+                ignorieren = True
+            elif not ignorieren:
+                aus.append("\xa0" if zeichen == "~" else zeichen if zeichen in "{}\\" else "")
+        elif wort:
+            rest = 0
+            if wort in _RTF_ZIELE:
+                ignorieren = True
+            elif ignorieren:
+                continue
+            elif wort in _RTF_ZEICHEN:
+                aus.append(_RTF_ZEICHEN[wort])
+            elif wort == "uc" and zahl:
+                ucskip = max(0, int(zahl))
+            elif wort == "u" and zahl:
+                kode = int(zahl)
+                aus.append(_zeichen(str(kode + 0x10000 if kode < 0 else kode)))
+                rest = ucskip
+        elif hexa:
+            if rest > 0:
+                rest -= 1
+            elif not ignorieren:
+                aus.append(bytes.fromhex(hexa).decode("cp1252", "replace"))
+        elif sonst:
+            if rest > 0:
+                rest -= 1
+            elif not ignorieren:
+                aus.append(sonst)
+    return "".join(aus)
+
+
+def html_text(html: str) -> str:
+    """Der sichtbare Text einer HTML-Seite: ohne Skripte, Stile und Marken."""
+    text = re.sub(r"(?is)<(script|style|head)\b.*?</\1\s*>", " ", html)
+    text = re.sub(r"(?i)<br\s*/?>|</(p|div|tr|li|h[1-6]|table|blockquote)\s*>", "\n", text)
+    text = re.sub(r"(?i)</t[dh]\s*>", "\t", text)
+    import html as html_modul
+    return re.sub(r"[ \t\xa0]{2,}", " ", html_modul.unescape(re.sub(r"<[^>]+>", "", text)))
+
+
+def mail_lesen(roh: bytes) -> tuple[str, list[tuple[str, bytes]]]:
+    """Eine E-Mail (.eml): Kopfzeilen und Text als Lesefassung, dazu die Anhänge als (Name, Inhalt).
+    Anhänge sind eigene Dokumente: Sie werden einzeln geprüft, ihr Inhalt steht nicht in der Lesefassung."""
+    import email
+    import email.policy
+    try:
+        nachricht = email.message_from_bytes(roh, policy=email.policy.default)
+    except Exception as e:      # eine kaputte Nachricht ist kein Grund für einen Absturz
+        raise NichtLesbar(f"Die E-Mail liess sich nicht lesen ({type(e).__name__}).") from e
+    # Die Kopfzeilen im Wortlaut der Nachricht: Ein Platzhalter wie [PERSON_01] ist keine gültige Adresse und ginge beim Zerlegen verloren
+    import email.header
+    zeilen = []
+    for name, roh_wert in nachricht.raw_items():
+        if name.lower() in ("from", "to", "cc", "bcc", "reply-to", "date", "subject", "message-id"):
+            wert = " ".join(str(roh_wert).split())
+            try:
+                wert = str(email.header.make_header(email.header.decode_header(wert)))
+            except Exception:       # eine kaputte Kodierung bleibt stehen, wie sie ist
+                pass
+            zeilen.append(f"{name}: {wert}")
+    texte: list[str] = []
+    anhaenge: list[tuple[str, bytes]] = []
+    for teil in nachricht.walk():
+        if teil.is_multipart():
+            continue
+        name = teil.get_filename()
+        if name or teil.get_content_disposition() == "attachment":
+            try:
+                inhalt = teil.get_payload(decode=True) or b""
+            except Exception:
+                inhalt = b""
+            anhaenge.append((str(name or f"anhang-{len(anhaenge) + 1}"), inhalt))
+            continue
         try:
-            with zipfile.ZipFile(datei) as z:
-                teile = [z.read(n).decode("utf-8", "replace") for n in z.namelist()
-                         if re.fullmatch(r"word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml", n)]
-        except (zipfile.BadZipFile, KeyError) as e:
-            raise NichtLesbar(f"{datei.name}: keine gültige .docx-Datei ({e}).") from e
-        xml = "\n".join(teile)
-        xml = re.sub(r"</w:p>|<w:br[^>]*/>|</w:tr>", "\n", xml)
-        xml = re.sub(r"<w:tab[^>]*/>|</w:tc>", "\t", xml)
-        text = re.sub(r"<[^>]+>", "", xml)
-        for kurz, zeichen in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'")):
-            text = text.replace(kurz, zeichen)
-        return text
+            inhalt = teil.get_content()
+        except Exception:       # unbekannter Zeichensatz, kaputte Kodierung
+            inhalt = (teil.get_payload(decode=True) or b"").decode("utf-8", "replace")
+        if not isinstance(inhalt, str):
+            continue
+        if teil.get_content_type() == "text/plain":
+            texte.append(inhalt)
+        elif teil.get_content_type() == "text/html" and not any(texte):
+            texte.append(html_text(inhalt))
+    if anhaenge:
+        zeilen.append("Anhänge: " + ", ".join(name for name, _ in anhaenge))
+    return "\n".join(zeilen) + "\n\n" + "\n\n".join(t.strip() for t in texte if t.strip()) + "\n", anhaenge
+
+
+def text_aus(name: str, roh: bytes, datei: Path | None = None) -> str:
+    """Die Textfassung eines Dokuments aus seinem Inhalt, ohne dass er dafür auf die Platte muss. Liest Textdateien
+    (txt, md, csv, json, html und ähnliche), ohne Zusatzpakete .docx, .odt, .ods, .odp, .xlsx, .pptx, .rtf und .eml,
+    und .pdf mit pdftotext. Was sich nicht lesen lässt, lässt sich nicht prüfen: NichtLesbar."""
+    endung = Path(name).suffix.lower()
+    if endung in NICHT_LESBAR:
+        raise NichtLesbar(f"{name}: Format {endung} wird nicht geprüft: {NICHT_LESBAR[endung]}")
+    if endung == ".docx":
+        return _docx(name, roh)
+    if endung in (".odt", ".ods", ".odp"):
+        return _odf(name, roh)
+    if endung == ".xlsx":
+        return _xlsx(name, roh)
+    if endung == ".pptx":
+        return _pptx(name, roh)
     if endung == ".pdf":
         pdftotext = plattform.programm("pdftotext")
         if not pdftotext:
             woher = ("winget install oschwartz10612.Poppler, danach ein neues Terminal" if plattform.WINDOWS
                      else "Paket poppler-utils, unter macOS 'brew install poppler'")
-            raise NichtLesbar(f"{datei.name}: Für PDF fehlt 'pdftotext' ({woher}). {plattform.SETUP} holt es nach. "
+            raise NichtLesbar(f"{name}: Für PDF fehlt 'pdftotext' ({woher}). {plattform.SETUP} holt es nach. "
                               "Oder das Dokument als .txt/.md/.docx exportieren.")
-        r = subprocess.run([pdftotext, "-layout", "-enc", "UTF-8", str(datei), "-"], capture_output=True, timeout=120)
+        try:        # mit Datei wie bisher, ohne Datei über die Standardeingabe
+            r = subprocess.run([pdftotext, "-layout", "-enc", "UTF-8", str(datei) if datei is not None else "-", "-"],
+                               input=None if datei is not None else roh, capture_output=True, timeout=120)
+        except subprocess.TimeoutExpired as e:
+            raise NichtLesbar(f"{name}: pdftotext wurde nach 120 Sekunden nicht fertig.") from e
         if r.returncode != 0:
-            raise NichtLesbar(f"{datei.name}: pdftotext meldet einen Fehler: {r.stderr.decode('utf-8', 'replace')[:200]}")
+            raise NichtLesbar(f"{name}: pdftotext meldet einen Fehler: {r.stderr.decode('utf-8', 'replace')[:200]}")
         text = r.stdout.decode("utf-8", "replace")
         if len(text.strip()) < 20:
-            raise NichtLesbar(f"{datei.name}: PDF enthält keinen Text (gescannt?). Bitte zuerst OCR im Haus.")
+            raise NichtLesbar(f"{name}: PDF enthält keinen Text (gescannt?). Bitte zuerst OCR im Haus.")
         return text
-    if endung in (".doc", ".odt", ".rtf", ".xlsx", ".xls", ".msg", ".zip", ".png", ".jpg", ".jpeg"):
-        raise NichtLesbar(f"{datei.name}: Format {endung} wird nicht geprüft. Bitte als .txt, .md, .docx oder .pdf liefern.")
-    roh = datei.read_bytes()
-    if b"\x00" in roh[:4096]:
-        raise NichtLesbar(f"{datei.name}: sieht nach Binärdatei aus. Bitte als Text liefern.")
-    return roh.decode("utf-8", "replace")
+    if endung == ".eml":
+        try:
+            return mail_lesen(roh)[0]
+        except NichtLesbar as e:
+            raise NichtLesbar(f"{name}: {e}") from e
+    utf16 = roh.startswith((b"\xff\xfe", b"\xfe\xff"))
+    if b"\x00" in roh[:4096] and not utf16:
+        raise NichtLesbar(f"{name}: sieht nach Binärdatei aus. Bitte als Text liefern.")
+    text = roh.decode("utf-16", "replace") if utf16 else roh.decode("utf-8-sig", "replace")
+    return _rtf(text) if endung == ".rtf" else text
+
+
+def text_lesen(datei: Path) -> str:
+    """Die Textfassung einer Datei. Siehe text_aus."""
+    return text_aus(datei.name, datei.read_bytes(), datei)
 
 
 def pruefen(text: str) -> tuple[list[Fund], dict[str, int]]:

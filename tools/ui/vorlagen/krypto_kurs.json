@@ -1,0 +1,40 @@
+{
+ "werkzeug": "krypto_kurs",
+ "parameter": {
+  "wert": "BTC",
+  "datum": "2024-01-15",
+  "betrag": "0.5",
+  "kette": null
+ },
+ "grundlage": [
+  "P-0053",
+  "P-0054"
+ ],
+ "befund": {
+  "wert": {
+   "symbol": "BTC",
+   "kette": "bitcoin"
+  },
+  "zeitpunkt": "2024-01-15T12:00:00Z",
+  "kurs_je_einheit": {
+   "chf": "36454.80",
+   "eur": "38984.92",
+   "usd": "42669.00",
+   "stand": "2024-01-15T11:59:54Z",
+   "wechselkurs_vom": "2024-01-15",
+   "quellen": [
+    "DefiLlama",
+    "EZB"
+   ]
+  },
+  "betrag": {
+   "menge": "0.5",
+   "einheit": "BTC"
+  },
+  "gegenwert": {
+   "chf": "18227.40",
+   "eur": "19492.46",
+   "usd": "21334.50"
+  }
+ }
+}

@@ -41,6 +41,14 @@ PROJEKT = Path(__file__).resolve().parents[1]
 # So heissen die Befehle in Meldungen an den Menschen am Terminal.
 PY = "python" if WINDOWS else "python3"
 SETUP = ".\\setup.cmd" if WINDOWS else "./setup.sh"
+# Die nächsten Schritte, wenn der Arbeitsplatz eingerichtet ist. Die Einrichtung und tools/pruefen.py nennen dieselben
+WEITER = (
+    f"Oberfläche starten: {PY} tools/oberflaeche.py   Der Browser öffnet sich von selbst.",
+    "Dort «Neuer Fall»: Akten hineinziehen (einzeln, als Ordner oder als ZIP). Wo die erste Schwärzung im Haus etwas übersehen hat, "
+    "auf dem lokalen Bildschirm nachbessern. Fall-ID und Titel eintragen, Fall anlegen.",
+    "«Ermittlung»: Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Zusehen, Rückfragen beantworten.",
+    "«Ergebnisse»: Rapport, Protokoll und Datenblätter ansehen und herunterladen.",
+)
 
 # Schlichte Zeichen für die alte Windows-Konsole, deren Schrift Haken und Kreuz nicht kennt.
 _SCHLICHT = WINDOWS and not os.environ.get("WT_SESSION")
@@ -68,6 +76,30 @@ def utf8() -> None:
     for strom, fehler in ((sys.stdin, "strict"), (sys.stdout, "replace"), (sys.stderr, "replace")):
         with contextlib.suppress(AttributeError, ValueError, OSError):
             strom.reconfigure(encoding="utf-8", errors=fehler)
+
+
+def terminal(*stroeme: object) -> bool:
+    """True, wenn jeder der Ströme an einem echten Terminal hängt. Daran erkennen die Werkzeuge, die nur ein Mensch
+    bedienen darf, dass kein Agent und kein Skript sie aufruft.
+
+    ``isatty()`` allein genügt unter Windows nicht: Für das Gerät NUL meldet es True (gesehen in der CI am 17.11.2026,
+    ein Prozess mit stdin=NUL galt als «am Terminal»). Dort entscheidet, ob Windows für den Griff einen Konsolenmodus kennt.
+    """
+    if not stroeme:
+        return False
+    for strom in stroeme:
+        try:
+            if not strom.isatty():
+                return False
+            if WINDOWS:
+                import ctypes
+                from ctypes import wintypes
+                modus = wintypes.DWORD()
+                if not ctypes.windll.kernel32.GetConsoleMode(wintypes.HANDLE(msvcrt.get_osfhandle(strom.fileno())), ctypes.byref(modus)):
+                    return False
+        except Exception:       # im Zweifel kein Terminal: Die Prüfung schützt, sie darf nicht an einem Sonderfall aufgehen
+            return False
+    return True
 
 
 def start(venv: bool | None = None, projekt: Path = PROJEKT) -> None:
@@ -125,6 +157,11 @@ def dateisperre(datei: Path, warten: float = 30.0):
                 with contextlib.suppress(OSError):
                     sperre.seek(0)
                     msvcrt.locking(sperre.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+# Das Abbild von Robin, auf eine Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026). Dieselbe Angabe steht in
+# .mcp.json, ein Selbsttest hält beide gleich. Ein neuer Stand ist ein bewusster Schritt, per Pull Request.
+ROBIN_ABBILD = "apurvsg/robin@sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0"
 
 
 def einstellung(name: str, standard: str = "") -> str:

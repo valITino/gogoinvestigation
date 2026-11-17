@@ -1,0 +1,78 @@
+{
+ "data": [
+  {
+   "owner_permission": {
+    "keys": [
+     {
+      "address": "TKjrTpnN7LTSjEEVzdkwDHFzt8hTPTyVxz",
+      "weight": 1
+     }
+    ],
+    "threshold": 1,
+    "permission_name": "owner"
+   },
+   "account_resource": {
+    "energy_window_optimized": true,
+    "latest_consume_time_for_energy": 1634613156000,
+    "energy_window_size": 28800000
+   },
+   "active_permission": [
+    {
+     "operations": "7fff1fc0033e0300000000000000000000000000000000000000000000000000",
+     "keys": [
+      {
+       "address": "TKjrTpnN7LTSjEEVzdkwDHFzt8hTPTyVxz",
+       "weight": 1
+      }
+     ],
+     "threshold": 1,
+     "id": 2,
+     "type": "Active",
+     "permission_name": "active"
+    }
+   ],
+   "address": "416b2ab4a4bbfa0d0e653c48ddd29e510ed3471d0e",
+   "create_time": 1601201022000,
+   "latest_opration_time": 1636387410000,
+   "free_asset_net_usageV2": [
+    {
+     "value": 0,
+     "key": "1003657"
+    },
+    {
+     "value": 0,
+     "key": "1000322"
+    }
+   ],
+   "assetV2": [
+    {
+     "value": 42000000,
+     "key": "1003657"
+    },
+    {
+     "value": 3,
+     "key": "1000322"
+    }
+   ],
+   "frozenV2": [
+    {},
+    {
+     "type": "ENERGY"
+    }
+   ],
+   "trc20": [
+    {
+     "TFczxzPhnThNSqr5by8tvxsdCFRRz6cPNq": "45284224447"
+    }
+   ],
+   "latest_consume_free_time": 1636387410000,
+   "net_window_size": 28800000,
+   "net_window_optimized": true
+  }
+ ],
+ "success": true,
+ "meta": {
+  "at": 1794825550870,
+  "page_size": 1
+ }
+}

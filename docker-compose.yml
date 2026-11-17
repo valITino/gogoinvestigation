@@ -3,7 +3,9 @@
 services:
   webcheck:
     # Web-Check von Lissy93: Rundumblick auf eine Website. Wird von webcheck_passiv / webcheck_aktiv genutzt.
-    image: lissy93/web-check
+    # Auf eine Prüfsumme festgelegt (Stand des Abbilds vom 15.11.2026, mit diesem lief die Prüfung «Web-Check live»).
+    # Ein neuer Stand ist ein bewusster Schritt: Prüfsumme von Docker Hub übernehmen, Workflow laufen lassen, per Pull Request.
+    image: lissy93/web-check@sha256:4d71b46385633a5f9fcf1159c61ea0bbe571a6cb11fcf417a273712022c03bd7
     container_name: osint-webcheck
     ports:
       - "127.0.0.1:${WEBCHECK_PORT:-3000}:3000"
@@ -11,5 +13,6 @@ services:
       - DISABLE_GUI=true
     restart: unless-stopped
 
-# Robin (Dark-Web-Suche über Tor) läuft nicht dauerhaft. Claude Code startet den Container bei Bedarf
-# selbst (siehe .mcp.json). Tor läuft im Robin-Container, auf dem Rechner braucht es kein Tor.
+# Robin (Dark-Web-Suche über Tor) läuft nicht dauerhaft. Claude Code startet den Container zu Beginn jeder
+# Sitzung selbst und entfernt ihn an ihrem Ende (siehe .mcp.json). Tor läuft im Robin-Container: Auf dem Rechner
+# braucht es weder Tor noch SOCKS5. Der Container muss das Tor-Netz erreichen (docs/QUELLEN.md, «Robin»).

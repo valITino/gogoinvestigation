@@ -33,6 +33,13 @@ FREIGABE_TEXT = {
 }
 FALL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$")
 
+# Einordnung einer IP: Ob sie der Ausgang eines Anonymisierungsdienstes ist, hat genau einen von drei Werten.
+# «kein Hinweis» ist kein «nein». Der Vorbehalt steht überall im selben Wortlaut: im Werkzeug ip_einordnung und im Rapport.
+IP_WERTE = ("ja", "kein Hinweis", "nicht geprüft")
+IP_VORBEHALT = ("Die befragten Quellen erkennen Residential Proxies nur lückenhaft. Der Anschluss kann einem Unbeteiligten "
+                "gehören, über dessen Gerät ein solcher Dienst läuft.")
+VON_HAND = "abklaerung_von_hand"        # Werkzeugname der Belege, die der Sachbearbeiter mit tools/beleg.py erfasst
+
 
 def kanonisch(obj: Any) -> bytes:
     return json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -81,6 +88,25 @@ def sha256_datei(pfad: Path) -> str:
         for block in iter(lambda: f.read(1 << 20), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def eingang_stand(pfad: Path) -> tuple[list[str], list[str]]:
+    """Die Dokumente im Eingang einer Fallakte: (geprüft, ungeprüft). Geprüft ist, was die PII-Prüfung aufgenommen hat und
+    seither unverändert ist (Register eingang/.freigabe.json mit Prüfsumme). Alles andere wurde von Hand hineinkopiert
+    oder nachträglich verändert: Es ist nicht geprüft, und ein Agent liest es nicht."""
+    eingang = pfad / "eingang"
+    register_datei = eingang / ".freigabe.json"
+    try:
+        register = json.loads(register_datei.read_text(encoding="utf-8")).get("dateien", {}) if register_datei.is_file() else {}
+    except (OSError, ValueError):
+        register = {}
+    geprueft: list[str] = []
+    ungeprueft: list[str] = []
+    if eingang.is_dir():
+        for datei in sorted(p for p in eingang.glob("*") if p.is_file() and not p.name.startswith(".")):
+            eintrag = register.get(datei.name)
+            (geprueft if eintrag and eintrag.get("sha256") == sha256_datei(datei) else ungeprueft).append(datei.name)
+    return geprueft, ungeprueft
 
 
 def ursprung_extern(fall_id: str) -> str:

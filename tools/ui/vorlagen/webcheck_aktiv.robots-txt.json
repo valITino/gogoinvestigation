@@ -1,0 +1,12 @@
+{
+ "robots": [
+  {
+   "lbl": "User-agent",
+   "val": "*"
+  },
+  {
+   "lbl": "Disallow",
+   "val": "/intern/"
+  }
+ ]
+}

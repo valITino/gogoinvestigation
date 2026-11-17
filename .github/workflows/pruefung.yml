@@ -16,6 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Das README nennt Python 3.10 als Minimum, die Einrichtung läuft unten mit 3.12. Schreibweisen, die erst ab 3.12
+  # gelten (etwa Anführungszeichen derselben Art in einer f-Zeichenkette), fielen sonst erst beim Nutzer auf.
+  syntax:
+    name: Syntax unter Python 3.10
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: "3.10"
+      - name: Jede Python-Datei übersetzen
+        run: python -m compileall -q gateway tools .claude/hooks
+
+  # Die Tabellen zur lokalen Pseudonymisierung im README schreibt tools/pseudo_messen.py. Hier wird gemessen und
+  # verglichen: Ändert jemand die Erkennung, die Feldmarken oder den Prüfsatz, ohne neu zu messen, fällt es auf.
+  # Braucht nur die Standardbibliothek. Unter Python 3.10 und unter der neuesten Version, damit dieselben Zahlen
+  # nicht an einer Version hängen.
+  messung:
+    name: Messwerte der Pseudonymisierung (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Messen und mit dem README vergleichen
+        run: python tools/pseudo_messen.py --pruefen
+
   einrichtung:
     name: Einrichtung (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -32,9 +66,9 @@ jobs:
       run:
         shell: ${{ matrix.shell }}     # unter Windows läuft die Einrichtung einmal je PowerShell-Version
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
 
@@ -86,6 +120,17 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           python tools\pruefen.py
+          exit $LASTEXITCODE
+
+      # Die Oberfläche startet mit einem Befehl, auf jedem System: Server hoch, Hauptseiten abrufen, fremden Host-Kopf abweisen, beenden.
+      - name: Oberfläche starten (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: python3 tools/oberflaeche.py --selbstpruefung
+
+      - name: Oberfläche starten (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python tools\oberflaeche.py --selbstpruefung
           exit $LASTEXITCODE
 
       - name: Meldungen der Installationsprogramme (nur bei Fehlern)

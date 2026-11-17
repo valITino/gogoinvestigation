@@ -1,0 +1,7 @@
+{
+ "strictTransportPolicy": true,
+ "xFrameOptions": true,
+ "xContentTypeOptions": false,
+ "xXSSProtection": false,
+ "contentSecurityPolicy": false
+}

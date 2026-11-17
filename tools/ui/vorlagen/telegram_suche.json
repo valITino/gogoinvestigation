@@ -1,0 +1,16 @@
+{
+ "results": [
+  {
+   "title": "Musterkanal",
+   "username": "musterkanal",
+   "type": "channel",
+   "subscribers": 1234
+  },
+  {
+   "title": "Zweiter Musterkanal",
+   "username": "musterkanal2",
+   "type": "channel",
+   "subscribers": 56
+  }
+ ]
+}

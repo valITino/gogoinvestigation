@@ -1,0 +1,34 @@
+{
+ "urlset": {
+  "url": [
+   {
+    "loc": [
+     "https://example.org/"
+    ],
+    "lastmod": [
+     "2026-11-01"
+    ],
+    "changefreq": [
+     "weekly"
+    ],
+    "priority": [
+     "1.0"
+    ]
+   },
+   {
+    "loc": [
+     "https://example.org/login"
+    ],
+    "lastmod": [
+     "2026-09-27"
+    ],
+    "changefreq": [
+     "never"
+    ],
+    "priority": [
+     "0.5"
+    ]
+   }
+  ]
+ }
+}

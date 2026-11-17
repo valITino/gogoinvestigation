@@ -160,18 +160,14 @@ async def urlquery_reputation(fall: Fall, zweck: Zweck, url: str) -> dict:
 
 
 @werkzeug
-async def urlquery_einreichen(fall: Fall, zweck: Zweck, url: str,
-                              sichtbarkeit: Annotated[str, Field(description=(
-                                  "private (nur ihr), protected (eingeschränkt) oder public "
-                                  "(für alle sichtbar). Standard: private."))] = "private") -> dict:
+async def urlquery_einreichen(fall: Fall, zweck: Zweck, url: str) -> dict:
     """AKTIV. urlquery ruft die URL in seiner Sandbox auf. Der Betreiber der Zielseite sieht
     einen Besuch von urlquery und kann daraus schliessen, dass jemand die URL prüft. Nur nach
-    ausdrücklicher Zustimmung des Sachbearbeiters. Ergebnis später mit urlquery_status holen."""
+    ausdrücklicher Zustimmung des Sachbearbeiters. Eingereicht wird immer mit dem Zugriff «private»:
+    Ein öffentlicher Bericht würde die Adresse für alle sichtbar machen. Ergebnis später mit urlquery_status holen."""
     u = pruef_url(url)
-    if sichtbarkeit not in ("private", "protected", "public"):
-        raise Abbruch("sichtbarkeit muss private, protected oder public sein.")
     a = await abfrage(fall, zweck, werkzeug="urlquery_einreichen", quelle="urlquery", ziel=u, ziel_typ="url",
-                      url=f"{UQ}/submit/url", methode="POST", json_koerper={"url": u, "access": sichtbarkeit},
+                      url=f"{UQ}/submit/url", methode="POST", json_koerper={"url": u, "access": "private"},
                       kopf=_uq_kopf(), art="aktiv", freigabe="aktiv", cache_h=0)
     return a.als_dict(nimm(a.daten, "queue_id", "report_id", "status", "access") if a.ergebnis == "ok" else None)
 

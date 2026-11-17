@@ -1,0 +1,78 @@
+{
+ "client": "sachbearbeiter@behoerde.example",
+ "filters": {
+  "group": "musterlocker",
+  "sector": null,
+  "country": null,
+  "year": null,
+  "month": null,
+  "date": "discovered"
+ },
+ "count": 3,
+ "victims": [
+  {
+   "id": "TXVzdGVyb3BmZXIg0000",
+   "discovered": "2026-10-01T08:39:11.427184+00:00",
+   "website": "firma0.example.org",
+   "country": "CH",
+   "activity": "Manufacturing",
+   "description": "Erfundene Beschreibung zu Musteropfer 0.",
+   "post_url": "http://musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion/post/0",
+   "ransom": null,
+   "data_size": "50GB",
+   "screenshot": "https://images.ransomware.live/victims/00000000000000000000000000000000.png",
+   "infostealer": {
+    "update": "2026-10-09T14:36:21.059496",
+    "employees": 0,
+    "users": 14,
+    "thirdparties": 0,
+    "employees_url": 0,
+    "users_url": 4,
+    "last_employee_compromised": null,
+    "last_user_compromised": null,
+    "infostealer_stats": {}
+   },
+   "press": null,
+   "permalink": "https://www.ransomware.live/id/TXVzdGVyb3BmZXIg0000",
+   "attackdate": "2026-10-01T08:38:51.646848+00:00",
+   "victim": "Musteropfer 0 AG",
+   "group": "musterlocker"
+  },
+  {
+   "id": "TXVzdGVyb3BmZXIg0001",
+   "discovered": "2026-10-02T08:39:11.427184+00:00",
+   "website": "firma1.example.org",
+   "country": "CH",
+   "activity": "Manufacturing",
+   "description": "Erfundene Beschreibung zu Musteropfer 1.",
+   "post_url": "http://musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion/post/1",
+   "ransom": null,
+   "data_size": null,
+   "screenshot": "https://images.ransomware.live/victims/00000000000000000000000000000001.png",
+   "infostealer": "",
+   "press": null,
+   "permalink": "https://www.ransomware.live/id/TXVzdGVyb3BmZXIg0001",
+   "attackdate": "2026-10-02T08:38:51.646848+00:00",
+   "victim": "Musteropfer 1 AG",
+   "group": "musterlocker"
+  },
+  {
+   "id": "TXVzdGVyb3BmZXIg0002",
+   "discovered": "2026-10-03T08:39:11.427184+00:00",
+   "website": "firma2.example.org",
+   "country": "CH",
+   "activity": "Manufacturing",
+   "description": "Erfundene Beschreibung zu Musteropfer 2.",
+   "post_url": "http://musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion/post/2",
+   "ransom": null,
+   "data_size": null,
+   "screenshot": "https://images.ransomware.live/victims/00000000000000000000000000000002.png",
+   "infostealer": "",
+   "press": null,
+   "permalink": "https://www.ransomware.live/id/TXVzdGVyb3BmZXIg0002",
+   "attackdate": "2026-10-03T08:38:51.646848+00:00",
+   "victim": "Musteropfer 2 AG",
+   "group": "musterlocker"
+  }
+ ]
+}

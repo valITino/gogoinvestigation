@@ -292,12 +292,13 @@ async def ohne_schluessel() -> None:
     """Keine Prüfung, eine Beobachtung: Wie antwortet der Zugang, den Blockscout für Programme vorsieht, wenn der
     Schlüssel fehlt? Die Antwort zeigt, ob Adresse und Pfad stimmen, die das Gateway mit BLOCKSCOUT_API_KEY nutzt."""
     url = f"{krypto_ketten.BLOCKSCOUT_API}/1/api/v2/addresses/{BINANCE_ETH}"
-    try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            r = await client.get(url, headers={"User-Agent": kern.einstellung("OSINT_USER_AGENT", "osint-gateway/1.0"), "Accept": "application/json"})
-        print(f"  Beobachtung: {url} ohne Schlüssel: HTTP {r.status_code}, {' '.join(r.text.split())[:160]}", flush=True)
-    except httpx.HTTPError as e:
-        print(f"  Beobachtung: {url} ohne Schlüssel: keine Verbindung ({type(e).__name__})", flush=True)
+    try:        # über das Gateway wie jede andere Abfrage: protokolliert, und über den Proxy, wenn einer eingestellt ist
+        a = await kern.abfrage(FALL, "Live-Test: Wie antwortet der Zugang von Blockscout für Programme ohne Schlüssel?", werkzeug="krypto_abruf",
+                               quelle="Blockscout", ziel=BINANCE_ETH, ziel_typ="wallet", url=url, cache_h=0)
+        print(f"  Beobachtung: {url} ohne Schlüssel: HTTP {a.status}, {a.ergebnis} ({a.id})" + (f", {' '.join(a.fehler.split())[:160]}" if a.fehler else ""),
+              flush=True)
+    except kern.Abbruch as e:
+        print(f"  Beobachtung: {url} ohne Schlüssel: nicht ausgeführt ({e})", flush=True)
 
 
 def main() -> int:

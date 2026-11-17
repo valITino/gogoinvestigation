@@ -1,0 +1,44 @@
+{
+ "posts": [
+  {
+   "no": 110348819,
+   "now": "11/16/26(Mon)05:05:32",
+   "name": "Anonymous",
+   "sub": "Betreff (für die Vorlage ersetzt)",
+   "com": "Text des Beitrags (für die Vorlage ersetzt)",
+   "filename": "datei",
+   "ext": ".jpg",
+   "w": 1024,
+   "h": 1024,
+   "tn_w": 250,
+   "tn_h": 250,
+   "tim": 1794823532110449,
+   "time": 1794823532,
+   "md5": "B+2CvcC8DsCEPhzwtjpgzA==",
+   "fsize": 181923,
+   "resto": 0,
+   "bumplimit": 0,
+   "imagelimit": 0,
+   "semantic_url": "betreff-fuer-die-vorlage-ersetzt",
+   "replies": 10,
+   "images": 3
+  },
+  {
+   "no": 110348822,
+   "now": "11/16/26(Mon)05:06:03",
+   "name": "Anonymous",
+   "com": "Text des Beitrags (für die Vorlage ersetzt)",
+   "filename": "datei",
+   "ext": ".jpg",
+   "w": 1804,
+   "h": 2160,
+   "tn_w": 104,
+   "tn_h": 125,
+   "tim": 1794823563010396,
+   "time": 1794823563,
+   "md5": "Vsr4+vITjvkOVeAasD4FAA==",
+   "fsize": 1204994,
+   "resto": 110348819
+  }
+ ]
+}

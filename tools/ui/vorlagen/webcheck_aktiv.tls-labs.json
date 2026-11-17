@@ -1,0 +1,13 @@
+{
+ "host": "example.org",
+ "port": 443,
+ "protocol": "http",
+ "status": "READY",
+ "endpoints": [
+  {
+   "ipAddress": "203.0.113.7",
+   "grade": "A",
+   "statusMessage": "Ready"
+  }
+ ]
+}

@@ -17,3 +17,7 @@ faelle/*
 # Betriebssystem, Editor
 .DS_Store
 *.swp
+/listen/
+
+# Der Verlauf aus dem Chat der Oberfläche ist eine Lesehilfe und gehört nicht ins Repo, auch nicht beim Musterfall
+faelle/MUSTER-2026-001/arbeitsstand/verlauf-oberflaeche-*.txt

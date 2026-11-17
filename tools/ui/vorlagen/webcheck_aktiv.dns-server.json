@@ -1,0 +1,12 @@
+{
+ "domain": "example.org",
+ "dns": [
+  {
+   "address": "203.0.113.7",
+   "hostname": [
+    "ns1.example.net"
+   ],
+   "dohDirectSupports": false
+  }
+ ]
+}

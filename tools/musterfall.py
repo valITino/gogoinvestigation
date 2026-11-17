@@ -17,8 +17,10 @@ import hashlib
 import json
 import os
 import random
+import struct
 import subprocess
 import sys
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -33,22 +35,25 @@ if __name__ == "__main__":
 
 os.environ.setdefault("OSINT_PROJEKT", str(PROJEKT))
 for _name in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY", "SPUR_TOKEN", "ABUSEIPDB_API_KEY", "URLQUERY_API_KEY",
-              "RANSOMWARE_LIVE_API_KEY"):
+              "RANSOMWARE_LIVE_API_KEY", "PROXYCHECK_API_KEY", "IPAPI_API_KEY", "URLSCAN_API_KEY"):
     os.environ[_name] = "MUSTER-SCHLUESSEL-0000"
 for _name in ("OSINT_PROXY", "ETHERSCAN_API_KEY", "TRONSCAN_API_KEY", "TRONGRID_API_KEY", "CHAINABUSE_API_KEY", "IKNAIO_API_KEY",
               "BLOCKSCOUT_API_KEY", "KRYPTO_BITCOIN_API"):
     os.environ.pop(_name, None)         # der Musterfall läuft ohne die Zusatzschlüssel der Blockchain-Analyse
+os.environ.pop("OSINT_RIPESTAT_APP", None)
+os.environ["OSINT_LISTEN"] = str(PROJEKT / "faelle" / "MUSTER-ohne-massenlisten")      # nur der Kern der Etikettenliste aus dem Repo, auf jedem Rechner gleich
 os.environ["OSINT_ZEITZONE"] = "Europe/Zurich"     # der Musterfall soll auf jedem Rechner identisch ausfallen
 
 try:
     import httpx
-    from gateway import kern, quellen_infrastruktur as infra, quellen_krypto as krypto, quellen_szene as szene, quellen_web as web
-    from tools import _kryptowelt as kw
+    from gateway import (kern, quellen_infrastruktur as infra, quellen_ip as ipq, quellen_krypto as krypto, quellen_szene as szene,
+                         quellen_urlscan as us, quellen_web as web)
+    from tools import _kryptowelt as kw, _vorlagen as vorlagen
 except ModuleNotFoundError as e:
     sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst {plattform.SETUP} ausführen.")
 
 from gateway.akte import FAELLE, SITZUNGEN  # noqa: E402
-from tools import fall as fallwerkzeug, protokoll, rapport  # noqa: E402
+from tools import anhang, fall as fallwerkzeug, protokoll, rapport  # noqa: E402
 from tools._html import zahl_ch  # noqa: E402
 
 FALL = "MUSTER-2026-001"
@@ -56,6 +61,7 @@ SITZUNG = "muster-sitzung-0001"
 DOMAIN, DOMAIN2 = "kundenportal-sicher.example", "rechnung-portal.example"
 URL = f"https://{DOMAIN}/login"
 IP_SERVER, IP_LOGIN = "203.0.113.7", "198.51.100.23"
+ZEIT_MAIL, ZEIT_LOGIN = "2026-09-29T07:14:00Z", "2026-09-29T07:31:00Z"       # Tatzeiten laut Rapport Ziff. 2 und 3 (09:14 und 09:31 Uhr Ortszeit)
 DATEI = hashlib.sha256(b"MUSTER-Schadsoftware, erfunden").hexdigest()
 ONION = base64.b32encode(hashlib.sha256(b"musterlocker").digest() + b"\x00\x00\x03").decode().lower()[:56] + ".onion"
 GRUPPE = "musterlocker"
@@ -185,7 +191,7 @@ ANTWORTEN: dict[tuple[str, str], tuple[int, object]] = {
     ("api.spur.us", f"/v2/context/{IP_LOGIN}"): (200, {
         "ip": IP_LOGIN, "as": {"number": 64501, "organization": "Beispiel Transit BV"}, "infrastructure": "DATACENTER",
         "organization": "Beispiel Transit BV", "location": {"city": "Frankfurt am Main", "country": "DE", "state": "Hessen"},
-        "risks": ["TUNNEL", "CALLBACK_PROXY"], "services": ["OPENVPN", "WIREGUARD"],
+        "risks": ["TUNNEL"], "services": ["OPENVPN", "WIREGUARD"],
         "client": {"behaviors": ["TOR_PROXY_USER"], "count": 214, "countries": 31, "types": ["DESKTOP", "MOBILE"]},
         "tunnels": [{"anonymous": True, "operator": "BEISPIEL_VPN", "type": "VPN", "entries": ["198.51.100.20"]}]}),
     ("api.spur.us", f"/v2/context/{IP_SERVER}"): (200, {
@@ -267,7 +273,86 @@ ANTWORTEN: dict[tuple[str, str], tuple[int, object]] = {
                                     "CNAME": [], "SOA": {"nsname": "ns1.beispiel-dns.example", "hostmaster": "hostmaster.beispiel-dns.example",
                                                          "serial": 2026092601, "refresh": 10000, "retry": 2400, "expire": 604800, "minttl": 1800},
                                     "SRV": [], "PTR": []}),
+    ("127.0.0.1", "/api/whois"): (200, {"domain": DOMAIN.upper(), "registrar": "Beispiel Registrar AG", "registrarUrl": "http://registrar.example.net",
+                                      "registrarIanaId": "9999", "registrarWhoisServer": "whois.registrar.example.net",
+                                      "registryDomainId": "D-2026-0926-EXAMPLE", "created": "2026-09-26T07:41:00.000Z", "updated": "2026-09-26T07:41:05.000Z",
+                                      "expires": "2027-09-26T07:41:00.000Z", "nameservers": ["ns1.beispiel-dns.example", "ns2.beispiel-dns.example"],
+                                      "status": ["clientTransferProhibited https://icann.org/epp#clientTransferProhibited"], "dnssec": "unsigned"}),
+    ("127.0.0.1", "/api/block-lists"): (200, {"blocklists": [{"server": "AdGuard", "serverIp": "176.103.130.130", "isBlocked": False},
+                                                            {"server": "CloudFlare", "serverIp": "1.1.1.1", "isBlocked": False},
+                                                            {"server": "Quad9", "serverIp": "9.9.9.9", "isBlocked": True}]}),
 }
+
+
+def _bildschirmfoto(breite: int = 240, hoehe: int = 150) -> bytes:
+    """Ein erfundenes Bildschirmfoto der Phishing-Seite: Kopfbalken, Formular mit zwei Feldern und einem Knopf.
+    Unkomprimiert geschrieben, damit die Datei auf jedem System Byte für Byte gleich ausfällt."""
+    farben = [(249, 249, 247), (42, 120, 214), (225, 224, 217), (82, 81, 78), (255, 255, 255)]
+    bild = [[0] * breite for _ in range(hoehe)]
+    for x, y, b, h, farbe in ((0, 0, breite, 20, 1), (60, 36, 120, 96, 4), (70, 46, 60, 6, 3), (70, 62, 100, 12, 2), (70, 82, 100, 12, 2), (70, 104, 50, 14, 1)):
+        for zeile in bild[y:y + h]:
+            zeile[x:x + b] = [farbe] * b
+    roh = b"".join(b"\x00" + bytes(zeile) for zeile in bild)
+    bloecke = b"".join(bytes([1 if i + 65535 >= len(roh) else 0]) + struct.pack("<HH", len(roh[i:i + 65535]), len(roh[i:i + 65535]) ^ 0xFFFF) + roh[i:i + 65535]
+                       for i in range(0, len(roh), 65535))
+
+    def stueck(art: bytes, inhalt: bytes) -> bytes:
+        return struct.pack(">I", len(inhalt)) + art + inhalt + struct.pack(">I", zlib.crc32(art + inhalt))
+    return (b"\x89PNG\r\n\x1a\n" + stueck(b"IHDR", struct.pack(">IIBBBBB", breite, hoehe, 8, 3, 0, 0, 0)) + stueck(b"PLTE", bytes(c for f in farben for c in f))
+            + stueck(b"IDAT", b"\x78\x01" + bloecke + struct.pack(">I", zlib.adler32(roh))) + stueck(b"IEND", b""))
+
+
+_US_ZEITEN = {"2026-11-16": "2026-09-30", "2026-11-15": "2026-09-29", "2026-11-14": "2026-09-28", "2026-11-13": "2026-09-26"}
+
+
+def _us_muster(wert: object) -> object:
+    """Die Vorlage von urlscan.io (tools/_vorlagen.py) auf den Musterfall umgeschrieben: seine Domain, sein Server, seine Zeit."""
+    if isinstance(wert, dict):
+        return {k: (v - 48 * 86400 if k in ("validFrom", "validTo") and isinstance(v, int) else _us_muster(v)) for k, v in wert.items()}
+    if isinstance(wert, list):
+        return [_us_muster(v) for v in wert]
+    if isinstance(wert, str):
+        wert = wert.replace("kundenportal.example.org", DOMAIN).replace("203.0.113.10", IP_SERVER).replace("MUSTER-AS - Musternetz AG, CH", "BEISPIEL-HOSTING - Beispiel Hosting AG, NL")
+        for alt, neu in _US_ZEITEN.items():
+            wert = wert.replace(alt, neu)
+        return DOMAIN if wert == "example.org" else "NL" if wert == "CH" else "Amsterdam" if wert == "Zurich" else wert
+    return wert
+
+
+def _urlscan(anfrage: httpx.Request, frage: dict) -> httpx.Response:
+    pfad = anfrage.url.path
+    kopf = {k: _us_muster(v) for k, v in vorlagen._us_kopf("retrieve" if "result" in pfad else "search").items()}
+    if pfad == "/api/v1/search/":
+        return httpx.Response(200, content=json.dumps(_us_muster(vorlagen.us_suche(frage.get("q", ""), int(frage.get("size", 3)))), ensure_ascii=False,
+                                                      separators=(",", ":")).encode(), headers={"content-type": "application/json", **kopf})
+    if pfad.startswith("/api/v1/result/"):
+        return httpx.Response(200, content=json.dumps(_us_muster(vorlagen.us_ergebnis(pfad.strip("/").rsplit("/", 1)[1])), ensure_ascii=False,
+                                                      separators=(",", ":")).encode(), headers={"content-type": "application/json", **kopf})
+    if pfad.startswith("/dom/"):
+        return httpx.Response(200, content=vorlagen.US_DOM.encode(), headers={"content-type": "text/plain; charset=utf-8"})
+    if pfad.startswith("/screenshots/"):
+        return httpx.Response(200, content=_bildschirmfoto(), headers={"content-type": "image/png"})
+    return vorlagen.us_antwort(anfrage, frage)
+
+
+# Einordnung der beiden IP-Adressen: Antworten in der Form der echten Dienste (tools/_vorlagen.py), mit den Netzen des Musterfalls
+NETZE = {
+    IP_SERVER: {**vorlagen.NETZ, "asn": 64500, "as_name": "BEISPIEL-HOSTING", "inhaber": "Beispiel Hosting AG", "netzname": "BEISPIEL-HOSTING-NL",
+                "org": "ORG-BH1-RIPE", "land": "NL", "landname": "Netherlands", "ort": "Amsterdam", "region": ("North Holland", "NH"), "plz": "1012",
+                "lage": (52.37, 4.89), "zeitzone": "Europe/Amsterdam", "waehrung": ("Euro", "EUR", "€"), "domain": "beispiel-hosting.example",
+                "erstellt": "2019-03-11T09:00:00Z"},
+    IP_LOGIN: {**vorlagen.NETZ, "asn": 64501, "as_name": "BEISPIEL-TRANSIT", "inhaber": "Beispiel Transit BV", "netzname": "BEISPIEL-TRANSIT-DE",
+               "org": "ORG-BT1-RIPE", "land": "DE", "landname": "Germany", "ort": "Frankfurt am Main", "region": ("Hesse", "HE"), "plz": "60313",
+               "lage": (50.11, 8.68), "zeitzone": "Europe/Berlin", "waehrung": ("Euro", "EUR", "€"), "domain": "beispiel-transit.example",
+               "block": "198.0.0.0/8", "erstellt": "2020-01-14T10:30:00Z", "vpn_gesehen": "2026-11-11T21:40:00"}}
+PROXYCHECK = {       # Art des Netzes, Anbieter, Erkennungen, Löschung, Dienst, Angriffsmeldungen
+    IP_SERVER: ("Hosting", "Beispiel Hosting AG", {"hosting": True, "risk": 66}, None, None, {"comment_spam": 12, "login_attempt": 3}),
+    IP_LOGIN: ("Hosting", "Beispiel Transit BV", {"vpn": True, "hosting": True, "anonymous": True, "risk": 66, "first_seen": "2026-03-02T10:15:00Z",
+                                                  "last_seen": "2026-11-11T21:40:00Z", "times_seen": 5120},
+               {"delisted": False, "delist_datetime": "2026-11-18T21:40:00Z"}, ("Beispiel VPN", ["datacenter_vpns"], []), None)}
+IPAPI = {IP_SERVER: (False, False, False, "hosting", True), IP_LOGIN: (True, False, False, "hosting", True, "Beispiel VPN")}
+FASSUNGEN = [{"from_time": "2024-05-06T08:00:00", "to_time": "2026-11-12T08:00:00", "version": 2},
+             {"from_time": "2019-03-11T09:00:00", "to_time": "2024-05-06T08:00:00", "version": 1}]
 
 
 def _json(status: int, inhalt: object) -> httpx.Response:
@@ -299,6 +384,18 @@ def antworten(anfrage: httpx.Request) -> httpx.Response:
         return _json(404, {"error": {"code": "NotFoundError", "message": "URL not found"}})
     if host in KETTENDIENSTE:
         return KETTE.antwort(anfrage)
+    frage = {k: v[0] for k, v in parse_qs(anfrage.url.query.decode()).items()}
+    if host == "urlscan.io":
+        return _urlscan(anfrage, frage)
+    if host == "proxycheck.io":
+        ip = pfad.rsplit("/", 1)[1]
+        return vorlagen.pc_antwort(ip, frage, PROXYCHECK, NETZE.get(ip), "MUSTER-SCHLUESSEL-0000")
+    if host == "api.ipapi.is":
+        koerper = json.loads(anfrage.content or b"{}")
+        return vorlagen.ipapi_antwort(koerper, IPAPI, NETZE.get(str(koerper.get("q"))), "MUSTER-SCHLUESSEL-0000")
+    if host == "stat.ripe.net":
+        netz = next((n for ip, n in NETZE.items() if frage.get("resource", "").startswith(ip.rsplit(".", 1)[0] + ".")), None)
+        return vorlagen.ripe_antwort(pfad.split("/")[2], frage, netz, FASSUNGEN)
     inhalt = ANTWORTEN.get((host, pfad))
     if inhalt is None:
         return _json(404, {"fehler": "im Musterfall nicht vorgesehen", "host": host, "pfad": pfad})
@@ -357,6 +454,10 @@ async def ermitteln(uhr: Uhr) -> tuple[dict[str, str], dict[str, dict]]:
     await schritt("spur_login", A, infra.spur_kontext, ip=IP_LOGIN, zweck="Anmelde-IP aus Rapport Ziff. 3: VPN, Proxy oder Privatanschluss?")
     await schritt("abuse_login", A, infra.abuseipdb_pruefen, ip=IP_LOGIN, zweck="Anmelde-IP aus Rapport Ziff. 3: frühere Missbrauchsmeldungen prüfen")
     await schritt("internetdb_login", A, infra.shodan_internetdb, ip=IP_LOGIN, zweck="Anmelde-IP aus Rapport Ziff. 3: offene Dienste als Hinweis auf VPN-Knoten")
+    await schritt("ip_server", A, ipq.ip_einordnung, ip=IP_SERVER, tatzeit=ZEIT_MAIL, sekunden=12,
+                  zweck="Einliefernder Host aus Rapport Ziff. 5: Netz und Inhaber zur Tatzeit, Anonymisierungsdienst ja oder kein Hinweis")
+    await schritt("ip_login", A, ipq.ip_einordnung, ip=IP_LOGIN, tatzeit=ZEIT_LOGIN, sekunden=12,
+                  zweck="Anmelde-IP aus Rapport Ziff. 3: Lässt sie sich einem Anschluss zuschreiben, oder ist sie Ausgang eines Anonymisierungsdienstes?")
     await schritt("abuse_meldungen", A, infra.abuseipdb_meldungen, ip=IP_SERVER, zweck="Einzelmeldungen zum Server für die Zeitachse abrufen")
     await schritt("vt_aufloesungen", A, infra.virustotal_beziehungen, typ="ip", wert=IP_SERVER, beziehung="resolutions",
                   zweck="Pivot: Welche weiteren Domains zeigten auf den Server aus Ziff. 5?")
@@ -389,6 +490,14 @@ async def ermitteln(uhr: Uhr) -> tuple[dict[str, str], dict[str, dict]]:
     await schritt("k_adresse", B, krypto.krypto_adresse, adresse=LOESEGELD, sekunden=11,
                   zweck="Zahlungsadresse aus Rapport Ziff. 7: weitere Eingänge und bekannte Einordnung")
 
+    # Nachträge, damit jede Ansicht der Oberfläche am Musterfall etwas zeigt: Registrierung, Sperrlisten, Aussehen der Seite
+    await schritt("webcheck_whois", A, web.webcheck_passiv, ziel=DOMAIN, pruefung="whois", zweck="Registrierung der Phishing-Domain aus Rapport Ziff. 2 festhalten")
+    await schritt("webcheck_sperrlisten", A, web.webcheck_passiv, ziel=DOMAIN, pruefung="block-lists",
+                  zweck="Phishing-Domain aus Rapport Ziff. 2: Führen DNS-Sperrlisten sie bereits?")
+    await schritt("us_suche", M, us.urlscan_suche, suchtext=DOMAIN, anzahl=3, zweck="Phishing-Domain aus Rapport Ziff. 2: Gibt es vorhandene Scans mit Bildschirmfoto?")
+    await schritt("us_ergebnis", M, us.urlscan_ergebnis, uuid=vorlagen.US_UUID, sekunden=9,
+                  zweck="Vorhandenen Scan der Phishing-Seite lesen: Aussehen, Formular und kontaktierte Server, ohne die Seite selbst aufzurufen")
+
     for agent in (A, M, D, B):
         hook({"hook_event_name": "SubagentStop", "agent_type": agent, "agent_id": f"agent-{agent}"}, uhr.weiter(3))
     return ids, ergebnisse
@@ -402,6 +511,9 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
     start = fluss["start"]
     chf = lambda wert: "CHF " + zahl_ch(wert["chf"])      # noqa: E731
     tag = lambda iso: rapport.zeit_zeigen(iso)             # noqa: E731
+    # Ob eine IP der Ausgang eines Anonymisierungsdienstes ist, steht im Ergebnis von ip_einordnung. Von dort kommt der Wert
+    ein_server, ein_login = k["ip_server"]["befund"], k["ip_login"]["befund"]
+    vpn = ein_login["anonymisierung"]
     return {
         "fall_id": FALL, "stand": stand,
         "zusammenfassung": [
@@ -418,20 +530,23 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
         "kernaussagen": [
             {"text": "Phishing-Domain, Mailversand und Schadsoftware laufen auf demselben Server zusammen.", "sicherheit": "hoch", "befunde": ["B-01", "B-05", "B-06"]},
             {"text": "Die Domain wurde eigens für die Tat eingerichtet.", "sicherheit": "hoch", "befunde": ["B-02"]},
-            {"text": "Die Anmelde-IP ist ein VPN-Ausgang und identifiziert keine Person.", "sicherheit": "mittel", "befunde": ["B-04"]},
+            {"text": "Die Anmelde-IP ist ein VPN-Ausgang und identifiziert keine Person.", "sicherheit": "hoch", "befunde": ["B-04"]},
             {"text": "Ob Phishing und Erpressung vom selben Täter stammen, ist offen.", "sicherheit": "tief", "befunde": ["B-08"]},
             {"text": f"Rund {anteil['dienst']['anteil']:.0f} % des Lösegelds landeten bei einer Börse. Dort ist ein Editionsbegehren möglich.",
              "sicherheit": "mittel", "befunde": ["B-11"]}],
         "indikatoren": [
             {"id": "I-01", "typ": "domain", "wert": DOMAIN, "herkunft": "Rapport Ziff. 2", "rolle": "Phishing-Domain", "bewertung": "boesartig",
-             "kennzahlen": {"vt_boesartig": 14, "vt_gesamt": 93}, "belege": [p["vt_domain"], p["uq_suche"], p["wayback"]]},
+             "kennzahlen": {"vt_boesartig": 14, "vt_gesamt": 93},
+             "belege": [p["vt_domain"], p["uq_suche"], p["wayback"], p["webcheck_whois"], p["webcheck_sperrlisten"], p["us_suche"]]},
             {"id": "I-02", "typ": "url", "wert": URL, "herkunft": "Rapport Ziff. 2", "rolle": "Phishing-Seite", "bewertung": "boesartig",
-             "belege": [p["uq_bericht"], p["vt_url"]]},
+             "belege": [p["uq_bericht"], p["vt_url"], p["us_ergebnis"]]},
             {"id": "I-03", "typ": "ip", "wert": IP_SERVER, "herkunft": "Rapport Ziff. 5", "rolle": "Server der Täter", "bewertung": "boesartig",
              "kennzahlen": {"abuse_score": 87, "vt_boesartig": 9, "vt_gesamt": 93, "offene_ports": [22, 25, 80, 443]},
-             "belege": [p["shodan_server"], p["abuse_server"], p["vt_ip_server"], p["spur_server"]]},
+             "belege": [p["shodan_server"], p["abuse_server"], p["vt_ip_server"], p["spur_server"], p["ip_server"]],
+             "anonymisierung": {"wert": ein_server["anonymisierung"]["wert"], "belege": [p["ip_server"]]}},
             {"id": "I-04", "typ": "ip", "wert": IP_LOGIN, "herkunft": "Rapport Ziff. 3", "rolle": "Anmeldung mit erbeuteten Zugangsdaten", "bewertung": "verdaechtig",
-             "kennzahlen": {"abuse_score": 12}, "belege": [p["spur_login"], p["abuse_login"], p["internetdb_login"]]},
+             "kennzahlen": {"abuse_score": 12}, "belege": [p["spur_login"], p["abuse_login"], p["internetdb_login"], p["ip_login"]],
+             "anonymisierung": {"wert": vpn["wert"], "belege": [p["ip_login"]]}},
             {"id": "I-05", "typ": "hash", "wert": DATEI, "herkunft": "Rapport Ziff. 4", "rolle": "Mailanhang", "bewertung": "boesartig",
              "kennzahlen": {"vt_boesartig": 41, "vt_gesamt": 72}, "belege": [p["vt_datei"], p["vt_datei_ips"]]},
             {"id": "I-06", "typ": "email", "wert": f"rechnung@{DOMAIN}", "herkunft": "Rapport Ziff. 2", "rolle": "Absender der Phishing-Mail", "bewertung": "verdaechtig",
@@ -461,29 +576,32 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
                              "Stellen nennen für diesen Namen dieselbe Nummer. Die Phishing-Seite lag also auf diesem Server.",
              "indikatoren": ["I-01", "I-03"], "belege": [p["vt_domain"], p["shodan_server"], p["webcheck_dns"]], "gegenpruefung": "bestaetigt"},
             {"id": "B-02", "titel": "Die Domain wurde drei Tage vor der Tat registriert", "art": "bewertung", "sicherheit": "hoch", "quellenbewertung": "B2",
-             "text": "Die Domain wurde am 26.09.2026 registriert. Die erste Archivaufnahme der Anmeldeseite stammt vom 28.09.2026, die "
+             "text": "Die Domain wurde am 26.09.2026 registriert, so steht es bei VirusTotal und in den Registrierungsdaten (Whois). Die erste Archivaufnahme der Anmeldeseite stammt vom 28.09.2026, die "
                      "Phishing-E-Mail vom 29.09.2026. Der Sandbox-Dienst stuft die Domain als jünger als sieben Tage ein. Eine frühere, "
                      "unverdächtige Nutzung ist nicht ersichtlich.",
              "erlaeuterung": "Die Internetadresse gab es vor der Tat praktisch nicht. Sie wurde kurz davor angelegt und sofort mit der gefälschten "
                              "Anmeldeseite bestückt. Das spricht dafür, dass sie eigens für diesen Zweck eingerichtet wurde und nicht einer "
                              "gehackten, sonst harmlosen Website gehört.",
-             "indikatoren": ["I-01", "I-02"], "belege": [p["vt_domain"], p["wayback"], p["uq_bericht"]], "gegenpruefung": "bestaetigt"},
+             "indikatoren": ["I-01", "I-02"], "belege": [p["vt_domain"], p["wayback"], p["uq_bericht"], p["webcheck_whois"]], "gegenpruefung": "bestaetigt"},
             {"id": "B-03", "titel": "Der Server steht bei einem Hosting-Anbieter und ist mehrfach als missbräuchlich gemeldet", "art": "feststellung",
              "sicherheit": "hoch", "quellenbewertung": "B2",
-             "text": f"{IP_SERVER} gehört zum Netz der Beispiel Hosting AG (AS64500, Niederlande) und wird übereinstimmend als "
-                     "Rechenzentrumsadresse geführt, nicht als Anonymisierungsdienst. Bei AbuseIPDB liegen 64 Meldungen von 23 Meldern vor, "
+             "text": f"{IP_SERVER} gehört zum Netz der Beispiel Hosting AG ({ein_server['netz']['as']}, Niederlande) und wird übereinstimmend als "
+                     f"Rechenzentrumsadresse geführt. Auf einen Anonymisierungsdienst gibt es keinen Hinweis (befragt: "
+                     f"{', '.join(ein_server['anonymisierung']['geantwortet'])}). Bei AbuseIPDB liegen 64 Meldungen von 23 Meldern vor, "
                      "Abuse-Score 87 von 100, zuletzt am 05.10.2026 wegen Phishing. Offen sind die Ports 22, 25, 80 und 443.",
              "erlaeuterung": "Der Server ist ein gemieteter Rechner in einem Rechenzentrum. Der Vermieter kennt seinen Kunden. Über ihn führt der "
                              "direkteste Weg zum Betreiber. Der Server ist auch anderen schon negativ aufgefallen, was gegen einen Zufall spricht.",
-             "indikatoren": ["I-03"], "belege": [p["shodan_server"], p["abuse_server"], p["spur_server"], p["vt_ip_server"]], "gegenpruefung": "bestaetigt"},
-            {"id": "B-04", "titel": "Die Anmelde-IP ist der Ausgang eines VPN-Dienstes", "art": "bewertung", "sicherheit": "mittel", "quellenbewertung": "B2",
-             "text": f"{IP_LOGIN} wird als Ausgangsknoten des VPN-Dienstes «BEISPIEL_VPN» geführt (anonymisierend, rund 214 beobachtete "
-                     "Geräte aus 31 Ländern). Offen sind die Ports 443 und 1194, wie für VPN-Knoten üblich. Missbrauchsmeldungen gibt es wenige "
-                     "(Score 12 von 100). Die Einstufung als VPN stammt von einem einzelnen Anbieter.",
+             "indikatoren": ["I-03"], "belege": [p["shodan_server"], p["abuse_server"], p["spur_server"], p["vt_ip_server"], p["ip_server"]],
+             "gegenpruefung": "bestaetigt"},
+            {"id": "B-04", "titel": "Die Anmelde-IP ist der Ausgang eines VPN-Dienstes", "art": "bewertung", "sicherheit": "hoch", "quellenbewertung": "B2",
+             "text": f"{IP_LOGIN} wird von {len(vpn['aussagen'])} Quellen als Ausgang eines VPN-Dienstes geführt ({', '.join(a['quelle'] for a in vpn['aussagen'])}; "
+                     f"als Dienst genannt: {', '.join(vpn['dienste'])}). Die Adresse war laut proxycheck.io schon vor der Tat und bis nach der Tat "
+                     "als VPN-Ausgang geführt. Spur beobachtete rund 214 Geräte aus 31 Ländern hinter der Adresse. Offen sind die Ports 443 und "
+                     "1194, wie für VPN-Knoten üblich. Missbrauchsmeldungen gibt es wenige (Score 12 von 100).",
              "erlaeuterung": "Wer über einen VPN-Dienst ins Internet geht, tritt nach aussen mit der Adresse des Dienstes auf, zusammen mit "
                              "Hunderten anderer Kunden. Die Adresse aus dem Serverprotokoll gehört also dem VPN-Anbieter und nicht dem Täter. "
                              "Eine Anfrage beim Anschlussanbieter würde ins Leere laufen.",
-             "indikatoren": ["I-04"], "belege": [p["spur_login"], p["internetdb_login"], p["abuse_login"]], "gegenpruefung": "bestaetigt"},
+             "indikatoren": ["I-04"], "belege": [p["ip_login"], p["spur_login"], p["internetdb_login"], p["abuse_login"]], "gegenpruefung": "bestaetigt"},
             {"id": "B-05", "titel": "Der Mailanhang ist als Schadsoftware bekannt und kontaktiert denselben Server", "art": "feststellung",
              "sicherheit": "mittel", "quellenbewertung": "B2",
              "text": "41 von 72 Sicherheitsprodukten erkennen die Datei als bösartig, überwiegend als Trojaner der Familie «MusterStealer», "
@@ -498,10 +616,12 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
              "sicherheit": "mittel", "quellenbewertung": "B2",
              "text": "Der Sandbox-Bericht vom 30.09.2026 zeigt eine Seite mit dem Titel «Kundenportal – Anmeldung». Das Formular sendet die "
                      f"Eingaben an /gate.php auf {IP_SERVER}. Das Skript ist als Bestandteil eines bekannten Phishing-Baukastens erkannt. "
-                     "Bei VirusTotal lag zur genauen URL keine Analyse vor.",
+                     "Bei VirusTotal lag zur genauen URL keine Analyse vor. Ein vorhandener Scan bei urlscan.io vom 30.09.2026 nennt denselben "
+                     "Seitentitel und stuft die Seite als Phishing ein. Das Bildschirmfoto des Scans liegt in den Rohdaten.",
              "erlaeuterung": "Die Seite sah aus wie das echte Kundenportal. Was dort eingetippt wurde, ging aber nicht an die [ORG_01], sondern "
                              "an ein kleines Programm der Täter, das Benutzername und Passwort einsammelt.",
-             "indikatoren": ["I-02", "I-03"], "belege": [p["uq_bericht"], p["uq_suche"], p["vt_url"]], "gegenpruefung": "bestaetigt"},
+             "indikatoren": ["I-02", "I-03"], "belege": [p["uq_bericht"], p["uq_suche"], p["vt_url"], p["us_suche"], p["us_ergebnis"]],
+             "gegenpruefung": "bestaetigt"},
             {"id": "B-07", "titel": "Die Gruppe MusterLocker ist bekannt und führt die genannte Onion-Adresse als Leak-Seite", "art": "feststellung",
              "sicherheit": "mittel", "quellenbewertung": "C2",
              "text": "ransomware.live führt eine Gruppe dieses Namens. Als deren Leak-Seite ist genau die Onion-Adresse verzeichnet, die im "
@@ -560,7 +680,15 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
              "erlaeuterung": "Freiwillige sammeln Adressen, an die Opfer von Erpressungssoftware gezahlt haben. Die Adresse aus dem "
                              "Erpresserschreiben steht in dieser Sammlung unter demselben Gruppennamen. Das stützt den Bezug zur Gruppe, "
                              "beweist ihn aber nicht: Die Einträge stammen von Dritten und sind ungeprüft.",
-             "indikatoren": ["I-10", "I-07"], "belege": [p["k_adresse"]], "gegenpruefung": "bestaetigt"}],
+             "indikatoren": ["I-10", "I-07"], "belege": [p["k_adresse"]], "gegenpruefung": "bestaetigt"},
+            {"id": "B-13", "titel": "Eine von drei geprüften DNS-Sperrlisten führt die Phishing-Domain", "art": "feststellung", "sicherheit": "mittel",
+             "quellenbewertung": "B2",
+             "text": f"Die eigene Web-Check-Instanz fragte drei DNS-Dienste mit Schutzfilter nach {DOMAIN}. Quad9 sperrt die Domain, "
+                     "AdGuard und Cloudflare sperren sie nicht.",
+             "erlaeuterung": "Manche DNS-Dienste weigern sich, bekannte schädliche Namen aufzulösen. Einer von drei geprüften Diensten kennt die "
+                             "Domain bereits als schädlich. Das stützt die Einordnung, sagt aber nichts über den Betreiber. Wer einen der beiden "
+                             "anderen Dienste nutzt, erreicht die Seite weiterhin.",
+             "indikatoren": ["I-01"], "belege": [p["webcheck_sperrlisten"]], "gegenpruefung": "bestaetigt"}],
         "beziehungen": [
             {"von": "I-01", "nach": "I-03", "art": "zeigt auf", "sicherheit": "hoch", "belege": [p["vt_domain"], p["shodan_server"]]},
             {"von": "I-02", "nach": "I-01", "art": "liegt auf", "sicherheit": "hoch", "belege": [p["uq_bericht"]]},
@@ -586,6 +714,7 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
             {"zeit": "2026-09-29T07:14:00Z", "ereignis": "[PERSON_02] erhält die Phishing-E-Mail.", "quelle": "Rapport Ziff. 2"},
             {"zeit": "2026-09-29T07:31:00Z", "ereignis": f"Anmeldung am Kundenportal von {IP_LOGIN} (VPN).", "quelle": "Rapport Ziff. 3"},
             {"zeit": "2026-09-30T06:18:00Z", "ereignis": "Sandbox-Bericht von urlquery stuft die Seite als Phishing ein.", "belege": [p["uq_bericht"]]},
+            {"zeit": "2026-09-30T11:32:10Z", "ereignis": "Öffentlicher Scan der Phishing-Seite bei urlscan.io, Einstufung als Phishing.", "belege": [p["us_ergebnis"]]},
             {"zeit": "2026-10-01", "ereignis": "Erpresserschreiben im Namen von «MusterLocker» trifft ein.", "quelle": "Rapport Ziff. 6"},
             {"zeit": "2026-10-02", "ereignis": "[PERSON_01] meldet den Vorfall.", "quelle": "Rapport Ziff. 1"},
             {"zeit": zahlung["zeit"], "ereignis": f"Die [ORG_01] zahlt {start['betrag']} BTC an die Adresse aus dem Erpresserschreiben.", "belege": [p["k_zahlung"]]},
@@ -606,6 +735,8 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
         "empfehlungen": [
             {"text": "Editionsbegehren an die Beispiel Hosting AG zu Kundendaten, Zahlungsmitteln und Zugriffsprotokollen des Servers 203.0.113.7, über den Rechtshilfeweg.", "prioritaet": "hoch"},
             {"text": f"Registrar um Sperrung von {DOMAIN} und {DOMAIN2} ersuchen und Registrierungsdaten sichern.", "prioritaet": "hoch"},
+            {"text": "Zur Anmeldung vom 29.09.2026, 09:31 Uhr: Verbindungsdaten sichern lassen, soweit der Betreiber des Dienstes welche führt.",
+             "indikatoren": ["I-04"], "prioritaet": "mittel"},
             {"text": f"Editionsbegehren an die Börse «{boerse['name']}»: Welchem Kundenkonto wurde die Einzahlung von {boerse['betrag']} BTC auf "
                      f"{EINZAHLUNG} gutgeschrieben (Sammeltransaktion {boerse['tx']})? Kundendaten, Anmeldeprotokolle und Auszahlungen sichern lassen.",
              "prioritaet": "hoch"},
@@ -621,6 +752,7 @@ def befunde(p: dict[str, str], k: dict[str, dict], stand: str) -> dict:
             {"begriff": "Bitcoin-Adresse (Wallet)", "erklaerung": "Kontonummer in der Blockchain. Sie nennt keinen Inhaber. Wer den zugehörigen geheimen Schlüssel hat, verfügt über das Guthaben."},
             {"begriff": "Blockchain", "erklaerung": "Öffentliches, unveränderliches Kassenbuch einer Kryptowährung. Jede Zahlung ist für alle einsehbar, aber ohne Namen."},
             {"begriff": "Börse (Handelsplattform)", "erklaerung": "Unternehmen, bei dem Kunden Kryptowährungen kaufen, verkaufen und verwahren. Es kennt seine Kunden und führt für jeden eigene Einzahlungsadressen."},
+            {"begriff": "Anonymisierungsdienst", "erklaerung": "Dienst, der die eigene Internetadresse verbirgt: VPN, Proxy, das Tor-Netz. Bei einem Residential Proxy läuft der Verkehr über den Anschluss eines Dritten, meist ohne dessen Wissen."},
             {"begriff": "Editionsbegehren", "erklaerung": "Aufforderung einer Behörde an ein Unternehmen, bestimmte Unterlagen oder Daten herauszugeben."},
             {"begriff": "Hash (SHA-256)", "erklaerung": "Digitaler Fingerabdruck einer Datei. Gleicher Hash bedeutet gleiche Datei, unabhängig vom Dateinamen."},
             {"begriff": "Infostealer", "erklaerung": "Schadsoftware, die gespeicherte Passwörter, Sitzungsdaten und Ähnliches vom Rechner sammelt und an die Täter schickt."},
@@ -680,6 +812,8 @@ def main() -> int:
     print()
     code = rapport.main([FALL])
     code = protokoll.main([FALL]) or code
+    anhang.schreiben(FALL)      # die Datenblätter aller Indikatoren, wie sie auch die Oberfläche zeigt
+    print(f"Datenblätter:      faelle/{FALL}/rapport/Datenblaetter.html")
     print(f"\nMusterfall fertig: faelle/{FALL}/rapport/Abschlussrapport.html")
     return code
 

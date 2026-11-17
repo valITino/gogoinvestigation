@@ -1,0 +1,20 @@
+{
+ "data": {
+  "ipAddress": "185.220.101.1",
+  "isPublic": true,
+  "ipVersion": 4,
+  "isWhitelisted": false,
+  "abuseConfidenceScore": 100,
+  "countryCode": "DE",
+  "usageType": "University/College/School",
+  "isp": "Artikel10 e.V.",
+  "domain": "artikel10.org",
+  "hostnames": [
+   "berlin01.tor-exit.artikel10.org"
+  ],
+  "isTor": true,
+  "totalReports": 481,
+  "numDistinctUsers": 137,
+  "lastReportedAt": "2026-11-16T08:35:49+00:00"
+ }
+}

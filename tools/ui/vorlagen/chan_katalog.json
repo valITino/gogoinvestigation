@@ -1,0 +1,167 @@
+[
+ {
+  "page": 1,
+  "threads": [
+   {
+    "no": 105076684,
+    "sticky": 1,
+    "closed": 1,
+    "now": "04/25/25(Fri)16:24:10",
+    "name": "Anonymous",
+    "com": "Text des Beitrags (für die Vorlage ersetzt)",
+    "filename": "datei",
+    "ext": ".png",
+    "w": 535,
+    "h": 420,
+    "tn_w": 250,
+    "tn_h": 196,
+    "tim": 1745612650141704,
+    "time": 1745612650,
+    "md5": "zuZHMJMYYp5WY7vM397nWQ==",
+    "fsize": 301273,
+    "resto": 0,
+    "capcode": "mod",
+    "semantic_url": "betreff-fuer-die-vorlage-ersetzt",
+    "replies": 3,
+    "images": 3,
+    "omitted_posts": 2,
+    "omitted_images": 2,
+    "last_replies": [
+     {
+      "no": 105076692,
+      "now": "04/25/25(Fri)16:24:40",
+      "name": "Anonymous",
+      "filename": "datei",
+      "ext": ".png",
+      "w": 450,
+      "h": 399,
+      "tn_w": 125,
+      "tn_h": 110,
+      "tim": 1745612680763609,
+      "time": 1745612680,
+      "md5": "MWh/8IxI4GKjvV4QsmJGow==",
+      "fsize": 293402,
+      "resto": 105076684,
+      "capcode": "mod"
+     }
+    ],
+    "last_modified": 1745612922
+   },
+   {
+    "no": 110348837,
+    "now": "11/16/26(Mon)05:09:52",
+    "name": "Anonymous",
+    "com": "Text des Beitrags (für die Vorlage ersetzt)",
+    "filename": "datei",
+    "ext": ".png",
+    "w": 1180,
+    "h": 878,
+    "tn_w": 250,
+    "tn_h": 186,
+    "tim": 1794823792561273,
+    "time": 1794823792,
+    "md5": "GtujcX3v7veHvx6k1m3iEg==",
+    "fsize": 97404,
+    "resto": 0,
+    "bumplimit": 0,
+    "imagelimit": 0,
+    "semantic_url": "betreff-fuer-die-vorlage-ersetzt",
+    "replies": 0,
+    "images": 0,
+    "last_modified": 1794823792
+   }
+  ]
+ },
+ {
+  "page": 2,
+  "threads": [
+   {
+    "no": 110344442,
+    "now": "11/15/26(Sun)15:30:28",
+    "name": "Anonymous",
+    "com": "Text des Beitrags (für die Vorlage ersetzt)",
+    "filename": "datei",
+    "ext": ".png",
+    "w": 1536,
+    "h": 1024,
+    "tn_w": 250,
+    "tn_h": 166,
+    "tim": 1794774628856352,
+    "time": 1794774628,
+    "md5": "c4yH6nRNwxrt47Q2sIFGWg==",
+    "fsize": 1872366,
+    "resto": 0,
+    "bumplimit": 0,
+    "imagelimit": 0,
+    "semantic_url": "betreff-fuer-die-vorlage-ersetzt",
+    "replies": 51,
+    "images": 10,
+    "omitted_posts": 46,
+    "omitted_images": 10,
+    "last_replies": [
+     {
+      "no": 110348736,
+      "now": "11/16/26(Mon)04:39:52",
+      "name": "Anonymous",
+      "com": "Text des Beitrags (für die Vorlage ersetzt)",
+      "time": 1794821992,
+      "resto": 110344442
+     },
+     {
+      "no": 110348739,
+      "now": "11/16/26(Mon)04:40:53",
+      "name": "Anonymous",
+      "com": "Text des Beitrags (für die Vorlage ersetzt)",
+      "time": 1794822053,
+      "resto": 110344442
+     }
+    ],
+    "last_modified": 1794823396
+   },
+   {
+    "no": 110340723,
+    "now": "11/15/26(Sun)05:12:45",
+    "name": "Anonymous",
+    "sub": "Betreff (für die Vorlage ersetzt)",
+    "com": "Text des Beitrags (für die Vorlage ersetzt)",
+    "filename": "datei",
+    "ext": ".jpg",
+    "w": 1447,
+    "h": 2047,
+    "tn_w": 176,
+    "tn_h": 250,
+    "tim": 1794737565944004,
+    "time": 1794737565,
+    "md5": "xP4A1CrtRm5Syj9CAtJx7A==",
+    "fsize": 1327071,
+    "resto": 0,
+    "bumplimit": 0,
+    "imagelimit": 0,
+    "semantic_url": "betreff-fuer-die-vorlage-ersetzt",
+    "replies": 293,
+    "images": 26,
+    "omitted_posts": 288,
+    "omitted_images": 26,
+    "last_replies": [
+     {
+      "no": 110348672,
+      "now": "11/16/26(Mon)04:24:14",
+      "name": "Anonymous",
+      "com": "Text des Beitrags (für die Vorlage ersetzt)",
+      "time": 1794821054,
+      "resto": 110340723
+     },
+     {
+      "no": 110348717,
+      "now": "11/16/26(Mon)04:34:32",
+      "name": "Anonymous",
+      "com": "Text des Beitrags (für die Vorlage ersetzt)",
+      "time": 1794821672,
+      "resto": 110340723
+     }
+    ],
+    "last_modified": 1794823358
+   }
+  ]
+ }
+]

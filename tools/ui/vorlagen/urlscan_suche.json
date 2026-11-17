@@ -1,0 +1,119 @@
+{
+ "results": [
+  {
+   "canonical": {
+    "task": {
+     "url": "example.com"
+    },
+    "page": {
+     "url": "example.com"
+    }
+   },
+   "task": {
+    "visibility": "public",
+    "method": "manual",
+    "domain": "example.com",
+    "apexDomain": "example.com",
+    "time": "2026-11-16T11:32:10.568Z",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "url": "http://example.com/"
+   },
+   "stats": {
+    "uniqIPs": 1,
+    "uniqCountries": 1,
+    "dataLength": 2540,
+    "encodedDataLength": 2147,
+    "requests": 2
+   },
+   "page": {
+    "server": "cloudflare",
+    "redirected": "https-only",
+    "ip": "203.0.113.1",
+    "apexDomainAgeDays": 4357,
+    "mimeType": "text/html",
+    "title": "Titel der Seite (für die Vorlage ersetzt)",
+    "url": "https://example.com/",
+    "tlsValidDays": 90,
+    "tlsAgeDays": 50,
+    "domainAgeDays": 4357,
+    "tlsValidFrom": "2026-09-26T22:49:11.000Z",
+    "domain": "example.com",
+    "umbrellaRank": 3654,
+    "apexDomain": "example.com",
+    "asnname": "CLOUDFLARENET - Cloudflare, Inc., US",
+    "asn": "AS13335",
+    "tlsIssuer": "Cloudflare TLS Issuing ECC CA 3",
+    "status": "200"
+   },
+   "labels": [],
+   "_id": "00000000-0000-4000-8000-000000000001",
+   "_score": null,
+   "sort": [
+    1794828730568,
+    "00000000-0000-4000-8000-000000000001"
+   ],
+   "result": "https://urlscan.io/pfad",
+   "screenshot": "https://urlscan.io/pfad"
+  },
+  {
+   "submitter": {},
+   "canonical": {
+    "task": {
+     "url": "seite-1.example/pfad"
+    },
+    "page": {
+     "url": "seite-1.example/pfad"
+    }
+   },
+   "task": {
+    "visibility": "public",
+    "method": "api",
+    "domain": "seite-2.example",
+    "apexDomain": "seite-1.example",
+    "time": "2026-11-16T11:31:30.355Z",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "url": "https://seite-2.example/pfad"
+   },
+   "stats": {
+    "uniqIPs": 152,
+    "uniqCountries": 7,
+    "dataLength": 18661422,
+    "encodedDataLength": 5223620,
+    "requests": 820
+   },
+   "page": {
+    "server": "cloudflare",
+    "ip": "203.0.113.2",
+    "apexDomainAgeDays": 4944,
+    "language": "en",
+    "mimeType": "text/html",
+    "title": "Titel der Seite (für die Vorlage ersetzt)",
+    "url": "https://seite-2.example/pfad",
+    "tlsValidDays": 90,
+    "tlsAgeDays": 54,
+    "domainAgeDays": 3698,
+    "tlsValidFrom": "2026-09-23T10:37:06.000Z",
+    "domain": "seite-2.example",
+    "umbrellaRank": 358135,
+    "apexDomain": "seite-1.example",
+    "asnname": "CLOUDFLARENET - Cloudflare, Inc., US",
+    "asn": "AS13335",
+    "tlsIssuer": "WE1",
+    "status": "200"
+   },
+   "labels": [],
+   "_id": "00000000-0000-4000-8000-000000000002",
+   "_score": null,
+   "sort": [
+    1794828690355,
+    "00000000-0000-4000-8000-000000000002"
+   ],
+   "result": "https://urlscan.io/pfad",
+   "screenshot": "https://urlscan.io/pfad"
+  }
+ ],
+ "total": 10000,
+ "took": 55,
+ "has_more": true,
+ "search_date_limit_days": 365
+}

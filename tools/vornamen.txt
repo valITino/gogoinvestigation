@@ -1,0 +1,90 @@
+# Vornamenliste für tools/pseudonymisieren.py (Schicht 5, Kandidaten im Fliesstext)
+#
+# VORLÄUFIG, von Hand zusammengestellt (Stand 16.11.2026). Häufige Vornamen in der Schweiz: deutsch,
+# französisch, italienisch, rätoromanisch und häufige Namen aus anderen Sprachen. Die Liste stammt aus
+# keiner fremden Datei, sie untersteht der Lizenz dieses Repositorys.
+#
+# Vorgesehen ist die Vornamenstatistik des Bundesamtes für Statistik (BFS), «Vornamen der Bevölkerung nach
+# Jahrgang, Schweiz und Sprachgebiete», BFS-Nummer su-d-01.04.00.11. Auf der Seite des Datensatzes steht als
+# Nutzungsbedingung «OPEN-BY: Freie Nutzung. Quellenangabe ist Pflicht.» (gesehen am 16.11.2026). Die Datei
+# liess sich aus der Entwicklungsumgebung nicht abrufen. Wer sie von Hand herunterlädt, baut die Liste so:
+#     python3 tools/vornamen.py bauen <Datei.xlsx oder .csv> [weitere Dateien] --stand 2025
+# Das Werkzeug schreibt Quelle, Ausgabe, Datum und Nutzungsbedingung in diesen Kopf.
+#
+# Format: Namen durch Leerzeichen, Komma oder Zeilenumbruch getrennt. Gross/klein und Akzente spielen keine
+# Rolle. Doppelnamen mit Bindestrich (Jean-Pierre) werden aus ihren Teilen erkannt.
+
+# --- deutsch, männlich
+Hans Peter Daniel Thomas Andreas Markus Martin Christian Stefan Walter Urs Marcel Bruno Werner Kurt Roland
+René Michael Beat Patrick Rolf Heinz Paul Josef Marco Roger Fritz Jürg Rudolf Ernst Robert Felix Franz Karl
+Max Erich Hansruedi Ueli Ruedi Köbi Sepp Toni Otto Erwin Alfred Albert Willi Willy Georg Jakob Johann
+Johannes Ulrich Anton Emil Ernst Eugen Gottfried Heinrich Hermann Hugo Konrad Leo Oskar Oswald Richard
+Samuel Simon Viktor Xaver Adrian Alain Alexander Benjamin Christoph Claudio Cyrill Cédric Damian Dario David
+Dominik Elias Fabian Fabio Florian Gabriel Jan Joel Jonas Jonathan Julian Kevin Lars Leon Levin Linus Livio
+Lorenz Luca Lukas Manuel Matthias Mattia Maurice Michel Moritz Nico Nicolas Niklaus Noah Oliver Pascal
+Philipp Raphael Remo Reto Robin Roman Samuel Sandro Sebastian Silvan Simon Sven Tim Tobias Yannick Yves
+Aaron Armin Arno Benedikt Bernhard Björn Carlo Clemens Dieter Dirk Edgar Edwin Egon Ferdinand Flavio Gerhard
+Gregor Guido Gustav Hanspeter Hansjörg Hansueli Harald Helmut Herbert Ivo Joachim Jörg Kaspar Klaus Lothar
+Louis Ludwig Lutz Mathias Meinrad Nikolaus Norbert Olaf Ralf Ralph Rainer Reinhard Rico Rino Severin
+Siegfried Sigmund Theo Theodor Thierry Till Timo Tom Valentin Vincent Vinzenz Volker Wilhelm Wolfgang Xavier
+Andri Curdin Flurin Gian Gion Jon Men Not Reto Riet Duri Ladina Seraina Corsin Mauro Nando
+
+# --- deutsch, weiblich
+Maria Anna Ursula Ruth Elisabeth Sandra Monika Claudia Verena Nicole Barbara Silvia Andrea Marie Daniela
+Christine Karin Marianne Erika Margrit Brigitte Susanne Rita Esther Heidi Doris Beatrice Katharina Rosmarie
+Therese Cornelia Franziska Gabriela Regula Yvonne Jacqueline Irene Martina Sabine Petra Manuela Nadia Sarah
+Laura Lea Lara Julia Nina Jana Anja Selina Céline Chiara Elena Emma Mia Sofia Sophie Lena Leonie Livia
+Michelle Melanie Nadine Natalie Noemi Olivia Pia Rahel Ramona Rebecca Sabrina Simone Stefanie Tamara Tanja
+Vanessa Vera Alexandra Alice Angela Anita Annemarie Antonia Astrid Bettina Bianca Carmen Caroline Charlotte
+Corinne Denise Diana Dora Edith Eliane Elsa Elsbeth Eveline Fabienne Frieda Gertrud Gisela Hanna Hannah
+Hedwig Helen Helena Helene Hildegard Ida Ines Ingrid Irma Isabelle Jasmin Jeannette Johanna Judith Jolanda
+Klara Lilian Liliane Lina Linda Lisa Lotti Luzia Lydia Madeleine Magdalena Margaretha Margot Marlies Marlis
+Martha Mirjam Miriam Myrtha Nelly Paula Priska Regina Renate Rosa Rosemarie Sibylle Silvana Sonja Stephanie
+Susanna Sylvia Theres Trudi Ursina Valentina Valérie Vreni Yvette Zoe Annina Flurina Gianna Madlaina
+
+# --- französisch
+Jean Pierre Michel André Philippe Daniel Jacques Claude François Bernard Alain Christian Olivier Laurent
+Patrick Pascal Eric Éric Marc Nicolas Stéphane Thierry Christophe Frédéric Didier Dominique Gilbert Gérard
+Georges Henri Jean-Pierre Jean-Claude Jean-Luc Jean-Marc Jean-François Jean-Paul Jean-Michel Julien Luc Louis
+Marcel Mathieu Maxime Raymond Roger Sébastien Serge Sylvain Vincent Yves Yvan Antoine Arnaud Aurélien
+Bastien Benoît Cédric Damien Denis Emmanuel Étienne Fabrice Florent Gaël Guillaume Hervé Hugo Jérôme Joël
+Jonathan Léo Loïc Lucas Ludovic Mathis Nathan Noé Quentin Raphaël Rémy Romain Samuel Théo Thibault Xavier
+Marie Anne Catherine Françoise Monique Nathalie Isabelle Christine Sylvie Jacqueline Nicole Chantal Danielle
+Martine Véronique Sandrine Valérie Stéphanie Céline Sophie Caroline Florence Corinne Josiane Michèle Michelle
+Dominique Claudine Simone Madeleine Marguerite Yvette Yvonne Suzanne Jeanne Hélène Laurence Patricia Brigitte
+Aurélie Camille Chloé Clara Élodie Émilie Emma Inès Jade Julie Laetitia Léa Lucie Manon Marine Mathilde
+Mélanie Océane Pauline Romane Zoé Agnès Amélie Anaïs Audrey Béatrice Cécile Delphine Élise Estelle Fabienne
+Geneviève Ghislaine Liliane Lise Maude Muriel Noémie Odile Rachel Solange Viviane Gilles Guy Rémi Régis
+
+# --- italienisch
+Giuseppe Giovanni Antonio Mario Luigi Francesco Angelo Vincenzo Pietro Salvatore Carlo Franco Paolo Marco
+Roberto Andrea Stefano Alessandro Luca Massimo Giorgio Sergio Bruno Claudio Fabio Daniele Davide Matteo
+Lorenzo Simone Federico Riccardo Michele Nicola Domenico Enrico Alberto Aldo Emilio Ettore Filippo Gianni
+Giacomo Gino Giulio Guido Ivan Leonardo Maurizio Mirko Nino Renato Renzo Rocco Silvio Tiziano Tommaso Ugo
+Umberto Valerio Vittorio Alessio Cristian Diego Edoardo Elia Emanuele Gabriele Samuele Gianluca Gianfranco
+Giancarlo Pierluigi Pasquale Raffaele Gaetano Carmelo Sandro Dario Elio Ennio Fausto Flavio Moreno Orlando
+Maria Anna Rosa Angela Giovanna Teresa Lucia Carmela Francesca Giuseppina Antonietta Elena Paola Laura Carla
+Daniela Sara Chiara Valentina Alessandra Federica Giulia Martina Silvia Roberta Monica Cristina Simona Elisa
+Barbara Patrizia Franca Graziella Luisa Marisa Nadia Ornella Pia Raffaella Rita Sabrina Stefania Tiziana
+Vittoria Aurora Beatrice Bianca Camilla Caterina Claudia Elisabetta Emma Giada Ginevra Ilaria Irene Lisa
+Manuela Marta Michela Noemi Serena Sofia Alba Concetta Donatella Emanuela Fiorella Gabriella Loredana Mirella
+
+# --- häufige Vornamen aus anderen Sprachen
+José João Manuel Carlos António Paulo Pedro Luís Rui Nuno Miguel Tiago Bruno Ricardo Fernando Jorge Sérgio
+Ana Maria Sandra Paula Carla Sónia Patrícia Cristina Fernanda Isabel Teresa Sofia Marta Catarina Inês
+Juan Francisco Javier Luis Alberto Pablo Sergio Diego Alejandro Carmen Pilar Dolores Lucía Elena Rocío
+Arben Agim Besnik Blerim Burim Driton Fatmir Florim Ilir Kushtrim Liridon Naim Shpend Valon Visar Xhevat
+Arta Albana Blerta Drita Edona Fatime Flutura Lindita Mimoza Shqipe Teuta Valbona Vjosa
+Dragan Goran Zoran Milan Nenad Dejan Aleksandar Nikola Marko Stefan Ivan Miroslav Slobodan Darko Bojan
+Jelena Milica Dragana Snežana Ivana Marija Ana Biljana Gordana Vesna Ljiljana Tatjana Sanja Maja
+Mehmet Mustafa Ahmet Ali Hasan Hüseyin Ibrahim Murat Ömer Yusuf Emre Burak Serkan Kemal Osman
+Fatma Ayşe Emine Hatice Zeynep Elif Meryem Özlem Sevgi Hülya Derya Selin
+Mohamed Mohammed Ahmed Omar Youssef Karim Samir Tarek Hassan Hussein Khaled Amir Bilal Rachid
+Fatima Aisha Amina Leila Nour Yasmin Samira Khadija Mariam Salma
+John James William Michael David Richard Robert Thomas Charles Christopher Matthew Anthony Mark Steven Paul
+Andrew Kevin Brian George Edward Ryan Jason Jeffrey Eric Stephen Scott Brandon Benjamin Gregory Frank
+Mary Patricia Jennifer Elizabeth Barbara Susan Jessica Karen Nancy Betty Margaret Lisa Ashley Emily
+Kimberly Donna Carol Amanda Melissa Deborah Stephanie Rebecca Laura Helen Sharon Cynthia Kathleen Amy
+Krzysztof Piotr Tomasz Andrzej Pawel Marcin Agnieszka Katarzyna Malgorzata Joanna Ewa Magdalena
+Sergej Wladimir Dmitri Alexei Igor Oleg Juri Andrei Olga Natalia Tatiana Irina Swetlana Jekaterina Oksana
+Thanh Minh Anh Linh Hung Duc Kumar Raj Suresh Ramesh Priya Lakshmi Sivakumar Thushara Nimal Kamal

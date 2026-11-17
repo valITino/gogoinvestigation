@@ -1,0 +1,20 @@
+{
+ "domain": "EXAMPLE.ORG",
+ "registrar": "Beispiel Registrar AG",
+ "registrarUrl": "http://registrar.example.net",
+ "registrarIanaId": "376",
+ "registrarWhoisServer": "whois.example.net",
+ "registryDomainId": "2336799_DOMAIN_ORG-VRSN",
+ "created": "1995-08-14T04:00:00.000Z",
+ "updated": "2026-08-14T08:01:43.000Z",
+ "expires": "2027-08-13T04:00:00.000Z",
+ "nameservers": [
+  "ns1.example.net",
+  "ns2.example.net"
+ ],
+ "status": [
+  "clientDeleteProhibited https://icann.org/epp#clientDeleteProhibited",
+  "clientTransferProhibited https://icann.org/epp#clientTransferProhibited"
+ ],
+ "dnssec": "signedDelegation"
+}
