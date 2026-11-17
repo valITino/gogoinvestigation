@@ -32,14 +32,16 @@ Im Assistenten sind die Optionen die Vorgaben der Fragen. Auf einem schon einger
 wird mit einer Option, die etwas einstellt (etwa --mythos), nicht nachgefragt.
 
 Ablauf:
-    1. Voraussetzungen prüfen und Fehlendes installieren (Python-venv, Claude Code, pdftotext,
-       unter Windows Git for Windows)
+    1. Voraussetzungen prüfen und Fehlendes installieren (Python-venv, Claude Code, pdftotext, einen Browser für
+       die PDF-Fassung, unter Windows Git for Windows). Sollen die Abfragen über Tor auf diesem Rechner laufen:
+       Tor installieren und starten.
     2. Python-Umgebung .venv anlegen, Pakete installieren
     3. Schlüsseldatei .env und Ordner anlegen
     4. Web-Check starten und Robin-Abbild laden, wenn Docker läuft
     5. Claude Code: MCP-Server freischalten, Mythos freischalten (wenn erklärt), Anmeldung prüfen
     6. Musterfall bauen und Einrichtung prüfen
-    Auf Wunsch danach: Anmeldung bei Claude Code, Testabfragen an die Quellen
+    Auf Wunsch danach: Anmeldung bei Claude Code, Testabfragen an die Quellen, Claude Code einmal starten (der Mensch
+    bestätigt dort den Projektordner), die Oberfläche öffnen. Am Schluss steht jeder Schritt, der noch zu tun ist.
 
 Rückgabewert 0: einsatzbereit. 1: etwas Nötiges fehlt oder ist fehlgeschlagen. 2: falscher Aufruf.
 130: abgebrochen.
@@ -62,6 +64,7 @@ import shutil  # noqa: E402
 import socket  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
+import time  # noqa: E402
 import urllib.request  # noqa: E402
 from pathlib import Path  # noqa: E402
 from urllib.parse import urlsplit  # noqa: E402
@@ -79,7 +82,7 @@ JA, NEIN = {"ja", "j", "yes", "y", "true", "1", "an"}, {"nein", "n", "no", "fals
 CLAUDE_MIN = (2, 1, 295)        # ab dieser Version ist der Arbeitsplatz geprüft (Hooks, Berechtigungen, Modellwahl je Skill)
 LOGS = Path(tempfile.gettempdir()) / "osint-setup"
 VENV = plattform.venv_python(PROJEKT)
-TOR = "socks5h://127.0.0.1:9050"
+TOR = plattform.TOR_PROXY
 SCHLUESSELQUELLEN = tuple(q for q in QUELLEN if q.env)     # Quellen, die einen Schlüssel brauchen
 ui = Oberflaeche()
 
@@ -91,6 +94,11 @@ PAKETE = {
                   "zypper": ["poppler-tools"], "apk": ["poppler-utils"], "brew": ["poppler"],
                   "winget": ["oschwartz10612.Poppler"]},
     "git": {"winget": ["Git.Git"]},
+    # Tor als Proxy für die Abfragen: nur, wenn der Sachbearbeiter «Tor auf diesem Rechner» wählt
+    "tor": {"apt": ["tor"], "dnf": ["tor"], "yum": ["tor"], "pacman": ["tor"], "zypper": ["tor"], "apk": ["tor"], "brew": ["tor"]},
+    # Browser für die PDF-Fassung von Rapport und Protokoll. Unter Ubuntu gibt es Chromium nur als Snap, siehe browser_weg()
+    "browser": {"apt": ["chromium"], "dnf": ["chromium"], "yum": ["chromium"], "pacman": ["chromium"], "zypper": ["chromium"],
+                "apk": ["chromium"]},
 }
 INSTALLIEREN = {
     "apt": ["apt-get", "install", "-y", "--no-install-recommends"], "dnf": ["dnf", "install", "-y"],
@@ -107,6 +115,8 @@ class Stand:
         self.offen: list[str] = []          # das muss der Mensch noch tun
         self.noetig: list[str] = []         # fehlt und verhindert den Betrieb
         self.neues_terminal: list[str] = []     # was erst in einem neuen Terminal gilt
+        self.neu_anmelden = False           # das Konto kam eben in die Gruppe docker: Aus diesem Terminal erreicht Robin Docker noch nicht
+        self.ordner: bool | None = None     # Vertraut Claude Code dem Projektordner? True bestätigt, False keine Bestätigung gefunden, None unbekannt
         self.apt_aktuell = False
         self.sudo_gemeldet = False
         self.assistent = False              # der Mensch hat die Fragen des Assistenten beantwortet
@@ -165,17 +175,19 @@ def system() -> dict:
     if sys.platform == "darwin":
         return {"art": "macos", "name": f"macOS {platform.mac_ver()[0]}",
                 "paketverwaltung": "brew" if shutil.which("brew") else None, "wsl": False}
-    name = "Linux"
+    name, kennung = "Linux", ""
     try:
         for z in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
             if z.startswith("PRETTY_NAME="):
                 name = z.split("=", 1)[1].strip().strip('"')
+            elif z.startswith("ID="):
+                kennung = z.split("=", 1)[1].strip().strip('"').lower()
     except OSError:
         pass
-    wsl = "microsoft" in platform.release().lower() or bool(os.environ.get("WSL_DISTRO_NAME"))
+    wsl = plattform.wsl()
     verwaltung = next((kurz for kurz, programm in (("apt", "apt-get"), ("dnf", "dnf"), ("yum", "yum"), ("pacman", "pacman"),
                                                    ("zypper", "zypper"), ("apk", "apk")) if shutil.which(programm)), None)
-    return {"art": "linux", "name": name + (" unter WSL" if wsl else ""), "paketverwaltung": verwaltung, "wsl": wsl}
+    return {"art": "linux", "name": name + (" unter WSL" if wsl else ""), "paketverwaltung": verwaltung, "wsl": wsl, "id": kennung}
 
 
 def root_praefix(wofuer: str) -> list[str] | None:
@@ -318,15 +330,199 @@ def docker_installieren(sysinfo: dict) -> str:
         if lauf(["docker", "compose", "version"], 30)[0] == 0 or shutil.which("docker-compose"):
             break
     vor = root_praefix("den Start von Docker") or []
-    if Path("/run/systemd/system").is_dir():
+    if plattform.systemd():
         lauf(vor + ["systemctl", "enable", "--now", "docker"], 120, "docker.log")
     else:
         lauf(vor + ["service", "docker", "start"], 120, "docker.log")
     benutzer = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
     if benutzer and benutzer != "root":
         lauf(vor + ["usermod", "-aG", "docker", benutzer], 30, "docker.log")
-        return f"Konto {benutzer} in die Gruppe docker aufgenommen. Das gilt ab der nächsten Anmeldung."
+        # Die Gruppe gilt erst für neu gestartete Sitzungen. Web-Check läuft schon (der Dienst startet es), Robin aber startet
+        # Claude Code selbst über Docker, und zwar mit den Rechten des Terminals, aus dem es kommt.
+        stand.neu_anmelden = True
+        stand.neues_terminal.append(f"der Zugriff des Kontos {benutzer} auf Docker (Gruppe docker). Robin braucht ihn")
     return ""
+
+
+# Browser für die PDF-Fassung von Rapport und Protokoll (tools/pdf.py).
+
+def snap_bereit() -> bool:
+    """Lässt sich hier ein Snap installieren? Dafür muss der Dienst snapd laufen (unter WSL: nur mit systemd)."""
+    return bool(shutil.which("snap")) and Path("/run/snapd.socket").exists()
+
+
+def browser_weg(sysinfo: dict) -> tuple[str, str]:
+    """Wie die Einrichtung einen Browser für PDF installieren würde: (Weg, Beschreibung). Leerer Weg: gar nicht.
+    Unter Windows gehört Edge zum System. Unter macOS bleibt die Wahl des Browsers beim Menschen."""
+    verwaltung = sysinfo["paketverwaltung"] or ""
+    if sysinfo["art"] != "linux":
+        return "", ""
+    if sysinfo.get("id") == "ubuntu":       # Ubuntu liefert Chromium nur als Snap aus, das Paket chromium-browser ist bloss ein Verweis darauf
+        return ("snap", "Chromium als Snap (snap install chromium)") if snap_bereit() else ("", "")
+    if PAKETE["browser"].get(verwaltung):
+        return "paket", f"Paket {PAKETE['browser'][verwaltung][0]} über {verwaltung}"
+    return "", ""
+
+
+def browser_installieren(sysinfo: dict) -> None:
+    weg, _ = browser_weg(sysinfo)
+    if weg == "paket":
+        paket_installieren("browser", sysinfo)
+    elif weg == "snap":
+        vor = root_praefix("die Installation von Chromium")
+        if vor is not None:
+            lauf(vor + ["snap", "install", "chromium"], 1800, "pakete.log",
+                 anzeige="Chromium wird installiert (Snap, das kann einige Minuten dauern)")
+
+
+def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None:
+    """Zeile «Browser für PDF»: finden, sonst installieren, dann mit einer kleinen Seite wirklich ein PDF erzeugen.
+    «Gefunden» allein sagt wenig: Ob der Browser hier ohne Fenster druckt, zeigt erst die Probe."""
+    from tools import pdf
+    browser = pdf.browser_finden()
+    neu = versucht = False
+    if not browser and darf and browser_weg(sysinfo)[0]:
+        versucht = True
+        browser_installieren(sysinfo)
+        browser = pdf.browser_finden()
+        neu = bool(browser)
+        if neu:
+            stand.neu.append("Chromium (Browser für PDF)")
+    ohne = ("Rapport und Protokoll gibt es trotzdem, als HTML: im Browser"
+            + (" von Windows" if sysinfo.get("wsl") else "") + " öffnen und über «Drucken» als PDF speichern.")
+    if not browser:
+        if versucht:
+            grund = f"Chromium liess sich nicht installieren (Details: {LOGS / 'pakete.log'})."
+        elif sysinfo["art"] == "linux" and sysinfo.get("id") == "ubuntu" and not snap_bereit():
+            grund = ("Unter Ubuntu gibt es Chromium nur als Snap, und Snap läuft hier nicht"
+                     + (" (WSL ohne systemd)." if sysinfo.get("wsl") and not plattform.systemd() else "."))
+        elif not darf and browser_weg(sysinfo)[0]:
+            grund = f"Die Einrichtung installiert Chromium, wenn sie darf: {SETUP}  "
+        else:
+            grund = "Chrome, Chromium, Edge oder Brave installieren, oder den Pfad in OSINT_BROWSER nennen."
+        zeile(AUS, "Browser für PDF", f"keiner gefunden. {grund} {ohne}")
+        return
+    name = Path(browser).name
+    if a.nur_pruefen:
+        zeile(GUT, "Browser für PDF", name)
+        return
+    with ui.arbeit(f"Browser für PDF wird geprüft ({name} druckt eine kleine Seite)"):
+        fehler = pdf.probe(browser, PROJEKT / "faelle")
+    if fehler:
+        zeile(AUS, "Browser für PDF", f"{name} gefunden, aber die Probe ergab kein PDF: {fehler} {ohne}")
+    else:
+        zeile(NEU if neu else GUT, "Browser für PDF", f"{name}{' installiert' if neu else ''}, Probe-PDF erzeugt")
+
+
+# Tor als Proxy für die Abfragen. Das hat mit Robin nichts zu tun: Robin bringt sein eigenes Tor im Container mit.
+
+def gewuenschter_proxy(a: argparse.Namespace) -> str:
+    """Der Proxy, der nach dieser Einrichtung gilt: die Antwort aus dem Assistenten, sonst die Datei aus --env-von,
+    sonst was schon in .env oder in der Umgebung steht."""
+    if "OSINT_PROXY" in a.werte:
+        return a.werte["OSINT_PROXY"]
+    if a.env_von:
+        with contextlib.suppress(OSError):
+            werte = aus_datei(Path(a.env_von).expanduser())[0]
+            if "OSINT_PROXY" in werte:
+                return werte["OSINT_PROXY"]
+    return plattform.einstellung("OSINT_PROXY")
+
+
+def tor_stand(sysinfo: dict) -> dict:
+    """Tor auf diesem Rechner: antwortet (Port 9050), installiert, installierbar (über die Paketverwaltung dieses Systems)."""
+    return {"antwortet": port_offen(9050), "installiert": plattform.tor_installiert(),
+            "installierbar": bool(PAKETE["tor"].get(sysinfo["paketverwaltung"] or ""))}
+
+
+def tor_starten(sysinfo: dict) -> None:
+    """Startet den Dienst Tor und richtet ihn so ein, dass er nach einem Neustart wieder läuft."""
+    if sysinfo["art"] == "macos":
+        lauf(["brew", "services", "start", "tor"], 120, "tor.log", anzeige="Tor wird gestartet")
+        return
+    vor = root_praefix("den Start von Tor")
+    if vor is None:
+        return
+    if plattform.systemd():
+        lauf(vor + ["systemctl", "enable", "--now", "tor"], 120, "tor.log", anzeige="Tor wird gestartet")
+    elif shutil.which("rc-service"):        # Alpine
+        lauf(vor + ["rc-update", "add", "tor"], 60, "tor.log")
+        lauf(vor + ["rc-service", "tor", "start"], 120, "tor.log", anzeige="Tor wird gestartet")
+    else:                                   # ohne systemd, etwa WSL in älterer Einstellung
+        lauf(vor + ["service", "tor", "start"], 120, "tor.log", anzeige="Tor wird gestartet")
+
+
+def warten_auf_port(port: int, hoechstens: float) -> bool:
+    ende = time.monotonic() + hoechstens
+    while not port_offen(port):
+        if time.monotonic() >= ende:
+            return False
+        time.sleep(0.5)
+    return True
+
+
+def tor_bereit(proxy: str, hoechstens: float) -> bool:
+    """Wartet, bis Tor Verbindungen ins Netz aufbaut. Der offene Port allein sagt das nicht."""
+    ende = time.monotonic() + hoechstens
+    while True:
+        if plattform.tor_verbindet(proxy, 15.0):
+            return True
+        if time.monotonic() >= ende:
+            return False
+        time.sleep(3)
+
+
+def tor_einrichten(a: argparse.Namespace, sysinfo: dict) -> None:
+    """Sollen die Abfragen über Tor auf diesem Rechner laufen, sorgt die Einrichtung dafür, dass dort auch Tor läuft:
+    installieren, starten, warten, bis es Verbindungen aufbaut. Ein Proxy, hinter dem nichts antwortet, liesse jede Abfrage
+    scheitern. Bei jedem anderen Proxy und ohne Proxy geschieht hier nichts."""
+    proxy = gewuenschter_proxy(a)
+    if not plattform.proxy_ist_tor(proxy):
+        return
+    darf = not (a.nur_pruefen or a.nichts_installieren)
+    t = tor_stand(sysinfo)
+    frisch = neu = False
+    if not t["antwortet"] and darf:
+        if not t["installiert"] and t["installierbar"]:
+            paket_installieren("tor", sysinfo)
+            t = tor_stand(sysinfo)
+            neu = t["installiert"]
+            if neu:
+                stand.neu.append("Tor (Proxy für die Abfragen)")
+        if t["installiert"]:
+            if not warten_auf_port(9050, 3):        # das Paket von Debian und Ubuntu startet den Dienst selbst
+                tor_starten(sysinfo)
+            frisch = warten_auf_port(9050, 30)
+            t = tor_stand(sysinfo)
+    if t["antwortet"]:
+        with ui.arbeit("Tor baut Verbindungen auf (kurz nach dem Start bis zu zwei Minuten)"):
+            bereit = tor_bereit(proxy, 120.0 if frisch else 20.0)
+        if bereit:
+            zeile(NEU if neu else GUT, "Tor (Proxy)", ("installiert und gestartet" if neu else "gestartet" if frisch else "läuft")
+                  + ", baut Verbindungen auf. Die Abfragen an die Quellen gehen darüber.")
+        else:
+            zeile(AUS, "Tor (Proxy)", "läuft, baut aber noch keine Verbindungen ins Netz auf. Nach dem Start dauert das bis zu zwei "
+                                      "Minuten. Bleibt es dabei, lässt das Netz Tor nicht zu.")
+            stand.offen.append(f"Tor baut noch keine Verbindungen auf. In ein paar Minuten prüfen: {PY} tools/pruefen.py --live   "
+                               f"Bleibt es dabei: ohne Proxy arbeiten ({SETUP}, «Einstellungen ändern», «Proxy»).")
+        return
+    # Tor läuft nicht. Die Zeile sagt, woran es liegt, und der Schritt dazu nennt genau das, was in dieser Lage hilft.
+    ohne = plattform.OHNE_PROXY
+    if t["installiert"]:
+        grund = "ist installiert, läuft aber nicht" + ("" if not darf else f" und liess sich nicht starten (Details: {LOGS / 'tor.log'})")
+        tun = f"Tor starten: {plattform.tor_starten_befehl()}   {ohne}"
+    elif not t["installierbar"]:
+        grund = "ist nicht installiert, und die Einrichtung kann es auf diesem System nicht selbst installieren"
+        tun = f"Tor von Hand installieren und starten. {ohne}"
+    elif not darf:
+        grund = "ist nicht installiert"
+        tun = f"Tor installieren lassen: {SETUP}{' ohne --nichts-installieren' if a.nichts_installieren else ''}   {ohne}"
+    else:
+        grund = f"liess sich nicht installieren (Details: {LOGS / 'pakete.log'})"
+        tun = f"Die Meldung in {LOGS / 'pakete.log'} beheben, dann {SETUP} erneut ausführen. {ohne}"
+    zeile(FEHLT, "Tor (Proxy)", f"Tor {grund}. Auf 127.0.0.1:9050 antwortet nichts: So käme keine Abfrage durch.")
+    stand.noetig.append("ein Proxy, der antwortet")
+    stand.offen.append(tun)
 
 
 def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
@@ -410,10 +606,10 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
             zeile(AUS, "pdftotext", f"fehlt (Paket {paket}). PDF-Rapporte lassen sich so nicht aufnehmen, .txt .md .docx schon.")
 
     # Browser: nur für die Umwandlung der Ergebnisse in PDF
-    from tools.pdf import browser_finden
-    browser = browser_finden()
-    zeile(GUT if browser else AUS, "Browser für PDF",
-          Path(browser).name if browser else "kein Chrome, Chromium, Edge oder Brave. PDF dann über 'Drucken' im Browser.")
+    browser_einrichten(a, sysinfo, darf)
+
+    # Tor: nur, wenn die Abfragen an die Quellen über Tor auf diesem Rechner laufen sollen
+    tor_einrichten(a, sysinfo)
 
     # Docker: für Web-Check und Robin
     docker = {"installiert": False, "laeuft": False, "compose": None, "vor": []}
@@ -805,6 +1001,7 @@ def gateway_python() -> None:
         zeile(GUT, "Python fürs Gateway", f"OSINT_PYTHON zeigt auf {soll}")
     if os.environ.get("OSINT_PYTHON") != soll:
         stand.neues_terminal.append("die Variable OSINT_PYTHON, über die Claude Code das Gateway startet")
+        os.environ["OSINT_PYTHON"] = soll       # was die Einrichtung selbst noch startet (Claude Code, die Oberfläche), kennt sie schon
 
 
 def anmeldung() -> tuple[bool | None, str]:
@@ -860,9 +1057,18 @@ def claude_code(a: argparse.Namespace, robin: bool) -> None:
     else:
         zeile(AUS, "Anmeldung", "keine Anmeldung gefunden")
         stand.offen.append(HINWEIS_ANMELDEN)
-    if erstmals:
-        stand.offen.append("Beim ersten Start von 'claude' im Projektordner fragt Claude Code einmal, ob es dem Ordner "
-                           "vertrauen soll. Mit Ja bestätigen: Erst dann gelten Berechtigungen, Protokoll und MCP-Server.")
+    ordner_melden(erstmals)
+
+
+def ordner_melden(erstmals: bool = False) -> None:
+    """Zeile «Projektordner»: Vertraut Claude Code diesem Ordner schon? Die Einrichtung liest das nur ab. Fehlt die Bestätigung,
+    steht der Schritt am Ende unter «So geht es weiter», an der Stelle, an der er zu tun ist."""
+    vertraut = plattform.ordner_vertraut(PROJEKT)
+    stand.ordner = False if (vertraut is None and erstmals) else vertraut
+    if vertraut:
+        zeile(GUT, "Projektordner", "in Claude Code bestätigt")
+    elif stand.ordner is False:
+        zeile(AUS, "Projektordner", "in Claude Code noch nicht bestätigt. Der Schritt dazu steht am Schluss.")
 
 
 # --------------------------------------------------------------------------- Schritt 6: Musterfall und Prüfung
@@ -945,11 +1151,51 @@ def testabfragen(a: argparse.Namespace) -> bool:
     return code == 0
 
 
+def ordner_bestaetigen(a: argparse.Namespace) -> None:
+    """Auf Wunsch: Claude Code einmal im Projektordner starten, damit der Mensch den Vertrauensdialog beantwortet.
+    Die Antwort gibt er selbst. Die Einrichtung startet nur und sagt vorher, was zu tun ist. Ist der Ordner schon
+    bestätigt, startet nichts."""
+    pfad = plattform.programm("claude")
+    if not a.start or not pfad or not anmeldung()[0] or stand.ordner:
+        return
+    ui.abschnitt("Projektordner bestätigen")
+    ui.text("Claude Code startet jetzt in diesem Ordner und fragt, ob es ihm vertrauen soll. Mit Ja bestätigen. "
+            "Danach /exit eingeben: Dann geht es hier weiter.", "matt")
+    ui.leer()
+    sys.stdout.flush()
+    try:
+        subprocess.call([pfad], cwd=str(PROJEKT))
+    except KeyboardInterrupt:
+        pass
+    ui.leer()
+    if plattform.ordner_vertraut(PROJEKT):
+        stand.ordner = True
+        zeile(GUT, "Projektordner", "in Claude Code bestätigt")
+    else:       # gestartet wurde Claude Code. Ob das Ja fiel, lässt sich nicht ablesen: Der Schritt steht unten noch einmal
+        stand.ordner = None
+        zeile(AUS, "Projektordner", "keine Bestätigung gefunden. Der Schritt steht unten noch einmal.")
+
+
+def oberflaeche_starten(a: argparse.Namespace) -> None:
+    """Auf Wunsch: die Oberfläche gleich starten. Nicht, wenn das Konto eben erst in die Gruppe docker kam: Aus diesem
+    Terminal erreichte eine Ermittlung Docker noch nicht, und Robin bliebe stumm. Dann steht der Weg unter «So geht es weiter»."""
+    if a.start != "alles" or stand.neu_anmelden:
+        return
+    ui.abschnitt("Oberfläche")
+    ui.text("Die Oberfläche startet jetzt. Beenden mit Strg+C. Später wieder starten: " + f"{PY} tools/oberflaeche.py", "matt")
+    ui.leer()
+    sys.stdout.flush()
+    try:
+        subprocess.call([str(VENV), str(PROJEKT / "tools" / "oberflaeche.py")])
+    except KeyboardInterrupt:
+        pass
+
+
 def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
-    if stand.neues_terminal:
+    bereit = not (stand.noetig or code)
+    if stand.neues_terminal and not bereit:     # einsatzbereit: Dann steht es als erster Schritt unter «So geht es weiter»
         stand.offen.insert(0, "Ein neues Terminal öffnen, bevor ihr 'claude' startet. Erst dort gilt: "
                            + " und ".join(stand.neues_terminal) + ".")
-    bereit = not (stand.noetig or code)
     ui.leer()
     ui.linie()
     if bereit and tests_ok:
@@ -963,7 +1209,7 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
     ui.liste("Noch offen" if bereit else "Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
     if not bereit:
         return 1
-    ui.liste("So geht es weiter", plattform.WEITER, nummeriert=True)
+    ui.liste("So geht es weiter", plattform.weiter(stand.neues_terminal, stand.ordner), nummeriert=True)
     ui.paare("Ausserdem", [
         ("Zum Ausprobieren", f"{PY} tools/oberflaeche.py MUSTER-2026-001   (der Musterfall, erfunden)"),
         ("Am Terminal statt im Browser", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung 2026-0001"),
@@ -975,9 +1221,13 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
 
 # --------------------------------------------------------------------------- Assistent
 
-THEMEN = ("installieren", "modelle", "schluessel", "proxy", "dienste", "anmeldung", "testen")
+TOR_ANTWORTET = "Tor antwortet"
+THEMEN = ("installieren", "modelle", "schluessel", "proxy", "dienste", "anmeldung", "testen", "start")
 TITEL = {"installieren": "Installieren", "modelle": "Modelle", "schluessel": "Schlüssel", "proxy": "Proxy",
-         "dienste": "Dienste", "anmeldung": "Anmeldung", "testen": "Testabfragen"}
+         "dienste": "Dienste", "anmeldung": "Anmeldung", "testen": "Testabfragen", "start": "Start"}
+START_ANTWORT = {"alles": "am Ende Claude Code einmal starten (Ordner bestätigen), dann die Oberfläche öffnen",
+                 "claude": "am Ende Claude Code einmal starten (Ordner bestätigen). Die Oberfläche später",
+                 "": "später von Hand. Die Schritte stehen am Ende"}
 
 
 def bestand(a: argparse.Namespace, sysinfo: dict) -> dict:
@@ -994,10 +1244,15 @@ def bestand(a: argparse.Namespace, sysinfo: dict) -> dict:
         fehlend.append(("Claude Code", "mit dem Installer von Anthropic (claude.ai/install)"))
     if not plattform.programm("pdftotext") and PAKETE["pdftotext"].get(verwaltung):
         fehlend.append(("pdftotext", f"Paket {PAKETE['pdftotext'][verwaltung][0]} über {verwaltung}"))
+    from tools import pdf
+    if not pdf.browser_finden() and browser_weg(sysinfo)[0]:
+        fehlend.append(("Browser für PDF", browser_weg(sysinfo)[1]))
     return {
         "fehlend": fehlend,
         "braucht_sudo": (not WINDOWS and os.geteuid() != 0 and verwaltung not in ("", "brew")
-                         and any(was in ("venv und pip", "pdftotext") for was, _ in fehlend)),
+                         and any(was in ("venv und pip", "pdftotext", "Browser für PDF") for was, _ in fehlend)),
+        "tor": tor_stand(sysinfo),
+        "vertraut": plattform.ordner_vertraut(PROJEKT),
         "claude": bool(claude),
         "angemeldet": anmeldung()[0],
         "docker": None if a.ohne_docker else docker_stand(),
@@ -1033,9 +1288,7 @@ def proxy_pruefen(adresse: str) -> str | None:
     return None
 
 
-def proxy_zeigen(adresse: str) -> str:
-    """Die Adresse eines Proxys für die Anzeige, ein Passwort darin unkenntlich."""
-    return re.sub(r"(://[^:/@]+):[^@]*@", r"\1:***@", adresse)
+proxy_zeigen = plattform.proxy_zeigen       # die Adresse eines Proxys für die Anzeige, ein Passwort darin unkenntlich
 
 
 def pfad_aus_eingabe(text: str) -> Path:
@@ -1058,6 +1311,7 @@ class Assistent:
 
     def __init__(self, a: argparse.Namespace, sysinfo: dict, b: dict) -> None:
         self.a, self.sysinfo, self.b = a, sysinfo, b
+        self._proxy_stand: dict[str, bool] = {}
         wunsch = mythos_wunsch(a)
         erstmals = not b["eingerichtet"]
         self.w = {
@@ -1071,6 +1325,7 @@ class Assistent:
             "robin": not a.ohne_robin,
             "anmelden": "claudeai" if erstmals else "",     # "", "claudeai" (Abo) oder "console"
             "testen": a.testen or erstmals,
+            "start": "alles" if erstmals else "",           # "", "claude" (nur den Ordner bestätigen) oder "alles" (danach die Oberfläche)
         }
 
     # ----------------------------------------------------------------------- Stand der Antworten
@@ -1121,7 +1376,10 @@ class Assistent:
         if thema == "proxy":
             if not w["proxy"]:
                 return "keiner. Die Quellen sehen die Internetadresse dieses Rechners"
-            return ("Tor, " if w["proxy"] == TOR else "") + proxy_zeigen(w["proxy"])
+            if w["proxy"] == TOR:
+                lage = self.tor_lage()[1]
+                return f"Tor auf diesem Rechner ({TOR})" + ("" if lage == TOR_ANTWORTET else f". {lage}")
+            return proxy_zeigen(w["proxy"]) + ("" if self.proxy_antwortet(w["proxy"]) else ". Antwortet gerade nicht: So käme keine Abfrage durch")
         if thema == "dienste":
             docker = b["docker"]
             if docker["laeuft"]:
@@ -1131,6 +1389,10 @@ class Assistent:
             return "ohne Docker. Web-Check und Robin bleiben aus"
         if thema == "anmeldung":
             return {"claudeai": "am Ende, mit dem Claude-Abo", "console": "am Ende, mit der Anthropic Console", "": "später, von Hand"}[w["anmelden"]]
+        if thema == "start":
+            if b.get("vertraut"):       # der Ordner ist schon bestätigt: Es geht nur noch um die Oberfläche
+                return "am Ende die Oberfläche öffnen" if w["start"] == "alles" else START_ANTWORT[""]
+            return START_ANTWORT[w["start"]]
         return "am Ende jede eingerichtete Quelle einmal abfragen" if w["testen"] else "keine"
 
     # ----------------------------------------------------------------------- Fragen
@@ -1196,19 +1458,49 @@ class Assistent:
                 w["werte"][q.env] = wert
             stelle = nr + 1 if wert and nr + 1 < len(SCHLUESSELQUELLEN) else None if wert else nr
 
+    def tor_lage(self) -> tuple[bool, str]:
+        """«Tor auf diesem Rechner»: lässt es sich wählen, und was geschieht dann? Angeboten wird nur, was am Ende auch läuft:
+        Entweder antwortet Tor schon, oder die Einrichtung installiert und startet es."""
+        t = self.b.get("tor") or tor_stand(self.sysinfo)
+        if t["antwortet"]:
+            return True, TOR_ANTWORTET
+        if not self.w["installieren"]:
+            return False, "Tor läuft hier nicht, und die Einrichtung soll nichts am System verändern"
+        if t["installiert"]:
+            return True, "Tor ist installiert, läuft aber nicht. Die Einrichtung startet es"
+        if t["installierbar"]:
+            verwaltung = self.sysinfo["paketverwaltung"]
+            sudo = ", braucht sudo" if not WINDOWS and os.geteuid() != 0 and verwaltung != "brew" else ""
+            return True, f"Tor fehlt noch. Die Einrichtung installiert und startet es (Paket tor über {verwaltung}{sudo})"
+        return False, "Tor ist nicht installiert, und die Einrichtung kann es auf diesem System nicht selbst installieren"
+
+    def proxy_antwortet(self, adresse: str) -> bool:
+        """Nimmt ein eigener Proxy Verbindungen an? Je Adresse einmal gefragt: Die Übersicht wird oft neu gezeichnet."""
+        if adresse not in self._proxy_stand:
+            self._proxy_stand[adresse] = plattform.proxy_antwortet(adresse) is not False
+        return self._proxy_stand[adresse]
+
     def frage_proxy(self, f: str) -> None:
         w = self.w
+        hinweis, vorgabe = "", 0 if not w["proxy"] else 1 if w["proxy"] == TOR else 2
         while True:
             eigener = w["proxy"] if w["proxy"] not in ("", TOR) else ""
+            waehlbar, lage = self.tor_lage()
             nr = ui.auswahl(TITEL["proxy"], "Sollen die Abfragen an die Quellen über einen Proxy laufen?",
                             [("Kein Proxy", "die Quellen sehen die Internetadresse dieses Rechners"),
-                             ("Tor auf diesem Rechner", TOR + (", Tor antwortet" if port_offen(9050) else ", dort antwortet gerade nichts")),
+                             ("Tor auf diesem Rechner", lage),
                              ("Eigener Proxy …", proxy_zeigen(eigener) if eigener else "Adresse eingeben")],
-                            0 if not w["proxy"] else 1 if w["proxy"] == TOR else 2,
-                            ["Das betrifft nur die Abfragen des Gateways, nicht Claude Code selbst."], f)
+                            vorgabe,
+                            ["Das betrifft nur die Abfragen des Gateways, nicht Claude Code selbst. Robin (Dark Web) braucht es "
+                             "nicht: Robin bringt sein eigenes Tor mit.",
+                             "Über Tor können Quellen langsamer antworten oder Anfragen abweisen. Die Testabfragen am Ende zeigen es."]
+                            + ([hinweis] if hinweis else []), f)
             if nr == 0:
                 w["proxy"] = ""
             elif nr == 1:
+                if not waehlbar:        # nichts anbieten, was am Ende nicht läuft: Über einen stummen Proxy käme keine Abfrage durch
+                    hinweis, vorgabe = f"Nicht übernommen: {lage}. Tor zuerst selbst installieren und starten, oder ohne Proxy weiter.", 0
+                    continue
                 w["proxy"] = TOR
             else:
                 adresse = ui.eingabe(TITEL["proxy"], "Adresse des Proxys:", vorgabe=eigener, pruefung=proxy_pruefen,
@@ -1275,6 +1567,25 @@ class Assistent:
                          "Ist Claude Code angemeldet, kommt je Modell ein kurzer Testaufruf dazu."], f)
         self.w["testen"] = nr == 0
 
+    def frage_start(self, f: str) -> None:
+        if self.b.get("vertraut"):      # der Ordner ist in Claude Code schon bestätigt: Es bleibt nur die Oberfläche
+            nr = ui.auswahl(TITEL["start"], "Soll die Einrichtung am Ende gleich die Oberfläche öffnen?",
+                            [("Ja", "die Oberfläche startet, der Browser öffnet sich"),
+                             ("Nein, später", "der Befehl steht am Ende")],
+                            0 if self.w["start"] == "alles" else 1,
+                            ["Dem Projektordner vertraut Claude Code schon. Dieser Schritt entfällt."], f)
+            self.w["start"] = ("alles", "")[nr]
+            return
+        nr = ui.auswahl(TITEL["start"], "Soll die Einrichtung euch am Ende gleich bis in die Oberfläche führen?",
+                        [("Ja", "Claude Code einmal starten, damit ihr dem Projektordner vertraut, danach die Oberfläche öffnen"),
+                         ("Nur Claude Code", "den Ordner bestätigen. Die Oberfläche startet ihr später selbst"),
+                         ("Nein, später", "die Schritte stehen am Ende, mit den Befehlen")],
+                        {"alles": 0, "claude": 1, "": 2}[self.w["start"]],
+                        ["Claude Code fragt beim ersten Start in einem Ordner, ob es ihm vertrauen soll. Das entscheidet ihr selbst, "
+                         "die Einrichtung startet es nur: mit Ja bestätigen, dann /exit eingeben, und es geht hier weiter.",
+                         plattform.OHNE_VERTRAUEN], f)
+        self.w["start"] = ("alles", "claude", "")[nr]
+
     # ----------------------------------------------------------------------- Ablauf
 
     def uebersicht(self, bestaetigen: str) -> bool:
@@ -1310,13 +1621,15 @@ class Assistent:
             a.ohne_webcheck, a.ohne_robin = not w["webcheck"], not w["robin"]
         a.anmelden = w["anmelden"] if "anmeldung" in self.themen() else ""
         a.testen = w["testen"]
+        a.start = w["start"]
         stand.assistent = True
 
     def kurzstand(self) -> str:
         w = self.w
+        stumm = bool(w["proxy"]) and not (self.tor_lage()[1] == TOR_ANTWORTET if w["proxy"] == TOR else self.proxy_antwortet(w["proxy"]))
         return " · ".join(("Ermittlung auf Mythos 5.2" if w["mythos"] else "alles auf Fable 5.2",
                            f"{sum(1 for q in SCHLUESSELQUELLEN if self.hat_schluessel(q))} von {len(SCHLUESSELQUELLEN)} Schlüsseln",
-                           "Proxy " + (proxy_zeigen(w["proxy"]) if w["proxy"] else "keiner")))
+                           "Proxy " + (proxy_zeigen(w["proxy"]) if w["proxy"] else "keiner") + (" (antwortet nicht)" if stumm else "")))
 
     def fuehren(self) -> bool | int:
         """True: einrichten. Eine Zahl: mit diesem Rückgabewert enden. Abbruch: Der Mensch hat abgebrochen."""
@@ -1366,7 +1679,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--env-von")
     p.add_argument("-h", "--hilfe", "--help", action="store_true", dest="hilfe")
     a, unbekannt = p.parse_known_args(argv)
-    a.werte, a.anmelden = {}, ""        # füllt nur der Assistent
+    a.werte, a.anmelden, a.start = {}, "", ""       # füllt nur der Assistent
     if a.hilfe:
         print(__doc__)
         return 0
@@ -1429,7 +1742,11 @@ def main(argv: list[str]) -> int:
     if code == 0:
         anmelden(a)
         tests_ok = testabfragen(a)
-    return abschluss(code, fazit, tests_ok)
+        ordner_bestaetigen(a)
+    ergebnis = abschluss(code, fazit, tests_ok)
+    if ergebnis == 0:
+        oberflaeche_starten(a)
+    return ergebnis
 
 
 if __name__ == "__main__":

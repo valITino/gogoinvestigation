@@ -77,7 +77,9 @@ def programm() -> list[str] | None:
         except json.JSONDecodeError:
             return None
         return [str(x) for x in befehl] if isinstance(befehl, list) and befehl else None
-    pfad = eigen or shutil.which("claude")
+    # Auch dort suchen, wohin der Installer Claude Code legt (~/.local/bin): Gleich nach der Einrichtung kennt das Terminal,
+    # aus dem die Oberfläche startet, diesen Ordner oft noch nicht im PATH.
+    pfad = eigen or plattform.programm("claude")
     if not pfad:
         return None
     return ["cmd", "/c", pfad] if plattform.WINDOWS and pfad.lower().endswith((".cmd", ".bat")) else [pfad]

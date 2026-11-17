@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from . import (kern, quellen_infrastruktur, quellen_ip, quellen_krypto, quellen_szene, quellen_urlscan,  # noqa: F401  (registrieren die Werkzeuge)
                quellen_web)
-from . import pflichtquellen
+from . import pflichtquellen, plattform
 from .akte import eingang_stand, jsonl_lesen
 from .kern import FREIGABEN, Fall, einstellung, fall_laden, protokoll_lesen, werkzeug
 from .quellen import QUELLEN
@@ -43,7 +43,8 @@ server = MCPServer("osint", instructions=ANLEITUNG)
 async def fall_status(fall: Fall) -> dict:
     """Stand eines Falls: Auftrag, Freigaben, Zahl der bisherigen Abfragen, welche Quellen eingerichtet sind und
     welche der Sachbearbeiter vorgegeben hat (Pflichtquellen, mit dem, was davon noch offen ist). Immer als Erstes
-    aufrufen. Löst keine externe Abfrage aus."""
+    aufrufen. Löst keine externe Abfrage aus. Steht dort 'proxy_antwortet': false, käme keine Abfrage durch:
+    nichts versuchen, anhalten und den Hinweis melden."""
     akte = fall_laden(fall)
     eintraege = protokoll_lesen(akte.protokoll)
     quellen = []
@@ -64,6 +65,10 @@ async def fall_status(fall: Fall) -> dict:
     # verändert wurde, ist nicht geprüft: Der Agent bekommt die Zahl, nicht den Namen (ein Dateiname kann eine Person nennen).
     eingang, ungeprueft = eingang_stand(akte.pfad)
     pflicht = pflichtquellen.kurz(pflichtquellen.stand_fuer(akte.daten, akte.pfad, eintraege + jsonl_lesen(akte.pfad / "protokoll" / "extern.jsonl")))
+    # Ist ein Proxy eingestellt, geht jede Abfrage über ihn. Antwortet er nicht, braucht es keinen einzigen Versuch: Die Ermittlung
+    # hält an und meldet es. Geprüft wird nur, ob der Proxy selbst eine Verbindung annimmt.
+    proxy = einstellung("OSINT_PROXY")
+    stumm = await kern.proxy_stumm(proxy)
     return {"fall": akte.id, "titel": akte.daten.get("titel"), "auftrag": akte.daten.get("auftrag"),
             "eroeffnet": akte.daten.get("eroeffnet"), "freigaben": freigaben,
             "eingang": [f"faelle/{akte.id}/eingang/{n}" for n in eingang],
@@ -74,7 +79,10 @@ async def fall_status(fall: Fall) -> dict:
             "abfragen_bisher": len(eintraege), "letzte_protokoll_id": eintraege[-1]["id"] if eintraege else None,
             "quellen": quellen,
             **({"pflichtquellen": pflicht} if pflicht else {}),
-            "proxy_aktiv": bool(einstellung("OSINT_PROXY"))}
+            "proxy_aktiv": bool(proxy),
+            **({"proxy_antwortet": False,
+                "proxy_hinweis": f"{plattform.PROXY_STUMM} Keine Abfrage versuchen: anhalten und dem Sachbearbeiter melden. "
+                                 f"Für ihn: {plattform.proxy_rat(proxy)}"} if stumm else {})}
 
 
 for _fn in kern.REGISTER:

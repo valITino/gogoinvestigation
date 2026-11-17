@@ -25,6 +25,16 @@ python3 tools/oberflaeche.py --selbstpruefung    # kurz starten, Hauptseiten abr
 Der Befehl startet einen kleinen Server in Python und öffnet den Browser. Der Server braucht nur die
 Standardbibliothek, keine Bauschritte und kein Internet. Beendet wird er mit Strg+C im Terminal.
 
+Unter WSL öffnet der Befehl den Browser von Windows, denn in WSL selbst gibt es meist keinen. Ob dort wirklich ein
+Fenster aufging, kann er nicht feststellen. Deshalb steht die Adresse unter WSL immer auch im Terminal, und auf jedem
+System dann, wenn sich kein Browser öffnen liess: einmal im Browser öffnen, fertig. Sie enthält den Startcode, der
+einmal gilt. `--ohne-browser` braucht es dafür nicht.
+
+Unter WSL lautet die Adresse auf `localhost` statt auf `127.0.0.1`: Unter diesem Namen reicht Windows eine Anfrage
+aus seinem Browser an einen Server in WSL weiter (so beschreibt es Microsoft für WSL 2). Der Server hört weiterhin nur
+auf 127.0.0.1 und nimmt beide Namen an. Den Browser öffnet der Befehl über Programme, die zu Windows gehören
+(`rundll32.exe`, sonst `powershell.exe`), und erst zuletzt über `wslview` aus dem Zusatzpaket wslu.
+
 ## Aufbau
 
 | Bereich | Inhalt |

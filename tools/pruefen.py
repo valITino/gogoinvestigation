@@ -129,6 +129,13 @@ def umgebung(env: dict[str, str]) -> None:
         schritte.append(f"Claude Code aktualisieren (claude update). Geprüft ist der Arbeitsplatz ab {'.'.join(map(str, CLAUDE_MIN))}.")
     else:
         zeile(GUT, "Claude Code", text or "installiert")
+    if pfad:
+        vertraut = plattform.ordner_vertraut(PROJEKT)
+        if vertraut:
+            zeile(GUT, "Projektordner", "in Claude Code bestätigt")
+        elif vertraut is False:
+            zeile(AUS, "Projektordner", "in Claude Code noch nicht bestätigt: einmal 'claude' im Projektordner starten und mit Ja "
+                                        "bestätigen. " + plattform.OHNE_VERTRAUEN)
     if WINDOWS:
         bash = git_bash()
         if bash:
@@ -159,7 +166,8 @@ def umgebung(env: dict[str, str]) -> None:
     if browser:
         zeile(GUT, "Browser für PDF", Path(browser).name)
     else:
-        zeile(AUS, "Browser für PDF", "kein Chrome, Chromium, Edge oder Brave: PDF dann über 'Drucken' im Browser")
+        zeile(AUS, "Browser für PDF", f"kein Chrome, Chromium, Edge oder Brave: PDF dann über 'Drucken' im Browser. {SETUP} installiert "
+                                      "Chromium, wo die Paketverwaltung es anbietet.")
     if plattform.programm("pdftotext"):
         zeile(GUT, "pdftotext", "PDF-Dokumente können aufgenommen werden")
     else:
@@ -207,8 +215,24 @@ def konfiguration(env: dict[str, str]) -> None:
             noetig_fehlt.append("OSINT_PYTHON")
             schritte.append(f"{SETUP} ausführen (setzt die Variable)")
     modelle(nur_merken=False)
-    zeile(GUT if env.get("OSINT_PROXY") else AUS, "Proxy für Abfragen",
-          "gesetzt" if env.get("OSINT_PROXY") else "keiner: Quellen sehen eure Internetadresse (OSINT_PROXY in .env)")
+    proxy_melden(env)
+
+
+def proxy_melden(env: dict[str, str]) -> bool:
+    """Meldet den Proxy für die Abfragen und ob er antwortet. Gibt zurück, ob Abfragen hinauskönnen.
+    Ein Proxy, der nicht antwortet, ist kein Schönheitsfehler: Über ihn ginge jede Abfrage, also käme keine durch."""
+    proxy = env.get("OSINT_PROXY", "")
+    if not proxy:
+        zeile(AUS, "Proxy für Abfragen", "keiner: Quellen sehen eure Internetadresse (OSINT_PROXY in .env)")
+        return True
+    name = ("Tor auf diesem Rechner, " if plattform.proxy_ist_tor(proxy) else "") + plattform.proxy_zeigen(proxy)
+    if plattform.proxy_antwortet(proxy, 2.0) is False:
+        zeile(FEHLT, "Proxy für Abfragen", f"{name} antwortet nicht. So kommt keine einzige Abfrage durch.")
+        noetig_fehlt.append("ein Proxy, der antwortet")
+        schritte.append(plattform.proxy_rat(proxy))
+        return False
+    zeile(GUT, "Proxy für Abfragen", f"{name} antwortet")
+    return True
 
 
 def modelle(nur_merken: bool) -> dict:
@@ -342,16 +366,37 @@ asyncio.run(alle())
 '''
 
 
-def live(bereit: list) -> None:
+def proxy_bereit(env: dict[str, str]) -> str:
+    """Leer, wenn Abfragen hinauskönnen. Sonst der Grund, weshalb jede Testabfrage scheitern würde, in einem Satz mit Rat.
+    Tor nimmt Verbindungen an, sobald es läuft, baut aber erst nach bis zu zwei Minuten welche ins Netz auf: Auch das zählt."""
+    proxy = env.get("OSINT_PROXY", "")
+    if not proxy:
+        return ""
+    if plattform.proxy_antwortet(proxy, 2.0) is False:
+        return f"Der Proxy {plattform.proxy_zeigen(proxy)} antwortet nicht. {plattform.proxy_rat(proxy)}"
+    if plattform.proxy_ist_tor(proxy):
+        with ui.arbeit("Tor wird geprüft (baut es Verbindungen auf?)"):
+            bereit = any(plattform.tor_verbindet(proxy, 20.0) for _ in range(3))
+        if not bereit:
+            return ("Tor läuft, baut aber noch keine Verbindungen ins Netz auf. Kurz nach dem Start dauert das bis zu zwei Minuten. "
+                    f"Dann erneut: {PY} tools/pruefen.py --live   Bleibt es dabei, lässt das Netz Tor nicht zu.")
+    return ""
+
+
+def live(bereit: list, env: dict[str, str] | None = None) -> None:
     abschnitt("Testabfragen (eine harmlose Abfrage je eingerichteter Quelle, Fallakte SELBSTTEST)")
     if not VENV.is_file():
         zeile(FEHLT, "Live-Test", f"braucht .venv ({SETUP})")
+        return
+    grund = proxy_bereit(env_lesen() if env is None else env)
+    if grund:       # eine klare Zeile statt einer Fehlermeldung je Quelle: Die Ursache ist dieselbe
+        zeile(FEHLT, "Testabfragen", "ausgelassen: Jede würde scheitern. " + grund, satz=True)
         return
     plan = [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]} for q in bereit if q.test]
     p = subprocess.Popen([str(VENV), "-X", "utf8", "-c", LIVE_SKRIPT, str(PROJEKT), json.dumps(plan)], stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
     offen = [eintrag["quelle"] for eintrag in plan]
-    rat = " Netzwerk, Proxy (OSINT_PROXY) und Erreichbarkeit prüfen."      # hängt das Gateway an jeden Verbindungsfehler an
+    rat = " " + plattform.RAT_VERBINDUNG      # hängt das Gateway an jeden Verbindungsfehler an
     ohne_verbindung = 0
     while True:
         with ui.arbeit(f"{offen[0]} wird abgefragt" if offen else None):     # die Antworten kommen in der Reihenfolge des Plans
@@ -417,7 +462,7 @@ def main() -> int:
         still = True
         bereit = quellen(env)
         still = False
-        live(bereit)
+        live(bereit, env)
         live_modelle()
         return 1 if any(art == "fehlt" for bereich, art, _, _ in gemeldet if bereich.startswith("Test")) else 0
     ui.kopf("OSINT-Ermittlungsarbeitsplatz · Prüfung der Einrichtung")
@@ -427,7 +472,7 @@ def main() -> int:
     if "--kurz" not in sys.argv:
         selbsttests()
     if "--live" in sys.argv:
-        live(bereit)
+        live(bereit, env)
         live_modelle()
     ui.leer()
     ui.linie()
@@ -437,7 +482,7 @@ def main() -> int:
         ui.erledigt("Einsatzbereit", f"mit {len(bereit)} von {len(QUELLEN)} Quellen", breit=0)
     ui.liste("Nächste Schritte", list(dict.fromkeys(schritte)), nummeriert=True)
     if not noetig_fehlt:
-        ui.liste("So geht es weiter", plattform.WEITER, nummeriert=True)
+        ui.liste("So geht es weiter", plattform.weiter(ordner=plattform.ordner_vertraut(PROJEKT)), nummeriert=True)
         ui.paare("Ausserdem", [("Am Terminal statt im Browser", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung <Fall-ID>"),
                                ("Einstellungen ändern", SETUP)])
     return 1 if noetig_fehlt else 0

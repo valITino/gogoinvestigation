@@ -720,7 +720,7 @@ def _():
                 "docker": {"installiert": True, "laeuft": True, "compose": ["docker", "compose"], "vor": []}, "eingerichtet": False, **angaben}
     system = {"art": "linux", "name": "Test", "paketverwaltung": "apt", "wsl": False}
     try:
-        # erster Lauf: sieben Fragen, dann die Übersicht
+        # erster Lauf: acht Fragen, dann die Übersicht
         a = optionen()
         einrichten.ui, aus = oberflaeche(
             ["enter",                                                   # Installieren: ja
@@ -730,11 +730,14 @@ def _():
              "runter", "leer", "enter",                                 # Dienste: Robin abwählen
              "runter", "runter", "enter",                               # Anmeldung: später
              "runter", "enter",                                         # Testabfragen: nein
+             "runter", "enter",                                         # Start: nur Claude Code, die Oberfläche später
              "enter"])                                                  # Übersicht: einrichten
-        b = bestand(fehlend=[("Claude Code", "mit dem Installer")], claude=False, angemeldet=None)
+        b = bestand(fehlend=[("Claude Code", "mit dem Installer")], claude=False, angemeldet=None,
+                    tor={"antwortet": False, "installiert": False, "installierbar": True})
         assert einrichten.Assistent(a, system, b).fuehren() is True
-        assert (a.nichts_installieren, a.mythos, a.ohne_mythos, a.ohne_webcheck, a.ohne_robin, a.anmelden, a.testen) == \
-            (False, True, False, False, True, "", False), vars(a)
+        assert (a.nichts_installieren, a.mythos, a.ohne_mythos, a.ohne_webcheck, a.ohne_robin, a.anmelden, a.testen, a.start) == \
+            (False, True, False, False, True, "", False, "claude"), vars(a)
+        assert "Die Einrichtung installiert und startet es" in aus.getvalue(), "wer Tor wählt, muss lesen, dass es installiert wird"
         assert a.werte == {"SHODAN_API_KEY": geheim, "OSINT_PROXY": einrichten.TOR}, sorted(a.werte)
         einrichten.konfiguration(a)
         werte = einrichten.env_lesen(env)
@@ -746,13 +749,14 @@ def _():
         a = optionen()
         einrichten.ui, aus = oberflaeche(
             ["runter", "enter",                                         # Einstellungen ändern
-             "hoch", "hoch", "hoch", "hoch", "hoch", "enter", "esc",    # Modelle öffnen und mit Esc zurück: nichts ändert sich
-             "hoch", "hoch", "hoch", "hoch", "enter",                   # Schlüssel öffnen
+             "hoch", "hoch", "hoch", "hoch", "hoch", "hoch", "enter", "esc",    # Modelle öffnen und mit Esc zurück: nichts ändert sich
+             "hoch", "hoch", "hoch", "hoch", "hoch", "enter",           # Schlüssel öffnen
              "runter", "entf", "hoch", "enter",                         # von «Weiter» über den Rand zu Shodan, entfernen, zurück zu «Weiter»
-             "hoch", "hoch", "hoch", "enter", "hoch", "enter",          # Proxy öffnen: von Tor zu «Kein Proxy»
+             "hoch", "hoch", "hoch", "hoch", "enter", "hoch", "enter",  # Proxy öffnen: von Tor zu «Kein Proxy»
              "enter"])                                                  # Änderungen übernehmen
         assert einrichten.Assistent(a, system, bestand(eingerichtet=True)).fuehren() is True
         assert a.werte == {"SHODAN_API_KEY": "", "OSINT_PROXY": ""} and a.ohne_mythos and not a.mythos, (sorted(a.werte), a.mythos)
+        assert a.start == "", "auf einem eingerichteten Arbeitsplatz startet die Einrichtung nichts von selbst"
         einrichten.konfiguration(a)
         werte = einrichten.env_lesen(env)
         assert "SHODAN_API_KEY" not in werte and "OSINT_PROXY" not in werte, sorted(werte)
@@ -894,6 +898,506 @@ if WINDOWS:         # unter Windows gibt es kein Pseudo-Terminal: Der Assistent 
         assert "neu: Shodan" in bild and "Vorschau: Es wurde nichts verändert" in bild, hergang
         assert any(t == "Schlüssel" and wo == "Weiter" for t, wo in daten["schritte"]), f"die Pfeiltasten sind nicht angekommen. {hergang}"
         assert [s.exists() for s in spuren] == vorher, "die Vorschau hat Dateien angelegt"
+
+
+# --------------------------------------------------------------------------- Einrichtung: Proxy, Browser für PDF, die Schritte danach
+
+def flach(text: str) -> str:
+    """Ausgabe ohne Umbrüche und Einzüge: So lässt sich ein Satz finden, auch wenn das Terminal ihn umbrochen hat."""
+    return " ".join(text.split())
+
+
+def einrichtung_optionen(**angaben) -> argparse.Namespace:
+    werte = dict(nur_pruefen=False, nichts_installieren=False, mythos=False, ohne_mythos=False, env_von=None, docker_installieren=False,
+                 ohne_docker=False, ohne_webcheck=False, ohne_robin=False, testen=False, vorschau=False, werte={}, anmelden="", start="")
+    return argparse.Namespace(**{**werte, **angaben})
+
+
+def einrichtung_bestand(**angaben) -> dict:
+    return {"fehlend": [], "braucht_sudo": False, "claude": True, "angemeldet": True, "env": {}, "mythos_frei": False, "eingerichtet": False,
+            "docker": {"installiert": True, "laeuft": True, "compose": ["docker", "compose"], "vor": []},
+            "tor": {"antwortet": False, "installiert": False, "installierbar": True}, **angaben}
+
+
+LINUX = {"art": "linux", "name": "Test", "paketverwaltung": "apt", "wsl": False, "id": "debian"}
+
+
+@test("Proxy: Tor wird nur angeboten, wenn es am Ende läuft. Die Einrichtung installiert und startet es, und ein stummer Proxy heisst überall beim Namen")
+def _():
+    import socket
+    import threading
+
+    from gateway import server as gateway_server
+    from tools import pruefen
+
+    # ---- Adresse lesen, Passwort verbergen, Erreichbarkeit
+    assert plattform.proxy_ziel("socks5h://127.0.0.1:9050") == ("127.0.0.1", 9050) and plattform.proxy_ziel("http://proxy.intern") == ("proxy.intern", 80)
+    assert plattform.proxy_ziel("nutzer:pw@proxy.intern:3128") == ("proxy.intern", 3128) and plattform.proxy_ziel("http://proxy.intern:hafen") is None
+    assert plattform.proxy_ist_tor(plattform.TOR_PROXY) and plattform.proxy_ist_tor("socks5://localhost:9050") and not plattform.proxy_ist_tor("http://proxy.intern:3128")
+    assert plattform.proxy_zeigen("nutzer:geheim@proxy.intern:3128") == "nutzer:***@proxy.intern:3128" and einrichten.TOR == plattform.TOR_PROXY
+    horcher, frei = socket.socket(), socket.socket()
+    horcher.bind(("127.0.0.1", 0))
+    horcher.listen(64)              # nimmt Verbindungen an und antwortet nie: ein Proxy, der da ist, aber nichts weiterleitet
+    offen = horcher.getsockname()[1]
+    frei.bind(("127.0.0.1", 0))
+    zu = frei.getsockname()[1]
+    frei.close()                    # an diesem Port hört jetzt niemand mehr
+    echt = {n: getattr(einrichten, n) for n in ("tor_stand", "paket_installieren", "tor_starten", "warten_auf_port", "tor_bereit", "ui")}
+    echt_tor, echt_verbindet, alt_transport = plattform.proxy_ist_tor, plattform.tor_verbindet, kern.transport
+    merker = (pruefen.still, list(pruefen.noetig_fehlt), list(pruefen.schritte), list(pruefen.gemeldet))
+    try:
+        assert plattform.proxy_antwortet(f"http://127.0.0.1:{offen}") is True and plattform.proxy_antwortet(f"socks5h://127.0.0.1:{zu}") is False
+        assert plattform.proxy_antwortet("http://proxy.intern:hafen") is None, "eine unlesbare Adresse ist weder «antwortet» noch «stumm»"
+
+        # ---- Baut Tor Verbindungen auf? Der offene Port sagt es nicht. Gefragt wird mit dem Namen des Ziels: Dieser Rechner fragt kein DNS
+        def socks(antwort: bytes) -> tuple[int, dict]:
+            server, gesehen = socket.socket(), {}
+            server.bind(("127.0.0.1", 0))
+            server.listen(1)
+
+            def bedienen() -> None:
+                with contextlib.suppress(OSError), server:
+                    verbindung, _ = server.accept()
+                    with verbindung:
+                        verbindung.settimeout(5)
+                        gesehen["gruss"] = verbindung.recv(3)
+                        verbindung.sendall(b"\x05\x00")
+                        gesehen["wunsch"] = verbindung.recv(64)
+                        verbindung.sendall(antwort)
+            threading.Thread(target=bedienen, daemon=True).start()
+            return server.getsockname()[1], gesehen
+        port, gesehen = socks(b"\x05\x00\x00\x01" + bytes(6))
+        assert plattform.tor_verbindet(f"socks5h://127.0.0.1:{port}", 5.0, ("ziel.example", 443)) is True
+        assert gesehen == {"gruss": b"\x05\x01\x00", "wunsch": b"\x05\x01\x00\x03\x0cziel.example\x01\xbb"}, gesehen
+        port, _ = socks(b"\x05\x04\x00\x01" + bytes(6))         # Antwort «Rechner nicht erreichbar»: Tor läuft, kommt aber nicht ins Netz
+        assert plattform.tor_verbindet(f"socks5h://127.0.0.1:{port}", 5.0, ("ziel.example", 443)) is False
+        assert plattform.tor_verbindet(f"socks5h://127.0.0.1:{zu}", 2.0) is False
+
+        # ---- Das Gateway: Antwortet der Proxy nicht, nennt die Meldung ihn als Ursache. Am Proxy vorbei geht nie eine Abfrage
+        def frage(weg: str) -> kern.Antwort:
+            return asyncio.run(kern.abfrage(FALL, ZWECK, werkzeug="probe_proxy", quelle="Probe", ziel="Probe", ziel_typ="probe",
+                                            url=f"https://ohne-netz.example/{weg}", cache_h=0, zeitlimit=3))
+        kern.transport = None
+        os.environ["OSINT_PROXY"] = f"http://nutzer:GeheimProxyPw@127.0.0.1:{zu}"
+        try:
+            a = frage("stumm")
+            assert a.ergebnis == "fehler" and plattform.PROXY_STUMM in a.fehler and plattform.RAT_VERBINDUNG not in a.fehler, a.fehler
+            eintrag = lesen(PROJEKT / "faelle" / FALL / "protokoll" / "abfragen.jsonl").splitlines()[-1]
+            assert "GeheimProxyPw" not in a.fehler and "GeheimProxyPw" not in eintrag and "probe_proxy" in eintrag, a.fehler
+            status = asyncio.run(gateway_server.fall_status(FALL))
+            assert status["proxy_aktiv"] is True and status["proxy_antwortet"] is False and "anhalten" in status["proxy_hinweis"], status
+            assert "GeheimProxyPw" not in json.dumps(status)
+            os.environ["OSINT_PROXY"] = f"http://127.0.0.1:{offen}"       # nimmt die Verbindung an, leitet aber nichts weiter
+            a = frage("taub")
+            assert a.ergebnis == "fehler" and plattform.PROXY_STUMM not in a.fehler and plattform.RAT_VERBINDUNG in a.fehler, a.fehler
+            assert "proxy_antwortet" not in asyncio.run(gateway_server.fall_status(FALL))
+        finally:
+            del os.environ["OSINT_PROXY"]
+            kern.transport = alt_transport
+        status = asyncio.run(gateway_server.fall_status(FALL))
+        assert status["proxy_aktiv"] is False and "proxy_antwortet" not in status
+
+        # ---- Die Prüfung: Ein stummer Proxy ist kein Schönheitsfehler, und die Testabfragen entfallen mit einem Grund statt mit vielen
+        pruefen.still = True
+        pruefen.noetig_fehlt.clear()
+        assert pruefen.proxy_melden({}) is True and pruefen.proxy_melden({"OSINT_PROXY": f"http://127.0.0.1:{offen}"}) is True and not pruefen.noetig_fehlt
+        assert pruefen.proxy_melden({"OSINT_PROXY": f"socks5h://nutzer:GeheimPw@127.0.0.1:{zu}"}) is False
+        assert pruefen.noetig_fehlt == ["ein Proxy, der antwortet"] and pruefen.gemeldet[-1][1] == "fehlt" and "antwortet nicht" in pruefen.gemeldet[-1][3]
+        assert "GeheimPw" not in json.dumps(pruefen.gemeldet, ensure_ascii=False), "das Passwort eines Proxys steht in der Meldung"
+        assert pruefen.proxy_bereit({}) == "" and pruefen.proxy_bereit({"OSINT_PROXY": f"http://127.0.0.1:{offen}"}) == ""
+        assert "antwortet nicht" in pruefen.proxy_bereit({"OSINT_PROXY": f"http://127.0.0.1:{zu}"})
+        plattform.proxy_ist_tor, plattform.tor_verbindet = (lambda adresse: True), (lambda *a, **k: False)
+        assert "baut aber noch keine Verbindungen" in pruefen.proxy_bereit({"OSINT_PROXY": f"socks5h://127.0.0.1:{offen}"})
+        plattform.tor_verbindet = lambda *a, **k: True
+        assert pruefen.proxy_bereit({"OSINT_PROXY": f"socks5h://127.0.0.1:{offen}"}) == ""
+        plattform.proxy_ist_tor, plattform.tor_verbindet = echt_tor, echt_verbindet
+
+        # ---- Der Assistent bietet Tor nur an, wenn es am Ende läuft
+        def lage(sysinfo: dict, optionen: argparse.Namespace | None = None, **tor) -> tuple[bool, str]:
+            b = einrichtung_bestand(tor={"antwortet": False, "installiert": False, "installierbar": bool(sysinfo["paketverwaltung"]), **tor})
+            return einrichten.Assistent(optionen or einrichtung_optionen(), sysinfo, b).tor_lage()
+        ohne = {**LINUX, "paketverwaltung": None}
+        assert lage(LINUX, antwortet=True) == (True, einrichten.TOR_ANTWORTET)
+        assert lage(LINUX)[0] and "installiert und startet es" in lage(LINUX)[1]
+        assert lage(LINUX, installiert=True)[0] and "startet es" in lage(LINUX, installiert=True)[1] and "installiert und startet" not in lage(LINUX, installiert=True)[1]
+        assert not lage(ohne)[0] and "nicht selbst installieren" in lage(ohne)[1]
+        assert not lage(LINUX, einrichtung_optionen(nichts_installieren=True))[0], "wer nichts am System verändern will, bekommt kein Tor versprochen"
+        einrichten.ui, aus = oberflaeche(["runter", "enter", "enter"])       # Tor wählen: abgelehnt, die Vorgabe steht danach auf «Kein Proxy»
+        helfer = einrichten.Assistent(einrichtung_optionen(), ohne, einrichtung_bestand(tor={"antwortet": False, "installiert": False, "installierbar": False}))
+        helfer.frage_proxy("")
+        assert helfer.w["proxy"] == "" and "Nicht übernommen" in flach(aus.getvalue()), flach(aus.getvalue())[-300:]
+        einrichten.ui, aus = oberflaeche(["runter", "enter"])
+        helfer = einrichten.Assistent(einrichtung_optionen(), LINUX, einrichtung_bestand())
+        helfer.frage_proxy("")
+        assert helfer.w["proxy"] == einrichten.TOR and "installiert und startet es" in helfer.antwort("proxy")
+        assert "Robin bringt sein eigenes Tor mit" in flach(aus.getvalue()), "die Frage muss sagen, dass Robin diesen Proxy nicht braucht"
+        helfer.w["proxy"] = f"http://nutzer:pw@127.0.0.1:{zu}"
+        assert "Antwortet gerade nicht" in helfer.antwort("proxy") and ":pw@" not in helfer.antwort("proxy") and "(antwortet nicht)" in helfer.kurzstand()
+
+        # ---- Die Einrichtung sorgt dafür, dass hinter dem gewählten Proxy auch Tor läuft
+        def lauf_tor(verbindet: bool = True, installation: bool = True, start: bool = True, lage: dict | None = None, **angaben):
+            zustand = {"antwortet": False, "installiert": False, "installierbar": True, **(lage or {})}
+            rufe: list[str] = []
+            einrichten.stand = einrichten.Stand()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            einrichten.tor_stand = lambda sysinfo: dict(zustand)
+            einrichten.paket_installieren = lambda was, sysinfo, namen=None: (rufe.append(f"paket {was}"), zustand.update(installiert=installation), (True, ""))[2]
+            einrichten.tor_starten = lambda sysinfo: (rufe.append("start"), zustand.update(antwortet=start))[0]
+            einrichten.warten_auf_port = lambda port, hoechstens: zustand["antwortet"]
+            einrichten.tor_bereit = lambda proxy, hoechstens: verbindet
+            einrichten.tor_einrichten(einrichtung_optionen(**{"werte": {"OSINT_PROXY": einrichten.TOR}, **angaben}), LINUX)
+            return rufe, flach(aus.getvalue()), einrichten.stand
+        rufe, text, s = lauf_tor()
+        assert rufe == ["paket tor", "start"] and "installiert und gestartet, baut Verbindungen auf" in text and not s.noetig, (rufe, text)
+        assert s.neu == ["Tor (Proxy für die Abfragen)"]
+        rufe, text, s = lauf_tor(lage={"installiert": True})
+        assert rufe == ["start"] and "gestartet, baut Verbindungen auf" in text and not s.neu, (rufe, text)
+        rufe, text, s = lauf_tor(lage={"antwortet": True, "installiert": True})
+        assert rufe == [] and "läuft, baut Verbindungen auf" in text and not s.noetig and not s.offen, (rufe, text)
+        rufe, text, s = lauf_tor(verbindet=False)
+        assert "baut aber noch keine Verbindungen" in text and s.offen and not s.noetig, text
+        # Läuft Tor am Ende nicht, sagt die Zeile, woran es liegt, und der Schritt dazu nennt, was in genau dieser Lage hilft
+        rufe, text, s = lauf_tor(lage={"installierbar": False})
+        assert rufe == [] and plattform.FEHLT in text and "nicht selbst installieren" in text and s.noetig == ["ein Proxy, der antwortet"], (rufe, text)
+        assert "So käme keine Abfrage durch" in text and s.offen[0].startswith("Tor von Hand installieren und starten."), (text, s.offen)
+        rufe, text, s = lauf_tor(nichts_installieren=True)
+        assert rufe == [] and s.noetig == ["ein Proxy, der antwortet"], (rufe, text)
+        assert s.offen[0].startswith(f"Tor installieren lassen: {plattform.SETUP} ohne --nichts-installieren"), s.offen
+        rufe, text, s = lauf_tor(nur_pruefen=True)
+        assert rufe == [] and s.offen[0].startswith(f"Tor installieren lassen: {plattform.SETUP}   "), s.offen
+        rufe, text, s = lauf_tor(installation=False)
+        assert rufe == ["paket tor"] and "liess sich nicht installieren" in text and s.noetig and "pakete.log" in s.offen[0], (rufe, text, s.offen)
+        rufe, text, s = lauf_tor(start=False)
+        assert rufe == ["paket tor", "start"] and "liess sich nicht starten" in text and s.noetig and s.offen[0].startswith("Tor starten: "), (rufe, text, s.offen)
+        assert all(plattform.OHNE_PROXY in lauf_tor(**lage)[2].offen[0] for lage in ({"start": False}, {"installation": False}, {"nichts_installieren": True}))
+        # Dieselbe Unterscheidung ausserhalb der Einrichtung (Gateway, fall_status, pruefen.py): Fehlt Tor, hilft «starten» nicht
+        echt_installiert, echt_systemd = plattform.tor_installiert, plattform.systemd
+        try:
+            plattform.tor_installiert, plattform.systemd = (lambda: False), (lambda: True)
+            rat = plattform.proxy_rat(plattform.TOR_PROXY)
+            assert "nicht installiert" in rat and "Prüfen und auffrischen" in rat and "Starten:" not in rat and plattform.OHNE_PROXY in rat, rat
+            plattform.tor_installiert = lambda: True
+            rat = plattform.proxy_rat(plattform.TOR_PROXY)
+            assert "läuft aber nicht" in rat and "Starten: " in rat and plattform.OHNE_PROXY in rat, rat
+            if sys.platform != "darwin":
+                assert "sudo systemctl start tor" in rat, rat
+                plattform.systemd = lambda: False
+                assert "sudo service tor start" in plattform.proxy_rat(plattform.TOR_PROXY)
+            rat = plattform.proxy_rat("http://proxy.intern:3128")
+            assert "Adresse prüfen" in rat and "Tor" not in rat and plattform.OHNE_PROXY in rat, rat
+        finally:
+            plattform.tor_installiert, plattform.systemd = echt_installiert, echt_systemd
+        for fremd in ({"OSINT_PROXY": "http://proxy.intern:3128"}, {"OSINT_PROXY": ""}):
+            rufe, text, s = lauf_tor(werte=fremd)
+            assert rufe == [] and text == "" and not s.noetig and not s.offen, "ohne Proxy und mit einem eigenen Proxy geschieht hier nichts"
+        # Die Wahl kann auch aus der vorbereiteten Datei kommen (--env-von), nicht nur aus dem Assistenten
+        vorlage = PROJEKT / "ausrollen.env"
+        vorlage.write_text(f"OSINT_PROXY={einrichten.TOR}\n", encoding="utf-8")
+        try:
+            assert einrichten.gewuenschter_proxy(einrichtung_optionen(env_von=str(vorlage))) == einrichten.TOR
+            assert einrichten.gewuenschter_proxy(einrichtung_optionen(env_von=str(vorlage), werte={"OSINT_PROXY": ""})) == "", "die Antwort im Assistenten geht vor"
+        finally:
+            vorlage.unlink(missing_ok=True)
+        assert set(einrichten.PAKETE["tor"]) >= {"apt", "dnf", "pacman", "zypper", "apk", "brew"} and "winget" not in einrichten.PAKETE["tor"]
+        ermittlung = lesen(REPO / ".claude" / "skills" / "ermittlung" / "SKILL.md")
+        assert "proxy_antwortet" in ermittlung, "der Skill /ermittlung muss wissen, dass er bei einem stummen Proxy anhält"
+    finally:
+        horcher.close()
+        for name, wert in echt.items():
+            setattr(einrichten, name, wert)
+        einrichten.stand = einrichten.Stand()
+        plattform.proxy_ist_tor, plattform.tor_verbindet, kern.transport = echt_tor, echt_verbindet, alt_transport
+        pruefen.still = merker[0]
+        pruefen.noetig_fehlt[:], pruefen.schritte[:], pruefen.gemeldet[:] = merker[1], merker[2], merker[3]
+
+
+@test("Browser für PDF: Fehlt er, installiert die Einrichtung Chromium (unter Ubuntu als Snap), und eine echte Probe zeigt, ob er druckt")
+def _():
+    import types
+    import urllib.request
+    from urllib.parse import urlsplit
+
+    from tools import pdf
+    echt = (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess)
+    echt_systemd = plattform.systemd
+    ubuntu, fedora = {**LINUX, "id": "ubuntu", "wsl": True}, {**LINUX, "id": "fedora", "paketverwaltung": "dnf"}
+    try:
+        plattform.systemd = lambda: False       # der Prüfrechner entscheidet nicht mit, ob hier systemd läuft
+        # ---- Welcher Weg: das Paket der Distribution, unter Ubuntu der Snap. Unter Windows gehört Edge zum System
+        einrichten.snap_bereit = lambda: True
+        assert einrichten.browser_weg(ubuntu)[0] == "snap" and "snap install chromium" in einrichten.browser_weg(ubuntu)[1]
+        assert einrichten.browser_weg(LINUX) == ("paket", "Paket chromium über apt") and einrichten.browser_weg(fedora) == ("paket", "Paket chromium über dnf")
+        for anders in ({"art": "macos", "paketverwaltung": "brew", "wsl": False}, {"art": "windows", "paketverwaltung": "winget", "wsl": False},
+                       {**LINUX, "paketverwaltung": None}):
+            assert einrichten.browser_weg(anders) == ("", ""), anders
+        einrichten.snap_bereit = lambda: False
+        assert einrichten.browser_weg(ubuntu) == ("", ""), "ohne laufendes Snap gibt es unter Ubuntu nichts zu versprechen"
+        assert "/snap/bin/chromium" in pdf.KANDIDATEN, "ein frisch installierter Snap muss sich finden lassen, bevor der PATH ihn kennt"
+
+        # ---- Die Zeile der Einrichtung: finden, sonst installieren, dann wirklich drucken
+        def lauf_browser(sysinfo: dict, vorhanden: bool, nach_installation: bool = True, probe: str | None = None, snap: bool = True, **angaben):
+            zustand, rufe = {"da": vorhanden}, []
+            einrichten.stand = einrichten.Stand()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            einrichten.snap_bereit = lambda: snap
+            pdf.browser_finden = lambda: "/usr/bin/chromium" if zustand["da"] else None
+            einrichten.browser_installieren = lambda sysinfo: (rufe.append("installieren"), zustand.update(da=nach_installation))[0]
+            pdf.probe = lambda browser, ordner, zeit=45: (rufe.append("probe"), probe)[1]
+            a = einrichtung_optionen(**angaben)
+            einrichten.browser_einrichten(a, sysinfo, not (a.nur_pruefen or a.nichts_installieren))
+            return rufe, flach(aus.getvalue()), einrichten.stand
+        rufe, text, s = lauf_browser(LINUX, True)
+        assert rufe == ["probe"] and "chromium, Probe-PDF erzeugt" in text and not s.neu, (rufe, text)
+        rufe, text, s = lauf_browser(LINUX, False)
+        assert rufe == ["installieren", "probe"] and "chromium installiert, Probe-PDF erzeugt" in text and s.neu == ["Chromium (Browser für PDF)"], (rufe, text)
+        rufe, text, s = lauf_browser(ubuntu, False)
+        assert rufe == ["installieren", "probe"], "unter Ubuntu mit laufendem Snap wird installiert"
+        rufe, text, s = lauf_browser(ubuntu, False, snap=False)
+        assert rufe == [] and "nur als Snap" in text and "WSL ohne systemd" in text and "im Browser von Windows öffnen" in text, (rufe, text)
+        plattform.systemd = lambda: True        # systemd läuft, Snap trotzdem nicht: Dann nennt die Zeile systemd nicht als Grund
+        rufe, text, s = lauf_browser(ubuntu, False, snap=False)
+        assert rufe == [] and "nur als Snap" in text and "ohne systemd" not in text, (rufe, text)
+        plattform.systemd = lambda: False
+        rufe, text, s = lauf_browser({**ubuntu, "wsl": False}, False, snap=False)
+        assert "ohne systemd" not in text and "Browser von Windows" not in text and "im Browser öffnen" in text, text
+        rufe, text, s = lauf_browser(LINUX, False, nach_installation=False)
+        assert rufe == ["installieren"] and "liess sich nicht installieren" in text and "als PDF speichern" in text, (rufe, text)
+        rufe, text, s = lauf_browser(LINUX, True, probe="Der Browser hat kein PDF geschrieben.")
+        assert rufe == ["probe"] and "die Probe ergab kein PDF" in text and plattform.GUT not in text, (rufe, text)
+        rufe, text, s = lauf_browser(LINUX, False, nichts_installieren=True)
+        assert rufe == [] and f"installiert Chromium, wenn sie darf: {plattform.SETUP} Rapport und Protokoll gibt es trotzdem" in text, (rufe, text)
+        rufe, text, s = lauf_browser(LINUX, True, nur_pruefen=True)
+        assert rufe == [] and "chromium" in text, "«nur prüfen» druckt nichts und legt nichts an"
+        assert not einrichten.stand.noetig, "ein fehlender Browser für PDF verhindert den Betrieb nie"
+
+        # ---- Die Probe selbst: eine kleine Seite im Projektordner, danach bleibt nichts liegen
+        pdf.probe = echt[4]
+        ordner, gesehen = PROJEKT / "faelle", {}
+
+        class Browser:          # steht für subprocess.Popen: schreibt das PDF, meldet etwas oder antwortet nie
+            pid = 999_999_999   # eine Nummer, die es nicht gibt: Hier darf nie ein echter Prozess getroffen werden
+
+            def __init__(self, befehl: list[str], **mehr) -> None:
+                ziel = Path(next(x for x in befehl if x.startswith("--print-to-pdf=")).split("=", 1)[1])
+                quelle = Path(urllib.request.url2pathname(urlsplit(befehl[-1]).path))
+                gesehen.update(ziel=ziel, quelle_da=quelle.is_file(), fall=quelle.read_text(encoding="utf-8"), mehr=mehr)
+                if gesehen.get("verhalten") == "meldet":
+                    mehr["stdout"].write("Zeile davor\nDer Browser sagt: kein PDF heute\n".encode())
+                elif gesehen.get("verhalten") != "haengt":
+                    ziel.write_bytes(b"%PDF-1.7\n" + bytes(2000))
+
+            def wait(self, zeit: float | None = None) -> int:
+                gesehen["zeit"] = zeit
+                if gesehen.get("verhalten") == "haengt":
+                    raise subprocess.TimeoutExpired("browser", zeit)
+                return 0
+        echt_beenden = pdf.beenden
+        pdf.beenden = lambda prozess: gesehen.setdefault("beendet", []).append(prozess.pid)
+        pdf.subprocess = types.SimpleNamespace(Popen=Browser, TimeoutExpired=subprocess.TimeoutExpired, DEVNULL=subprocess.DEVNULL, STDOUT=subprocess.STDOUT)
+        try:
+            assert pdf.probe("/usr/bin/chromium", ordner) is None, "die Probe muss ein erzeugtes PDF erkennen"
+            assert gesehen["quelle_da"] and ordner in gesehen["ziel"].parents and gesehen["zeit"] == 45 and "beendet" not in gesehen, gesehen
+            # Die Meldungen des Browsers gehen in eine Datei: An einer Leitung könnte der Aufruf nach dem Zeitlimit hängen bleiben
+            assert gesehen["mehr"].get("stdin") == subprocess.DEVNULL and hasattr(gesehen["mehr"].get("stdout"), "fileno") \
+                and gesehen["mehr"].get("stdout") != subprocess.PIPE and gesehen["mehr"].get("stderr") == subprocess.STDOUT, gesehen["mehr"]
+            assert gesehen["mehr"].get("start_new_session") is (not WINDOWS), "eigene Prozessgruppe, damit sich auch die Kindprozesse beenden lassen"
+            assert "nichts aus einem Fall" in gesehen["fall"] and not list(ordner.glob("pdf-probe-*")), "nach der Probe bleibt nichts liegen"
+            gesehen["verhalten"] = "meldet"
+            fehler = pdf.probe("/usr/bin/chromium", ordner)
+            assert fehler == "Der Browser sagt: kein PDF heute" and not list(ordner.glob("pdf-probe-*")), fehler
+            gesehen["verhalten"] = "haengt"         # antwortet nie: Nach dem Zeitlimit wird er samt Kindprozessen beendet, und die Meldung sagt es
+            fehler = pdf.probe("/usr/bin/chromium", ordner, 7)
+            assert fehler and "nach 7 Sekunden nicht geantwortet" in fehler and gesehen["beendet"] == [Browser.pid], (fehler, gesehen.get("beendet"))
+            assert not list(ordner.glob("pdf-probe-*"))
+        finally:
+            pdf.beenden = echt_beenden
+        quelle = lesen(PROJEKT / "tools" / "pdf.py")
+        assert "os.killpg(prozess.pid" in quelle and "prozess.poll() is None" in quelle and "taskkill" in quelle and "capture_output" not in quelle
+    finally:
+        einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess = echt
+        plattform.systemd = echt_systemd
+        einrichten.stand = einrichten.Stand()
+
+
+@test("Einrichtung führt bis zum Start: Jeder Schritt steht da, in der Reihenfolge, in der er zu tun ist. Claude Code und die Oberfläche starten nur auf Wunsch")
+def _():
+    echt = (plattform.wsl, plattform.programm, einrichten.ui, einrichten.anmeldung, einrichten.subprocess, einrichten.paket_installieren,
+            einrichten.lauf, einrichten.root_praefix, plattform.ordner_vertraut)
+    rufe: list[tuple[list[str], dict]] = []
+    vertraut: list[bool | None] = [None]        # was Claude Code über den Ordner festgehalten hat, so wie die Einrichtung es abliest
+
+    class Attrappe:         # alles wie subprocess, nur call() startet nichts
+        def __getattr__(self, name: str):
+            return getattr(subprocess, name)
+
+        def call(self, befehl, **mehr) -> int:
+            rufe.append((list(befehl), mehr))
+            return 0
+    try:
+        # ---- Ob Claude Code dem Ordner vertraut, liest die Einrichtung aus dessen eigener Datei ab. Sie schreibt dort nie.
+        with tempfile.TemporaryDirectory() as daheim:
+            alt = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE", "CLAUDE_CONFIG_DIR")}
+            os.environ["HOME"] = os.environ["USERPROFILE"] = daheim
+            os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            try:
+                datei, ordner = Path(daheim) / ".claude.json", Path(daheim) / "arbeit" / "gogo"
+                assert plattform.ordner_vertraut(ordner) is False, "ohne die Datei von Claude Code gibt es keine Bestätigung"
+                datei.write_text(json.dumps({"userID": "x", "projects": {str(ordner): {"hasTrustDialogAccepted": False},
+                                                                        str(ordner) + "-zwei": {"hasTrustDialogAccepted": True}}}), encoding="utf-8")
+                assert plattform.ordner_vertraut(ordner) is False, "ein anderer Ordner und ein Nein zählen nicht"
+                datei.write_text(json.dumps({"projects": {str(ordner) + "/": {"hasTrustDialogAccepted": True, "allowedTools": []}}}), encoding="utf-8")
+                vorher = datei.read_bytes()
+                assert plattform.ordner_vertraut(ordner) is True and datei.read_bytes() == vorher, "gelesen wird, geschrieben nie"
+                datei.write_text(json.dumps({"projects": {str(ordner): {"hasTrustDialogAccepted": "true"}}}), encoding="utf-8")
+                assert plattform.ordner_vertraut(ordner) is False, "nur ein echtes Ja zählt"
+                datei.write_text("{kein json", encoding="utf-8")
+                assert plattform.ordner_vertraut(ordner) is None, "eine unlesbare Datei heisst unbekannt, nicht nein"
+                eigen = Path(daheim) / "eigen"
+                eigen.mkdir()
+                (eigen / ".claude.json").write_text(json.dumps({"projects": {str(ordner): {"hasTrustDialogAccepted": True}}}), encoding="utf-8")
+                os.environ["CLAUDE_CONFIG_DIR"] = str(eigen)
+                assert plattform.ordner_vertraut(ordner) is True, "mit CLAUDE_CONFIG_DIR liegt die Datei dort"
+            finally:
+                for k, v in alt.items():
+                    os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        import inspect
+        quelle = inspect.getsource(plattform.ordner_vertraut)
+        assert "write" not in quelle and "open(" not in quelle and "hasTrustDialogAccepted" in quelle, "die Einrichtung beantwortet den Dialog nie selbst"
+        for datei in ("tools/einrichten.py", "tools/pruefen.py", "gateway/plattform.py"):
+            assert "hasTrustDialogAccepted\"] =" not in lesen(PROJEKT / datei) and "hasTrustDialogAccepted': True" not in lesen(PROJEKT / datei), datei
+        plattform.ordner_vertraut = lambda projekt=None: vertraut[0]
+
+        # ---- Die Liste: vom Terminal bis zu den Ergebnissen, nichts zum Erraten
+        plattform.wsl = lambda: False
+        w = plattform.weiter()
+        assert len(w) == 5 and w[0].startswith("Falls noch nicht geschehen: im Projektordner einmal Claude Code starten") and "/exit" in w[0], w[0]
+        assert plattform.OHNE_VERTRAUEN in w[0] and "Erlaubnisse des Projekts" in plattform.OHNE_VERTRAUEN, "der Schritt sagt, wozu er gut ist"
+        assert w[1].startswith(f"Oberfläche starten: {plattform.PY} tools/oberflaeche.py") and "steht die Adresse im Terminal" in w[1], w[1]
+        assert "«Neuer Fall»" in w[2] and "Pflichtquellen" in w[3] and "«Ergebnisse»" in w[4]
+        w = plattform.weiter(["der Befehl 'claude'", "der Zugriff auf Docker"], False)
+        assert len(w) == 6 and w[0].startswith("Dieses Terminal schliessen und ein neues öffnen") and f"cd {plattform.PROJEKT}" in w[0], w[0]
+        assert "der Befehl 'claude' und der Zugriff auf Docker" in w[0] and w[1].startswith("Im Projektordner einmal Claude Code starten"), w[:2]
+        assert len(plattform.weiter((), True)) == 4 and "vertrauen" not in " ".join(plattform.weiter((), True)), "ist der Ordner bestätigt, entfällt der Schritt"
+        plattform.wsl = lambda: True
+        w = plattform.weiter(["der Zugriff auf Docker"], True)
+        assert w[0].startswith("Dieses WSL-Fenster schliessen") and "Der Browser von Windows öffnet sich von selbst" in w[1], w[:2]
+        # Kam das Konto in die Gruppe docker, sagt der Schritt unter WSL auch, wie man es prüft und was hilft, wenn das neue Fenster nicht genügt
+        docker_grund = "der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"
+        assert "wsl --shutdown" not in w[0] and "docker ps" in plattform.weiter([docker_grund], True)[0] and "wsl --shutdown" in plattform.weiter([docker_grund], True)[0]
+        plattform.wsl = lambda: False
+        assert "wsl --shutdown" not in plattform.weiter([docker_grund], True)[0]
+
+        # ---- Der Abschluss der Einrichtung nennt sie, und was noch offen ist, bleibt davon getrennt
+        einrichten.stand = einrichten.Stand()
+        einrichten.stand.neues_terminal, einrichten.stand.ordner = ["der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"], False
+        einrichten.stand.offen = ["Schlüssel eintragen"]
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        assert einrichten.abschluss(0, "mit 25 von 28 Quellen") == 0
+        text = aus.getvalue()
+        stellen = [text.index(s) for s in ("Noch offen", "Schlüssel eintragen", "So geht es weiter", "Terminal schliessen", "einmal Claude Code starten",
+                                           "Oberfläche starten", "«Neuer Fall»", "«Ergebnisse»")]
+        assert stellen == sorted(stellen), f"die Schritte stehen nicht in der Reihenfolge, in der sie zu tun sind: {stellen}"
+        assert "Ein neues Terminal öffnen, bevor" not in text, "das neue Terminal steht als Schritt da, nicht zusätzlich unter «Noch offen»"
+        einrichten.stand.noetig = ["Claude Code"]
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        assert einrichten.abschluss(0) == 1 and "So geht es weiter" not in aus.getvalue() and "Ein neues Terminal öffnen" in aus.getvalue()
+
+        # ---- Auf Wunsch startet die Einrichtung Claude Code für den Vertrauensdialog und danach die Oberfläche. Die Antwort gibt der Mensch
+        einrichten.subprocess = Attrappe()
+        einrichten.anmeldung = lambda: (True, "claude.ai")
+        plattform.programm = lambda name: "/daheim/.local/bin/claude" if name == "claude" else None
+        vertraut[0] = True          # nach dem Start von Claude Code liest die Einrichtung ab: Der Mensch hat Ja gesagt
+        for wunsch, erwartet in (("", 0), ("claude", 1), ("alles", 2)):
+            rufe.clear()
+            einrichten.stand = einrichten.Stand()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            a = einrichtung_optionen(start=wunsch)
+            einrichten.ordner_bestaetigen(a)
+            einrichten.oberflaeche_starten(a)
+            assert len(rufe) == erwartet, (wunsch, rufe)
+            if erwartet:
+                assert rufe[0] == (["/daheim/.local/bin/claude"], {"cwd": str(einrichten.PROJEKT)}) and einrichten.stand.ordner is True, rufe[0]
+                assert "Mit Ja bestätigen" in flach(aus.getvalue()) and "/exit" in aus.getvalue(), "vor dem Start steht, was zu tun ist"
+                assert "in Claude Code bestätigt" in flach(aus.getvalue())
+            else:
+                assert einrichten.stand.ordner is None and aus.getvalue() == ""
+            if erwartet == 2:
+                assert rufe[1][0] == [str(einrichten.VENV), str(einrichten.PROJEKT / "tools" / "oberflaeche.py")], rufe[1]
+        # Hat der Mensch Claude Code verlassen, ohne Ja zu sagen, bleibt der Schritt stehen. Die Einrichtung behauptet nichts
+        vertraut[0] = False
+        rufe.clear()
+        einrichten.stand = einrichten.Stand()
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        einrichten.ordner_bestaetigen(einrichtung_optionen(start="claude"))
+        assert len(rufe) == 1 and einrichten.stand.ordner is None and "keine Bestätigung gefunden" in flach(aus.getvalue()), aus.getvalue()
+        assert plattform.weiter((), einrichten.stand.ordner)[0].startswith("Falls noch nicht geschehen")
+        # Ist der Ordner schon bestätigt, startet Claude Code nicht noch einmal. Die Oberfläche auf Wunsch schon
+        rufe.clear()
+        einrichten.stand = einrichten.Stand()
+        einrichten.stand.ordner = True
+        a = einrichtung_optionen(start="alles")
+        einrichten.ordner_bestaetigen(a)
+        einrichten.oberflaeche_starten(a)
+        assert [r[0][-1] for r in rufe] == [str(einrichten.PROJEKT / "tools" / "oberflaeche.py")], rufe
+        # Der Schritt «Claude Code» zeigt den Stand als Zeile, und er bestimmt, ob der Schritt am Ende dasteht
+        for gelesen, erstmals, soll, satz in ((True, True, True, "in Claude Code bestätigt"), (False, False, False, "noch nicht bestätigt"),
+                                              (None, True, False, "noch nicht bestätigt"), (None, False, None, "")):
+            vertraut[0] = gelesen
+            einrichten.stand = einrichten.Stand()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            einrichten.ordner_melden(erstmals)
+            assert einrichten.stand.ordner is soll and satz in flach(aus.getvalue()) and bool(satz) == bool(aus.getvalue()), (gelesen, erstmals, aus.getvalue())
+        vertraut[0] = None
+        # Kam das Konto eben erst in die Gruppe docker, startet die Oberfläche nicht aus diesem Terminal: Robin erreichte Docker nicht
+        rufe.clear()
+        einrichten.stand = einrichten.Stand()
+        einrichten.stand.neu_anmelden = True
+        einrichten.oberflaeche_starten(einrichtung_optionen(start="alles"))
+        assert rufe == []
+        einrichten.anmeldung = lambda: (False, "")
+        einrichten.ordner_bestaetigen(einrichtung_optionen(start="alles"))
+        assert rufe == [] and einrichten.stand.ordner is None, "ohne Anmeldung gibt es nichts zu bestätigen"
+
+        # ---- Docker frisch installiert: Dass es ein neues Terminal braucht, steht als Schritt da, mit dem Grund
+        einrichten.subprocess = echt[4]
+        einrichten.stand = einrichten.Stand()
+        einrichten.paket_installieren = lambda *a, **k: (True, "")
+        einrichten.lauf = lambda *a, **k: (0, "")
+        einrichten.root_praefix = lambda wofuer: []
+        alt = {k: os.environ.get(k) for k in ("SUDO_USER", "USER")}
+        os.environ.pop("SUDO_USER", None)
+        os.environ["USER"] = "tester"
+        try:
+            assert einrichten.docker_installieren(LINUX) == ""
+        finally:
+            for k, v in alt.items():
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        assert einrichten.stand.neu_anmelden and any("Gruppe docker" in t and "tester" in t for t in einrichten.stand.neues_terminal), einrichten.stand.neues_terminal
+
+        # ---- Der Assistent fragt danach, und auf einem eingerichteten Arbeitsplatz startet er nichts von selbst
+        assert einrichten.THEMEN[-1] == "start" and set(einrichten.START_ANTWORT) == {"alles", "claude", ""}
+        assert einrichten.Assistent(einrichtung_optionen(), LINUX, einrichtung_bestand()).w["start"] == "alles"
+        assert einrichten.Assistent(einrichtung_optionen(), LINUX, einrichtung_bestand(eingerichtet=True)).w["start"] == ""
+        # Ist der Ordner schon bestätigt, fragt er nur noch nach der Oberfläche: Den Start von Claude Code bietet er nicht mehr an
+        assistent = einrichten.Assistent(einrichtung_optionen(), LINUX, einrichtung_bestand(vertraut=True))
+        einrichten.ui, aus = oberflaeche(["runter", "enter"], hoehe=40)
+        assistent.frage_start("")
+        assert assistent.w["start"] == "" and "Nur Claude Code" not in aus.getvalue() and "vertraut Claude Code schon" in flach(aus.getvalue()), aus.getvalue()
+        einrichten.ui, aus = oberflaeche(["enter"], hoehe=40)
+        assistent.w["start"] = "alles"
+        assistent.frage_start("")
+        assert assistent.w["start"] == "alles" and assistent.antwort("start") == "am Ende die Oberfläche öffnen"
+        assistent = einrichten.Assistent(einrichtung_optionen(), LINUX, einrichtung_bestand())
+        einrichten.ui, aus = oberflaeche(["enter"], hoehe=40)
+        assistent.frage_start("")
+        assert "Nur Claude Code" in aus.getvalue() and plattform.OHNE_VERTRAUEN[:40] in flach(aus.getvalue()), aus.getvalue()
+        readme = lesen(REPO / "README.md")
+        for stueck in ("Tor auf diesem Rechner", "Chromium", "So geht es weiter", "Ordner bestätigen", "localhost"):
+            assert stueck in readme, f"README nennt «{stueck}» nicht"
+    finally:
+        (plattform.wsl, plattform.programm, einrichten.ui, einrichten.anmeldung, einrichten.subprocess, einrichten.paket_installieren,
+         einrichten.lauf, einrichten.root_praefix, plattform.ordner_vertraut) = echt
+        einrichten.stand = einrichten.Stand()
 
 
 # --------------------------------------------------------------------------- Blockchain-Analyse
@@ -3480,6 +3984,9 @@ def _():
                 status, _kopf, inhalt = holen(weg, **kopf)
                 assert status == 403 and b"OBERFL" not in inhalt, f"{kopf} {weg}: {status}"
         assert holen("/api/faelle", Host=f"localhost:{port}")[0] == 200 and holen("/api/faelle", Origin=f"http://127.0.0.1:{port}", Sec_Fetch_Site="same-origin")[0] == 200
+        # unter dem Namen localhost öffnet der Browser von Windows die Oberfläche, wenn sie in WSL läuft: Host und Herkunft lauten dann so
+        assert holen("/api/faelle", Host=f"localhost:{port}", Origin=f"http://localhost:{port}", Sec_Fetch_Site="same-origin")[0] == 200
+        assert holen("/api/faelle", Host=f"localhost:{port}", Origin=f"http://localhost:{port + 1}")[0] == 403
         # Es gibt keinen Weg, über den Server zu schreiben
         for methode in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
             status, kopf, _inhalt = holen(f"/api/fall/{OBERFL}/uebersicht", methode, Content_Length="0")
@@ -3989,6 +4496,71 @@ def _():
     finally:
         p.terminate()
         p.wait(timeout=20)
+
+
+@test("Oberfläche starten: Unter WSL öffnet sich der Browser von Windows, und wo sich keiner öffnen lässt, steht die Adresse im Terminal")
+def _():
+    import webbrowser
+    adresse = "http://127.0.0.1:8765/#start=abc123&nach=FALL-1"       # mit # und &: Keine Shell darf die Adresse zerlegen
+    echt = (plattform.wsl, oberflaeche_start._programm, oberflaeche_start.subprocess, webbrowser.open)
+    rufe: list[list[str]] = []
+    codes: dict[str, int] = {}
+
+    class Attrappe:
+        def __getattr__(self, name: str):
+            return getattr(subprocess, name)
+
+        def run(self, befehl, **mehr) -> subprocess.CompletedProcess:
+            rufe.append(list(befehl))
+            return subprocess.CompletedProcess(befehl, codes.get(Path(befehl[0]).name, 0))
+
+    def gezeigt() -> str:
+        with contextlib.redirect_stdout(io.StringIO()) as aus:
+            oberflaeche_start.oeffnen_oder_zeigen(adresse)
+        return aus.getvalue()
+    try:
+        oberflaeche_start.subprocess = Attrappe()
+        plattform.wsl = lambda: True
+        oberflaeche_start._programm = lambda name: f"/pfad/{name}"
+        assert oberflaeche_start.browser_oeffnen(adresse) is True and len(rufe) == 1 and adresse in rufe[0][-1], rufe
+        assert all(adresse not in teil for teil in rufe[0][:-1]), "die Adresse steht als ein eigenes Argument da, keine Shell zerlegt sie"
+        erster = Path(rufe[0][0]).name
+        rufe.clear()
+        codes[erster] = 1                   # der erste Weg scheitert: Der nächste kommt dran
+        assert oberflaeche_start.browser_oeffnen(adresse) is True and len(rufe) == 2 and Path(rufe[1][0]).name != erster, rufe
+        rufe.clear()
+        oberflaeche_start._programm = lambda name: None
+        assert oberflaeche_start.browser_oeffnen(adresse) is False and rufe == [], "ohne einen Weg nach Windows öffnet sich nichts"
+        text = gezeigt()
+        assert adresse in text and "Es liess sich kein Browser öffnen" in text and "Browser von Windows" in text, text
+        oberflaeche_start._programm = lambda name: f"/pfad/{name}"
+        codes.clear()
+        text = gezeigt()
+        assert adresse in text and "Öffnet sich kein Browserfenster" in text, "unter WSL steht die Adresse immer da: Ob das Fenster aufging, weiss niemand"
+        # ausserhalb von WSL: Öffnet sich der Browser, steht nichts da. Sonst die Adresse
+        plattform.wsl = lambda: False
+        webbrowser.open = lambda ziel: True
+        assert gezeigt() == ""
+        webbrowser.open = lambda ziel: False
+        assert adresse in gezeigt() and "Browser von Windows" not in gezeigt()
+
+        def ohne_browser(ziel):
+            raise webbrowser.Error("could not locate runnable browser")
+        webbrowser.open = ohne_browser
+        assert adresse in gezeigt()
+        quelle = lesen(PROJEKT / "tools" / "oberflaeche.py")
+        assert "oeffnen_oder_zeigen, [adresse]" in quelle and "webbrowser.open(adresse)).start()" not in quelle, "der Start muss den neuen Weg nehmen"
+        # Unter WSL lautet die Adresse auf localhost: Unter diesem Namen reicht Windows die Anfrage an den Server in WSL weiter.
+        # Zuerst kommen die Wege, die zu Windows gehören, zuletzt das Zusatzpaket.
+        plattform.wsl = lambda: True
+        assert oberflaeche_start.basis_adresse(8765) == "http://localhost:8765/"
+        plattform.wsl = lambda: False
+        assert oberflaeche_start.basis_adresse(8765) == "http://127.0.0.1:8765/"
+        assert "basis = basis_adresse(server.server_address[1])" in quelle, "der Start muss die Adresse von dort nehmen"
+        wege = [weg[0] for weg in oberflaeche_start.WSL_WEGE]
+        assert wege[0] == "rundll32.exe" and wege[-1] == "wslview" and all("{adresse}" in weg[-1] for weg in oberflaeche_start.WSL_WEGE), wege
+    finally:
+        plattform.wsl, oberflaeche_start._programm, oberflaeche_start.subprocess, webbrowser.open = echt
 
 
 @test("Bedienung, Akten-Eingang: Dateien, Ordner, ZIP und E-Mail. Jede Datei wird gelesen und geprüft, in den Fall kommt nur die Textfassung dessen, was die PII-Prüfung besteht")
@@ -4704,12 +5276,19 @@ def _():
             os.environ["ANTHROPIC_API_KEY"] = alt_schluessel
     # Ohne Claude Code auf dem Rechner sagt die Seite das, statt zu scheitern
     alt_programm = os.environ.pop("OSINT_CLAUDE")
-    weg, os.environ["PATH"] = os.environ["PATH"], ""
+    echte_suche, plattform.programm = plattform.programm, lambda name: None
     try:
         assert "nicht gefunden" in ui_sitzung.verfuegbar() and aktion("ermittlung_starten", {"fall": OBERFL})[0] == 400
         assert "nicht gefunden" in Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]).text and "nicht gefunden" in stand()["claude"]
+        # Gleich nach der Einrichtung kennt das Terminal den Ordner des Installers noch nicht im PATH: Die Oberfläche findet Claude Code trotzdem
+        plattform.programm = lambda name: "/irgendwo/.local/bin/claude" if name == "claude" else None
+        weg, os.environ["PATH"] = os.environ["PATH"], ""
+        try:
+            assert ui_sitzung.programm() == ["/irgendwo/.local/bin/claude"] and ui_sitzung.verfuegbar() == ""
+        finally:
+            os.environ["PATH"] = weg
     finally:
-        os.environ["OSINT_CLAUDE"], os.environ["PATH"] = alt_programm, weg
+        os.environ["OSINT_CLAUDE"], plattform.programm = alt_programm, echte_suche
     assert stand()["claude"] == ""
     # Die Probe für den eigenen Arbeitsplatz (--sitzungsprobe) liest aus den Ereignissen echter Sitzungen, ob der Weg trägt: Ablauf, Fortsetzen, Verbote, Rückfrage
     def aufruf(kennung: str, name: str, eingabe: dict) -> dict:

@@ -183,6 +183,12 @@ Mit `OSINT_PROXY` in `.env` laufen alle Abfragen des Gateways über einen Proxy.
 Abfrage, ob ein Proxy verwendet wurde. Web-Check auf dem eigenen Rechner wird immer direkt angesprochen. Für
 aktive Prüfungen muss die Web-Check-Instanz selbst auf einer Infrastruktur laufen, die nicht auf euch zurückführt.
 
+Antwortet der Proxy nicht, kommt keine Abfrage durch, und keine geht an ihm vorbei. Das Gateway prüft dann, ob der
+Proxy selbst eine Verbindung annimmt, und nennt ihn in der Fehlermeldung als Ursache. `fall_status` meldet
+`proxy_antwortet: false`, und die Ermittlung hält an, bevor sie eine Abfrage versucht. Wer in der Einrichtung
+«Tor auf diesem Rechner» wählt, bekommt Tor installiert und gestartet (Paket `tor`, Port 9050). Dieses Tor ist
+nicht das von Robin: Robin bringt sein eigenes im Container mit und braucht `OSINT_PROXY` nicht.
+
 ## Hinweise je Quelle
 
 **VirusTotal.** Das Gateway fragt nur ab. Es lädt keine Dateien hoch und löst keine neuen Scans aus, denn
