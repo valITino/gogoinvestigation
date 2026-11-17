@@ -4006,6 +4006,7 @@ def _():
     seite = Seite(seite_html)
     assert status == 200 and "lokal, Klartext" in seite.text and "rapport geschwärzt.txt" in seite.text and "aus beilagen.zip/ordner/unter.zip" in seite.text, seite.text[:400]
     assert not verstoesse(seite_html, "x") and "079 123 45 67" not in seite_html and "6238 5295" not in seite_html, "Fundstellen der PII-Prüfung müssen maskiert sein"
+    assert "! 1 Hinweis" in seite.text and "Täterseite" in seite.text, "eine E-Mail-Adresse sperrt nicht, die Seite weist aber auf sie hin"
     haken = [a["value"] for t, a in seite.elemente if t == "input" and a.get("name") == "auswahl"]
     assert sorted(haken) == sorted(b.korb("").eintraege) and any(t == "input" and "data-alle" in a for t, a in seite.elemente), "je Datei ein Haken, dazu «alle auswählen»"
     assert any(t == "input" and a.get("type") == "file" and "multiple" in a and "webkitdirectory" in a for t, a in seite.elemente), "Ordner lassen sich wählen"

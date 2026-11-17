@@ -368,7 +368,8 @@ Je Datei zeigt die Tabelle den Namen, den Ordner, aus dem sie kam, die Grösse u
 - **Personendaten:** Die Prüfung findet eine Telefonnummer, eine AHV-Nummer, eine IBAN, ein Geburtsdatum, ein
   Kontrollschild oder eine Kreditkartennummer. Der Bericht zeigt die Fundstellen maskiert. Die Datei geht so nicht in
   einen Fall. E-Mail-Adressen und Strassenadressen meldet die Prüfung als Hinweis: Sie sperren nicht, weil sie auch zur
-  Täterseite gehören können.
+  Täterseite gehören können. Die Zeile trägt dann die Marke «Hinweis». Gehört die Adresse zur geschädigten Seite, wird
+  sie auf dem lokalen Bildschirm ersetzt.
 - **nicht lesbar:** Was sich nicht lesen lässt, lässt sich nicht prüfen. Die Datei geht nicht in den Fall und nicht an
   das Sprachmodell. Sie bleibt beim Sachbearbeiter. Im Sitzungsprotokoll steht, wie viele Dateien welcher Art nicht
   übergeben wurden, ohne ihre Namen.

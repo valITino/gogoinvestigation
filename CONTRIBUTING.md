@@ -22,6 +22,8 @@ die neuen Dateien unter `faelle/MUSTER-2026-001/` und die PDFs unter `muster/` i
 (`python3 tools/pdf.py MUSTER-2026-001 --nach muster` und `python3 tools/anhang.py MUSTER-2026-001 --nach muster`).
 Zum Musterfall gehören auch die Datenblätter (`rapport/Datenblaetter.html`). Sie tragen den Stil der Oberfläche in sich:
 Nach einer Änderung an `tools/ui/app.css` oder an einem Darsteller also `python3 tools/musterfall.py` laufen lassen.
+Was nur die Bedienung braucht (Akten-Eingang, Chat, Rückfrage, Ergebnisse), steht deshalb in `tools/ui/bedienung.css`:
+Diese Datei geht nicht in die Datenblätter ein.
 
 ## Eine Quelle hinzufügen
 

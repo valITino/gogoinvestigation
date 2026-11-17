@@ -101,9 +101,12 @@ def akten_seite(bedienung, ziel: str) -> str:
             elif e.stand == "nicht_lesbar":
                 pruefung += f'<div class="klein">{esc(e.grund)}</div>'
             elif e.platzhalter:
-                pruefung += f' <span class="klein">{e.platzhalter} Platzhalter{", " + str(e.hinweise) + " Hinweise" if e.hinweise else ""}</span>'
+                pruefung += f' <span class="klein">{e.platzhalter} Platzhalter</span>'
             else:
                 pruefung += ' <span class="klein">keine Platzhalter gefunden</span>'
+            if e.text is not None and e.hinweise:       # sperrt nicht, soll aber niemandem entgehen
+                pruefung += (' <span class="marke z-warnung" title="E-Mail-Adressen und Strassenadressen sperrt die Prüfung nicht: Sie können zur Täterseite gehören. Bitte ansehen.">'
+                             f'! {e.hinweise} Hinweis{"e" if e.hinweise != 1 else ""}</span>')
             if e.bericht:
                 pruefung += f'<details><summary class="klein">Bericht der Prüfung</summary><pre class="rohtext">{esc(e.bericht)}</pre></details>'
             if e.vorgang:
@@ -140,6 +143,9 @@ def akten_seite(bedienung, ziel: str) -> str:
         if pii:
             hinweise.append("<b>Personendaten:</b> «pseudonymisieren» öffnet das Dokument auf dem lokalen Bildschirm. Dort sind die Fundstellen markiert: annehmen, verwerfen, "
                             "ergänzen. Namen erkennt die Prüfung nicht von selbst, deshalb lohnt der Blick auch bei Dokumenten, die als bereit gelten.")
+        if any(e.hinweise and e.text is not None for e in eintraege):
+            hinweise.append("<b>Hinweise:</b> E-Mail-Adressen und Strassenadressen sperrt die Prüfung nicht, weil sie zur Täterseite gehören können und dann stehen "
+                            "bleiben müssen. Gehört eine zur geschädigten Seite: «pseudonymisieren» öffnen und dort entscheiden. Der Bericht der Prüfung nennt die Stellen.")
         if unlesbar:
             hinweise.append("<b>Nicht lesbar:</b> Bilder, Ton, alte Formate. Was sich nicht lesen lässt, lässt sich nicht prüfen. Diese Dateien gehen nicht in den Fall "
                             "und nicht an das Sprachmodell. Sie bleiben bei dir.")
