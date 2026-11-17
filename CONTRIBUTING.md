@@ -49,6 +49,6 @@ werden konnte, steht als «nicht geprüft» mit Grund da.
 
 ## Schutzmechanismen
 
-Wächter, Hooks, Berechtigungen, Protokollkette und die Prüfregeln des Rapports ändert nur, wer vom Eigentümer
+Hooks, Berechtigungen, Protokollkette und die Prüfregeln des Rapports ändert nur, wer vom Eigentümer
 des Repositorys damit beauftragt ist, auf einem Branch und per Pull Request. Eine Lockerung gehört in die
 Beschreibung des Pull Requests, mit Begründung.

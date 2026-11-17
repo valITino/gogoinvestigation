@@ -76,7 +76,7 @@ from tools._oberflaeche import Abbruch, Oberflaeche  # noqa: E402
 
 MODELLE = {"fable": "claude-fable-5-2", "mythos": "claude-mythos-5-2"}
 JA, NEIN = {"ja", "j", "yes", "y", "true", "1", "an"}, {"nein", "n", "no", "false", "0", "aus"}
-CLAUDE_MIN = (2, 1, 295)        # ab dieser Version sperrt Claude Code, wenn der Wächter-Hook selbst ausfällt
+CLAUDE_MIN = (2, 1, 295)        # ab dieser Version ist der Arbeitsplatz geprüft (Hooks, Berechtigungen, Modellwahl je Skill)
 LOGS = Path(tempfile.gettempdir()) / "osint-setup"
 VENV = plattform.venv_python(PROJEKT)
 TOR = "socks5h://127.0.0.1:9050"
@@ -364,7 +364,7 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
         if bash:
             zeile(NEU if "Git for Windows" in stand.neu else GUT, "Git for Windows", f"Git Bash: {bash}")
         else:
-            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash laufen Wächter und Protokoll nicht.")
+            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash läuft das Sitzungsprotokoll nicht.")
             stand.noetig.append("Git for Windows")
             stand.offen.append(f"Git for Windows installieren (winget install --id Git.Git -e), dann {SETUP} erneut")
 
@@ -381,8 +381,7 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
         hinweis = text or "installiert"
         if version and version < CLAUDE_MIN:
             hinweis += "   veraltet: 'claude update' ausführen"
-            stand.offen.append(f"Claude Code aktualisieren (claude update). Erst ab {'.'.join(map(str, CLAUDE_MIN))} sperrt es "
-                               "Werkzeugaufrufe, wenn der Wächter selbst ausfällt.")
+            stand.offen.append(f"Claude Code aktualisieren (claude update). Geprüft ist der Arbeitsplatz ab {'.'.join(map(str, CLAUDE_MIN))}.")
         zeile(NEU if frisch else GUT, "Claude Code", hinweis)
         if frisch:
             stand.neu.append("Claude Code")
@@ -863,7 +862,7 @@ def claude_code(a: argparse.Namespace, robin: bool) -> None:
         stand.offen.append(HINWEIS_ANMELDEN)
     if erstmals:
         stand.offen.append("Beim ersten Start von 'claude' im Projektordner fragt Claude Code einmal, ob es dem Ordner "
-                           "vertrauen soll. Mit Ja bestätigen: Erst dann gelten Wächter, Protokoll und MCP-Server.")
+                           "vertrauen soll. Mit Ja bestätigen: Erst dann gelten Berechtigungen, Protokoll und MCP-Server.")
 
 
 # --------------------------------------------------------------------------- Schritt 6: Musterfall und Prüfung
@@ -965,9 +964,9 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
     if not bereit:
         return 1
     ui.paare("Loslegen", [
-        ("Musterfall ansehen", "faelle/MUSTER-2026-001/rapport/Abschlussrapport.html"),
-        ("Fall anlegen", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>"),
-        ("Ermitteln", "claude   und dort   /ermittlung 2026-0001"),
+        ("Oberfläche starten", f"{PY} tools/oberflaeche.py   (öffnet den Browser: Akten hochladen, ermitteln, Ergebnisse holen)"),
+        ("Musterfall ansehen", f"{PY} tools/oberflaeche.py MUSTER-2026-001"),
+        ("Oder am Terminal", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung 2026-0001"),
         ("Stand prüfen", f"{PY} tools/pruefen.py"),
         ("Einstellungen ändern", SETUP),
     ])

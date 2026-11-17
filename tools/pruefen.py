@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import socket
 import subprocess
@@ -127,8 +126,7 @@ def umgebung(env: dict[str, str]) -> None:
         schritte.append(f"{SETUP} ausführen (installiert Claude Code), oder von Hand: https://code.claude.com/docs")
     elif version and version < CLAUDE_MIN:
         zeile(AUS, "Claude Code", f"{text}   veraltet")
-        schritte.append(f"Claude Code aktualisieren (claude update). Erst ab {'.'.join(map(str, CLAUDE_MIN))} sperrt es "
-                        "Werkzeugaufrufe, wenn der Wächter selbst ausfällt.")
+        schritte.append(f"Claude Code aktualisieren (claude update). Geprüft ist der Arbeitsplatz ab {'.'.join(map(str, CLAUDE_MIN))}.")
     else:
         zeile(GUT, "Claude Code", text or "installiert")
     if WINDOWS:
@@ -136,7 +134,7 @@ def umgebung(env: dict[str, str]) -> None:
         if bash:
             zeile(GUT, "Git for Windows", f"Git Bash: {bash}")
         else:
-            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash laufen Wächter und Protokoll nicht.")
+            zeile(FEHLT, "Git for Windows", "fehlt. Ohne Git Bash läuft das Sitzungsprotokoll nicht.")
             noetig_fehlt.append("Git for Windows")
             schritte.append(f"{SETUP} ausführen (installiert Git for Windows über winget)")
     if not shutil.which("docker"):
@@ -182,19 +180,11 @@ def konfiguration(env: dict[str, str]) -> None:
         except (OSError, json.JSONDecodeError) as e:
             zeile(FEHLT, name, f"fehlerhaft: {e}")
             noetig_fehlt.append(name)
-    for hook in ("start.sh", "waechter.py", "protokoll_hook.py"):
+    for hook in ("start.sh", "protokoll_hook.py"):
         datei = PROJEKT / ".claude" / "hooks" / hook
         if not datei.is_file():
             zeile(FEHLT, f"Hook {hook}", "fehlt")
             noetig_fehlt.append(hook)
-    waechter = PROJEKT / ".claude" / "hooks" / "waechter.py"
-    if waechter.is_file():
-        if re.search(r"^AUFBAUPHASE = True$", waechter.read_text(encoding="utf-8"), re.M):
-            zeile(AUS, "Wächter", "Aufbauphase: Gateway, Tools, Hooks und Einstellungen sind für Agenten änderbar")
-            schritte.append("Keine echten Fälle bearbeiten, solange die Aufbauphase läuft. Beenden: AUFBAUPHASE in "
-                            ".claude/hooks/waechter.py auf False setzen, der Selbsttest nennt den Rest (README, «Schutzmechanismen»).")
-        else:
-            zeile(GUT, "Wächter", "voller Schutz")
     lokal = PROJEKT / ".claude" / "settings.local.json"
     daten: dict = {}
     if lokal.is_file():
@@ -392,7 +382,7 @@ def kurzfassung(bereit: list, tests: tuple[int, int]) -> list[list[str]]:
     """Die Prüfung in wenigen Zeilen, für die Einrichtung: Was in Ordnung ist, wird zusammengefasst,
     jeder Fehler steht einzeln da."""
     zeilen: list[list[str]] = []
-    for bereich, titel, gut in (("Umgebung", "", ""), ("Konfiguration", "Einstellungen", "Wächter, Protokoll, MCP-Server und Modelle sind eingerichtet")):
+    for bereich, titel, gut in (("Umgebung", "", ""), ("Konfiguration", "Einstellungen", "Protokoll, MCP-Server und Modelle sind eingerichtet")):
         fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == bereich and art == "fehlt"]
         zeilen += fehler or ([["gut", titel, gut]] if titel else [])
     fehler = [[art, was, wie] for abschnitt_, art, was, wie in gemeldet if abschnitt_ == "Selbsttests" and art == "fehlt"]
@@ -447,8 +437,8 @@ def main() -> int:
         ui.erledigt("Einsatzbereit", f"mit {len(bereit)} von {len(QUELLEN)} Quellen", breit=0)
     ui.liste("Nächste Schritte", list(dict.fromkeys(schritte)), nummeriert=True)
     if not noetig_fehlt:
-        ui.paare("Loslegen", [("Fall anlegen", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>"),
-                              ("Ermitteln", "claude   und dort   /ermittlung <Fall-ID>"),
+        ui.paare("Loslegen", [("Oberfläche starten", f"{PY} tools/oberflaeche.py   (alles Weitere im Browser: Akten hochladen, ermitteln, Ergebnisse holen)"),
+                              ("Oder am Terminal", f"{PY} tools/fall.py neu <Fall-ID> --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung <Fall-ID>"),
                               ("Einstellungen ändern", SETUP)])
     return 1 if noetig_fehlt else 0
 

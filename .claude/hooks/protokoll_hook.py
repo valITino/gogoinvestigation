@@ -149,7 +149,7 @@ def main() -> int:
     fall = fall_erkennen(ereignis, eingabe_text + (ereignis.get("prompt") or ""))
     merker = SITZUNGEN / f"{sitzung}.fall"
     if fall:
-        plattform.text_schreiben(merker, fall)          # der Wächter liest daraus den aktiven Fall
+        plattform.text_schreiben(merker, fall)          # der aktive Fall der Sitzung, für Aufrufe, die keinen nennen
     elif merker.is_file():
         fall = merker.read_text(encoding="utf-8").strip() or None
 

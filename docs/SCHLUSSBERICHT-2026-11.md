@@ -3,6 +3,11 @@
 Stand 16.11.2026. Der Bericht fasst die sechs Pakete zusammen. Einzelheiten stehen in den Pull Requests und in den
 Dokumenten, auf die er verweist. «Geprüft» heisst: an diesem Tag gesehen. Was nicht prüfbar war, steht mit Grund da.
 
+> **Nachtrag vom 17.11.2026.** Mit Paket G ist der Wächter auf Entscheid des Eigentümers entfernt, und die Oberfläche
+> hat ein Chat-Fenster, einen Akten-Eingang für mehrere Dateien und eine Seite «Ergebnisse» bekommen. Was unten zum
+> Wächter und zur Aufbauphase steht, beschreibt den Stand vom 16.11.2026. Der heutige Stand: README, «Schutzmechanismen»
+> und «Stand der Prüfung und Grenzen».
+
 ## 1. Stand
 
 | Paket | Pull Request | Stand | Selbsttests |
@@ -102,7 +107,7 @@ Die acht Befunde der Schwere «hoch»:
 
 | Befund | Stand |
 |---|---|
-| Der Schalter `AUFBAUPHASE` steht in der Datei, die er schützt, und auf `main`. Jeder Klon ist damit im Aufbau. | Vorschlag: `ENTWICKLUNGSMODUS.md`. Dein Entscheid. |
+| Der Schalter `AUFBAUPHASE` steht in der Datei, die er schützt, und auf `main`. Jeder Klon ist damit im Aufbau. | Vorschlag: ein Entwicklungsmodus. Entschieden am 17.11.2026: Der Wächter fällt ganz weg. |
 | Die Schlüsseldatei war nur für das Lesewerkzeug gesperrt. Ein Shell-Befehl kam daran vorbei. | behoben |
 | Das Gateway folgte Weiterleitungen mit allen Kopfzeilen. Ein anderer Host bekam so den Schlüssel. | behoben |
 | Wiederholte ein Dienst den Schlüssel in anderer Schreibweise, stand er in Rohdatei, Protokoll und Fehlertext. | behoben |
@@ -190,7 +195,7 @@ Jeweils mit Empfehlung. Die Begründung steht im genannten Pull Request.
 
 | Frage | Empfehlung | Wo |
 |---|---|---|
-| Aufbauphase beenden | Entwicklungsmodus nach `ENTWICKLUNGSMODUS.md` einführen und den Schalter im Wächter ausschalten. Solange er ein ist, schützen die Sperren vor Versehen, nicht vor Absicht. | PR 7 |
+| Aufbauphase beenden | Entschieden am 17.11.2026: Der Wächter fällt ganz weg, und mit ihm die Aufbauphase. Was das heisst, steht im README unter «Schutzmechanismen». | PR 7 |
 | Probe mit dem echten Claude Code | Vor dem Mergen von Paket F laufen lassen. | PR 10 |
 | Suche nach Umgehungen des Wächters | Ein Mensch oder ein Konto mit Freigabe für Sicherheitsprüfungen holt sie nach. | PR 7 |
 | Liste der Feldmarken | Eintragen und neu messen. Erst dann ist Paket D abgeschlossen. | PR 8 |

@@ -347,7 +347,7 @@ Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung.
    Dahinter steht dieselbe Bibliothek wie hinter `tools/pseudonymisieren.py`, ohne Sprachmodell und ohne Netz.
 3. Erst das Ergebnis geht in die PII-Prüfung und über `tools/fall.py` in den Fall.
 4. Die Zuordnungstabelle geht in die Ablage ausserhalb des Projektordners (`<Ablage>/<Fall-ID>/zuordnung.csv`, nur für
-   den Benutzer lesbar). Sie steht in keinem Protokoll. Für Agenten sperrt der Wächter die Ablage.
+   den Benutzer lesbar). Sie steht in keinem Protokoll. Die Vorgabe `OSINT-Ablage` sperren die Berechtigungen für Agenten.
 5. Zurückführen schreibt den Rapport mit echten Angaben ebenfalls in die Ablage und zeigt ihn nur auf dem Bildschirm
    «Zurückführen».
 
@@ -365,11 +365,11 @@ claude -p "/ermittlung <Fall-ID>" --output-format stream-json --verbose
 
 - **Im Projektordner, ohne abschaltende Schalter.** Die Sitzung läuft im Projektordner. Die Oberfläche setzt keinen
   Schalter, der Einstellungen, Hooks oder MCP-Server des Projekts abschaltet (`--bare`, `--safe-mode`, `--restricted`,
-  `--setting-sources`, `--strict-mcp-config`, `--dangerously-skip-permissions`). Wächter, Verbotsregeln, `.mcp.json`
+  `--setting-sources`, `--strict-mcp-config`, `--dangerously-skip-permissions`). Berechtigungen, `.mcp.json`
   und die Protokoll-Hooks gelten also wie am Terminal.
 - **Abbruch ohne Einstellungen des Projekts.** Claude Code meldet beim Start, welche MCP-Server es geladen hat. Fehlt
-  darunter das Gateway des Projekts (`osint`), sind die Einstellungen des Projekts nicht geladen, und Wächter und
-  Protokoll gälten nicht. Die Oberfläche beendet die Sitzung dann sofort und sagt es.
+  darunter das Gateway des Projekts (`osint`), sind die Einstellungen des Projekts nicht geladen, und Berechtigungen
+  und Protokoll gälten nicht. Die Oberfläche beendet die Sitzung dann sofort und sagt es.
 - **Modelle.** Kein Schalter für das Modell. Es bleibt, wie das Projekt es festlegt.
 - **Rückfragen.** Verlangen die Einstellungen für ein Werkzeug eine Rückfrage (aktive Massnahmen), ruft Claude Code das
   Werkzeug `rueckfrage` eines kleinen MCP-Servers auf (`tools/ui/rueckfrage.py`). Der gibt die Frage an die Oberfläche
@@ -405,10 +405,10 @@ sie startet das installierte Claude Code des Sachbearbeiters mit dessen eigener 
 einer Dienststelle deckt, ist damit nicht gesagt. Die Bedingungen der Abos selbst sind nicht gelesen. Zweitens kündigt
 die Dokumentation an, dass der Skriptbetrieb künftig von sich aus ohne die Einstellungen des Projekts startet (`--bare`
 als Vorgabe) und dann nur noch mit API-Schlüssel läuft. Die Oberfläche merkt das am Start der Sitzung und beendet sie,
-statt ohne Wächter zu arbeiten.
+statt ohne Berechtigungen und Protokoll zu arbeiten.
 
-**Die Probe am eigenen Arbeitsplatz.** Dass eine aus der Oberfläche gestartete Sitzung wirklich unter Wächter und
-Verbotsregeln läuft, zeigt ein Befehl mit dem echten Claude Code:
+**Die Probe am eigenen Arbeitsplatz.** Dass eine aus der Oberfläche gestartete Sitzung wirklich unter den
+Berechtigungen des Projekts läuft, zeigt ein Befehl mit dem echten Claude Code:
 
 ```bash
 python3 tools/oberflaeche.py --sitzungsprobe          # am Terminal, verbraucht etwas Kontingent
@@ -427,16 +427,16 @@ abgerechnet wird und welche MCP-Server Claude Code geladen hat.
 | Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST mit JSON und trägt das Geheimnis in einer Kopfzeile. Ohne es antwortet der Server mit 403 und ändert nichts. Host-Kopf und Herkunft prüft er wie beim Lesen. |
 | Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen und keinen Beleg erfassen. |
 | Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. |
-| Wächter | Für Agenten bleiben Freigabe, Beleg von Hand, Pseudonymisieren und Zurückführen gesperrt. Neu lehnt der Wächter auch ab: den Aufruf der Funktionen an der Kommandozeile vorbei (`freigabe_setzen`, `beleg … erfassen`), den Aufruf der Bedienschicht aus der Shell (`tools/ui/bedienung.py`, `sitzung.py`: dort gäbe es kein Geheimnis, das einen Agenten aufhält), den Start der Oberfläche ohne `--nur-lesen` und jeden Zugriff auf die Ablage. Eine Ausnahme im Wächter oder in den Einstellungen braucht die Oberfläche nicht, der Wächter ist nur strenger geworden. |
-| Die Ablage ist für Agenten gesperrt | Der Wächter lehnt Lesen, Suchen, Schreiben und Shell-Befehle ab, die in die Ablage zeigen. Er erkennt sie am Namen (Ordner `OSINT-Ablage`, Dateien `zuordnung….csv`) und an der Variablen `OSINT_ABLAGE`. Sitzungen, die die Oberfläche startet, bekommen die Variable mit. Wer eine eigene Ablage nimmt und Claude Code auch am Terminal startet, setzt `OSINT_ABLAGE` dauerhaft: Dann nimmt die Oberfläche diesen Ordner, und der Wächter kennt ihn in jeder Sitzung. |
+| Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Pseudonymisieren und Zurückführen verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
+| Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
 
-**Grenzen dieses Schutzes.** Er hält Agenten auf, die über die Werkzeuge von Claude Code arbeiten und dabei dem Wächter
-unterliegen. Der Wächter prüft Shell-Befehle anhand ihres Textes: Er hält Versehen und fremdgesteuerte Agenten auf, keinen
-Befehl, der die gesperrten Namen gezielt verschleiert. Ein solcher Befehl steht aber nicht auf der Erlaubt-Liste des
-Projekts. In einer Sitzung aus der Oberfläche erscheint er deshalb als Rückfrage beim Sachbearbeiter, sofern dessen
-eigene Einstellungen von Claude Code nicht mehr erlauben. Eine frei gewählte Ablage ohne `OSINT_ABLAGE` erkennt der
-Wächter nur an den Namen der Dateien. Ein Programm mit den Rechten des Benutzers, das gezielt den Speicher des Servers ausliest oder den
+**Grenzen dieses Schutzes.** Einen Wächter, der jeden Werkzeugaufruf vorab prüft, gibt es seit dem 17.11.2026 nicht
+mehr. Ein Agent, der die Funktionen hinter der Oberfläche aus einem Shell-Befehl aufruft (zum Beispiel
+`freigabe_setzen`), braucht dafür kein Geheimnis. Ein solcher Befehl steht aber auf keiner Erlaubt-Liste: Claude Code
+legt ihn dem Menschen vor, in einer Sitzung aus der Oberfläche als Dialog mit dem Befehl im Wortlaut. Wer ihn erlaubt,
+hat entschieden. Wer Claude Code so einstellt, dass es nicht mehr fragt, hat diese Schicht abgeschaltet.
+Ein Programm mit den Rechten des Benutzers, das gezielt den Speicher des Servers ausliest oder den
 Startcode in der halben Sekunde zwischen Start und Browserfenster aus der Prozessliste fischt, hält er nicht auf. Der
 zweite Fall fiele auf: Das Browserfenster des Sachbearbeiters könnte dann nicht bedienen und sagt es.
 

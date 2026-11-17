@@ -27,7 +27,7 @@ from gateway import plattform  # noqa: E402
 if __name__ == "__main__":
     plattform.start()
 
-from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
+from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, eingang_stand, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
                           jsonl_lesen, sha256_datei)
 from tools.pii_pruefung import NichtLesbar, bericht, pruefen, text_lesen  # noqa: E402
 
@@ -148,7 +148,8 @@ def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "
     """Erteilt oder entzieht eine Freigabe und schreibt fall.json. Die Entscheidung selbst trifft ein Mensch: am Terminal
     (cmd_freigabe fragt dort nach) oder in der Oberfläche (der Server ruft diese Funktion erst, wenn die Anfrage das Geheimnis
     seines Starts trägt). `weg` steht in fall.json, damit sichtbar bleibt, wie die Freigabe zustande kam.
-    Für Agenten bleibt beides gesperrt: Wächter und Berechtigungen lehnen den Befehl und den Aufruf dieser Funktion ab."""
+    Der Befehl am Terminal ist für Agenten gesperrt (er verlangt ein Terminal, und die Berechtigungen verbieten ihn). Der Aufruf
+    dieser Funktion aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen."""
     if art not in FREIGABEN:
         raise Fehler(f"Die Freigabe '{art}' gibt es nicht. Möglich: {', '.join(FREIGABEN)}.")
     if weg not in WEGE:
@@ -197,8 +198,11 @@ def cmd_status(a: argparse.Namespace) -> int:
         e = (daten.get("freigaben") or {}).get(name) or {}
         stand = f"erteilt durch {e.get('durch')} am {e.get('am')} ({e.get('vermerk')})" if freigabe_erteilt(daten, name) else "nicht erteilt"
         print(f"  Freigabe {name:<14} {stand}")
-    eingang = [p.name for p in sorted((pfad / "eingang").glob("*")) if p.is_file() and not p.name.startswith(".")]
+    eingang, ungeprueft = eingang_stand(pfad)
     print(f"  Eingang: {', '.join(eingang) or 'leer'}")
+    if ungeprueft:
+        print(f"  NICHT GEPRÜFT (von Hand kopiert oder nachträglich verändert): {', '.join(ungeprueft)}\n"
+              f"    Aufnehmen mit PII-Prüfung: {plattform.PY} tools/fall.py aufnehmen {a.fall} faelle/{a.fall}/eingang/<Datei>")
     for name in ("Abschlussrapport.html", "Ermittlungsprotokoll.html"):
         datei = pfad / "rapport" / name
         print(f"  {name}: {'vorhanden' if datei.is_file() else 'noch nicht erstellt'}")

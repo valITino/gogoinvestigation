@@ -143,7 +143,7 @@ class Bedienung:
     def __init__(self, ablage: Path | None = None):
         self.geheimnis = secrets.token_urlsafe(32)
         self.startcode: str | None = secrets.token_urlsafe(18)      # gilt genau einmal: Der Browser tauscht ihn gegen das Geheimnis
-        eigen = os.environ.get("OSINT_ABLAGE", "").strip()       # dieselbe Variable liest der Wächter, um die Ablage für Agenten zu sperren
+        eigen = os.environ.get("OSINT_ABLAGE", "").strip()       # eine eigene Ablage. Die Vorgabe sperren die Einstellungen des Projekts für Agenten
         self.ablage = Path(ablage or eigen).expanduser() if (ablage or eigen) else Path.home() / "OSINT-Ablage"
         if innerhalb(self.ablage):
             raise Fehler("Die Ablage für Klartext muss ausserhalb des Projektordners liegen.")

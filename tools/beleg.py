@@ -15,7 +15,7 @@ Führt eine Stimme die Adresse, heisst der Wert «ja».
 
 Alle Angaben lassen sich auch als Optionen mitgeben (siehe --help). Eingetragen wird erst nach Bestätigung, und
 ein Eintrag lässt sich nicht mehr ändern. Das Werkzeug läuft nur an einem Terminal: Ein Agent kann sich keinen
-Beleg selbst schreiben, der Wächter lehnt den Aufruf ab.
+Beleg selbst schreiben: Das Werkzeug verlangt ein Terminal, und die Berechtigungen verbieten den Befehl.
 
 In den Wortlaut gehört, was die Quelle zum Indikator sagt, keine Personendaten. Die PII-Prüfung liest mit und
 weist AHV-Nummern, IBAN, Telefonnummern und Ähnliches ab.
@@ -76,7 +76,7 @@ def erfassen(fall_id: str, *, indikator: str, typ: str, quelle: str, abgeklaert:
              anonymisierung: str | None = None, art: str | None = None, dienst: str | None = None, residential: bool = False,
              tatzeit: datetime | None = None, jetzt: datetime | None = None, weg: str = "Terminal") -> dict:
     """Prüft die Angaben und trägt den Beleg ein. Gibt den Protokolleintrag zurück. Kein Terminal nötig: Die Sperre für
-    Agenten liegt in main() und im Wächter, damit sich diese Funktion im Selbsttest prüfen lässt."""
+    Agenten liegt in main() und in den Berechtigungen, damit sich diese Funktion im Selbsttest prüfen lässt."""
     fall_daten(fall_id)
     pfad = fall_pfad(fall_id)
     jetzt = jetzt or datetime.now(timezone.utc)

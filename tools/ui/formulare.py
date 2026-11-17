@@ -209,7 +209,7 @@ def bedienen_seite(fall: daten.Fall, bedienung, stand: dict | None, verfuegbar: 
     fid = fall.id
     h = [kopf, "<h2>Ermittlung</h2>", f'<div id="ermittlung" data-fall="{esc(fid)}">{ermittlung_feld(fid, stand, verfuegbar)}</div>',
          "<p class='klein'>Die Oberfläche startet Claude Code im Projektordner mit <code>/ermittlung "
-         f"{esc(fid)}</code>. Wächter, Verbotsregeln, das Gateway und die Protokoll-Hooks gelten wie am Terminal. Die Modelle bleiben, wie das Projekt sie festlegt.</p>"
+         f"{esc(fid)}</code>. Berechtigungen, das Gateway und die Protokoll-Hooks gelten wie am Terminal. Die Modelle bleiben, wie das Projekt sie festlegt.</p>"
          + (f"<p class='klein' id='abrechnung'>{esc(abrechnung)}</p>" if abrechnung else "")]
     h.append("<h2>Freigaben</h2><p class='klein'>Drei Dinge sind aus, bis der Sachbearbeiter sie freigibt. Eine Freigabe braucht, wer sie verantwortet, und ihre Grundlage.</p>")
     for f in fall.freigaben():

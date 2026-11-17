@@ -174,8 +174,8 @@ python3 tools/pseudonymisieren.py /sicher/rapport.docx \
 | `--feldmarken` | Eine andere Feldmarken-Liste als `tools/feldmarken.txt`. |
 
 Das Werkzeug läuft nur an einem Terminal. Aus Claude Code heraus startet es nicht, auch nicht über `!`: Was es
-auf den Bildschirm schreibt, ist Klartext und stünde sonst im Gespräch. Der Wächter sperrt den Aufruf für
-Agenten, in jeder Phase.
+auf den Bildschirm schreibt, ist Klartext und stünde sonst im Gespräch. Die Berechtigungen verbieten den Aufruf
+für Agenten.
 
 ### Ablauf am Bildschirm
 

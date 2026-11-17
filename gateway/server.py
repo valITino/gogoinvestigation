@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from . import (kern, quellen_infrastruktur, quellen_ip, quellen_krypto, quellen_szene, quellen_urlscan,  # noqa: F401  (registrieren die Werkzeuge)
                quellen_web)
+from .akte import eingang_stand
 from .kern import FREIGABEN, Fall, einstellung, fall_laden, protokoll_lesen, werkzeug
 from .quellen import QUELLEN
 
@@ -55,10 +56,16 @@ async def fall_status(fall: Fall) -> dict:
         e = (akte.daten.get("freigaben") or {}).get(name) or {}
         freigaben[name] = ({"erteilt": True, "durch": e.get("durch"), "am": e.get("am")}
                            if akte.freigabe(name) else {"erteilt": False})
-    eingang = sorted(p.name for p in (akte.pfad / "eingang").glob("*") if p.is_file() and not p.name.startswith("."))
+    # Genannt werden nur Dokumente, die die PII-Prüfung aufgenommen hat. Was von Hand in den Eingang kopiert oder danach
+    # verändert wurde, ist nicht geprüft: Der Agent bekommt die Zahl, nicht den Namen (ein Dateiname kann eine Person nennen).
+    eingang, ungeprueft = eingang_stand(akte.pfad)
     return {"fall": akte.id, "titel": akte.daten.get("titel"), "auftrag": akte.daten.get("auftrag"),
             "eroeffnet": akte.daten.get("eroeffnet"), "freigaben": freigaben,
             "eingang": [f"faelle/{akte.id}/eingang/{n}" for n in eingang],
+            **({"eingang_ungeprueft": {"anzahl": len(ungeprueft),
+                                       "hinweis": "Diese Dokumente sind nicht durch die PII-Prüfung gegangen (von Hand kopiert oder nachträglich verändert). "
+                                                  "Nicht lesen und nicht auflisten. Dem Sachbearbeiter melden: Er nimmt sie über die Oberfläche oder mit "
+                                                  "tools/fall.py aufnehmen auf."}} if ungeprueft else {}),
             "abfragen_bisher": len(eintraege), "letzte_protokoll_id": eintraege[-1]["id"] if eintraege else None,
             "quellen": quellen,
             "proxy_aktiv": bool(einstellung("OSINT_PROXY"))}

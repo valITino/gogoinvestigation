@@ -17,6 +17,7 @@ import json
 import re
 from urllib.parse import quote
 
+from gateway.akte import eingang_stand
 from tools import rapport
 from tools._html import STATUS, TYPEN
 from tools.ui import blaetter, daten, darsteller as ds
@@ -221,8 +222,12 @@ def kopf(fall: daten.Fall) -> str:
         f'<span class="klein">{"erledigt" if s["erledigt"] else "nicht abgelegt" if s["uebersprungen"] else "offen"}</span></li>'
         for i, s in enumerate(fall.schritte()))
     muster = '<span class="marke z-warnung">MUSTER: erfundener Fall</span> ' if d.get("muster") else ""
+    # Was jemand von Hand in den Eingang kopiert hat, ist nicht durch die PII-Prüfung gegangen. Die Oberfläche nennt die Zahl, nicht die Namen
+    ungeprueft = len(eingang_stand(fall.pfad)[1])
+    warnung = (f'<p class="banner" role="alert">Im Eingang {"liegt 1 Dokument" if ungeprueft == 1 else f"liegen {ungeprueft} Dokumente"}, die nicht durch die '
+               f'PII-Prüfung gegangen sind (von Hand kopiert oder nachträglich verändert). <a href="{pfad(fall.id, "akten")}">Ansehen und bereinigen</a></p>' if ungeprueft else "")
     return (f'<div class="fallkopf"><div><span class="fallid">{esc(fall.id)}</span> {muster}<span class="falltitel">{esc(d.get("titel") or "")}</span></div>'
-            f'<div class="freigaben" aria-label="Freigaben">{freigaben}</div></div><ol class="schritte" aria-label="Stand der Ermittlung">{schritte}</ol>')
+            f'<div class="freigaben" aria-label="Freigaben">{freigaben}</div></div><ol class="schritte" aria-label="Stand der Ermittlung">{schritte}</ol>{warnung}')
 
 
 # --------------------------------------------------------------------------- Ansichten

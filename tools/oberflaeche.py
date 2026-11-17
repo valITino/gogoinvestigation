@@ -95,7 +95,7 @@ def selbstpruefung(port: int) -> int:
 
 
 def sitzungsprobe(fall: str, grund: str, ablage: str | None) -> int:
-    """Der Beweis am eigenen Arbeitsplatz: Eine Sitzung, die über die Oberfläche startet, läuft unter Wächter und Verbotsregeln."""
+    """Der Beweis am eigenen Arbeitsplatz: Eine Sitzung, die über die Oberfläche startet, läuft unter den Berechtigungen des Projekts."""
     from tools.ui import sitzung as sitzung_modul
     if grund:
         print(f"FEHLER: Die Probe läuft nur, wenn ein Mensch sie an einem Terminal startet ({grund}).", file=sys.stderr)

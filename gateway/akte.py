@@ -90,6 +90,25 @@ def sha256_datei(pfad: Path) -> str:
     return h.hexdigest()
 
 
+def eingang_stand(pfad: Path) -> tuple[list[str], list[str]]:
+    """Die Dokumente im Eingang einer Fallakte: (geprüft, ungeprüft). Geprüft ist, was die PII-Prüfung aufgenommen hat und
+    seither unverändert ist (Register eingang/.freigabe.json mit Prüfsumme). Alles andere wurde von Hand hineinkopiert
+    oder nachträglich verändert: Es ist nicht geprüft, und ein Agent liest es nicht."""
+    eingang = pfad / "eingang"
+    register_datei = eingang / ".freigabe.json"
+    try:
+        register = json.loads(register_datei.read_text(encoding="utf-8")).get("dateien", {}) if register_datei.is_file() else {}
+    except (OSError, ValueError):
+        register = {}
+    geprueft: list[str] = []
+    ungeprueft: list[str] = []
+    if eingang.is_dir():
+        for datei in sorted(p for p in eingang.glob("*") if p.is_file() and not p.name.startswith(".")):
+            eintrag = register.get(datei.name)
+            (geprueft if eintrag and eintrag.get("sha256") == sha256_datei(datei) else ungeprueft).append(datei.name)
+    return geprueft, ungeprueft
+
+
 def ursprung_extern(fall_id: str) -> str:
     return hashlib.sha256(f"osint-gateway|{fall_id}|extern".encode()).hexdigest()
 

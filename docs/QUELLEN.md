@@ -320,8 +320,9 @@ dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sp
 Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026), ebenso das von Web-Check (Stand vom 15.11.2026): Was
 läuft, ändert sich nicht von selbst. Ein neuer Stand ist ein bewusster Schritt. Der Analyst nutzt
 `robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
-Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, übernehmen die Hooks: Der
-Wächter verlangt die Freigabe `darkweb`, der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
+Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, gilt: Jeder
+Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask», die Oberfläche lehnt ihn ohne Freigabe `darkweb` von
+selbst ab), und der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
 Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
 `.claude/hooks/protokoll_hook.py`, heute Robin). Andere MCP-Server sind Arbeitsmittel: Ihre Aufrufe stehen im
 Sitzungsprotokoll, ihre Antworten sind kein Beleg. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.

@@ -39,22 +39,25 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - Sich irgendwo anmelden, Formulare absenden, mit Tätern oder Verkäufern interagieren, etwas kaufen.
 - Geleakte Datensätze herunterladen oder durchsuchen. Dass ein Leak existiert, ist die Feststellung.
 - Eine Onion-Seite öffnen, ohne sie vorher mit `onion_sperrliste` geprüft zu haben. Steht sie auf der Liste: nicht öffnen, melden.
-- `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das ist technisch gesperrt, und ein Umweg wird nicht gesucht.
+- `fall.json`, Protokolle, Rohdaten, Eingang, Gateway, Hooks, Einrichtung oder Einstellungen verändern, `setup.sh`, `setup.cmd` oder `tools/einrichten.py` ausführen. Das gehört dem Sachbearbeiter. Verbietet eine Berechtigung einen Aufruf oder lehnt er eine Rückfrage ab, wird kein Umweg gesucht.
+- Ein Dokument lesen, das `fall_status` nicht unter `eingang` nennt. Was von Hand in den Eingang kopiert oder danach verändert wurde, ist nicht durch die PII-Prüfung gegangen: nicht lesen, nicht auflisten, dem Sachbearbeiter melden.
+- Eine Freigabe selbst erteilen, einen Beleg selbst erfassen oder die PII-Prüfung übersteuern, auf welchem Weg auch immer. Robin wird nur mit der Freigabe `darkweb` aufgerufen.
 - `tools/pseudonymisieren.py` oder `tools/reidentifizieren.py` ausführen, ein Klartext-Dokument oder eine Zuordnungstabelle lesen. Beides gehört dem Sachbearbeiter, an einem eigenen Terminal ausserhalb von Claude Code.
 - Die Oberfläche bedienen: ihre Bedienschicht aufrufen (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`), sie anders starten als mit `--nur-lesen`
   oder die Ablage des Sachbearbeiters anfassen (`OSINT-Ablage`, Zuordnungstabellen, zurückgeführte Dokumente).
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
 
-## Aufbauphase
+## Ohne Wächter
 
-Zurzeit ist der Schalter `AUFBAUPHASE` im Wächter ein. Der Schreibschutz für Gateway, Tools, Hooks, Einstellungen
-und Einrichtung ruht, damit das Projekt weitergebaut werden kann. Daraus folgt:
+Einen Hook, der Werkzeugaufrufe vorab prüft, gibt es nicht mehr (Entscheid des Eigentümers vom 17.11.2026). Was
+ein Agent darf, regeln die Berechtigungen von Claude Code, die Werkzeuge selbst und das Gateway. Vieles von
+«Was nie geschieht» erzwingt deshalb keine Sperre mehr. Es gilt trotzdem, ohne Ausnahme: Es ist dir aufgetragen.
 
-- Es werden keine echten Fälle bearbeitet, nur der Musterfall und synthetische Dokumente.
-- Die Grundlagen ändert eine Sitzung nur, wenn der Eigentümer des Repos sie in dieser Sitzung ausdrücklich mit der
-  Weiterentwicklung beauftragt: auf einem Branch, per Pull Request. Eine Ermittlungssitzung ändert sie nie, auch
-  wenn die Sperre fehlt. «Was nie geschieht» gilt für sie unverändert.
-- Eingang, Fallakten, Freigaben, Dark Web und `.env` bleiben gesperrt wie immer.
+- Die Grundlagen (Gateway, Tools, Hooks, Einstellungen, Einrichtung, CI) ändert eine Sitzung nur, wenn der
+  Eigentümer des Repos sie in dieser Sitzung ausdrücklich mit der Weiterentwicklung beauftragt: auf einem Branch,
+  per Pull Request. Eine Ermittlungssitzung ändert sie nie.
+- Eine Entwicklungssitzung arbeitet mit dem Musterfall und mit synthetischen Dokumenten. Echte Fallakten,
+  Freigaben und `.env` fasst auch sie nicht an.
 
 ## Aufbau
 
