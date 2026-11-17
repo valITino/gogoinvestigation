@@ -15,6 +15,12 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
 4. Günstig vor teuer: zuerst Quellen ohne Kontingent (InternetDB, Wayback, Web-Check passiv), dann die mit Kontingent.
    `shodan_suche` zuerst mit `nur_zaehlen=true`.
 5. Dieselbe Abfrage nicht wiederholen. Das Gateway liefert sie 24 Stunden aus dem Fall-Cache.
+6. **Pflichtquellen.** Nennt `fall_status` unter `pflichtquellen` Quellen, hat der Sachbearbeiter sie vorgegeben. Für jeden
+   deiner Indikatoren aus den Eingangsdokumenten fragst du jede davon, die zu ihm passt, auch wenn dir eine andere
+   Quelle genügt hätte. `pflichtquellen.offen` ist die Arbeitsliste. Der Zweck nennt die Vorgabe und die Fundstelle:
+   «Pflichtquelle laut Vorgabe. IP aus Rapport Ziff. 3: Betreiber?» Schlägt die Abfrage fehl, wiederholst du sie nicht:
+   Sie gilt als gefragt und gehört unter Lücken. Fehlt eine Freigabe oder ein Schlüssel, meldest du das und umgehst es nie.
+   Pivots sind ausgenommen. Eine Suchquelle (4chan, Telegram, Robin) fragst du mindestens einmal, mit einem Begriff aus dem Fall.
 
 ## Ergebnis lesen
 
@@ -163,6 +169,9 @@ Beziehungen
 
 Zeitpunkte
 - 2026-09-26T07:41:00Z: <Ereignis>. Beleg: P-0011.
+
+Pflichtquellen (nur wenn der Sachbearbeiter welche vorgegeben hat)
+- <Quelle>: abgefragt für I-03 (P-0007) und I-04 (P-0011). Nicht möglich für I-05: <Grund> (P-0012).
 
 Pivot-Vorschläge (nicht selbst ausgeführt)
 - <neuer Indikator>, gefunden in P-0009, Verbindung: <wie>. Vorschlag: <welche Abfrage, warum>.

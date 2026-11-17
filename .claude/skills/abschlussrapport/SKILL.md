@@ -115,8 +115,14 @@ Zeiten als UTC mit `Z` oder als reines Datum. Der Generator rechnet in Ortszeit 
   festen Vorbehalt, bei `nicht geprüft` zusätzlich «Abklärung nachholen». Diesen Text schreibst du nicht selbst
   und schwächst ihn nicht ab.
 
+- Hat der Sachbearbeiter Pflichtquellen vorgegeben, prüft das Werkzeug am Protokoll, ob jede für jeden passenden Indikator
+  aus den Eingangsdokumenten gefragt wurde. Die Tabelle dazu setzt der Generator in Abschnitt 4, du schreibst sie nicht.
+  Ein Hinweis «Pflichtquelle … ist fehlgeschlagen» gehört unter `luecken`, mit dem Beleg.
+
 Meldet das Werkzeug einen Mangel, behebst du ihn an der Sache: Beleg nachtragen, Sicherheit senken, Aussage zur
 Hypothese machen oder streichen. Du erfindest keine P-Nummern und verbiegst keine Aussage, damit sie durchgeht.
+Einen Mangel «Pflichtquelle … nicht abgefragt» kannst du nicht beheben: Es fehlt eine Abfrage, kein Text. Melde ihn der
+Hauptsitzung mit Quelle und Indikator. Du streichst dafür keinen Indikator und änderst weder `herkunft` noch `rolle`.
 
 ## Bewertung der Indikatoren
 

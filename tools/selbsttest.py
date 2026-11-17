@@ -3386,8 +3386,8 @@ def _():
     skript, seite_ = lesen(PROJEKT / "tools" / "ui" / "app.js"), ui_server.SEITE
     assert re.findall(r"\.innerHTML\s*=\s*([^;]+);", skript) == ["html"] and "function einsetzen(ziel, html) { ziel.innerHTML = html; }" in skript, "HTML wird an genau einer Stelle eingesetzt"
     eingesetzt = set(re.findall(r"(?<!function )einsetzen\((?:\$\(\"[^\"]*\"\)|\w+),\s*([^)]+)\)", skript))
-    assert eingesetzt and eingesetzt <= {"daten.html", "d.html", "d.feld", 'd.tafel || ""'}, f"eingesetzt wird nur HTML aus Antworten des eigenen Servers: {eingesetzt}"
-    assert skript.count("einsetzen(") == 6, "jede Stelle, die HTML einsetzt, ist oben geprüft"
+    assert eingesetzt and eingesetzt <= {"daten.html", "d.html", "d.feld", 'd.tafel || ""', 'd.pflicht || ""'}, f"eingesetzt wird nur HTML aus Antworten des eigenen Servers: {eingesetzt}"
+    assert skript.count("einsetzen(") == 7, "jede Stelle, die HTML einsetzt, ist oben geprüft"
     assert not re.search(r"insertAdjacentHTML|document\.write|\beval\(|new Function|outerHTML\s*=|srcdoc", skript)
     fremd_ = [a for a in re.findall(r"https?://[^\s\"'`)]+", skript + lesen(PROJEKT / "tools" / "ui" / "app.css") + seite_) if not a.startswith("http://www.w3.org/")]
     assert not fremd_, f"Die Oberfläche nennt fremde Adressen: {fremd_[:3]}"
@@ -4765,6 +4765,326 @@ def _():
     assert "--model" not in lesen(PROJEKT / "tools" / "ui" / "sitzung.py").replace('"--model", "--fallback-model"', "")
     skill = lesen(PROJEKT / ".claude" / "skills" / "ermittlung" / "SKILL.md")
     assert ui_sitzung.VORGABEN_KOPF.split(" (")[0] in skill and "keine Freigabe" in skill, "der Skill /ermittlung muss wissen, was Vorgaben aus der Oberfläche sind und was sie nicht dürfen"
+
+
+@contextlib.contextmanager
+def pflicht_umgebung(robin: bool | None = None):
+    """Für die Tests der Pflichtquellen: eine feste Einrichtung, gleich auf jedem Rechner. Zwei Quellen haben einen Schlüssel
+    (Shodan, VirusTotal), alle anderen keinen, Web-Check läuft nicht. `robin`: ob Robin an diesem Arbeitsplatz eingeschaltet ist
+    (None: wie die lokalen Einstellungen es sagen)."""
+    from gateway import pflichtquellen as pq
+    from gateway.quellen import QUELLEN
+    schluessel = {q.env for q in QUELLEN if q.env} | {"RANSOMWARE_LIVE_V2", "WEBCHECK_URL"}
+    echt = (plattform.einstellung, pq._erreichbar, pq._robin_bereit)
+    plattform.einstellung = lambda name, standard="": (("selbsttest" if name in ("SHODAN_API_KEY", "VIRUSTOTAL_API_KEY") else standard)
+                                                      if name in schluessel else echt[0](name, standard))
+    pq._erreichbar = lambda url: False
+    if robin is not None:
+        pq._robin_bereit = lambda: (True, "") if robin else (False, "an diesem Arbeitsplatz nicht eingeschaltet")
+    try:
+        yield pq
+    finally:
+        plattform.einstellung, pq._erreichbar, pq._robin_bereit = echt
+
+
+@test("Pflichtquellen: Was der Sachbearbeiter vorgibt, muss gefragt sein. Der Stand kommt aus dem Protokoll, der Rapport verweigert Lücken, ein Agent kann die Vorgabe nicht ändern")
+def _():
+    from gateway import pflichtquellen as pq, server as gateway_server
+    from gateway.quellen import QUELLEN, ROBIN, VORGABEN
+    # Jede Quelle des Verzeichnisses hat eine Regel. Als Pflicht gilt nie mehr, als die Abdeckung der Oberfläche der Quelle zutraut
+    assert set(VORGABEN) == {q.name for q in QUELLEN} | {ROBIN} and pq.reihenfolge() == [q.name for q in QUELLEN] + [ROBIN]
+    for name, v in VORGABEN.items():
+        assert v.typen or v.einmal, f"{name}: weder Typen noch «einmal im Fall»"
+        assert v.einmal or set(v.typen) <= set(ui_blaetter.QUELLE_TYPEN.get(name, ())), f"{name}: Pflicht für einen Typ, zu dem die Abdeckung der Oberfläche nichts sagt"
+        assert v.familie in ("", *pq.FAMILIEN) and set(v.typen) <= set(pq.TYP_NAME), name
+    assert VORGABEN[ROBIN].freigabe == "darkweb" and set(VORGABEN[ROBIN].werkzeuge) <= set(ROBIN_WERKZEUGE)
+
+    btc = "17vP8p4M6YWDDNMazPmj6sVUVmXn1qo54L"
+    monero = "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A"
+    tx = "ef68e6113c48a3faa8e30811f4cfc17c7890a9b42a52ba0e4a578003bbb7eb2f"
+    ind = [{"id": "I-01", "typ": "ip", "wert": "203.0.113.7", "herkunft": "Rapport Ziff. 1"},
+           {"id": "I-02", "typ": "ip", "wert": "198.51.100.23", "herkunft": "Rapport Ziff. 2"},
+           {"id": "I-03", "typ": "url", "wert": "https://kundenportal.example/login", "herkunft": "Rapport Ziff. 3"},
+           {"id": "I-04", "typ": "wallet", "wert": btc, "herkunft": "Rapport Ziff. 4", "belege": ["P-0009"]},
+           {"id": "I-05", "typ": "transaktion", "wert": tx, "herkunft": "Rapport Ziff. 4"},
+           {"id": "I-06", "typ": "ip", "wert": "192.0.2.99", "herkunft": "Pivot aus P-0001"},
+           {"id": "I-07", "typ": "ip", "wert": "192.0.2.10", "herkunft": "Rapport Ziff. 5", "rolle": "Geschädigtenseite, nicht abfragen", "abfragen": False},
+           {"id": "I-08", "typ": "wallet", "wert": monero, "herkunft": "Rapport Ziff. 6"}]
+
+    def e(nr: int, werkzeug: str, quelle: str, ziel: str, ergebnis: str = "ok", **mehr) -> dict:
+        return {"id": f"P-{nr:04d}", "werkzeug": werkzeug, "quelle": quelle, "ziel": ziel, "ergebnis": ergebnis, "art": "passiv", **mehr}
+    protokoll = [e(1, "shodan_host", "Shodan", "203.0.113.7"),
+                 e(2, "virustotal_ip", "VirusTotal", "203.0.113.7", "kein_treffer"),
+                 e(3, "virustotal_ip", "VirusTotal", "198.51.100.23", "fehler"),
+                 e(4, "virustotal_url", "VirusTotal", "https://kundenportal.example/login/"),
+                 e(5, "ip_abruf", "RIPEstat", "198.51.100.23 (network-info)"),
+                 e(6, "krypto_abruf", "OFAC", "SDN-Liste"),
+                 e(7, "krypto_zuordnung", "Gateway", btc, art="auswertung", grundlage=["P-0006"], quellen=["OFAC"]),
+                 e(8, "krypto_abruf", "TronGrid", tx),
+                 e(9, "krypto_abruf", "Chainabuse", "1 Adresse(n)")]
+    fall = {"pflichtquellen": {"quellen": ["4chan", "Shodan", "VirusTotal", "RIPEstat", "Krypto-Zuordnung", "Chainabuse", "Bitcoin (mempool.space)", "TRON (TronGrid)",
+                                           "Ethereum (Blockscout)", "ransomware.live", "Gibtsnicht"], "am": "2026-11-17T08:00:00+01:00", "durch": "MUS"}}
+    with pflicht_umgebung():
+        assert pq.stand({}, ind, protokoll) is None and pq.kurz(None) is None, "ohne Vorgabe gibt es keinen Stand und keine Pflicht"
+        s = pq.stand(fall, ind, protokoll)
+        z = {x["quelle"]: x for x in s["zeilen"]}
+
+        def bild(name: str) -> tuple:
+            return z[name]["stand"], z[name]["faellig"], z[name]["erfuellt"], z[name]["fehlgeschlagen"], z[name]["offen"]
+        # Fällig ist, was aus den Eingangsdokumenten stammt und abgefragt werden darf: kein Pivot, nichts von der Seite der Geschädigten
+        assert bild("Shodan") == ("offen", ["I-01", "I-02"], ["I-01"], [], ["I-02"]), bild("Shodan")
+        # «Kein Treffer» ist gefragt. Ein Fehlschlag ist gefragt und steht als Fehlschlag da. Eine URL gilt mit und ohne Schrägstrich am Ende
+        assert bild("VirusTotal") == ("fehlgeschlagen", ["I-01", "I-02", "I-03"], ["I-01", "I-03"], ["I-02"], []), bild("VirusTotal")
+        assert bild("RIPEstat") == ("offen", ["I-01", "I-02"], ["I-02"], [], ["I-01"]), "ein Zusatz hinter dem Ziel gehört zur selben Abfrage"
+        # Hinter einer Auswertung zählen die Abfragen ihrer Grundlage. Was der Indikator unter seinen Belegen führt, zählt auch
+        assert bild("Krypto-Zuordnung") == ("erfuellt", ["I-04"], ["I-04"], [], []) and z["Krypto-Zuordnung"]["belege"] == {"I-04": ["P-0006"]}, z["Krypto-Zuordnung"]
+        assert bild("Chainabuse") == ("erfuellt", ["I-04"], ["I-04"], [], []), "Monero lässt sich nicht verfolgen: keine Abfrage, keine Pflicht"
+        # Ketten: Eine Bitcoin-Adresse passt nur zu Bitcoin. Die Zahlung mit 64 Hex-Zeichen wurde bei TRON gefunden, also entfällt sie für Bitcoin
+        assert bild("Bitcoin (mempool.space)") == ("offen", ["I-04"], [], [], ["I-04"]), bild("Bitcoin (mempool.space)")
+        assert bild("TRON (TronGrid)") == ("erfuellt", ["I-05"], ["I-05"], [], []), bild("TRON (TronGrid)")
+        assert (z["Ethereum (Blockscout)"]["stand"], z["ransomware.live"]["stand"], z["Gibtsnicht"]["stand"]) == ("entfaellt", "entfaellt", "unbekannt")
+        assert bild("4chan") == ("offen", ["Fall"], [], [], ["Fall"]), "eine Suchquelle ist einmal im Fall fällig, auch ohne passenden Indikator"
+        assert s["zahlen"] == {"faellig": 12, "erfuellt": 7, "fehlgeschlagen": 1, "offen": 4}, s["zahlen"]
+        assert s["quellen"][0] == "Shodan" and s["quellen"][-1] == "Gibtsnicht", "die Vorgabe steht in der Reihenfolge des Verzeichnisses, Unbekanntes bleibt sichtbar"
+        assert [(o["quelle"], o["indikator"]) for o in s["offen"]] == [("Shodan", "I-02"), ("RIPEstat", "I-01"), ("4chan", None), ("Bitcoin (mempool.space)", "I-04")], s["offen"]
+        maengel, hinweise = pq.maengel(s), pq.hinweise(s)
+        assert len(maengel) == 4 and all(m.startswith("Pflichtquelle ") and "nachholen" in m for m in maengel) and any("4chan: im Fall nie abgefragt" in m for m in maengel), maengel
+        assert len(hinweise) == 2 and any("VirusTotal" in h and "I-02" in h and "P-0003" in h and "luecken" in h for h in hinweise) and any("Gibtsnicht" in h for h in hinweise), hinweise
+        kurz = pq.kurz(s, 2)
+        assert kurz["quellen"] == s["quellen"] and len(kurz["offen"]) == 2 and kurz["offen_weitere"] == 2 and "ersetzt keine Freigabe" in " ".join(kurz["regel"].split()), kurz
+        # Steht die Kette einer Zahlung nicht fest, sind beide Familien fällig. Sagt das Dokument «Bitcoin», nur diese
+        zo = {x["quelle"]: x for x in pq.stand(fall, ind, [x for x in protokoll if x["id"] != "P-0008"])["zeilen"]}
+        assert zo["Bitcoin (mempool.space)"]["faellig"] == ["I-04", "I-05"] and zo["TRON (TronGrid)"]["offen"] == ["I-05"], (zo["Bitcoin (mempool.space)"], zo["TRON (TronGrid)"])
+        mit_hinweis = [dict(i, rolle="Lösegeldzahlung (Bitcoin)") if i["id"] == "I-05" else i for i in ind]
+        zh = {x["quelle"]: x for x in pq.stand(fall, mit_hinweis, protokoll[:7])["zeilen"]}
+        assert zh["TRON (TronGrid)"]["stand"] == "entfaellt" and zh["Bitcoin (mempool.space)"]["faellig"] == ["I-04", "I-05"], (zh["TRON (TronGrid)"], zh["Bitcoin (mempool.space)"])
+        # Vor der Extraktion steht noch nicht fest, wofür eine Quelle fällig wird. Eine Suchquelle ist es von Anfang an
+        frueh = pq.stand(fall, [], [])
+        assert {x["quelle"]: x["stand"] for x in frueh["zeilen"]}["Shodan"] == "wartet" and frueh["offen"] == [{"quelle": "4chan", "indikator": None, "typ": None, "wert": None}]
+        assert "stehen noch nicht fest" in pq.kurz(frueh)["hinweis"] and pq.kurz(frueh)["offen"] == [{"quelle": "4chan", "faellig": "einmal im Fall, womit, wählt der Analyst"}]
+        # Robin: Der Zustandsbericht ist keine Suche. Startet Tor noch, hat Robin nicht gesucht
+        ordner = Path(tempfile.mkdtemp(prefix="osint-pflicht-"))
+        try:
+            (ordner / "rohdaten" / "extern").mkdir(parents=True)
+            (ordner / "rohdaten" / "extern" / "X-0002_robin_search.json").write_text('{"status": "tor_bootstrapping"}', encoding="utf-8")
+            (ordner / "rohdaten" / "extern" / "X-0003_robin_search.json").write_text('{"status": "ok", "results": []}', encoding="utf-8")
+
+            def x(nr: int, werkzeug: str) -> dict:
+                return {"id": f"X-{nr:04d}", "werkzeug": werkzeug, "quelle": "Robin (Tor)", "art": "tor", "ziel": "musterlocker", "ergebnis": "ok",
+                        "antwort": {"rohdaten": f"rohdaten/extern/X-{nr:04d}_{werkzeug}.json"}}
+            dunkel = {"pflichtquellen": {"quellen": [ROBIN]}, "freigaben": {}}
+            zeile = lambda eintraege: pq.stand(dunkel, [], eintraege, ordner)["zeilen"][0]  # noqa: E731
+            assert zeile([x(1, "robin_health")])["stand"] == "offen" and "Freigabe darkweb fehlt" in zeile([])["grund"], zeile([x(1, "robin_health")])
+            assert zeile([x(1, "robin_health"), x(2, "robin_search")])["stand"] == "fehlgeschlagen", "startet Tor noch, hat Robin nicht gesucht"
+            assert zeile([x(2, "robin_search"), x(3, "robin_search")])["stand"] == "erfuellt"
+        finally:
+            shutil.rmtree(ordner, ignore_errors=True)
+
+    # Am Musterfall, mit seinem Protokoll: vorgeben, Stand lesen, fall_status, Rapport. Danach ist der Fall wieder, wie er war
+    ui_vorbereiten()
+    pfad_m = PROJEKT / "faelle" / MUSTER
+    original = (pfad_m / "fall.json").read_bytes()
+    lokal = PROJEKT / ".claude" / "settings.local.json"
+    lokal_vorher = lokal.read_bytes() if lokal.is_file() else None
+    wahl = ["Shodan", "VirusTotal", "Ahmia", "4chan", "Bitcoin (mempool.space)"]
+    try:
+        with pflicht_umgebung():
+            bereit = {w["name"]: w for w in pq.waehlbar(json.loads(original))}
+            assert (bereit["Shodan"]["gruppe"], bereit["Ahmia"]["gruppe"], bereit[ROBIN]["gruppe"]) == ("mit Schlüssel", "ohne Schlüssel", "Dark Web")
+            assert bereit["Shodan"]["bereit"] and not bereit["Spur"]["bereit"] and "SPUR_TOKEN" in bereit["Spur"]["grund"] and not bereit["Web-Check"]["bereit"]
+            assert bereit["Ethereum (Blockscout)"]["bereit"], "eine Quelle, die ohne Schlüssel gedrosselt läuft, gilt als bereit"
+            # Vorgeben lässt sich nur, was es gibt, was bereit ist und wofür die Freigabe erteilt ist. Robin ist bereit, wenn die Einrichtung ihn eingeschaltet hat
+            lokal.write_text(json.dumps({"enabledMcpjsonServers": ["osint"], "disabledMcpjsonServers": ["robin"]}), encoding="utf-8")
+            assert pq._robin_bereit()[0] is False
+            for namen, grund in ((["Shodan", "Gibtsnicht"], "gibt es nicht"), (["Spur"], "Nicht bereit"), ([ROBIN], "Nicht bereit")):
+                try:
+                    fallwerkzeug.pflichtquellen_setzen(MUSTER, namen)
+                    raise AssertionError(f"angenommen: {namen}")
+                except fallwerkzeug.Fehler as fehler:
+                    assert grund in str(fehler), fehler
+            lokal.write_text(json.dumps({"enabledMcpjsonServers": ["osint", "robin"]}), encoding="utf-8")
+            assert pq._robin_bereit() == (True, "")
+            try:
+                fallwerkzeug.pflichtquellen_setzen(MUSTER, [ROBIN])
+                raise AssertionError("Robin ohne Freigabe vorgegeben")
+            except fallwerkzeug.Fehler as fehler:
+                assert "Freigabe 'darkweb'" in str(fehler) and "ersetzt keine Freigabe" in str(fehler), fehler
+            assert (pfad_m / "fall.json").read_bytes() == original, "eine abgelehnte Vorgabe hat fall.json verändert"
+            fallwerkzeug.freigabe_setzen(MUSTER, "darkweb", durch="MUS", vermerk="Selbsttest")
+            assert fallwerkzeug.pflichtquellen_setzen(MUSTER, [ROBIN])["quellen"] == [ROBIN]
+            (pfad_m / "fall.json").write_bytes(original)
+
+            eintrag = fallwerkzeug.pflichtquellen_setzen(MUSTER, ["VirusTotal", " Shodan ", "Ahmia", "4chan", "Bitcoin (mempool.space)", "Shodan"], weg="Oberfläche")
+            assert eintrag["quellen"] == wahl and eintrag["weg"] == "Oberfläche" and eintrag["am"] and json.loads(lesen(pfad_m / "fall.json"))["pflichtquellen"] == eintrag, eintrag
+            s = pq.stand_fuer(json.loads(lesen(pfad_m / "fall.json")), pfad_m, belege_lesen(MUSTER))
+            assert s["zahlen"] == {"faellig": 11, "erfuellt": 8, "fehlgeschlagen": 0, "offen": 3}, s["zahlen"]
+            assert [(o["quelle"], o["indikator"]) for o in s["offen"]] == [("Shodan", "I-04"), ("VirusTotal", "I-04"), ("4chan", None)], s["offen"]
+            # Die Agenten sehen die Vorgabe und was offen ist mit fall_status. Ohne Vorgabe steht dort nichts dazu
+            status = asyncio.run(gateway_server.fall_status(MUSTER))["pflichtquellen"]
+            assert status["quellen"] == wahl and status["stand"]["offen"] == 3 and {"quelle": "Shodan", "indikator": "I-04", "typ": "ip", "wert": "198.51.100.23"} in status["offen"], status
+            assert {"quelle": "4chan", "faellig": "einmal im Fall, womit, wählt der Analyst"} in status["offen"] and "pflichtquellen" not in asyncio.run(gateway_server.fall_status(FALL))
+            # Der Rapport: Nie gefragt ist ein Mangel und verhindert ihn. Die Tabelle steht in Abschnitt 4
+            b = json.loads(lesen(pfad_m / "befunde.json"))
+            protokoll_m = {x["id"]: x for x in belege_lesen(MUSTER)}
+            maengel, hinweise = rapport.pruefen(b, protokoll_m, False, pfad_m)
+            assert len(maengel) == 3 and all(m.startswith("Pflichtquelle ") for m in maengel) and any("Shodan: nicht abgefragt für I-04" in m for m in maengel), maengel
+            entwurf = rapport.bauen(MUSTER, json.loads(lesen(pfad_m / "fall.json")), b, belege_lesen(MUSTER), kette_pruefen(MUSTER), maengel, hinweise, True)
+            for stueck in ("<h3>Pflichtquellen</h3>", "○ nicht abgefragt", "✓ abgefragt", "über die Oberfläche", "nicht abgefragt für I-04", "einmal im Fall"):
+                assert stueck in entwurf, stueck
+            with contextlib.redirect_stdout(io.StringIO()) as ausgabe:
+                assert rapport.main([MUSTER, "--nur-pruefen"]) == 1 and "Pflichtquelle 4chan" in ausgabe.getvalue(), ausgabe.getvalue()
+            fallwerkzeug.pflichtquellen_setzen(MUSTER, ["Ahmia", "Bitcoin (mempool.space)"])
+            maengel, _ = rapport.pruefen(b, protokoll_m, False, pfad_m)
+            assert not maengel, maengel
+            fertig = rapport.bauen(MUSTER, json.loads(lesen(pfad_m / "fall.json")), b, belege_lesen(MUSTER), kette_pruefen(MUSTER), [], [], False)
+            abschnitt = fertig.split("<h3>Pflichtquellen</h3>")[1].split("<h2>")[0]
+            assert abschnitt.count("✓ abgefragt") == 2 and "○ nicht abgefragt" not in abschnitt and 'href="#I-08"' in abschnitt and "P-0044" in abschnitt, abschnitt[:600]
+            (pfad_m / "fall.json").write_bytes(original)
+            ohne = rapport.bauen(MUSTER, json.loads(original), b, belege_lesen(MUSTER), kette_pruefen(MUSTER), [], [], False)
+            assert "Pflichtquellen" not in ohne, "ohne Vorgabe steht im Rapport nichts dazu"
+        # Am Terminal: Ansehen geht immer. Vorgeben und Aufheben verlangen ein Terminal, und die Berechtigungen verbieten den Befehl für Agenten
+        sauber = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
+        r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "quellen", MUSTER], capture_output=True, text=True, encoding="utf-8",
+                           stdin=subprocess.DEVNULL, env=sauber)
+        assert r.returncode == 0 and f"Pflichtquellen für {MUSTER}: keine Vorgabe" in r.stdout and "[ ] Shodan" in r.stdout, r.stdout + r.stderr
+        for schalter in (["--keine"], ["--alle"], ["--pflicht", "Ahmia"]):
+            r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "quellen", MUSTER, *schalter], capture_output=True, text=True, encoding="utf-8",
+                               stdin=subprocess.DEVNULL, env=sauber)
+            assert r.returncode == 2 and "Terminal" in r.stderr, (schalter, r.stdout, r.stderr)
+        assert (pfad_m / "fall.json").read_bytes() == original, "ohne Terminal wurde eine Vorgabe geschrieben"
+        regeln = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]
+        assert {"Bash(python3 tools/fall.py quellen *)", "Bash(python tools/fall.py quellen *)"} <= set(regeln["deny"]) and not any("fall.py quellen" in x for x in regeln["allow"])
+        for datei, stueck in ((".claude/skills/ermittlung/SKILL.md", "Phase 4b: Pflichtquellen nachhalten"), (".claude/skills/ermittlungsstandard/SKILL.md", "**Pflichtquellen.**"),
+                              (".claude/skills/abschlussrapport/SKILL.md", "Pflichtquelle … nicht abgefragt"), ("CLAUDE.md", "Pflichtquellen")):
+            assert stueck in lesen(REPO / datei), f"{datei} nennt die Pflichtquellen nicht"
+    finally:
+        (pfad_m / "fall.json").write_bytes(original)
+        if lokal_vorher is None:
+            lokal.unlink(missing_ok=True)
+        else:
+            lokal.write_bytes(lokal_vorher)
+
+
+@test("Bedienung, Pflichtquellen: vor dem Start leer lassen, einzeln anwählen oder alle. Speichern nur mit Geheimnis und nicht, während die Ermittlung arbeitet. Der Stand steht in Ermittlung und Fallübersicht")
+def _():
+    from gateway.quellen import QUELLEN, ROBIN
+    u = bedien_vorbereiten()
+    b, port, aktion, merker = u["b"], u["port"], u["aktion"], u["merker"]
+    pfad_m = PROJEKT / "faelle" / MUSTER
+    original = (pfad_m / "fall.json").read_bytes()
+    fall = "PFLICHT-0001"
+    pfad = PROJEKT / "faelle" / fall
+    for ordner in fallwerkzeug.UNTERORDNER:
+        (pfad / ordner).mkdir(parents=True)
+    fallwerkzeug.schreiben(pfad / "fall.json", {"fall_id": fall, "titel": "Pflichtquellen", "auftrag": "Selbsttest", "sachbearbeiter": "MUS", "freigaben": {}})
+    wahl = ["Shodan", "VirusTotal", "Ahmia", "4chan"]
+
+    def ansicht(name: str, welcher: str = fall) -> dict:
+        return json.loads(ui_anfrage(port, f"/api/fall/{welcher}/{name}")[2])
+
+    def kopf_und_kaesten(html: str) -> tuple[dict, list[dict], Seite]:
+        seite = Seite(html)
+        return (next(a for t, a in seite.elemente if t == "details" and "data-pflicht" in a),
+                [a for t, a in seite.elemente if t == "input" and a.get("name") == "quelle"], seite)
+    try:
+        with pflicht_umgebung(robin=True):
+            # Vor dem Start: jede Quelle ein Kasten, nichts angewählt. Gesperrt ist, was nicht bereit ist oder eine Freigabe braucht, die fehlt
+            html = ansicht("ermittlung")["html"]
+            kopf, kaesten, seite = kopf_und_kaesten(html)
+            gesperrt = {a["value"] for a in kaesten if "disabled" in a}
+            assert len(kaesten) == len(QUELLEN) + 1 and not any("checked" in a for a in kaesten), len(kaesten)
+            assert {"Spur", "Web-Check", ROBIN} <= gesperrt and not {"Shodan", "VirusTotal", "Ahmia", "4chan", "Ethereum (Blockscout)"} & gesperrt, gesperrt
+            assert kopf["data-fall"] == fall and kopf["data-gespeichert"] == "[]" and "open" not in kopf, kopf
+            for stueck in ("Pflichtquellen", "(freiwillig)", "Alle auswählen", "Keine", "Mit Schlüssel", "Ohne Schlüssel", "Dark Web", "braucht die Freigabe «Dark Web»",
+                           "der Schlüssel SPUR_TOKEN fehlt", "ersetzt keine Freigabe", "Leer heisst: Das Team wählt die Quellen selbst"):
+                assert stueck in " ".join(seite.text.split()), stueck
+            assert not verstoesse(html, fall) and (ansicht("verlauf")["pflicht"], ansicht("verlauf")["pflicht_kurz"]) == ("", ""), "ohne Vorgabe gibt es keinen Stand"
+            # Speichern kann nur, wer das Geheimnis hat
+            for geheimnis in (None, "falsch"):
+                assert aktion("pflichtquellen", {"fall": fall, "quellen": ["Shodan"]}, geheimnis)[0] == 403
+            assert "pflichtquellen" not in json.loads(lesen(pfad / "fall.json"))
+            for angaben, grund in (({"fall": fall, "quellen": "Shodan"}, "erwartete Form"), ({"fall": fall, "quellen": ["Shodan", 7]}, "erwartete Form"),
+                                   ({"fall": fall, "quellen": ["Shodan", "Gibtsnicht"]}, "gibt es nicht"), ({"fall": fall, "quellen": ["Spur"]}, "Nicht bereit"),
+                                   ({"fall": fall, "quellen": [ROBIN]}, "Freigabe 'darkweb'"), ({"fall": "GIBTS-NICHT-01", "quellen": ["Shodan"]}, "existiert nicht")):
+                status, antwort = aktion("pflichtquellen", angaben)
+                assert status == 400 and grund in antwort["fehler"], (angaben, status, antwort)
+            assert "pflichtquellen" not in json.loads(lesen(pfad / "fall.json")), "eine abgelehnte Auswahl hat fall.json verändert"
+            status, antwort = aktion("pflichtquellen", {"fall": fall, "quellen": ["4chan", "VirusTotal", "Ahmia", "Shodan"]})
+            assert status == 200 and antwort["quellen"] == wahl and "4 Pflichtquellen gespeichert" in antwort["meldung"], antwort
+            eintrag = json.loads(lesen(pfad / "fall.json"))["pflichtquellen"]
+            assert eintrag["quellen"] == wahl and eintrag["weg"] == "Oberfläche" and eintrag["durch"] == "MUS" and eintrag["am"], eintrag
+            # Solange die Indikatoren nicht feststehen, ist nur fällig, was nicht an einem Indikator hängt
+            pflicht = ansicht("verlauf")["pflicht"]
+            text = " ".join(Seite(pflicht).text.split())
+            for stueck in ("Stand laut Protokoll", "über die Oberfläche", "noch nicht fällig", "stehen noch nicht fest", "einmal im Fall", "○ offen"):
+                assert stueck in text, (stueck, text)
+            assert not verstoesse(pflicht, fall) and ansicht("verlauf")["pflicht_kurz"] == "0 von 1 erfüllt, 1 offen", ansicht("verlauf")["pflicht_kurz"]
+            # Die Auswahl bleibt eingeklappt, damit der Chat seinen Platz behält. Ihre Kopfzeile nennt den Stand, der ausführliche steht darin
+            kopf, kaesten, seite = kopf_und_kaesten(ansicht("ermittlung")["html"])
+            assert json.loads(kopf["data-gespeichert"]) == wahl and "open" not in kopf and sorted(a["value"] for a in kaesten if "checked" in a) == sorted(wahl), kopf
+            assert any(t == "div" and a.get("id") == "pflicht-stand" for t, a in seite.elemente) and "noch nicht fällig" in seite.text
+            assert any(t == "span" and "data-pflicht-kurz" in a for t, a in seite.elemente) and "0 von 1 erfüllt, 1 offen" in seite.text
+            # Der Start nennt die Pflichtquellen im Verlauf. Im Auftrag stehen sie nicht: Die Ermittlung liest sie aus der Fallakte.
+            # Während sie arbeitet, bleibt die Vorgabe stehen
+            os.environ["OSINT_FAKE_LANG"] = "1"
+            try:
+                assert aktion("ermittlung_starten", {"fall": fall, "vorgaben": "Schwerpunkt Hosting."})[0] == 200
+                ende, s = time.time() + 30, {}
+                while time.time() < ende:
+                    s = ansicht("verlauf")
+                    if s["status"] == "laeuft" and any(z["text"] == "Das dauert." for z in s["verlauf"]):
+                        break
+                    time.sleep(0.1)
+                assert s.get("status") == "laeuft", s.get("status")
+                assert s["verlauf"][0]["text"] == f"Ermittlung starten: /ermittlung {fall}\n\nSchwerpunkt Hosting.\n\nPflichtquellen: {', '.join(wahl)}", s["verlauf"][0]
+                argv: list = []
+                while time.time() < ende and fall not in " ".join(argv):       # das Programm legt seinen Merker kurz nach der ersten Ausgabe ab
+                    with contextlib.suppress(OSError, ValueError):
+                        argv = json.loads(lesen(merker))["argv"]
+                    time.sleep(0.05)
+                assert argv[argv.index("-p") + 1] == ui_sitzung.auftrag_text(fall, "Schwerpunkt Hosting."), "die Pflichtquellen stehen in der Fallakte, nicht im Auftrag"
+                status, antwort = aktion("pflichtquellen", {"fall": fall, "quellen": []})
+                assert status == 400 and "arbeitet gerade" in antwort["fehler"] and json.loads(lesen(pfad / "fall.json"))["pflichtquellen"]["quellen"] == wahl, antwort
+                assert any(t == "fieldset" and "data-pflicht-felder" in a and "disabled" in a for t, a in Seite(ansicht("ermittlung")["html"]).elemente)
+                assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 200
+                ende = time.time() + 30
+                while time.time() < ende and ansicht("verlauf")["status"] != "angehalten":
+                    time.sleep(0.1)
+                assert ansicht("verlauf")["status"] == "angehalten"
+            finally:
+                os.environ.pop("OSINT_FAKE_LANG", None)
+            b.ermittlungen[fall].leser.join(timeout=30)
+            assert not any(t == "fieldset" and "data-pflicht-felder" in a and "disabled" in a for t, a in Seite(ansicht("ermittlung")["html"]).elemente)
+            # Leer lassen hebt die Vorgabe auf. Jeder Schritt steht im Sitzungsprotokoll
+            status, antwort = aktion("pflichtquellen", {"fall": fall, "quellen": []})
+            assert status == 200 and "Keine Pflichtquellen" in antwort["meldung"] and "pflichtquellen" not in json.loads(lesen(pfad / "fall.json")), antwort
+            assert (ansicht("verlauf")["pflicht"], ansicht("verlauf")["pflicht_kurz"]) == ("", "")
+            sitzung, _ = protokollwerkzeug.sitzungen_laden(fall)
+            schritte = [(z["schritt"], z.get("angabe") or "") for z in sitzung if z.get("ereignis") == "Oberflaeche" and "Pflichtquellen" in z["schritt"]]
+            assert schritte == [("Pflichtquellen vorgegeben", ", ".join(wahl)), ("Pflichtquellen aufgehoben", "")], schritte
+            start = next(z for z in sitzung if z.get("schritt") == "Ermittlung gestartet")
+            assert start["angabe"].endswith("Pflichtquellen: " + ", ".join(wahl)) and start.get("weg") == "Oberfläche", start
+            # Mit einem Protokoll dahinter (Musterfall): Der Stand zählt je Quelle, was gefragt wurde, und führt zu Indikator und Beleg
+            fallwerkzeug.pflichtquellen_setzen(MUSTER, wahl + ["Bitcoin (mempool.space)"], weg="Oberfläche")
+            pflicht = ansicht("verlauf", MUSTER)["pflicht"]
+            assert ansicht("verlauf", MUSTER)["pflicht_kurz"] == "8 von 11 erfüllt, 3 offen"
+            text = " ".join(Seite(pflicht).text.split())
+            for stueck in ("8 von 11 fälligen Abfragen erfüllt, 3 offen", "1 von 2 Indikatoren", "4 von 5 Indikatoren", "einmal im Fall", "✓ erfüllt", "○ offen"):
+                assert stueck in text, (stueck, text)
+            assert re.search(r"1 von 1 Indikator(?!en)", text), "ein einzelner Indikator steht in der Einzahl"
+            verweise = [a["href"] for t, a in Seite(pflicht).elemente if t == "a"]
+            assert f"#/fall/{MUSTER}/indikator/I-04" in verweise and f"#/fall/{MUSTER}/beleg/P-0044" in verweise and not verstoesse(pflicht, MUSTER), verweise
+            uebersicht = ansicht("uebersicht", MUSTER)["html"]
+            assert "<h2>Pflichtquellen</h2>" in uebersicht and uebersicht.index("<h2>Pflichtquellen</h2>") < uebersicht.index("<h2>Abdeckung"), "die Fallübersicht zeigt den Stand vor der Abdeckung"
+            assert any("Pflichtquelle Shodan" in punkt for punkt in ui_seiten.offene_punkte(ui_daten.Fall(MUSTER))), "was offen ist, steht auch unter den offenen Punkten"
+    finally:
+        (pfad_m / "fall.json").write_bytes(original)
+    assert "<h2>Pflichtquellen</h2>" not in ansicht("uebersicht", MUSTER)["html"]
+    # Das Skript im Browser: Wer vor dem Start angewählt und nicht gespeichert hat, meint es für diesen Start. Erst speichern, dann starten
+    skript = lesen(REPO / "tools" / "ui" / "app.js")
+    for stueck in ('senden("/api/aktion/pflichtquellen"', 'aktion === "ermittlung_starten" ? $("[data-pflicht]") : null', "!(await pflichtSpeichern(pflicht))",
+                   "if (!k.disabled) k.checked = true", 'felder.disabled = d.status === "laeuft" || d.status === "wartet"', "if (pflicht) pflicht.open = false"):
+        assert stueck in skript, f"im Skript der Oberfläche fehlt: {stueck}"
 
 
 @test("Bedienung, Ergebnisse: Unterlagen ansehen und einzeln holen, alles als ein Archiv mit Sitzungsprotokoll, Verlauf und Prüfsummen. Das Archiv liest nur")

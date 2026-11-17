@@ -833,6 +833,25 @@ class Bedienung:
         self.vermerken(fall, f"Freigabe erteilt: {art}", f"durch {eintrag['durch']}, Grundlage: {eintrag['vermerk']}")
         return {"meldung": f"Freigabe «{art}» erteilt durch {eintrag['durch']}. {FREIGABE_TEXT[art]}"}
 
+    def pflichtquellen(self, d: dict) -> dict:
+        """Gibt die Pflichtquellen eines Falls vor oder hebt die Vorgabe auf (leere Liste): Was vorgegeben ist, muss die Ermittlung
+        abfragen. Das entscheidet der Sachbearbeiter, wie eine Freigabe. Während die Ermittlung arbeitet, bleibt die Vorgabe stehen."""
+        fall = self._fall_id(str(d.get("fall") or ""))
+        namen = d.get("quellen")
+        if not isinstance(namen, list) or not all(isinstance(n, str) for n in namen):
+            raise Fehler("Die Auswahl hat nicht die erwartete Form.")
+        sitzung = self.ermittlungen.get(fall)
+        if sitzung is not None and sitzung.als_dict()["status"] in ("laeuft", "wartet"):
+            raise Fehler("Die Ermittlung arbeitet gerade. Die Pflichtquellen lassen sich ändern, sobald sie angehalten oder beendet ist.")
+        try:
+            eintrag = fallwerkzeug.pflichtquellen_setzen(fall, namen, weg="Oberfläche")
+        except (fallwerkzeug.Fehler, FileNotFoundError) as e:
+            raise Fehler(str(e)) from e
+        quellen = eintrag.get("quellen") or []
+        self.vermerken(fall, "Pflichtquellen vorgegeben" if quellen else "Pflichtquellen aufgehoben", ", ".join(quellen))
+        return {"quellen": quellen, "meldung": (f"{len(quellen)} Pflichtquelle{'n' if len(quellen) != 1 else ''} gespeichert: {', '.join(quellen)}." if quellen
+                                                else "Keine Pflichtquellen: Das Team wählt die Quellen selbst.")}
+
     # ---- 4. Abklärung von Hand
     def beleg(self, d: dict) -> dict:
         fall = self._fall_id(str(d.get("fall") or ""))
@@ -922,4 +941,4 @@ class Bedienung:
 
 
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
-            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "beleg", "dokumente", "zurueckfuehren", "quelle_testen")
+            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente", "zurueckfuehren", "quelle_testen")

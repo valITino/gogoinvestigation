@@ -325,7 +325,8 @@ class Bearbeiter(BaseHTTPRequestHandler):
                 bereit = sitzung_modul.verfuegbar() if self.bedienung is not None else ""
                 return self.json({**stand, "bedienbar": self.bedienung is not None, "claude": bereit,
                                   "feld": formulare.ermittlung_feld(fall.id, stand, bereit) if self.bedienung is not None else "",
-                                  "tafel": formulare.wer_tafel(stand) if self.bedienung is not None else ""})
+                                  "tafel": formulare.wer_tafel(stand) if self.bedienung is not None else "",
+                                  "pflicht": seiten.pflichtquellen_html(fall, formulare.PFLICHT_STAND_KOPF), "pflicht_kurz": seiten.pflichtquellen_kurz(fall)})
             if ansicht == "ergebnisse":
                 return self.json({"titel": f"Ergebnisse · {fall.id}", "html": seiten.ergebnisse_seite(fall, self.bedienung is not None)})
             if ansicht == "zurueck":

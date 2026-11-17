@@ -20,6 +20,8 @@ Der Rapport wird nur erzeugt, wenn jede Aussage belegt ist. Geprüft wird unter 
     Fallakte ergeben hat. Eine Empfehlung an einen Zugangsanbieter nennt die betroffene IP und bekommt den Vorbehalt,
     der zum Wert gehört.
   - Jeder Befund hat eine Erklärung in einfachen Worten und ist gegengeprüft.
+  - Hat der Sachbearbeiter Pflichtquellen vorgegeben, wurde jede für jeden passenden Indikator aus den Eingangsdokumenten
+    abgefragt. Ein Fehlschlag zählt als gefragt und steht im Rapport. Nie gefragt ist ein Mangel.
   - Das Abfrageprotokoll ist unverändert (Hash-Kette).
 Rückgabewert 0: erzeugt. 1: Mängel, nichts erzeugt. 2: Fall oder befunde.json fehlt.
 """
@@ -37,7 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gateway import plattform  # noqa: E402
+from gateway import pflichtquellen, plattform  # noqa: E402
 
 if __name__ == "__main__":
     plattform.start()
@@ -308,6 +310,10 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | Non
                            "die betroffene IP angeben. Der Rapport setzt dann den Vorbehalt dazu, der zu ihrer Einordnung gehört.")
     if not b.get("luecken"):
         hinweise.append("'luecken' ist leer. Wirklich alles geklärt? Offene Punkte und Grenzen gehören in den Rapport.")
+    if pfad is not None:        # was der Sachbearbeiter vorgegeben hat, muss gefragt worden sein: laut Protokoll, nicht laut Rapport
+        pflicht = pflicht_stand(pfad, b, list(protokoll.values()))
+        maengel.extend(pflichtquellen.maengel(pflicht))
+        hinweise.extend(pflichtquellen.hinweise(pflicht))
     genutzt = verwendete_belege(b, protokoll)
     ungenutzt = [p for p, e in protokoll.items() if p not in genutzt and e.get("ergebnis") in BRAUCHBAR
                  and not (e.get("antwort") or {}).get("aus_cache")]
@@ -315,6 +321,19 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | Non
         hinweise.append(f"{len(ungenutzt)} Abfrage(n) tauchen im Rapport nicht auf: {', '.join(ungenutzt[:12])}"
                         f"{' …' if len(ungenutzt) > 12 else ''}. Auch Abfragen ohne Treffer sind ein Ergebnis.")
     return maengel, hinweise
+
+
+def pflicht_stand(pfad: Path, b: dict, eintraege: list[dict], fall: dict | None = None) -> dict | None:
+    """Der Stand der Pflichtquellen eines Falls, oder None ohne Vorgabe. Die Vorgabe steht in fall.json. Die Indikatoren kommen aus
+    der Extraktion und aus befunde.json zusammen: So fällt keiner aus der Pflicht, weil er im Rapport fehlt."""
+    if fall is None:
+        try:
+            fall = json.loads((pfad / "fall.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    if not pflichtquellen.vorgabe(fall):
+        return None
+    return pflichtquellen.stand(fall, pflichtquellen.indikatoren_laden(pfad, b), eintraege, pfad)
 
 
 def verwendete_belege(b: dict, protokoll: dict[str, dict] | None = None) -> set[str]:
@@ -524,6 +543,47 @@ def ip_abschnitt(indikatoren: list[dict], protokoll: dict[str, dict], pfad: Path
     return "".join(h)
 
 
+PFLICHT_MARKE = {"erfuellt": ("✓ abgefragt", "var(--gut)"), "fehlgeschlagen": ("✕ Fehlschlag", "var(--warnung)"),
+                 "offen": ("○ nicht abgefragt", "var(--kritisch)"), "entfaellt": ("– entfällt", "var(--neutral)"),
+                 "wartet": ("… noch nicht fällig", "var(--neutral)"), "unbekannt": ("? unbekannt", "var(--kritisch)")}
+
+
+def pflicht_abschnitt(s: dict | None, protokoll: dict[str, dict]) -> str:
+    """Die Pflichtquellen im Rapport: was der Sachbearbeiter vorgegeben hat und was das Protokoll dazu zeigt."""
+    if not s:
+        return ""
+    wer = f" am {zeit_zeigen(s['am'])}" if s.get("am") else ""
+    wer += f" durch {s['durch']}" if s.get("durch") else ""
+    wer += f", über die {s['weg']}" if s.get("weg") else ""
+    h = [f"<h3>Pflichtquellen</h3><p>Für diesen Fall waren Quellen vorgegeben{esc(wer)}. Jede davon war für jeden Indikator aus den "
+         "Eingangsdokumenten abzufragen, zu dem sie etwas sagen kann. Suchquellen und Quellen für Gruppen und Konten mindestens einmal. "
+         "Die Tabelle zeigt, was das Protokoll dazu enthält.</p>",
+         '<div class="tabelle-breit"><table><tr><th>Quelle</th><th>Fällig für</th><th>Stand</th><th>Belege</th></tr>']
+    for z in s["zeilen"]:
+        text, farbe = PFLICHT_MARKE.get(z["stand"], (z["stand"], None))
+        if z["einmal"]:
+            faellig = "einmal im Fall" if z["faellig"] else "–"
+        else:
+            faellig = " ".join(f'<a class="beleg" href="#{esc(i)}">{esc(i)}</a>' for i in z["faellig"]) or "–"
+        belege = list(dict.fromkeys(b for i in z["faellig"] for b in z["belege"].get(i, [])[:1]))
+        zusatz = []
+        if z["stand"] != "erfuellt" and z["erfuellt"] and not z["einmal"]:
+            zusatz.append(f"abgefragt für {len(z['erfuellt'])} von {len(z['faellig'])}")
+        if z["fehlgeschlagen"] and not z["einmal"]:
+            zusatz.append("Fehlschlag für " + ", ".join(z["fehlgeschlagen"]))
+        if z["offen"] and not z["einmal"]:
+            zusatz.append("nicht abgefragt für " + ", ".join(z["offen"]))
+        if z["grund"]:
+            zusatz.append(z["grund"])
+        h.append(f"<tr><td>{esc(z['quelle'])}</td><td>{faellig}</td><td>{marke(text, farbe)}"
+                 + (f"<div class='klein'>{esc(' · '.join(zusatz))}</div>" if zusatz else "") + "</td>"
+                 f"<td>{beleg_links(belege, protokoll) if belege else STRICH}</td></tr>")
+    h.append("</table></div><p class='klein'>«Abgefragt» heisst: Zu jedem passenden Indikator steht eine Abfrage bei dieser Quelle im Protokoll, "
+             "mit oder ohne Treffer. «Fehlschlag»: Die Quelle wurde gefragt und hat nicht verwertbar geantwortet. «Entfällt»: Der Fall enthält "
+             "keinen Indikator, zu dem die Quelle etwas sagen könnte. Weitere Quellen hat das Team nach eigenem Ermessen gefragt.</p>")
+    return "\n".join(h)
+
+
 def kennzahlen(b: dict, eintraege: list[dict]) -> dict:
     """Die Zahlen aus Abschnitt 3 des Rapports. Auch die Oberfläche nimmt sie von hier, damit beide nie voneinander abweichen.
     «Abfragen» sind Anfragen bei Quellen. Auswertungen des Gateways und lokal befragte Listen zählen nicht dazu."""
@@ -548,6 +608,7 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
     protokoll = {e["id"]: e for e in eintraege}
     indikatoren = b.get("indikatoren") or []
     befunde = b.get("befunde") or []
+    pflicht = pflicht_stand(fall_pfad(fall_id), b, eintraege, fall)       # vor dem Zählen: Dafür braucht es auch die Auswertungen
     h: list[str] = []
 
     # ---- Kopf
@@ -629,6 +690,8 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
         stand = f"erteilt durch {e.get('durch')} am {zeit_zeigen(e.get('am'))}" if freigabe_erteilt(fall, name) else "nicht erteilt"
         h.append(f"<tr><td>{esc(name)}</td><td>{esc(stand)}</td><td>{esc(FREIGABE_TEXT[name])}</td></tr>")
     h.append("</table>")
+    if pflicht:
+        h.append(pflicht_abschnitt(pflicht, protokoll))
 
     # ---- 5 Indikatoren
     h.append("<h2>5 Indikatoren</h2>")

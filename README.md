@@ -172,7 +172,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 89 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 91 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine
 Zeile mit, die sagt, was gerade geschieht. Am Ende steht, wo ihr steht und wie es weitergeht: ob der Arbeitsplatz
@@ -323,7 +323,8 @@ Der Browser öffnet sich von selbst. Dort:
 1. **«Neuer Fall».** Rapport und Beilagen hineinziehen: einzeln, als Ordner oder als ZIP. Jede Datei wird gelesen und
    auf Personendaten geprüft. Hat die Pseudonymisierung im Haus etwas übersehen, bessert ihr es auf einem lokalen
    Bildschirm nach, ohne Sprachmodell. Dann Fall-ID und Titel eintragen und den Fall anlegen.
-2. **«Ermittlung».** Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Jeder Schritt erscheint im
+2. **«Ermittlung».** Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Wer will, wählt vorher
+   Pflichtquellen an: Quellen, die in dieser Ermittlung gefragt werden müssen. Jeder Schritt erscheint im
    Verlauf. Nachrichten gehen jederzeit hinterher. Braucht Claude Code eine Zustimmung, erscheint ein Fenster.
 3. **«Ergebnisse».** Rapport, Protokoll und Datenblätter ansehen, einzeln herunterladen oder alles als ein Archiv
    mitnehmen, samt Sitzungsprotokoll.
@@ -360,6 +361,30 @@ python3 tools/fall.py freigabe 2026-0412 personenbezug --durch "…" --vermerk "
 | `personenbezug` | Kontoabfragen: Mastodon-Konto, Telegram-Benutzer und -Suche. |
 
 Der Befehl verlangt eine Bestätigung am Terminal. Ein Agent kann sich keine Freigabe selbst erteilen.
+
+**Pflichtquellen vorgeben, falls gewünscht.** Ohne Vorgabe wählt das Team die Quellen selbst, nach den Indikatoren
+und den Fragen des Auftrags. Wer sicher sein will, dass bestimmte Quellen gefragt werden, gibt sie vor: in der
+Oberfläche unter «Ermittlung», vor dem Start, oder am Terminal:
+
+```bash
+python3 tools/fall.py quellen 2026-0412                                  # was sich vorgeben lässt, was vorgegeben ist, der Stand
+python3 tools/fall.py quellen 2026-0412 --pflicht "Shodan, VirusTotal"   # oder --alle, oder --keine
+```
+
+- **Was eine Pflichtquelle heisst.** Sie wird für jeden Indikator aus den Eingangsdokumenten abgefragt, zu dem sie
+  passt: Shodan für jede IP-Adresse, VirusTotal für IP-Adressen, Domains, URLs und Datei-Hashes, ein Block-Explorer für
+  die Adressen seiner Kette. Suchquellen (4chan, Telegram, Robin) und Quellen für Gruppen und Konten werden mindestens
+  einmal im Fall gefragt.
+- **Ein Mindestmass, keine Beschränkung.** Weitere Quellen fragt das Team nach eigenem Ermessen. Pivots und die Seite
+  der Geschädigten fallen nicht unter die Pflicht.
+- **Nachprüfbar.** Ob eine Pflichtquelle gefragt wurde, liest das System aus dem Protokoll, nicht aus dem Bericht des
+  Teams. Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4 aus, und er lässt sich erst abschliessen, wenn
+  zu jedem fälligen Indikator eine Abfrage im Protokoll steht. Ein Fehlschlag (Kontingent, Störung) gilt als gefragt
+  und steht als Lücke da. Er wird nicht in Schleife wiederholt.
+- **Keine Freigabe durch die Hintertür.** Vorgeben lässt sich nur, was eingerichtet ist. Robin verlangt dazu die
+  Freigabe `darkweb`. Aktive Massnahmen und Kontoabfragen bleiben an ihre Freigabe gebunden.
+- **Nur der Sachbearbeiter.** Vorgeben, ändern und aufheben verlangen ein Terminal oder die Oberfläche. Ein Agent
+  kann die Vorgabe weder setzen noch aufheben.
 
 **Eine Abklärung von Hand festhalten.** Nicht jede Quelle hat eine Schnittstelle. Schlagt ihr eine IP-Adresse
 selbst nach, etwa in der Weboberfläche eines Dienstes oder per Auskunft eines Anbieters, gehört das Ergebnis in
@@ -492,6 +517,14 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
   unterbricht ihn. Anhalten und fortsetzen geht jederzeit. Derselbe Chat steht in den übrigen Ansichten klein am Rand.
 
 ![Ermittlung: der Chat mit Vorgaben, Schritten und wartenden Nachrichten](docs/bilder/oberflaeche-ermittlung.png)
+
+- **Pflichtquellen.** Über dem Chat, eingeklappt: anwählen, welche Quellen die Ermittlung abfragen muss. Leer lassen,
+  einzeln anwählen oder «Alle auswählen». Was nicht eingerichtet ist, ist gesperrt und nennt den Grund. Der Start der
+  Ermittlung übernimmt die Auswahl. Die Kopfzeile zeigt den Stand («8 von 11 erfüllt, 3 offen»). Aufgeklappt steht je
+  Quelle, für welche Indikatoren sie gefragt wurde, mit Beleg, und was noch offen ist. Derselbe Stand steht in der
+  Fallübersicht und im Abschlussrapport.
+
+![Pflichtquellen: Auswahl in drei Gruppen und der Stand laut Protokoll, am Musterfall](docs/bilder/oberflaeche-pflichtquellen.png)
 
 - **Rückfragen.** Braucht Claude Code eine Zustimmung, etwa für eine einzelne aktive Massnahme, erscheint ein Fenster,
   in jeder Ansicht: erlauben oder ablehnen. «Erst nachsehen» lässt die Ermittlung warten.
@@ -975,6 +1008,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Keine Abfrage ohne Fall und Zweck | Das Gateway weist sie ab. | `gateway/kern.py` |
 | Aktiv und Personenbezug nur mit Freigabe | Das Gateway prüft `fall.json`. Abgelehnte Versuche stehen im Protokoll. Aktive Werkzeuge fragen zudem jedes Mal nach. | `gateway/kern.py`, `.claude/settings.json` |
 | Dark Web nur mit Zustimmung | Jeder Aufruf von Robin fragt nach (Regel «ask»). Die Oberfläche lehnt ihn ohne Freigabe `darkweb` von selbst ab und lässt ihn mit Freigabe zu. Am Terminal entscheidet der Mensch je Aufruf: Dort prüft niemand mehr die Freigabe. | `.claude/settings.json`, `tools/ui/sitzung.py` |
+| Pflichtquellen gibt nur der Sachbearbeiter vor | Vorgeben, ändern und aufheben verlangen ein Terminal oder das Geheimnis der Oberfläche. Die Berechtigungen verbieten den Befehl für Agenten. Ob eine Pflichtquelle gefragt wurde, liest der Rapport aus dem Protokoll: Nie gefragt ist ein Mangel und verhindert ihn. Eine Pflichtquelle ersetzt keine Freigabe. | `tools/fall.py`, `gateway/pflichtquellen.py`, `tools/rapport.py`, `.claude/settings.json` |
 | Keine Selbstfreigabe | `fall.py freigabe` und das Übersteuern der PII-Prüfung verlangen ein Terminal. Die Berechtigungen verbieten den Befehl für Agenten. Der Aufruf der Funktion dahinter aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. | `tools/fall.py`, `.claude/settings.json` |
 | Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind verboten. `WebFetch` und `WebSearch` fragen jedes Mal nach, ebenso jeder Shell-Befehl, der nicht auf der Erlaubt-Liste steht. | `.claude/settings.json` |
 | Keine öffentliche Einreichung | Eine URL geht bei urlscan.io und urlquery nur als «private» hinaus. Die Werkzeuge haben keinen Parameter dafür, und eine Schranke im Kern hält jede andere Einreichung auf, egal welches Werkzeug sie schickt. | `gateway/kern.py` (`schranke`) |
@@ -1055,6 +1089,7 @@ Was ihr wissen müsst:
 | Dokument wird nicht aufgenommen (Sperrfunde) | Personendaten übersehen, oder Fehlalarm | Nachpseudonymisieren. Bei Fehlalarm am Terminal: `--trotzdem "Begründung" --durch "Kürzel"` |
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
 | Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
+| `rapport.py` meldet «Pflichtquelle …: nicht abgefragt für …» oder «… im Fall nie abgefragt» | Eine vorgegebene Quelle wurde für einen passenden Indikator nie gefragt, eine Suchquelle im ganzen Fall nie | Die Ermittlung fortsetzen: Sie holt die Abfrage nach. Fehlt dafür eine Freigabe oder ein Schlüssel: erteilen, einrichten oder die Quelle aus der Vorgabe nehmen (`python3 tools/fall.py quellen <Fall-ID>`, oder in der Oberfläche) |
 | Robin meldet `tor_bootstrapping` | Tor startet noch (bis zwei Minuten nach Beginn der Sitzung), oder das Netz lässt Tor nicht zu | Kurz warten und noch einmal fragen. Bleibt es dabei: Der Container muss das Tor-Netz direkt erreichen, siehe `docs/QUELLEN.md` |
 | «Protokoll … ABWEICHUNGEN» | Protokoll oder Rohdatei wurde verändert | Nicht reparieren. Vorfall klären. |
 
@@ -1070,7 +1105,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 89 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 91 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1090,6 +1125,16 @@ PowerShell 7:
   Messung an 45 Rapporten. Ein eigener Schritt der CI prüft, dass die Tabellen im README zum Stand des Codes
   passen (`python3 tools/pseudo_messen.py --pruefen`). Nicht geprüft: echte Rapporte, die Liste eurer
   Feldmarken, die Tabellen des BFS und der Dialog in einer Windows-Konsole.
+- Zwei gelten den Pflichtquellen (`gateway/pflichtquellen.py`), Stand 17.11.2026: die Regeln an erfundenen
+  Indikatoren und Protokolleinträgen (fällig ist nur, was aus den Eingangsdokumenten stammt und abgefragt werden darf;
+  «kein Treffer» und ein Fehlschlag gelten als gefragt; hinter einer Auswertung zählen die Abfragen ihrer Grundlage;
+  eine Bitcoin-Adresse passt nur zu Bitcoin; Monero ergibt keine Pflicht; Robin zählt erst, wenn es gesucht hat),
+  vorgeben nur für eingerichtete Quellen und für Robin nur mit Freigabe, kein Vorgeben ohne Terminal, `fall_status`
+  nennt den Agenten die offenen Paare, und am Musterfall: Der Rapport meldet drei Mängel, solange drei Abfragen
+  fehlen, und keinen, wenn alles gefragt ist. In der Oberfläche: Speichern nur mit Geheimnis und nicht, während die
+  Ermittlung arbeitet. Der Musterfall selbst hat keine Vorgabe und bleibt Byte für Byte gleich.
+  **Nicht geprüft:** ob das Team in einer echten Ermittlung die Pflichtquellen abarbeitet. Das hängt an der Steuerung
+  mit dem echten Claude Code, die nicht geprüft ist. Geprüft ist, dass der Rapport es merkt, wenn es das nicht tut.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1113,7 +1158,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026: Jede der 24 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026: Jede der 25 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei liest der Server erst ein, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
@@ -1136,11 +1181,13 @@ PowerShell 7:
   Start kein Gateway, beendet die Oberfläche die Sitzung. Das Archiv: jede Datei mit der Prüfsumme aus `INHALT.txt`, im
   Auszug des Sitzungsprotokolls nur die Zeilen des Falls, kein Klartext, und die Fallakten sind danach Byte für Byte
   unverändert. Die Formate: Aus Word, OpenDocument, Excel, PowerPoint, RTF und E-Mail entsteht der erwartete Text.
-  Dazu ein Durchgang im Browser (Chromium, ohne Fenster, 17.11.2026) mit erfundenen Akten durch den ganzen Ablauf, 66
+  Dazu ein Durchgang im Browser (Chromium, ohne Fenster, 17.11.2026) mit erfundenen Akten durch den ganzen Ablauf, 81
   Prüfpunkte: Ordner wählen, ZIP, Datei ablegen, alle auswählen, Bereich mit der Umschalttaste, Filter, entfernen,
   umbenennen, verschieben, zwei Dokumente nacheinander pseudonymisieren, Fall anlegen, Vorgaben, Rückfrage als Fenster,
   Nachricht warten lassen und zurücknehmen, unterbrechen, anhalten, fortsetzen, Unterlagen erzeugen, Archive und
-  einzelne Dateien herunterladen, zurückführen. Kein Fehler in der Konsole, keine Anfrage nach aussen.
+  einzelne Dateien herunterladen, zurückführen, dazu die Pflichtquellen (alle auswählen, keine, einzeln, der Start
+  übernimmt die Auswahl, Robin erst mit Freigabe, Stand am Musterfall, aufheben). Kein Fehler in der Konsole, keine
+  Anfrage nach aussen.
   **Nicht geprüft: die Steuerung mit dem echten Claude Code.** Die Form seiner JSON-Ausgabe und der Weg der Rückfrage
   (`--permission-prompt-tool`) folgen der Dokumentation (gelesen am 16.11.2026) und der Hilfe von Claude Code 2.1.326,
   gesehen sind sie nicht. Aus der Entwicklungssitzung liess sich kein zweites Claude Code starten, ohne deren

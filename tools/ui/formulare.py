@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import json
 
+from gateway import pflichtquellen as pq
 from gateway.akte import FAELLE, eingang_stand
 from tools import _pseudo as ps
 from tools._html import TYPEN as INDIKATOR_TYPEN
 from tools.ui import daten
-from tools.ui.seiten import esc, pfad, tabelle
+from tools.ui.seiten import esc, pfad, pflichtquellen_html, pflichtquellen_kurz, tabelle
 
 KLARTEXT_BAND = ('<div class="klartext-band" role="note"><b>lokal, Klartext</b> Dieser Bildschirm zeigt echte Angaben. Sie bleiben auf diesem Rechner: '
                  "im Speicher der Oberfläche und in der Ablage ausserhalb des Projektordners. Kein Sprachmodell sieht sie, und sie stehen in keinem Protokoll.</div>")
@@ -27,6 +28,7 @@ FREIGABE_NAME = {"aktiv": "Aktive Massnahmen", "darkweb": "Dark Web", "personenb
 STAND_MARKE = {"sauber": ("gut", "✓ bereit"), "personendaten": ("kritisch", "✕ Personendaten"), "nicht_lesbar": ("leer", "– nicht lesbar")}
 STATUS_WORT = {"aus": "nicht gestartet", "laeuft": "läuft", "wartet": "wartet auf eine Antwort", "angehalten": "angehalten", "beendet": "beendet", "fehler": "abgebrochen"}
 STATUS_FARBE = {"laeuft": "gut", "wartet": "warnung", "fehler": "kritisch"}
+PFLICHT_STAND_KOPF = "<h3>Stand laut Protokoll</h3>"
 
 
 def feld(name: str, text: str, *, art: str = "text", pflicht: bool = False, wert: str = "", hilfe: str = "", platzhalter: str = "", breit: bool = False) -> str:
@@ -365,6 +367,44 @@ def rueckfrage_dialog(fragen: list[dict]) -> str:
             + (f" Danach {'folgt eine weitere Rückfrage' if weitere == 1 else f'folgen {weitere} weitere Rückfragen'}." if weitere > 0 else "") + "</p></div>")
 
 
+def pflicht_feld(fall: daten.Fall, arbeitet: bool = False) -> str:
+    """Pflichtquellen vor dem Start: leer lassen, einzeln anwählen oder alle. Was angewählt ist, muss die Ermittlung abfragen.
+    Anwählen lässt sich nur, was an diesem Arbeitsplatz bereit ist. Robin verlangt dazu die Freigabe «Dark Web» des Falls.
+    Während die Ermittlung arbeitet, steht die Auswahl fest. Die Auswahl ist eingeklappt, damit der Chat seinen Platz behält:
+    Ihre Kopfzeile sagt, wie viele Quellen vorgegeben sind und wie weit sie erfüllt sind. Der ausführliche Stand steht darin."""
+    vorgegeben = pq.vorgabe(fall.daten)
+    gruppen: dict[str, list[str]] = {}
+    for w in pq.waehlbar(fall.daten):
+        an = w["name"] in vorgegeben
+        hindernis = (w["grund"] if not w["bereit"] else
+                     f"braucht die Freigabe «{FREIGABE_NAME.get(w['freigabe'], w['freigabe'])}» des Falls" if w["freigabe_fehlt"] else "")
+        gruppen.setdefault(w["gruppe"], []).append(
+            f'<label class="pflicht-quelle{" gesperrt" if hindernis else ""}" title="{esc(w["zweck"])}">'
+            f'<input type="checkbox" name="quelle" value="{esc(w["name"])}"{" checked" if an else ""}{" disabled" if hindernis and not an else ""}> '
+            f'<b>{esc(w["name"])}</b> <span class="klein">{esc(hindernis or w["kurz"])}</span></label>')
+    titel = {"mit Schlüssel": "Mit Schlüssel", "ohne Schlüssel": "Ohne Schlüssel", "Dark Web": "Dark Web"}
+
+    def gruppe(name: str) -> str:
+        return f'<div class="pflicht-gruppe"><h4>{esc(titel[name])}</h4>{"".join(gruppen[name])}</div>' if name in gruppen else ""
+    # Zwei Spalten: links die Quellen mit Schlüssel, rechts die ohne und darunter das Dark Web
+    spalten = (f'<div class="pflicht-spalte">{gruppe("mit Schlüssel")}</div>'
+               f'<div class="pflicht-spalte">{gruppe("ohne Schlüssel")}{gruppe("Dark Web")}</div>')
+    return (f'<details class="pflicht" id="pflicht" data-pflicht data-fall="{esc(fall.id)}" data-gespeichert="{esc(json.dumps(vorgegeben, ensure_ascii=False))}">'
+            '<summary><b>Pflichtquellen</b> <span class="klein">(freiwillig)</span> <span class="marke" data-pflicht-marke></span> '
+            f'<span class="klein" data-pflicht-kurz>{esc(pflichtquellen_kurz(fall))}</span></summary>'
+            f'<fieldset class="pflicht-felder" data-pflicht-felder{" disabled" if arbeitet else ""}>'
+            "<p class='klein'>Was du hier anwählst, muss die Ermittlung abfragen: jede Quelle für jeden Indikator aus den Akten, zu dem sie passt. "
+            "Der Rapport lässt sich erst abschliessen, wenn das Protokoll es zeigt. Leer heisst: Das Team wählt die Quellen selbst. "
+            "Weitere Quellen fragt es in jedem Fall nach eigenem Ermessen. Eine Pflichtquelle ersetzt keine Freigabe: Freigaben erteilst du unter "
+            f'<a href="{pfad(fall.id, "bedienen")}">Bedienen</a>.</p>'
+            '<div class="knopfzeile"><button type="button" class="klein-knopf" data-pflicht-alle>Alle auswählen</button> '
+            '<button type="button" class="klein-knopf" data-pflicht-keine>Keine</button> <span class="klein" data-pflicht-zahl></span></div>'
+            f'<div class="pflicht-gruppen">{spalten}</div>'
+            '<div class="knopfzeile"><button type="button" data-pflicht-speichern>Pflichtquellen speichern</button> '
+            '<span class="klein" data-pflicht-hinweis></span></div><div class="ergebnis" aria-live="polite"></div></fieldset>'
+            f'<div id="pflicht-stand" data-ohne-leiste>{pflichtquellen_html(fall, PFLICHT_STAND_KOPF)}</div></details>')
+
+
 def chat_feld(fall_id: str) -> str:
     """Der Platz des Chats in der Ansicht «Ermittlung». Das Skript der Oberfläche baut ihn auf: Verlauf, Eingabe, Knöpfe.
     Derselbe Chat steht in den anderen Ansichten des Falls klein am rechten Rand."""
@@ -377,7 +417,8 @@ def ermittlung_seite(fall: daten.Fall, bedienung, stand: dict | None, verfuegbar
         return kopf + NUR_LESEN
     fid = fall.id
     return "\n".join([
-        kopf, f'<div id="ermittlung" data-fall="{esc(fid)}">{ermittlung_feld(fid, stand, verfuegbar)}</div>', chat_feld(fid),
+        kopf, f'<div id="ermittlung" data-fall="{esc(fid)}">{ermittlung_feld(fid, stand, verfuegbar)}</div>',
+        pflicht_feld(fall, (stand or {}).get("status") in ("laeuft", "wartet")), chat_feld(fid),
         f'<div id="ermittlung-wer" data-ohne-leiste>{wer_tafel(stand)}</div>',
         "<p class='klein'>Was du hier schreibst, liest das Sprachmodell: keine Namen, keine Telefonnummern, Platzhalter wie im Dokument. Die Oberfläche prüft jede Eingabe "
         "wie ein Dokument. Arbeitet die Ermittlung gerade, wartet eine Nachricht auf das Ende des laufenden Auftrags, oder sie unterbricht ihn.</p>"

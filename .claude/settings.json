@@ -77,6 +77,8 @@
       "Edit(./faelle/*/eingang/**)",
       "Bash(python3 tools/fall.py freigabe *)",
       "Bash(python tools/fall.py freigabe *)",
+      "Bash(python3 tools/fall.py quellen *)",
+      "Bash(python tools/fall.py quellen *)",
       "Bash(python3 tools/fall.py entfernen *)",
       "Bash(python tools/fall.py entfernen *)",
       "Bash(python3 tools/fall.py loeschen *)",

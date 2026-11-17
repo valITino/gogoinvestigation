@@ -4,14 +4,16 @@
     python3 tools/fall.py neu 2026-0412 --titel "Phishing Kundenportal" --rapport rapport.md
     python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
     python3 tools/fall.py freigabe 2026-0412 darkweb --durch "Kürzel/Funktion" --vermerk "Verfügung vom …"
+    python3 tools/fall.py quellen 2026-0412                         zeigt, welche Quellen sich vorgeben lassen und was vorgegeben ist
+    python3 tools/fall.py quellen 2026-0412 --pflicht "Shodan, VirusTotal"      (oder --alle, oder --keine)
     python3 tools/fall.py entfernen 2026-0412 nachtrag.docx --durch "Kürzel" --grund "falsches Dokument"
     python3 tools/fall.py loeschen 2026-0413 --durch "Kürzel"      (nur solange noch nichts abgefragt wurde)
     python3 tools/fall.py status 2026-0412
     python3 tools/fall.py liste
 
 Dokumente durchlaufen vor der Aufnahme die PII-Prüfung (tools/pii_pruefung.py).
-Freigaben, das Übersteuern der PII-Prüfung, das Entfernen von Dokumenten und das Löschen eines Falls verlangen eine
-Bestätigung am Terminal. Ein Agent kann sie deshalb nicht selbst auslösen. Dieselben Schritte gibt es in der
+Freigaben, Pflichtquellen, das Übersteuern der PII-Prüfung, das Entfernen von Dokumenten und das Löschen eines Falls
+verlangen eine Bestätigung am Terminal. Ein Agent kann sie deshalb nicht selbst auslösen. Dieselben Schritte gibt es in der
 Oberfläche (tools/oberflaeche.py), dort mit dem Geheimnis ihres Starts.
 """
 from __future__ import annotations
@@ -25,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gateway import plattform  # noqa: E402
+from gateway import pflichtquellen, plattform  # noqa: E402
 
 if __name__ == "__main__":
     plattform.start()
@@ -278,6 +280,98 @@ def cmd_freigabe(a: argparse.Namespace) -> int:
     return 0
 
 
+def pflichtquellen_pruefen(daten: dict, namen: list[str]) -> list[str]:
+    """Prüft eine Auswahl von Pflichtquellen und gibt sie bereinigt zurück, in der Reihenfolge des Verzeichnisses. Vorgeben lässt
+    sich nur, was es gibt, was an diesem Arbeitsplatz bereit ist und wofür der Fall die nötige Freigabe hat."""
+    gewuenscht = list(dict.fromkeys(" ".join(str(n).split()) for n in namen if str(n).strip()))
+    verzeichnis = {w["name"]: w for w in pflichtquellen.waehlbar(daten)}
+    unbekannt = [n for n in gewuenscht if n not in verzeichnis]
+    if unbekannt:
+        raise Fehler(f"Diese Quelle gibt es nicht: {', '.join(unbekannt)}. Möglich: {', '.join(verzeichnis)}.")
+    nicht_bereit = [f"{n} ({verzeichnis[n]['grund']})" for n in gewuenscht if not verzeichnis[n]["bereit"]]
+    if nicht_bereit:
+        raise Fehler(f"Nicht bereit und deshalb keine Pflichtquelle: {', '.join(nicht_bereit)}. Einrichten oder aus der Auswahl nehmen.")
+    ohne = [n for n in gewuenscht if verzeichnis[n]["freigabe_fehlt"]]
+    if ohne:
+        raise Fehler(f"{', '.join(ohne)} braucht die Freigabe '{verzeichnis[ohne[0]]['freigabe']}' des Falls. Zuerst die Freigabe erteilen oder die Quelle "
+                     "aus der Auswahl nehmen. Eine Pflichtquelle ersetzt keine Freigabe.")
+    return [n for n in pflichtquellen.reihenfolge() if n in gewuenscht]
+
+
+def pflichtquellen_setzen(fall_id: str, namen: list[str], *, durch: str = "", weg: str = "Terminal") -> dict:
+    """Gibt die Pflichtquellen eines Falls vor und schreibt fall.json. Eine leere Liste hebt die Vorgabe auf. Was vorgegeben ist,
+    muss die Ermittlung abfragen (gateway/pflichtquellen.py), und der Rapport lässt sich sonst nicht abschliessen.
+    Die Entscheidung trifft ein Mensch, wie bei einer Freigabe: am Terminal (cmd_quellen fragt dort nach) oder in der
+    Oberfläche. Ein Agent kann eine Vorgabe weder setzen noch aufheben: Der Befehl verlangt ein Terminal, und die
+    Berechtigungen verbieten ihn."""
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
+    daten = fall_daten(fall_id)
+    quellen = pflichtquellen_pruefen(daten, namen)
+    if not quellen:
+        daten.pop(pflichtquellen.SCHLUESSEL, None)
+        schreiben(fall_pfad(fall_id) / "fall.json", daten)
+        return {}
+    eintrag = {"quellen": quellen, "am": jetzt(), "durch": " ".join((durch or daten.get("sachbearbeiter") or "").split()),
+               **({"weg": weg} if weg != "Terminal" else {})}
+    daten[pflichtquellen.SCHLUESSEL] = eintrag
+    schreiben(fall_pfad(fall_id) / "fall.json", daten)
+    return eintrag
+
+
+def _pflicht_zeile(daten: dict) -> str:
+    quellen = pflichtquellen.vorgabe(daten)
+    e = daten.get(pflichtquellen.SCHLUESSEL) or {}
+    if not quellen:
+        return "keine Vorgabe: Das Team wählt die Quellen selbst"
+    return (f"{', '.join(quellen)}   (vorgegeben am {e.get('am')}" + (f" durch {e.get('durch')}" if e.get("durch") else "")
+            + (f", über die {e.get('weg')}" if e.get("weg") else "") + ")")
+
+
+def cmd_quellen(a: argparse.Namespace) -> int:
+    daten = fall_daten(a.fall)
+    verzeichnis = pflichtquellen.waehlbar(daten)
+    gewaehlt = sum(1 for x in (a.pflicht is not None, a.alle, a.keine) if x)
+    if gewaehlt > 1:
+        raise Fehler("Bitte nur eines von --pflicht, --alle und --keine.")
+    if not gewaehlt:
+        vorgegeben = set(pflichtquellen.vorgabe(daten))
+        print(f"Pflichtquellen für {a.fall}: {_pflicht_zeile(daten)}")
+        for w in verzeichnis:
+            hindernis = (f"nicht bereit: {w['grund']}" if not w["bereit"] else f"braucht die Freigabe {w['freigabe']}" if w["freigabe_fehlt"] else "")
+            print(f"  [{'x' if w['name'] in vorgegeben else ' '}] {w['name']:<26} {w['gruppe']:<15} {hindernis or w['faellig']}")
+        pfad = fall_pfad(a.fall)
+        stand = pflichtquellen.stand_fuer(daten, pfad, jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl") + jsonl_lesen(pfad / "protokoll" / "extern.jsonl"))
+        if stand:
+            z = stand["zahlen"]
+            print(f"  Stand: {z['erfuellt']} von {z['faellig']} fälligen Abfragen erfüllt, {z['fehlgeschlagen']} fehlgeschlagen, {z['offen']} offen."
+                  + ("" if stand["bekannt"] else " Die Indikatoren des Falls stehen noch nicht fest."))
+            for zeile in stand["zeilen"]:
+                if zeile["stand"] in ("offen", "fehlgeschlagen"):
+                    wo = "" if zeile["einmal"] else " für " + ", ".join(zeile["offen"] or zeile["fehlgeschlagen"])
+                    print(f"    {pflichtquellen.STAND_WORT[zeile['stand']]}: {zeile['quelle']}{wo}" + (f"  ({zeile['grund']})" if zeile["grund"] else ""))
+        print(f"  Ändern (nur am Terminal): {plattform.PY} tools/fall.py quellen {a.fall} --pflicht \"Quelle, Quelle\"   oder --alle   oder --keine")
+        return 0
+    if a.alle:
+        namen = [w["name"] for w in verzeichnis if w["bereit"] and not w["freigabe_fehlt"]]
+        aus = [f"{w['name']} ({'nicht bereit: ' + w['grund'] if not w['bereit'] else 'Freigabe ' + w['freigabe'] + ' fehlt'})"
+               for w in verzeichnis if not w["bereit"] or w["freigabe_fehlt"]]
+        if aus:
+            print("Nicht dabei: " + ", ".join(aus))
+    elif a.keine:
+        namen = []
+    else:
+        namen = [n for n in a.pflicht.split(",") if n.strip()]
+        if not namen:
+            raise Fehler("--pflicht braucht mindestens einen Namen. Die Vorgabe aufheben: --keine.")
+    quellen = pflichtquellen_pruefen(daten, namen)
+    am_terminal_bestaetigen(f"Pflichtquellen für Fall {a.fall}: " + (", ".join(quellen) if quellen else "keine. Die Vorgabe wird aufgehoben")
+                            + ".\nWas vorgegeben ist, muss die Ermittlung für jeden passenden Indikator abfragen.", a.fall)
+    eintrag = pflichtquellen_setzen(a.fall, quellen, durch=a.durch or "")
+    print(f"Pflichtquellen für {a.fall}: " + (", ".join(eintrag["quellen"]) if eintrag else "keine Vorgabe mehr."))
+    return 0
+
+
 def _zeile(fall_id: str) -> str:
     daten = fall_daten(fall_id)
     n = len(jsonl_lesen(fall_pfad(fall_id) / "protokoll" / "abfragen.jsonl"))
@@ -294,6 +388,7 @@ def cmd_status(a: argparse.Namespace) -> int:
         e = (daten.get("freigaben") or {}).get(name) or {}
         stand = f"erteilt durch {e.get('durch')} am {e.get('am')} ({e.get('vermerk')})" if freigabe_erteilt(daten, name) else "nicht erteilt"
         print(f"  Freigabe {name:<14} {stand}")
+    print(f"  Pflichtquellen: {_pflicht_zeile(daten)}")
     eingang, ungeprueft = eingang_stand(pfad)
     print(f"  Eingang: {', '.join(eingang) or 'leer'}")
     if ungeprueft:
@@ -342,6 +437,14 @@ def main() -> int:
     fr.add_argument("--vermerk", help="Grundlage der Freigabe")
     fr.add_argument("--entziehen", action="store_true")
     fr.set_defaults(func=cmd_freigabe)
+
+    qu = sub.add_parser("quellen", help="Pflichtquellen zeigen oder vorgeben (vorgeben nur am Terminal)")
+    qu.add_argument("fall")
+    qu.add_argument("--pflicht", metavar="NAMEN", help="Quellen, die die Ermittlung abfragen muss, durch Komma getrennt")
+    qu.add_argument("--alle", action="store_true", help="alle Quellen vorgeben, die bereit sind und deren Freigabe erteilt ist")
+    qu.add_argument("--keine", action="store_true", help="die Vorgabe aufheben: Das Team wählt die Quellen selbst")
+    qu.add_argument("--durch", metavar="KÜRZEL", help="wer vorgibt")
+    qu.set_defaults(func=cmd_quellen)
 
     en = sub.add_parser("entfernen", help="Dokumente wieder aus dem Eingang nehmen (nur am Terminal)")
     en.add_argument("fall")

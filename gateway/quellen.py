@@ -167,6 +167,59 @@ ROBIN_WERKZEUGE = ("robin_search", "robin_refine", "robin_filter", "robin_scrape
                    "robin_save_investigation")
 
 
+# ----- Pflichtquellen: Was es heisst, wenn der Sachbearbeiter eine Quelle für einen Fall vorgibt (gateway/pflichtquellen.py)
+
+@dataclass(frozen=True)
+class Vorgabe:
+    """Wofür eine Quelle als Pflichtquelle fällig wird und woran das Protokoll erkennt, dass sie gefragt wurde."""
+    typen: tuple[str, ...] = ()         # Indikatortypen, für die sie fällig wird: je Indikator eine Abfrage
+    einmal: bool = False                # Suchquelle, oder ihre Indikatoren sind Namen (Gruppe, Konto): Eine Abfrage im Fall genügt.
+    #                                     Ohne Typen ist sie immer fällig, mit Typen nur, wenn der Fall einen solchen Indikator hat
+    familie: str = ""                   # Blockchain: nur Adressen und Zahlungen dieser Familie (bitcoin, evm, tron)
+    im_protokoll: tuple[str, ...] = ()  # weitere Namen, unter denen ihre Abfragen im Protokoll stehen
+    freigabe: str = ""                  # ohne diese Freigabe des Falls lässt sie sich nicht vorgeben
+    werkzeuge: tuple[str, ...] = ()     # nur diese Werkzeuge zählen als Abfrage (leer: alle)
+
+
+ROBIN = "Robin (Dark Web)"              # so heisst der MCP-Server Robin unter den Pflichtquellen. Im Protokoll: «Robin (Tor)»
+
+# Enger als die Abdeckung der Oberfläche (tools/ui/blaetter.py, QUELLE_TYPEN): Dort steht, wozu eine Quelle etwas sagen kann.
+# Hier steht, wofür sie gefragt werden muss, wenn der Sachbearbeiter sie vorgibt. Deshalb fehlt, was nur mit einem
+# bezahlten Zugang antwortet (Shodan zu Domains) oder das Ziel selbst aufruft (Mastodon zu einer Domain).
+VORGABEN: dict[str, Vorgabe] = {
+    "Shodan": Vorgabe(("ip",)),
+    "Shodan InternetDB": Vorgabe(("ip",)),
+    "VirusTotal": Vorgabe(("ip", "domain", "url", "hash")),
+    "Spur": Vorgabe(("ip",)),
+    "AbuseIPDB": Vorgabe(("ip",)),
+    "RIPEstat": Vorgabe(("ip",)),
+    "proxycheck.io": Vorgabe(("ip",)),
+    "ipapi.is": Vorgabe(("ip",)),
+    "urlquery": Vorgabe(("url", "domain")),
+    "urlscan.io": Vorgabe(("url", "domain", "ip", "hash")),
+    "Wayback Machine": Vorgabe(("url", "domain")),
+    "Web-Check": Vorgabe(("domain",)),
+    "ransomware.live": Vorgabe(("gruppe",), einmal=True),
+    "Ahmia": Vorgabe(("onion",)),
+    "Telegram (Web-Vorschau)": Vorgabe(einmal=True),
+    "RapidAPI Telegram": Vorgabe(("konto",), einmal=True),
+    "4chan": Vorgabe(einmal=True),
+    "Mastodon": Vorgabe(("konto",), einmal=True),
+    "Bitcoin (mempool.space)": Vorgabe(("wallet", "transaktion"), familie="bitcoin",
+                                       im_protokoll=("mempool.space", "Blockstream", "Bitcoin-Explorer (eigene Instanz)")),
+    "Ethereum (Blockscout)": Vorgabe(("wallet", "transaktion"), familie="evm", im_protokoll=("Blockscout", "Blockscout (eigene Instanz)")),
+    "TRON (TronGrid)": Vorgabe(("wallet", "transaktion"), familie="tron", im_protokoll=("TronGrid", "TronGrid (eigene Instanz)")),
+    "Krypto-Zuordnung": Vorgabe(("wallet",), im_protokoll=("OFAC", "TRM Labs", "Ransomwhere", "WalletExplorer")),
+    "GraphSense TagPacks": Vorgabe(("wallet",)),
+    "Krypto-Kurse": Vorgabe(("transaktion",), einmal=True, im_protokoll=("DefiLlama", "EZB")),
+    "Etherscan": Vorgabe(("wallet", "transaktion"), familie="evm"),
+    "Tronscan": Vorgabe(("wallet",), familie="tron"),
+    "Chainabuse": Vorgabe(("wallet",)),
+    "Iknaio GraphSense": Vorgabe(("wallet",), im_protokoll=("Iknaio",)),
+    ROBIN: Vorgabe(einmal=True, im_protokoll=("Robin (Tor)",), freigabe="darkweb", werkzeuge=("robin_search", "robin_scrape")),
+}
+
+
 def alle_werkzeuge() -> set[str]:
     return {w for q in QUELLEN for w in q.werkzeuge}
 
