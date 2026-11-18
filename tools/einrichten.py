@@ -100,8 +100,11 @@ PAKETE = {
     "browser": {"apt": ["chromium"], "dnf": ["chromium"], "yum": ["chromium"], "pacman": ["chromium"], "zypper": ["chromium"],
                 "apk": ["chromium"]},
 }
+# apt wartet bis zu zwei Minuten, wenn gerade ein anderer Vorgang die Paketverwaltung sperrt (etwa die automatischen
+# Aktualisierungen kurz nach dem Start des Systems), statt sofort zu scheitern.
+APT = ["apt-get", "-o", "DPkg::Lock::Timeout=120"]
 INSTALLIEREN = {
-    "apt": ["apt-get", "install", "-y", "--no-install-recommends"], "dnf": ["dnf", "install", "-y"],
+    "apt": APT + ["install", "-y", "--no-install-recommends"], "dnf": ["dnf", "install", "-y"],
     "yum": ["yum", "install", "-y"], "pacman": ["pacman", "-S", "--noconfirm", "--needed"],
     "zypper": ["zypper", "--non-interactive", "install"], "apk": ["apk", "add"], "brew": ["brew", "install"],
 }
@@ -117,8 +120,10 @@ class Stand:
         self.neues_terminal: list[str] = []     # was erst in einem neuen Terminal gilt
         self.neu_anmelden = False           # das Konto kam eben in die Gruppe docker: Aus diesem Terminal erreicht Robin Docker noch nicht
         self.ordner: bool | None = None     # Vertraut Claude Code dem Projektordner? True bestätigt, False keine Bestätigung gefunden, None unbekannt
+        self.paketfehler: dict[str, str] = {}   # was die Paketverwaltung zuletzt gemeldet hat, wenn eine Installation scheiterte
         self.apt_aktuell = False
         self.sudo_gemeldet = False
+        self.sudo_verweigert = False        # die Frage nach dem Passwort ist gescheitert: Es wird nicht bei jedem Paket neu gefragt
         self.assistent = False              # der Mensch hat die Fragen des Assistenten beantwortet
 
 
@@ -165,6 +170,14 @@ def letzte_zeilen(text: str, n: int = 4) -> str:
     return "\n".join("      " + z for z in text.strip().splitlines()[-n:])
 
 
+def ursache_zeigen(was: str, n: int = 4) -> None:
+    """Zeigt unter einer Zeile, was die Paketverwaltung zuletzt gemeldet hat. Die Ursache einer gescheiterten Installation
+    soll auf dem Bildschirm stehen, nicht nur in einer Protokolldatei, die niemand öffnet."""
+    text = "\n".join(z.rstrip()[:220] for z in stand.paketfehler.get(was, "").splitlines() if z.strip())
+    if text:
+        print("      Die Paketverwaltung meldet:\n" + letzte_zeilen(text, n), flush=True)
+
+
 # --------------------------------------------------------------------------- System
 
 def system() -> dict:
@@ -191,22 +204,29 @@ def system() -> dict:
 
 
 def root_praefix(wofuer: str) -> list[str] | None:
-    """Vorspann für Befehle, die root brauchen: [] als root, ['sudo', …] mit sudo, None wenn es nicht geht."""
+    """Vorspann für Befehle, die root brauchen: [] als root, ['sudo', …] mit sudo, None wenn es nicht geht.
+    sudo merkt sich das Passwort nur eine Weile, meist 15 Minuten. Dauert eine Installation länger, fragt die Einrichtung
+    für die nächste noch einmal und sagt wofür: Eine Passwortfrage ohne Erklärung soll es nicht geben."""
     if WINDOWS or os.geteuid() == 0:
         return []
     if not shutil.which("sudo"):
         return None
     if lauf(["sudo", "-n", "true"], 15)[0] == 0:
         return ["sudo", "-n"]
-    if sys.stdin.isatty():
-        if not stand.sudo_gemeldet:
-            stand.sudo_gemeldet = True
-            ui.text(f"Für {wofuer} braucht es einmal euer Passwort (sudo).", einzug=4)
-            subprocess.call(["sudo", "-v"])     # fragt jetzt, in Ruhe, bevor etwas anderes auf dem Bildschirm läuft
-            if lauf(["sudo", "-n", "true"], 15)[0] == 0:
-                return ["sudo", "-n"]
-        return ["sudo"]
-    return None
+    if not sys.stdin.isatty() or stand.sudo_verweigert:
+        return None
+    ui.text(f"Für {wofuer} braucht es {'noch einmal' if stand.sudo_gemeldet else 'einmal'} euer Passwort (sudo).", einzug=4)
+    stand.sudo_gemeldet = True
+    try:
+        code = subprocess.call(["sudo", "-v"])      # fragt jetzt, in Ruhe, bevor etwas anderes auf dem Bildschirm läuft
+    except KeyboardInterrupt:
+        code = 130
+    if code != 0:       # falsches Passwort, abgebrochen oder kein Recht dazu: nicht bei jedem weiteren Paket wieder fragen
+        stand.sudo_verweigert = True
+        return None
+    if lauf(["sudo", "-n", "true"], 15)[0] == 0:
+        return ["sudo", "-n"]
+    return ["sudo"]     # dieses sudo merkt sich nichts: Es fragt bei jedem Befehl selbst
 
 
 def paket_installieren(was: str, sysinfo: dict, namen: dict[str, list[str]] | None = None) -> tuple[bool, str]:
@@ -216,30 +236,40 @@ def paket_installieren(was: str, sysinfo: dict, namen: dict[str, list[str]] | No
     if not verwaltung or not pakete:
         return False, "keine passende Paketverwaltung gefunden"
     anzeige = f"{' '.join(pakete)} wird installiert ({verwaltung})"
+    stand.paketfehler.pop(was, None)
     if verwaltung == "winget":
         for paket in pakete:
             basis = ["winget", "install", "--id", paket, "-e", "--source", "winget", "--silent",
                      "--accept-package-agreements", "--accept-source-agreements"]
             # ältere winget-Versionen kennen --disable-interactivity nicht: dann ohne
             if lauf(basis + ["--disable-interactivity"], 900, "pakete.log", anzeige=anzeige)[0] != 0:
-                lauf(basis, 900, "pakete.log", anzeige=anzeige)
+                code, text = lauf(basis, 900, "pakete.log", anzeige=anzeige)
+                if code != 0:
+                    stand.paketfehler[was] = text
         return True, "winget install --id " + " ".join(pakete)
     if verwaltung == "brew":
         if os.geteuid() == 0:
             return False, "Homebrew läuft nicht als root: brew install " + " ".join(pakete)
-        lauf(INSTALLIEREN["brew"] + pakete, 1800, "pakete.log", anzeige=anzeige)
+        code, text = lauf(INSTALLIEREN["brew"] + pakete, 1800, "pakete.log", anzeige=anzeige)
+        if code != 0:
+            stand.paketfehler[was] = text
         return True, "brew install " + " ".join(pakete)
     befehl = INSTALLIEREN[verwaltung] + pakete
     vor = root_praefix(f"die Installation von {' '.join(pakete)}")
     if vor is None:
         return False, "sudo " + " ".join(befehl)
     umgebung = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
+    gemeldet = []       # was scheiterte, mit dem, was die Paketverwaltung dazu sagte: für ursache_zeigen()
     if verwaltung == "apt" and not stand.apt_aktuell:
-        lauf(vor + ["apt-get", "update", "-qq"], 600, "pakete.log", umgebung, anzeige="Paketlisten werden aktualisiert (apt)")
+        code, text = lauf(vor + APT + ["update", "-qq"], 600, "pakete.log", umgebung, anzeige="Paketlisten werden aktualisiert (apt)")
+        if code != 0:
+            gemeldet.append(text)
         stand.apt_aktuell = True
     # sudo gibt eine veränderte Umgebung nicht weiter, deshalb über env
-    code, _ = lauf(vor + (["env", "DEBIAN_FRONTEND=noninteractive"] if vor else []) + befehl, 1800, "pakete.log", umgebung,
-                   anzeige=anzeige)
+    code, text = lauf(vor + (["env", "DEBIAN_FRONTEND=noninteractive"] if vor else []) + befehl, 1800, "pakete.log", umgebung,
+                      anzeige=anzeige)
+    if code != 0:
+        stand.paketfehler[was] = "\n".join(gemeldet + [text])
     return True, ("sudo " if vor else "") + " ".join(befehl) + ("" if code == 0 else f"   (Details: {LOGS / 'pakete.log'})")
 
 
@@ -344,6 +374,36 @@ def docker_installieren(sysinfo: dict) -> str:
     return ""
 
 
+def docker_gruppe() -> tuple[str, str]:
+    """Warum dieses Konto Docker nur über sudo erreicht: (Lage, Konto). Lage "neu_anmelden": Das Konto steht in der Gruppe
+    docker, aber die Anmeldung dieses Terminals ist älter. "fehlt": Es steht nicht in der Gruppe. "": nicht feststellbar,
+    oder die Gruppe gilt schon und es liegt an etwas anderem."""
+    try:
+        import grp
+        import pwd
+        konto = pwd.getpwuid(os.getuid()).pw_name
+        gruppe = grp.getgrnam("docker")
+    except (ImportError, KeyError, OSError):
+        return "", ""
+    if gruppe.gr_gid in os.getgroups() or gruppe.gr_gid == os.getgid():
+        return "", konto
+    return ("neu_anmelden" if konto in gruppe.gr_mem else "fehlt"), konto
+
+
+def docker_zugriff_melden() -> None:
+    """Docker läuft, dieses Terminal erreicht es aber nur über sudo. Für Web-Check genügt das, die Einrichtung startet es so.
+    Robin aber startet Claude Code selbst, mit den Rechten des Terminals. Deshalb steht am Schluss, was noch zu tun ist."""
+    lage, konto = docker_gruppe()
+    grund = f"der Zugriff des Kontos {konto} auf Docker (Gruppe docker). Robin braucht ihn"
+    if lage == "neu_anmelden":
+        stand.neu_anmelden = True
+        if grund not in stand.neues_terminal:
+            stand.neues_terminal.append(grund)
+    elif lage == "fehlt":
+        stand.offen.append(f"Robin erreicht Docker so noch nicht: Das Konto {konto} steht nicht in der Gruppe docker. Aufnehmen mit: "
+                           f"sudo usermod -aG docker {konto}   Danach neu anmelden und {SETUP} erneut ausführen.")
+
+
 # Browser für die PDF-Fassung von Rapport und Protokoll (tools/pdf.py).
 
 def snap_bereit() -> bool:
@@ -364,35 +424,49 @@ def browser_weg(sysinfo: dict) -> tuple[str, str]:
     return "", ""
 
 
-def browser_installieren(sysinfo: dict) -> None:
+def browser_installieren(sysinfo: dict) -> tuple[bool, str]:
+    """Installiert Chromium. Gibt (versucht, Befehl von Hand) zurück. Ob es geklappt hat, zeigen danach Suche und Probe."""
     weg, _ = browser_weg(sysinfo)
     if weg == "paket":
-        paket_installieren("browser", sysinfo)
-    elif weg == "snap":
-        vor = root_praefix("die Installation von Chromium")
-        if vor is not None:
-            lauf(vor + ["snap", "install", "chromium"], 1800, "pakete.log",
-                 anzeige="Chromium wird installiert (Snap, das kann einige Minuten dauern)")
+        return paket_installieren("browser", sysinfo)
+    if weg != "snap":
+        return False, ""
+    stand.paketfehler.pop("browser", None)
+    vor = root_praefix("die Installation von Chromium")
+    if vor is None:
+        return False, "sudo snap install chromium"
+    code, text = lauf(vor + ["snap", "install", "chromium"], 1800, "pakete.log",
+                      anzeige="Chromium wird installiert (Snap, das kann einige Minuten dauern)")
+    if code != 0:
+        stand.paketfehler["browser"] = text
+    return True, "sudo snap install chromium"
+
+
+def snap_nicht_eingehaengt(meldung: str) -> bool:
+    """Meldet snap, dass es den Inhalt eines installierten Snaps nicht findet? Dann ist der Snap installiert, sein Inhalt
+    aber unter /snap nicht eingehängt. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL, gleich nach der Installation."""
+    return "cannot find installed snap" in meldung or "meta/snap.yaml" in meldung
 
 
 def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None:
     """Zeile «Browser für PDF»: finden, sonst installieren, dann mit einer kleinen Seite wirklich ein PDF erzeugen.
-    «Gefunden» allein sagt wenig: Ob der Browser hier ohne Fenster druckt, zeigt erst die Probe."""
+    «Gefunden» allein sagt wenig: Ob der Browser hier ohne Fenster druckt, zeigt erst die Probe. Als «neu eingerichtet»
+    gilt Chromium erst, wenn es gedruckt hat."""
     from tools import pdf
     browser = pdf.browser_finden()
     neu = versucht = False
+    von_hand = ""
     if not browser and darf and browser_weg(sysinfo)[0]:
-        versucht = True
-        browser_installieren(sysinfo)
+        versucht, von_hand = browser_installieren(sysinfo)
         browser = pdf.browser_finden()
         neu = bool(browser)
-        if neu:
-            stand.neu.append("Chromium (Browser für PDF)")
-    ohne = ("Rapport und Protokoll gibt es trotzdem, als HTML: im Browser"
-            + (" von Windows" if sysinfo.get("wsl") else "") + " öffnen und über «Drucken» als PDF speichern.")
+    wo = "im Browser" + (" von Windows" if sysinfo.get("wsl") else "")
+    ohne = f"Rapport und Protokoll gibt es trotzdem, als HTML: {wo} öffnen und über «Drucken» als PDF speichern."
     if not browser:
         if versucht:
-            grund = f"Chromium liess sich nicht installieren (Details: {LOGS / 'pakete.log'})."
+            grund = "Chromium liess sich nicht installieren."
+        elif von_hand:      # die Einrichtung wollte, kam aber nicht an die nötigen Rechte
+            grund = f"Für die Installation von Chromium fehlen die Rechte (sudo). Von Hand: {von_hand}  "
         elif sysinfo["art"] == "linux" and sysinfo.get("id") == "ubuntu" and not snap_bereit():
             grund = ("Unter Ubuntu gibt es Chromium nur als Snap, und Snap läuft hier nicht"
                      + (" (WSL ohne systemd)." if sysinfo.get("wsl") and not plattform.systemd() else "."))
@@ -401,6 +475,8 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
         else:
             grund = "Chrome, Chromium, Edge oder Brave installieren, oder den Pfad in OSINT_BROWSER nennen."
         zeile(AUS, "Browser für PDF", f"keiner gefunden. {grund} {ohne}")
+        if versucht:
+            ursache_zeigen("browser")
         return
     name = Path(browser).name
     if a.nur_pruefen:
@@ -408,10 +484,23 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
         return
     with ui.arbeit(f"Browser für PDF wird geprüft ({name} druckt eine kleine Seite)"):
         fehler = pdf.probe(browser, PROJEKT / "faelle")
-    if fehler:
-        zeile(AUS, "Browser für PDF", f"{name} gefunden, aber die Probe ergab kein PDF: {fehler} {ohne}")
-    else:
+    if not fehler:
+        if neu:
+            stand.neu.append("Chromium (Browser für PDF)")
         zeile(NEU if neu else GUT, "Browser für PDF", f"{name}{' installiert' if neu else ''}, Probe-PDF erzeugt")
+        return
+    # Der Browser ist da, druckt hier aber nicht. Die Zeile sagt in einfachen Worten warum, und was zu versuchen ist, steht am Schluss.
+    lage = "installiert" if neu else "gefunden"
+    if snap_nicht_eingehaengt(fehler):
+        zeile(AUS, "Browser für PDF", f"{name} ist als Snap installiert, startet aber nicht: Sein Inhalt ist unter /snap nicht eingehängt. {ohne}")
+        neustart = ("WSL neu starten (in PowerShell wsl --shutdown ausführen, das beendet alle offenen WSL-Fenster, dann WSL neu öffnen)"
+                    if sysinfo.get("wsl") else "den Rechner neu starten")
+        stand.offen.append(f"Chromium startet noch nicht, sein Snap ist nicht eingehängt. Versuch: {neustart} und {SETUP} erneut "
+                           f"ausführen. Die Zeile «Browser für PDF» zeigt dann, ob er druckt. Bis dahin: PDF über «Drucken» {wo}.")
+    else:
+        zeile(AUS, "Browser für PDF", f"{name} {lage}, aber die Probe ergab kein PDF: {fehler} {ohne}")
+    if neu:
+        ursache_zeigen("browser")
 
 
 # Tor als Proxy für die Abfragen. Das hat mit Robin nichts zu tun: Robin bringt sein eigenes Tor im Container mit.
@@ -482,9 +571,10 @@ def tor_einrichten(a: argparse.Namespace, sysinfo: dict) -> None:
     darf = not (a.nur_pruefen or a.nichts_installieren)
     t = tor_stand(sysinfo)
     frisch = neu = False
+    versucht, von_hand = False, ""
     if not t["antwortet"] and darf:
         if not t["installiert"] and t["installierbar"]:
-            paket_installieren("tor", sysinfo)
+            versucht, von_hand = paket_installieren("tor", sysinfo)
             t = tor_stand(sysinfo)
             neu = t["installiert"]
             if neu:
@@ -517,10 +607,16 @@ def tor_einrichten(a: argparse.Namespace, sysinfo: dict) -> None:
     elif not darf:
         grund = "ist nicht installiert"
         tun = f"Tor installieren lassen: {SETUP}{' ohne --nichts-installieren' if a.nichts_installieren else ''}   {ohne}"
+    elif not versucht:      # die Einrichtung wollte, kam aber nicht an die nötigen Rechte
+        grund = "ist nicht installiert, und für die Installation fehlen die Rechte (sudo)"
+        tun = f"Tor von Hand installieren: {von_hand}   Dann {SETUP} erneut ausführen. {ohne}"
     else:
-        grund = f"liess sich nicht installieren (Details: {LOGS / 'pakete.log'})"
-        tun = f"Die Meldung in {LOGS / 'pakete.log'} beheben, dann {SETUP} erneut ausführen. {ohne}"
+        grund = "liess sich nicht installieren"
+        tun = (f"Tor liess sich nicht installieren. Was die Paketverwaltung dazu meldet, steht oben bei «Tor (Proxy)», vollständig in "
+               f"{LOGS / 'pakete.log'}. Beheben, dann {SETUP} erneut ausführen. {ohne}")
     zeile(FEHLT, "Tor (Proxy)", f"Tor {grund}. Auf 127.0.0.1:9050 antwortet nichts: So käme keine Abfrage durch.")
+    if versucht and not t["installiert"]:
+        ursache_zeigen("tor")
     stand.noetig.append("ein Proxy, der antwortet")
     stand.offen.append(tun)
 
@@ -630,6 +726,8 @@ def voraussetzungen(a: argparse.Namespace, sysinfo: dict) -> dict:
     if docker["laeuft"]:
         zeile(NEU if "Docker" in stand.neu else GUT, "Docker",
               "läuft" + (", Zugriff vorerst über sudo" if docker["vor"] else "") + ("" if docker["compose"] else ", aber Compose fehlt"))
+        if docker["vor"]:
+            docker_zugriff_melden()
         if not docker["compose"]:
             stand.offen.append("Docker Compose installieren (Paket docker-compose-v2 oder docker-compose-plugin), dann "
                                f"{SETUP} erneut. Ohne Compose bleibt Web-Check aus.")
@@ -1193,9 +1291,14 @@ def oberflaeche_starten(a: argparse.Namespace) -> None:
 
 def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
     bereit = not (stand.noetig or code)
-    if stand.neues_terminal and not bereit:     # einsatzbereit: Dann steht es als erster Schritt unter «So geht es weiter»
-        stand.offen.insert(0, "Ein neues Terminal öffnen, bevor ihr 'claude' startet. Erst dort gilt: "
-                           + " und ".join(stand.neues_terminal) + ".")
+    if not bereit:
+        # Fehlt noch etwas, gibt es kein «So geht es weiter». Was dort stünde und schon jetzt zu tun ist, steht dann hier, mit
+        # demselben Wortlaut: das neue Terminal zuerst, der Projektordner zuletzt. Keine Zeile oben verspricht einen Schritt, der fehlt.
+        if stand.neues_terminal:
+            stand.offen.insert(0, plattform.schritt_terminal(stand.neues_terminal))
+        if stand.ordner is False:
+            stand.offen.append(plattform.schritt_ordner(False))
+        stand.offen.append(f"Ist das erledigt: {SETUP} erneut ausführen. Steht dort «Einsatzbereit», folgen die Schritte bis in die Oberfläche.")
     ui.leer()
     ui.linie()
     if bereit and tests_ok:

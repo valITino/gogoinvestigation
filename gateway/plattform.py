@@ -238,6 +238,23 @@ def ordner_vertraut(projekt: Path = PROJEKT) -> bool | None:
     return None if unlesbar else False
 
 
+def schritt_terminal(neues_terminal: tuple[str, ...] | list[str]) -> str:
+    """Der Schritt «neues Terminal», mit dem, was erst dort gilt. Derselbe Wortlaut, ob der Arbeitsplatz schon einsatzbereit
+    ist oder noch etwas fehlt."""
+    return (("Dieses WSL-Fenster schliessen und ein neues öffnen" if wsl() else "Dieses Terminal schliessen und ein neues öffnen")
+            + f", dort in den Projektordner wechseln: cd {PROJEKT}   Erst im neuen Fenster gilt: " + " und ".join(neues_terminal) + "."
+            # Eine neue Gruppe gilt ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster.
+            + (" Prüfen mit: docker ps   Kommt dort «permission denied»: in PowerShell wsl --shutdown ausführen und WSL neu öffnen."
+               if wsl() and any("Gruppe docker" in grund for grund in neues_terminal) else ""))
+
+
+def schritt_ordner(ordner: bool | None) -> str:
+    """Der Schritt «Projektordner in Claude Code bestätigen». None: Ob es schon geschehen ist, liess sich nicht ablesen."""
+    return (("Falls noch nicht geschehen: im " if ordner is None else "Im ")
+            + "Projektordner einmal Claude Code starten, mit dem Befehl: claude   Claude Code fragt, ob es dem Ordner "
+            "vertrauen soll. Mit Ja bestätigen, dann mit /exit beenden. " + OHNE_VERTRAUEN)
+
+
 def weiter(neues_terminal: tuple[str, ...] | list[str] = (), ordner: bool | None = None) -> list[str]:
     """Was nach der Einrichtung zu tun ist, vollständig und in der Reihenfolge, in der es zu tun ist: vom Terminal bis zu den
     Ergebnissen. Niemand soll einen Schritt erraten müssen.
@@ -247,16 +264,9 @@ def weiter(neues_terminal: tuple[str, ...] | list[str] = (), ordner: bool | None
                      gefunden. None: unbekannt, der Schritt steht mit «falls noch nicht geschehen» da. Siehe ordner_vertraut()."""
     schritte: list[str] = []
     if neues_terminal:
-        schritte.append(("Dieses WSL-Fenster schliessen und ein neues öffnen" if wsl() else "Dieses Terminal schliessen und ein neues öffnen")
-                        + f", dort in den Projektordner wechseln: cd {PROJEKT}   Erst im neuen Fenster gilt: "
-                        + " und ".join(neues_terminal) + "."
-                        # Eine neue Gruppe gilt ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster.
-                        + (" Prüfen mit: docker ps   Kommt dort «permission denied»: in PowerShell wsl --shutdown ausführen und WSL neu öffnen."
-                           if wsl() and any("Gruppe docker" in grund for grund in neues_terminal) else ""))
+        schritte.append(schritt_terminal(neues_terminal))
     if not ordner:
-        schritte.append(("Falls noch nicht geschehen: im " if ordner is None else "Im ")
-                        + "Projektordner einmal Claude Code starten, mit dem Befehl: claude   Claude Code fragt, ob es dem Ordner "
-                        "vertrauen soll. Mit Ja bestätigen, dann mit /exit beenden. " + OHNE_VERTRAUEN)
+        schritte.append(schritt_ordner(ordner))
     schritte.append(f"Oberfläche starten: {PY} tools/oberflaeche.py   "
                     + ("Der Browser von Windows öffnet sich von selbst." if wsl() else "Der Browser öffnet sich von selbst.")
                     + " Öffnet sich keiner, steht die Adresse im Terminal: einmal im Browser öffnen.")

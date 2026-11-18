@@ -35,8 +35,8 @@ if __name__ == "__main__":
 
 from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
 from gateway.quellen import QUELLEN  # noqa: E402
-from tools.einrichten import (CLAUDE_MIN, MODELLE, anmeldung, benutzervariable, claude_stand, git_bash, modell_testen,  # noqa: E402
-                              modellzuteilung, ui)
+from tools.einrichten import (CLAUDE_MIN, MODELLE, anmeldung, benutzervariable, claude_stand, docker_gruppe, git_bash,  # noqa: E402
+                              modell_testen, modellzuteilung, ui)
 
 VENV = plattform.venv_python(PROJEKT)
 noetig_fehlt: list[str] = []
@@ -148,7 +148,11 @@ def umgebung(env: dict[str, str]) -> None:
         zeile(AUS, "Docker", "nicht installiert: Web-Check und Robin (Dark Web) bleiben aus")
     else:
         code, _ = lauf(["docker", "info"], 15)
-        if code != 0:
+        lage, konto = docker_gruppe() if code != 0 else ("", "")
+        if lage == "neu_anmelden":      # das Konto steht in der Gruppe docker, die Anmeldung dieses Terminals ist aber älter
+            zeile(AUS, "Docker", "installiert, aber dieses Terminal hat noch keinen Zugriff: Die Gruppe docker gilt erst nach einer neuen Anmeldung")
+            schritte.append(plattform.schritt_terminal([f"der Zugriff des Kontos {konto} auf Docker (Gruppe docker). Robin braucht ihn"]))
+        elif code != 0:
             zeile(AUS, "Docker", "installiert, aber der Dienst läuft nicht oder ihr habt keinen Zugriff")
             schritte.append(f"Docker starten, dann {SETUP} erneut (für Web-Check und Robin)")
         else:

@@ -122,6 +122,15 @@ jobs:
           python tools\pruefen.py
           exit $LASTEXITCODE
 
+      # Unter WSL nennt die Oberfläche ihre Adresse mit localhost, und die Einrichtung führt eigene Schritte auf. Ein echtes WSL
+      # gibt es hier nicht: Die Selbsttests laufen deshalb ein zweites Mal so, als wäre es eines. Ein Test, der nur unter WSL
+      # scheitert, fiel am 18.11.2026 erst auf dem Rechner eines Nutzers auf.
+      - name: Selbsttests wie unter WSL (Linux)
+        if: runner.os == 'Linux'
+        env:
+          WSL_DISTRO_NAME: Ubuntu
+        run: python3 tools/selbsttest.py
+
       # Die Oberfläche startet mit einem Befehl, auf jedem System: Server hoch, Hauptseiten abrufen, fremden Host-Kopf abweisen, beenden.
       - name: Oberfläche starten (Linux, macOS)
         if: runner.os != 'Windows'
