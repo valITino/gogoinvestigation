@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 95 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 96 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code, die Testabfragen und der Start: Claude Code einmal im Projektordner,
 danach die Oberfläche. Während längerer Arbeiten läuft eine Zeile mit, die sagt, was gerade geschieht. Am Ende steht,
@@ -1105,6 +1105,12 @@ Was ihr wissen müsst:
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
 | WSL: Beim Start der Oberfläche öffnet sich kein Browser | WSL hat keinen eigenen Browser, und der von Windows liess sich nicht starten | die Adresse aus dem Terminal im Browser von Windows öffnen. Sie steht da, sobald die Oberfläche läuft |
 | «Browser für PDF: … die Probe ergab kein PDF» | Der Browser startet ohne Fenster nicht, oder er darf im Projektordner nicht schreiben (ein Snap darf nur in den Benutzerordner) | Projekt im Benutzerordner ablegen oder einen anderen Browser in `OSINT_BROWSER` nennen. Sonst den Rapport im Browser öffnen und als PDF drucken |
+| «Browser für PDF: chromium ist installiert, in diesem WSL-Fenster aber nicht zu sehen» (oder «noch nicht zu sehen») | Der Snap ist installiert und für das System eingehängt, dieses Fenster sieht seinen Inhalt aber nicht. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL. Bekannt ist das von WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden (ein Fehler von WSL, microsoft/WSL#9097). Erkennt die Einrichtung ein solches Fenster, steht es in der Zeile | Der Schritt steht am Schluss: Fenster schliessen, WSL gewöhnlich öffnen (nicht «Als Administrator ausführen»), `./setup.sh` erneut. Meldet die Zeile dort dasselbe: in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen, `./setup.sh` erneut. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
+| «Browser für PDF: chromium ist als Snap installiert, startet aber nicht» | Der Snap ist installiert, sein Inhalt aber auch für das System nicht eingehängt | Versuch: WSL neu starten (in PowerShell `wsl --shutdown`, dann WSL neu öffnen) und `./setup.sh` erneut. Die Zeile zeigt dann, ob er druckt. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
+| Vor einer Installation steht «Die Paketverwaltung ist gerade belegt», oder danach «Tor liess sich noch nicht installieren, die Paketverwaltung war belegt» | Ein anderer Vorgang hält die Paketverwaltung besetzt. Kurz nach dem Start sind das meist die automatischen Aktualisierungen des Systems (`unattended-upgr`). Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL | Die Einrichtung wartet von selbst, höchstens zehn Minuten. Reicht das nicht: in ein paar Minuten `./setup.sh` erneut ausführen. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
+| «Tor liess sich nicht installieren» oder «Chromium liess sich nicht installieren» | Die Paketverwaltung hat die Installation abgelehnt | Der Grund steht eingerückt unter der Zeile («Die Paketverwaltung meldet: …»), vollständig in `/tmp/osint-setup/pakete.log`. Beheben, dann `./setup.sh` erneut. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
+| Die Einrichtung fragt ein zweites Mal nach dem Passwort (sudo) | sudo merkt sich das Passwort nur eine Weile, meist 15 Minuten. Eine lange Installation davor hat die Frist aufgebraucht | Passwort noch einmal eingeben. Die Zeile davor sagt, wofür es gebraucht wird |
+| «Docker läuft, Zugriff vorerst über sudo» | Das Konto steht in der Gruppe `docker`, aber die Anmeldung dieses Terminals ist älter. Robin erreicht Docker so nicht | Der Schritt steht am Schluss: Fenster schliessen und neu öffnen. Unter WSL mit `docker ps` prüfen, sonst in PowerShell `wsl --shutdown` |
 | Einrichtung meldet «Dieser Ordner wurde unter … eingerichtet» | derselbe Ordner unter WSL und unter Windows benutzt | je System ein eigener Klon |
 | Werkzeug meldet «Schlüssel … fehlt in .env» | Quelle nicht eingerichtet | Schlüssel eintragen, Claude Code neu starten |
 | «verweigert den Zugriff (HTTP 401/403)» | Schlüssel falsch, abgelaufen oder Abo deckt den Endpunkt nicht | Schlüssel prüfen, `python3 tools/pruefen.py --live` |
@@ -1132,11 +1138,12 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 95 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 96 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
-  Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`.
+  Werkzeugen, die Oberfläche der Einrichtung und der Weg der Antworten des Assistenten bis in `.env`. Unter Linux
+  laufen sie ein zweites Mal so, als wäre der Rechner ein WSL: Ein echtes WSL gibt es in der CI nicht.
 - Acht davon gelten den Quellen aus dem November 2026: die Einordnung einer IP (drei Werte, uneinige Quellen,
   Tatzeit im Fenster der Historie, Residential Proxy, frühere Zuteilung, nie eine Kontaktperson im Ergebnis), die
   Regel im Rapport (jede IP trägt den Wert aus der Fallakte, Empfehlungen bekommen den Vorbehalt), der Beleg von
@@ -1198,6 +1205,49 @@ PowerShell 7:
   Vertrauen auf einem echten Arbeitsplatz so ablegt, wie es die Dokumentation sagt. Die Prüfumgebung hat weder WSL noch systemd noch Snap: Das alles liess sich
   nur mit Attrappen nachstellen. Bei jedem dieser Punkte sagt die Einrichtung selbst, was sie gesehen hat (Zeilen
   «Tor (Proxy)», «Browser für PDF», «Projektordner»).
+- Einer gilt dem, was der erste echte Lauf unter WSL gezeigt hat (18.11.2026, Ubuntu 26.04 in WSL, Einrichtung des
+  Eigentümers mit «Prüfen und auffrischen»). Der Lauf ging durch und endete mit «nicht einsatzbereit». Vier Dinge
+  daraus sind behoben:
+  Ein Selbsttest scheiterte (94 von 95). Er las den Port der Oberfläche mit `127.0.0.1` aus ihrer Ausgabe, unter WSL
+  steht dort `localhost`. Hier nachgestellt, indem die ganze Suite mit gesetztem `WSL_DISTRO_NAME` lief: vorher 94 von
+  95 mit derselben Meldung, nachher alle. Dieser zweite Lauf gehört seither zur CI (Linux).
+  Chromium liess sich als Snap installieren, startete aber nicht (snap meldete, der Inhalt des installierten Snaps
+  fehle unter `/snap`). Die Probe sagte das, die Liste «Neu eingerichtet» nannte Chromium trotzdem. Jetzt gilt Chromium
+  erst als eingerichtet, wenn es gedruckt hat. Die Nachschau auf jenem Rechner am selben Tag zeigte, was los war: Für
+  das System war der Snap eingehängt (die Einheit `snap-chromium-….mount` meldete «active (mounted)»), im offenen
+  WSL-Fenster zeigte `mount` aber keinen einzigen Snap, und der Ordner des Snaps war dort leer. Die Einrichtung erkennt
+  diese Lage jetzt selbst, nennt sie in einfachen Worten und setzt Chromium zu dem, was erst im neuen Fenster gilt.
+  `tools/pruefen.py` meldet einen solchen Browser nicht mehr als vorhanden. Bekannt ist genau diese Meldung von
+  WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden: So berichtet es microsoft/WSL#9097, dort zuletzt
+  bestätigt in einem Kommentar vom Januar 2026 (gelesen am 18.11.2026). Der Schritt sagt deshalb, das neue Fenster
+  gewöhnlich zu öffnen. Ob das Fenster als Administrator läuft, fragt die Einrichtung unter WSL das Windows-Programm
+  `whoami` (Verbindlichkeitsstufe `S-1-16-12288`). Trifft es zu, nennt die Zeile das als Grund.
+  Tor liess sich nicht installieren, und der Grund stand nur in einer Protokolldatei. Dort stand: «Could not get lock
+  /var/lib/dpkg/lock-frontend. It is held by process … (unattended-upgr)». Das System spielte gerade automatische
+  Aktualisierungen ein. Jetzt wartet `apt-get` bis zu zehn Minuten auf die Sperre, und die Einrichtung sagt vorher,
+  dass und worauf sie wartet. Reicht das nicht, nennt sie die belegte Paketverwaltung als Grund und rät, es in ein paar
+  Minuten noch einmal zu versuchen. Bei jedem anderen Fehlschlag steht die Meldung der Paketverwaltung eingerückt unter
+  der Zeile. Fragt sudo ein zweites Mal nach dem Passwort, sagt die Einrichtung vorher wofür.
+  Die Zeile «Projektordner» versprach einen Schritt am Schluss, der bei «nicht einsatzbereit» fehlte, und «Docker
+  läuft, Zugriff vorerst über sudo» blieb ohne Schritt. Beides steht jetzt in der Liste am Schluss, im selben Wortlaut
+  wie unter «So geht es weiter».
+  Richtig gemeldet hat der Lauf: den Projektordner als «noch nicht bestätigt», den Proxy, der nicht antwortet, als
+  Ursache, und die Passwortfrage mit ihrem Zweck.
+  Die belegte Paketverwaltung ist in der Prüfumgebung echt nachgestellt (18.11.2026, Ubuntu 24.04, apt 2.8.3, als
+  root): Ein Skript namens `unattended-upgrade` hielt die Sperre `/var/lib/dpkg/lock-frontend`, und die
+  Installationsroutine der Einrichtung lief dagegen. Sie kündigte das Warten an und nannte den Vorgang beim Namen. Bei
+  8 Sekunden Sperre kam apt nach 9 Sekunden durch. War die Wartezeit kürzer als die Sperre (5 gegen 25 Sekunden),
+  nannte die Einrichtung die belegte Paketverwaltung als Grund, und darunter standen zwei Zeilen von apt statt einer je
+  Sekunde. Installiert wurde nichts: Gefragt war ein Paket, das schon da ist. Dabei gesehen: Ob die Sperre gehalten
+  wird, steht in `/proc/locks`. Der Name eines Prozesses sagt es nicht, denn auch ein Skript namens
+  `unattended-upgrade-shutdown` heisst in der Prozessliste `unattended-upgr`. Und die Zeilen «Waiting for cache lock»
+  schreibt apt auch, wenn es danach weiterkommt: Als Grund zählt deshalb nur die Fehlerzeile.
+  **Nicht geprüft:** die neuen Meldungen auf einem echten WSL. Ob das Fenster auf jenem Rechner als Administrator
+  lief, also ob die bekannte Ursache dort zutrifft. Ob ein gewöhnliches neues WSL-Fenster den Snap sieht oder erst
+  `wsl --shutdown` hilft. Die Abfrage von `whoami` aus WSL (hier nur mit einer Attrappe). Ob Chromium aus dem Snap
+  unter WSL ohne Fenster druckt. Wie lange die automatischen Aktualisierungen die Paketverwaltung belegen: Dauern sie
+  länger als zehn Minuten, braucht es einen zweiten Lauf. Weiterhin offen: das Öffnen des Browsers von Windows aus
+  WSL, der Start von Claude Code aus der Einrichtung, und ab wann die Gruppe `docker` unter WSL gilt.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
