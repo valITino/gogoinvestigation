@@ -35,8 +35,8 @@ if __name__ == "__main__":
 
 from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
 from gateway.quellen import QUELLEN  # noqa: E402
-from tools.einrichten import (CLAUDE_MIN, MODELLE, anmeldung, benutzervariable, claude_stand, docker_gruppe, git_bash,  # noqa: E402
-                              modell_testen, modellzuteilung, snap_lage, ui)
+from tools.einrichten import (CLAUDE_MIN, MODELLE, SNAP_GRUND, anmeldung, benutzervariable, claude_stand, docker_gruppe,  # noqa: E402
+                              git_bash, modell_testen, modellzuteilung, snap_lage, snap_unsichtbar, ui)
 
 VENV = plattform.venv_python(PROJEKT)
 noetig_fehlt: list[str] = []
@@ -170,9 +170,8 @@ def umgebung(env: dict[str, str]) -> None:
     # Ein Browser aus einem Snap kann installiert sein und in diesem Terminal trotzdem fehlen: Sein Inhalt ist dann hier nicht zu sehen
     lage_snap = snap_lage(Path(browser).name) if browser and browser.startswith("/snap/") else ""
     if lage_snap == "anderswo":
-        zeile(AUS, "Browser für PDF", f"{Path(browser).name} ist installiert, in diesem Fenster aber noch nicht zu sehen: Sein Snap ist eingehängt, "
-                                      "nur dieses Fenster kennt ihn noch nicht")
-        schritte.append(plattform.schritt_terminal(["Chromium, der Browser für PDF (sein Snap ist in diesem Fenster noch nicht zu sehen)"]))
+        zeile(AUS, "Browser für PDF", snap_unsichtbar(Path(browser).name, plattform.wsl()))
+        schritte.append(plattform.schritt_terminal([SNAP_GRUND]))
     elif lage_snap == "nicht":
         zeile(AUS, "Browser für PDF", f"{Path(browser).name} ist als Snap installiert, aber nicht eingehängt. {SETUP} sagt, was zu versuchen ist. "
                                       "PDF bis dahin über 'Drucken' im Browser.")

@@ -1105,7 +1105,7 @@ Was ihr wissen müsst:
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
 | WSL: Beim Start der Oberfläche öffnet sich kein Browser | WSL hat keinen eigenen Browser, und der von Windows liess sich nicht starten | die Adresse aus dem Terminal im Browser von Windows öffnen. Sie steht da, sobald die Oberfläche läuft |
 | «Browser für PDF: … die Probe ergab kein PDF» | Der Browser startet ohne Fenster nicht, oder er darf im Projektordner nicht schreiben (ein Snap darf nur in den Benutzerordner) | Projekt im Benutzerordner ablegen oder einen anderen Browser in `OSINT_BROWSER` nennen. Sonst den Rapport im Browser öffnen und als PDF drucken |
-| «Browser für PDF: chromium ist installiert, in diesem WSL-Fenster aber noch nicht zu sehen» | Der Snap ist installiert und für das System eingehängt, das schon offene Fenster sieht seinen Inhalt aber nicht. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL, gleich nach der Installation | Der Schritt steht am Schluss: Fenster schliessen, ein neues öffnen, `./setup.sh` erneut. Meldet die Zeile dort dasselbe: in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen, `./setup.sh` erneut. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
+| «Browser für PDF: chromium ist installiert, in diesem WSL-Fenster aber nicht zu sehen» (oder «noch nicht zu sehen») | Der Snap ist installiert und für das System eingehängt, dieses Fenster sieht seinen Inhalt aber nicht. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL. Bekannt ist das von WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden (ein Fehler von WSL, microsoft/WSL#9097). Erkennt die Einrichtung ein solches Fenster, steht es in der Zeile | Der Schritt steht am Schluss: Fenster schliessen, WSL gewöhnlich öffnen (nicht «Als Administrator ausführen»), `./setup.sh` erneut. Meldet die Zeile dort dasselbe: in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen, `./setup.sh` erneut. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
 | «Browser für PDF: chromium ist als Snap installiert, startet aber nicht» | Der Snap ist installiert, sein Inhalt aber auch für das System nicht eingehängt | Versuch: WSL neu starten (in PowerShell `wsl --shutdown`, dann WSL neu öffnen) und `./setup.sh` erneut. Die Zeile zeigt dann, ob er druckt. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
 | Vor einer Installation steht «Die Paketverwaltung ist gerade belegt», oder danach «Tor liess sich noch nicht installieren, die Paketverwaltung war belegt» | Ein anderer Vorgang hält die Paketverwaltung besetzt. Kurz nach dem Start sind das meist die automatischen Aktualisierungen des Systems (`unattended-upgr`). Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL | Die Einrichtung wartet von selbst, höchstens zehn Minuten. Reicht das nicht: in ein paar Minuten `./setup.sh` erneut ausführen. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor liess sich nicht installieren» oder «Chromium liess sich nicht installieren» | Die Paketverwaltung hat die Installation abgelehnt | Der Grund steht eingerückt unter der Zeile («Die Paketverwaltung meldet: …»), vollständig in `/tmp/osint-setup/pakete.log`. Beheben, dann `./setup.sh` erneut. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
@@ -1217,7 +1217,11 @@ PowerShell 7:
   das System war der Snap eingehängt (die Einheit `snap-chromium-….mount` meldete «active (mounted)»), im offenen
   WSL-Fenster zeigte `mount` aber keinen einzigen Snap, und der Ordner des Snaps war dort leer. Die Einrichtung erkennt
   diese Lage jetzt selbst, nennt sie in einfachen Worten und setzt Chromium zu dem, was erst im neuen Fenster gilt.
-  `tools/pruefen.py` meldet einen solchen Browser nicht mehr als vorhanden.
+  `tools/pruefen.py` meldet einen solchen Browser nicht mehr als vorhanden. Bekannt ist genau diese Meldung von
+  WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden: So berichtet es microsoft/WSL#9097, dort zuletzt
+  bestätigt in einem Kommentar vom Januar 2026 (gelesen am 18.11.2026). Der Schritt sagt deshalb, das neue Fenster
+  gewöhnlich zu öffnen. Ob das Fenster als Administrator läuft, fragt die Einrichtung unter WSL das Windows-Programm
+  `whoami` (Verbindlichkeitsstufe `S-1-16-12288`). Trifft es zu, nennt die Zeile das als Grund.
   Tor liess sich nicht installieren, und der Grund stand nur in einer Protokolldatei. Dort stand: «Could not get lock
   /var/lib/dpkg/lock-frontend. It is held by process … (unattended-upgr)». Das System spielte gerade automatische
   Aktualisierungen ein. Jetzt wartet `apt-get` bis zu zehn Minuten auf die Sperre, und die Einrichtung sagt vorher,
@@ -1238,12 +1242,12 @@ PowerShell 7:
   wird, steht in `/proc/locks`. Der Name eines Prozesses sagt es nicht, denn auch ein Skript namens
   `unattended-upgrade-shutdown` heisst in der Prozessliste `unattended-upgr`. Und die Zeilen «Waiting for cache lock»
   schreibt apt auch, wenn es danach weiterkommt: Als Grund zählt deshalb nur die Fehlerzeile.
-  **Nicht geprüft:** die neuen Meldungen auf einem echten WSL. Ob ein neues WSL-Fenster den Snap sieht oder erst
-  `wsl --shutdown` hilft, warum das offene Fenster ihn nicht sah (eine Suche am 18.11.2026 fand dieselbe Meldung in
-  Foren, aber keine bestätigte Ursache), und ob Chromium aus dem Snap unter WSL ohne Fenster druckt. Wie lange die
-  automatischen Aktualisierungen die Paketverwaltung belegen: Dauern sie länger als zehn Minuten,
-  braucht es einen zweiten Lauf. Weiterhin offen: das Öffnen des Browsers von Windows aus WSL, der Start von Claude
-  Code aus der Einrichtung, und ab wann die Gruppe `docker` unter WSL gilt.
+  **Nicht geprüft:** die neuen Meldungen auf einem echten WSL. Ob das Fenster auf jenem Rechner als Administrator
+  lief, also ob die bekannte Ursache dort zutrifft. Ob ein gewöhnliches neues WSL-Fenster den Snap sieht oder erst
+  `wsl --shutdown` hilft. Die Abfrage von `whoami` aus WSL (hier nur mit einer Attrappe). Ob Chromium aus dem Snap
+  unter WSL ohne Fenster druckt. Wie lange die automatischen Aktualisierungen die Paketverwaltung belegen: Dauern sie
+  länger als zehn Minuten, braucht es einen zweiten Lauf. Weiterhin offen: das Öffnen des Browsers von Windows aus
+  WSL, der Start von Claude Code aus der Einrichtung, und ab wann die Gruppe `docker` unter WSL gilt.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum

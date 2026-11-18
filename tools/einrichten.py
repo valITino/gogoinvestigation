@@ -536,6 +536,21 @@ def snap_lage(name: str = "chromium", snaps: Path = Path("/snap")) -> str:
     return "anderswo" if code == 0 and text.strip() == "active" else "nicht"
 
 
+# Der Grund, mit dem ein solcher Snap im Schritt «neues Fenster» steht. plattform.schritt_terminal() erkennt ihn am Wort Chromium.
+SNAP_GRUND = "Chromium, der Browser für PDF (sein Snap ist in diesem Fenster nicht zu sehen)"
+
+
+def snap_unsichtbar(name: str, unter_wsl: bool, neu: bool = False) -> str:
+    """Der Satz für einen Snap, den systemd eingehängt hat, den dieses Terminal aber nicht sieht (snap_lage() == "anderswo").
+    Unter WSL ist das von Fenstern bekannt, die unter Windows als Administrator laufen: Trifft das hier zu, steht es da."""
+    fenster = "WSL-Fenster" if unter_wsl else "Terminal"
+    da = f"{name} ist {'jetzt ' if neu else ''}installiert, in diesem {fenster} aber"
+    if unter_wsl and plattform.windows_administrator():
+        return (f"{da} nicht zu sehen: Das Fenster läuft unter Windows als Administrator, und in solchen Fenstern zeigt WSL keine "
+                "Snaps (ein bekannter Fehler von WSL).")
+    return f"{da} noch nicht zu sehen: Sein Snap ist eingehängt, nur dieses {fenster} kennt ihn noch nicht."
+
+
 def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None:
     """Zeile «Browser für PDF»: finden, sonst installieren, dann mit einer kleinen Seite wirklich ein PDF erzeugen.
     «Gefunden» allein sagt wenig: Ob der Browser hier ohne Fenster druckt, zeigt erst die Probe. Als «neu eingerichtet»
@@ -585,11 +600,9 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
     if snap_nicht_eingehaengt(fehler) and snap_lage(name) == "anderswo":
         # Der Snap ist da und eingehängt, nur dieses Terminal sieht ihn nicht. Ein neues Fenster braucht es unter WSL nach der
         # Einrichtung ohnehin: Der Grund kommt deshalb zu den übrigen, und die Probe folgt dort.
-        zeile(AUS, "Browser für PDF", f"{name} ist {'jetzt ' if neu else ''}installiert, in diesem {fenster} aber noch nicht zu sehen: Sein Snap ist "
-                                      f"eingehängt, nur dieses {fenster} kennt ihn noch nicht. Bis dahin: PDF über «Drucken» {wo}.")
-        grund = "Chromium, der Browser für PDF (sein Snap ist in diesem Fenster noch nicht zu sehen)"
-        if grund not in stand.neues_terminal:
-            stand.neues_terminal.append(grund)
+        zeile(AUS, "Browser für PDF", f"{snap_unsichtbar(name, bool(sysinfo.get('wsl')), neu)} Bis dahin: PDF über «Drucken» {wo}.")
+        if SNAP_GRUND not in stand.neues_terminal:
+            stand.neues_terminal.append(SNAP_GRUND)
         stand.offen.append(f"Ob Chromium druckt, zeigt die Zeile «Browser für PDF», sobald ihr {SETUP} im neuen {fenster} noch einmal ausführt.")
     elif snap_nicht_eingehaengt(fehler):
         zeile(AUS, "Browser für PDF", f"{name} ist als Snap installiert, startet aber nicht: Sein Inhalt ist unter /snap nicht eingehängt. {ohne}")

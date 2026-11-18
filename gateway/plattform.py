@@ -238,6 +238,26 @@ def ordner_vertraut(projekt: Path = PROJEKT) -> bool | None:
     return None if unlesbar else False
 
 
+def windows_administrator() -> bool | None:
+    """Läuft dieses WSL-Fenster unter Windows mit Administratorrechten? True oder False, None wenn es sich nicht feststellen
+    lässt (kein WSL, oder Programme von Windows lassen sich von hier nicht starten). Gefragt wird das Windows-Programm whoami
+    nach der Verbindlichkeitsstufe des Fensters: S-1-16-12288 heisst hoch (als Administrator gestartet), S-1-16-8192 mittel
+    (gewöhnlich gestartet). Die Kennungen sind in jeder Sprache von Windows gleich.
+    Wozu: In einem Fenster mit Administratorrechten zeigt WSL die Snaps nicht, die systemd eingehängt hat. So berichtet es
+    microsoft/WSL#9097, dort zuletzt bestätigt im Januar 2026 (gelesen am 18.11.2026)."""
+    if not wsl():
+        return None
+    try:
+        antwort = subprocess.run([shutil.which("whoami.exe") or "/mnt/c/Windows/System32/whoami.exe", "/groups"],
+                                 capture_output=True, timeout=15, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = (antwort.stdout or b"").decode("ascii", errors="replace")
+    if "S-1-16-12288" in text or "S-1-16-16384" in text:
+        return True
+    return False if "S-1-16-8192" in text or "S-1-16-4096" in text else None
+
+
 def schritt_terminal(neues_terminal: tuple[str, ...] | list[str]) -> str:
     """Der Schritt «neues Terminal», mit dem, was erst dort gilt. Derselbe Wortlaut, ob der Arbeitsplatz schon einsatzbereit
     ist oder noch etwas fehlt."""
@@ -250,6 +270,9 @@ def schritt_terminal(neues_terminal: tuple[str, ...] | list[str]) -> str:
         proben.append("docker ps meldet dort «permission denied»")
     if any("Chromium" in grund for grund in neues_terminal):
         proben.append(f"{SETUP} meldet Chromium dort wieder so")
+        if wsl():       # die bekannte Ursache dafür, dass ein WSL-Fenster einen eingehängten Snap nicht sieht: siehe windows_administrator()
+            text += (" Das neue Fenster gewöhnlich öffnen, nicht über «Als Administrator ausführen»: In Fenstern mit Administratorrechten "
+                     "zeigt WSL keine Snaps (ein bekannter Fehler von WSL).")
     if wsl() and proben:
         text += " Reicht das neue Fenster nicht (" + ", oder ".join(proben) + "): in PowerShell wsl --shutdown ausführen und WSL neu öffnen."
     return text

@@ -1148,7 +1148,7 @@ def _():
     from tools import pdf
     echt = (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
             einrichten.snap_lage)
-    echt_systemd = plattform.systemd
+    echt_systemd, echt_admin = plattform.systemd, plattform.windows_administrator
     ubuntu, fedora = {**LINUX, "id": "ubuntu", "wsl": True}, {**LINUX, "id": "fedora", "paketverwaltung": "dnf"}
     try:
         plattform.systemd = lambda: False       # der Prüfrechner entscheidet nicht mit, ob hier systemd läuft
@@ -1165,9 +1165,10 @@ def _():
 
         # ---- Die Zeile der Einrichtung: finden, sonst installieren, dann wirklich drucken
         def lauf_browser(sysinfo: dict, vorhanden: bool, nach_installation: bool = True, probe: str | None = None, snap: bool = True,
-                         rechte: bool = True, meldung: str = "", snap_lage: str = "nicht", **angaben):
+                         rechte: bool = True, meldung: str = "", snap_lage: str = "nicht", admin: bool | None = None, **angaben):
             zustand, rufe = {"da": vorhanden}, []
             einrichten.stand = einrichten.Stand()
+            plattform.windows_administrator = lambda: admin
             einrichten.ui, aus = oberflaeche([], interaktiv=False)
             einrichten.snap_bereit = lambda: snap
             einrichten.snap_lage = lambda name="chromium", snaps=None: snap_lage
@@ -1229,19 +1230,59 @@ def _():
         rufe, text, s = lauf_browser(ubuntu, False, probe=snap_fehler, snap_lage="anderswo")
         assert rufe == ["installieren", "probe"] and s.neu == [] and text.startswith(plattform.AUS + " "), (rufe, text)
         assert "chromium ist jetzt installiert, in diesem WSL-Fenster aber noch nicht zu sehen" in text and "nicht eingehängt" not in text, text
-        assert "im Browser von Windows" in text and s.neues_terminal == ["Chromium, der Browser für PDF (sein Snap ist in diesem Fenster noch nicht zu sehen)"], s.neues_terminal
+        assert "im Browser von Windows" in text and s.neues_terminal == [einrichten.SNAP_GRUND] and "Chromium" in einrichten.SNAP_GRUND, s.neues_terminal
         assert len(s.offen) == 1 and "Ob Chromium druckt" in s.offen[0] and plattform.SETUP in s.offen[0] and "wsl --shutdown" not in s.offen[0], s.offen
         rufe, text, s = lauf_browser({**ubuntu, "wsl": False}, True, probe=snap_fehler, snap_lage="anderswo")
         assert rufe == ["probe"] and "chromium ist installiert, in diesem Terminal aber noch nicht zu sehen" in text, text
+        # Bekannt ist das von WSL-Fenstern, die unter Windows als Administrator laufen (microsoft/WSL#9097). Trifft das zu, steht es da
+        rufe, text, s = lauf_browser(ubuntu, True, probe=snap_fehler, snap_lage="anderswo", admin=True)
+        assert "in diesem WSL-Fenster aber nicht zu sehen: Das Fenster läuft unter Windows als Administrator" in text and "noch nicht zu sehen" not in text, text
+        assert s.neues_terminal == [einrichten.SNAP_GRUND] and "im Browser von Windows" in text, (s.neues_terminal, text)
+        rufe, text, s = lauf_browser(ubuntu, True, probe=snap_fehler, snap_lage="anderswo", admin=False)
+        assert "Administrator" not in text and "noch nicht zu sehen" in text, text
+        rufe, text, s = lauf_browser({**ubuntu, "wsl": False}, True, probe=snap_fehler, snap_lage="anderswo", admin=True)
+        assert "Administrator" not in text, "ausserhalb von WSL gibt es kein Fenster von Windows"
         echt_wsl = plattform.wsl
         try:        # der Schritt «neues Fenster» nennt unter WSL, woran man sieht, ob es gereicht hat, und was sonst hilft
             plattform.wsl = lambda: True
             schritt = plattform.schritt_terminal(s.neues_terminal + ["der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"])
             assert f"{plattform.SETUP} meldet Chromium dort wieder so" in schritt and "docker ps meldet dort «permission denied»" in schritt, schritt
             assert schritt.endswith("in PowerShell wsl --shutdown ausführen und WSL neu öffnen."), schritt
+            assert "gewöhnlich öffnen, nicht über «Als Administrator ausführen»" in schritt, schritt
+            assert schritt.index("Als Administrator") < schritt.index("wsl --shutdown"), "erst das Naheliegende, dann der Neustart von WSL"
+            nur_docker = plattform.schritt_terminal(["der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"])
+            assert "Administrator" not in nur_docker and "wsl --shutdown" in nur_docker, nur_docker
             assert "wsl --shutdown" not in plattform.schritt_terminal(["der Befehl 'claude'"]), "ohne Docker und ohne Snap genügt das neue Fenster"
             plattform.wsl = lambda: False
-            assert "wsl --shutdown" not in plattform.schritt_terminal(s.neues_terminal)
+            assert "wsl --shutdown" not in plattform.schritt_terminal(s.neues_terminal) and "Administrator" not in plattform.schritt_terminal(s.neues_terminal)
+            # windows_administrator() selbst: Gefragt wird whoami von Windows nach der Verbindlichkeitsstufe. Hier steht eine Attrappe dafür
+            plattform.windows_administrator = echt_admin
+            echt_run, echt_which, gefragt = plattform.subprocess.run, plattform.shutil.which, []
+            antworten: list = []
+
+            def whoami(befehl, **mehr):
+                gefragt.append(list(befehl))
+                antwort = antworten[0]
+                if isinstance(antwort, Exception):
+                    raise antwort
+                return subprocess.CompletedProcess(befehl, 0, antwort, b"")
+            try:
+                plattform.subprocess.run = whoami
+                plattform.shutil.which = lambda name, *mehr, **angaben: None
+                assert plattform.windows_administrator() is None and gefragt == [], "ausserhalb von WSL wird Windows nichts gefragt"
+                plattform.wsl = lambda: True
+                kopf = b"Gruppenname  Typ  SID  Attribute\r\nJeder  Bekannte Gruppe  S-1-1-0  Verbindliche Gruppe\r\n"
+                antworten[:] = [kopf + b"Verbindliche Beschriftung\\Hohe Verbindlichkeitsstufe  Bezeichnung  S-1-16-12288\r\n"]
+                assert plattform.windows_administrator() is True and gefragt[-1] == ["/mnt/c/Windows/System32/whoami.exe", "/groups"], gefragt
+                antworten[:] = [kopf + b"Mandatory Label\\Medium Mandatory Level  Label  S-1-16-8192\r\n"]
+                assert plattform.windows_administrator() is False
+                plattform.shutil.which = lambda name, *mehr, **angaben: "/mnt/c/WINDOWS/system32/whoami.exe" if name == "whoami.exe" else None
+                assert plattform.windows_administrator() is False and gefragt[-1][0] == "/mnt/c/WINDOWS/system32/whoami.exe"
+                for unklar in (kopf, b"", b"\xff\xfe Unsinn", FileNotFoundError("kein whoami"), subprocess.TimeoutExpired("whoami.exe", 15)):
+                    antworten[:] = [unklar]
+                    assert plattform.windows_administrator() is None, f"lässt es sich nicht feststellen, wird nichts behauptet: {unklar!r}"
+            finally:
+                plattform.subprocess.run, plattform.shutil.which = echt_run, echt_which
         finally:
             plattform.wsl = echt_wsl
         # snap_lage() selbst: Liegt der Inhalt da, ist nichts zu melden. Fehlt er, entscheidet systemd, ob er nur hier fehlt
@@ -1325,7 +1366,7 @@ def _():
     finally:
         (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
          einrichten.snap_lage) = echt
-        plattform.systemd = echt_systemd
+        plattform.systemd, plattform.windows_administrator = echt_systemd, echt_admin
         einrichten.stand = einrichten.Stand()
 
 
@@ -1759,9 +1800,10 @@ def _():
                 assert ("noch keinen Zugriff" in docker[0][3]) == (erwartet == "neue Anmeldung"), docker
             # Ein Browser aus einem Snap, den dieses Fenster nicht sieht, gilt in der Prüfung nicht als vorhanden
             from tools import pdf as pdf_werkzeug
-            echt_finden, echt_snap = pdf_werkzeug.browser_finden, pruefen.snap_lage
+            echt_finden, echt_snap, echt_admin = pdf_werkzeug.browser_finden, pruefen.snap_lage, plattform.windows_administrator
             try:
                 pdf_werkzeug.browser_finden = lambda: "/snap/bin/chromium"
+                plattform.windows_administrator = lambda: None
                 for lage_snap, art, stueck in (("anderswo", "aus", "noch nicht zu sehen"), ("nicht", "aus", "nicht eingehängt"), ("", "gut", "chromium")):
                     pruefen.snap_lage = lambda name="chromium", snaps=None: lage_snap
                     pruefen.schritte.clear()
@@ -1771,7 +1813,7 @@ def _():
                     assert len(zeilen) == 1 and zeilen[0][1] == art and stueck in zeilen[0][3], (lage_snap, zeilen)
                     assert any("Chromium, der Browser für PDF" in s for s in pruefen.schritte) == (lage_snap == "anderswo"), pruefen.schritte
             finally:
-                pdf_werkzeug.browser_finden, pruefen.snap_lage = echt_finden, echt_snap
+                pdf_werkzeug.browser_finden, pruefen.snap_lage, plattform.windows_administrator = echt_finden, echt_snap, echt_admin
         finally:
             pruefen.still, pruefen.lauf, pruefen.docker_gruppe, pruefen.claude_stand = merker[0], merker[4], merker[5], merker[6]
             pruefen.noetig_fehlt[:], pruefen.schritte[:], pruefen.gemeldet[:] = merker[1], merker[2], merker[3]
