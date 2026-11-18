@@ -1082,6 +1082,13 @@ def _():
         # Jetzt steht unter der Zeile, was die Paketverwaltung gemeldet hat
         rufe, text, s = lauf_tor(installation=False, meldung="Reading package lists...\nE: Unable to locate package tor")
         assert "Die Paketverwaltung meldet:" in text and "E: Unable to locate package tor" in text and "steht oben bei «Tor (Proxy)»" in s.offen[0], (text, s.offen)
+        # Die Ursache auf jenem Rechner: Die Paketverwaltung war belegt. Das ist kein Fehler am Paket, und es geht von selbst vorbei
+        rufe, text, s = lauf_tor(installation=False, meldung="E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 5661 (unattended-upgr)\n"
+                                                             "E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?")
+        assert "liess sich noch nicht installieren, die Paketverwaltung war belegt" in text and "Could not get lock" in text, text
+        assert s.offen[0].startswith("Tor ist noch nicht installiert. Die Paketverwaltung war belegt (unattended-upgr, die automatischen "
+                                     "Aktualisierungen des Systems). "), s.offen
+        assert f"in ein paar Minuten {plattform.SETUP} erneut ausführen" in s.offen[0] and plattform.OHNE_PROXY in s.offen[0] and "pakete.log" not in s.offen[0], s.offen
         rufe, text, s = lauf_tor(meldung="unwichtig")       # geht die Installation gut, steht keine Meldung der Paketverwaltung da
         assert "Die Paketverwaltung meldet" not in text and "baut Verbindungen auf" in text, text
         # Kam die Einrichtung nicht an die nötigen Rechte, hat sie nichts versucht. Sie sagt das und nennt den Befehl
@@ -1139,7 +1146,8 @@ def _():
     from urllib.parse import urlsplit
 
     from tools import pdf
-    echt = (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess)
+    echt = (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
+            einrichten.snap_lage)
     echt_systemd = plattform.systemd
     ubuntu, fedora = {**LINUX, "id": "ubuntu", "wsl": True}, {**LINUX, "id": "fedora", "paketverwaltung": "dnf"}
     try:
@@ -1157,11 +1165,12 @@ def _():
 
         # ---- Die Zeile der Einrichtung: finden, sonst installieren, dann wirklich drucken
         def lauf_browser(sysinfo: dict, vorhanden: bool, nach_installation: bool = True, probe: str | None = None, snap: bool = True,
-                         rechte: bool = True, meldung: str = "", **angaben):
+                         rechte: bool = True, meldung: str = "", snap_lage: str = "nicht", **angaben):
             zustand, rufe = {"da": vorhanden}, []
             einrichten.stand = einrichten.Stand()
             einrichten.ui, aus = oberflaeche([], interaktiv=False)
             einrichten.snap_bereit = lambda: snap
+            einrichten.snap_lage = lambda name="chromium", snaps=None: snap_lage
             pdf.browser_finden = lambda: "/usr/bin/chromium" if zustand["da"] else None
 
             def installieren(sysinfo: dict) -> tuple[bool, str]:        # (versucht, Befehl von Hand), wie die echte Funktion
@@ -1215,6 +1224,51 @@ def _():
         assert len(s.offen) == 1 and "wsl --shutdown" in s.offen[0] and plattform.SETUP in s.offen[0] and "Browser von Windows" in s.offen[0], s.offen
         rufe, text, s = lauf_browser({**ubuntu, "wsl": False}, False, probe=snap_fehler)
         assert "wsl --shutdown" not in s.offen[0] and "den Rechner neu starten" in s.offen[0], s.offen
+        # Die Ursache auf jenem Rechner: systemd hatte den Snap eingehängt (snap-chromium-3593.mount «active (mounted)»), das offene
+        # Fenster zeigte aber keinen einzigen Snap. Dann sagt die Zeile genau das, und der Grund kommt zum Schritt «neues Fenster»
+        rufe, text, s = lauf_browser(ubuntu, False, probe=snap_fehler, snap_lage="anderswo")
+        assert rufe == ["installieren", "probe"] and s.neu == [] and text.startswith(plattform.AUS + " "), (rufe, text)
+        assert "chromium ist jetzt installiert, in diesem WSL-Fenster aber noch nicht zu sehen" in text and "nicht eingehängt" not in text, text
+        assert "im Browser von Windows" in text and s.neues_terminal == ["Chromium, der Browser für PDF (sein Snap ist in diesem Fenster noch nicht zu sehen)"], s.neues_terminal
+        assert len(s.offen) == 1 and "Ob Chromium druckt" in s.offen[0] and plattform.SETUP in s.offen[0] and "wsl --shutdown" not in s.offen[0], s.offen
+        rufe, text, s = lauf_browser({**ubuntu, "wsl": False}, True, probe=snap_fehler, snap_lage="anderswo")
+        assert rufe == ["probe"] and "chromium ist installiert, in diesem Terminal aber noch nicht zu sehen" in text, text
+        echt_wsl = plattform.wsl
+        try:        # der Schritt «neues Fenster» nennt unter WSL, woran man sieht, ob es gereicht hat, und was sonst hilft
+            plattform.wsl = lambda: True
+            schritt = plattform.schritt_terminal(s.neues_terminal + ["der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"])
+            assert f"{plattform.SETUP} meldet Chromium dort wieder so" in schritt and "docker ps meldet dort «permission denied»" in schritt, schritt
+            assert schritt.endswith("in PowerShell wsl --shutdown ausführen und WSL neu öffnen."), schritt
+            assert "wsl --shutdown" not in plattform.schritt_terminal(["der Befehl 'claude'"]), "ohne Docker und ohne Snap genügt das neue Fenster"
+            plattform.wsl = lambda: False
+            assert "wsl --shutdown" not in plattform.schritt_terminal(s.neues_terminal)
+        finally:
+            plattform.wsl = echt_wsl
+        # snap_lage() selbst: Liegt der Inhalt da, ist nichts zu melden. Fehlt er, entscheidet systemd, ob er nur hier fehlt
+        echt_lauf = einrichten.lauf
+        einrichten.snap_lage = echt[6]
+        try:
+            with tempfile.TemporaryDirectory() as snaps:
+                assert einrichten.snap_lage("chromium", Path(snaps)) == "", "ohne den Snap gibt es nichts festzustellen"
+                if not WINDOWS:
+                    (Path(snaps) / "chromium" / "3593").mkdir(parents=True)
+                    os.symlink("3593", Path(snaps) / "chromium" / "current")
+                    gefragt: list[list[str]] = []
+                    einrichten.lauf = lambda befehl, *mehr, **angaben: (gefragt.append(list(befehl)), (0, "active"))[1]
+                    assert einrichten.snap_lage("chromium", Path(snaps)) == "anderswo" and gefragt == [["systemctl", "is-active", "snap-chromium-3593.mount"]], gefragt
+                    einrichten.lauf = lambda befehl, *mehr, **angaben: (3, "inactive")
+                    assert einrichten.snap_lage("chromium", Path(snaps)) == "nicht"
+                    (Path(snaps) / "ein-browser" / "x1").mkdir(parents=True)        # ein Bindestrich im Namen steht in der Einheit als \x2d
+                    os.symlink("x1", Path(snaps) / "ein-browser" / "current")
+                    gefragt.clear()
+                    einrichten.lauf = lambda befehl, *mehr, **angaben: (gefragt.append(list(befehl)), (0, "active"))[1]
+                    assert einrichten.snap_lage("ein-browser", Path(snaps)) == "anderswo" and gefragt[0][-1] == "snap-ein\\x2dbrowser-x1.mount", gefragt
+                    (Path(snaps) / "chromium" / "3593" / "meta").mkdir()
+                    (Path(snaps) / "chromium" / "3593" / "meta" / "snap.yaml").write_text("name: chromium\n", encoding="utf-8")
+                    einrichten.lauf = lambda befehl, *mehr, **angaben: (0, "active")
+                    assert einrichten.snap_lage("chromium", Path(snaps)) == "", "ist der Inhalt zu sehen, liegt es nicht am Einhängen"
+        finally:
+            einrichten.lauf = echt_lauf
         rufe, text, s = lauf_browser(LINUX, False, probe="Der Browser hat kein PDF geschrieben.")
         assert s.neu == [] and "chromium installiert, aber die Probe ergab kein PDF" in text and not s.offen, (text, s.offen)
         # Scheitert die Installation selbst, steht unter der Zeile, was die Paketverwaltung gemeldet hat. Niemand muss dafür eine Datei öffnen
@@ -1269,7 +1323,8 @@ def _():
         quelle = lesen(PROJEKT / "tools" / "pdf.py")
         assert "os.killpg(prozess.pid" in quelle and "prozess.poll() is None" in quelle and "taskkill" in quelle and "capture_output" not in quelle
     finally:
-        einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess = echt
+        (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
+         einrichten.snap_lage) = echt
         plattform.systemd = echt_systemd
         einrichten.stand = einrichten.Stand()
 
@@ -1476,22 +1531,118 @@ def _():
 def _():
     import types
     echt = (einrichten.lauf, einrichten.root_praefix, einrichten.ui, einrichten.subprocess, sys.stdin, shutil.which)
+    echt_belegt = einrichten.paketverwaltung_belegt
     rufe: list[list[str]] = []
     try:
         # ---- Die Paketverwaltung: apt wartet auf eine Sperre, statt sofort zu scheitern. Was sie bei einem Fehlschlag meldet, bleibt erhalten
         antworten: dict[str, tuple[int, str]] = {}
 
+        laufzeilen: list[str] = []
+
         def lauf(befehl, *mehr, **angaben) -> tuple[int, str]:
             rufe.append(list(befehl))
+            laufzeilen.append(angaben.get("anzeige") or "")
             return antworten.get(befehl[-1] if befehl[-1] != "-qq" else "update", (0, ""))
         einrichten.lauf = lauf
         einrichten.root_praefix = lambda wofuer: ["sudo", "-n"]
+        einrichten.paketverwaltung_belegt = lambda *a, **k: ""
         einrichten.stand = einrichten.Stand()
-        assert einrichten.paket_installieren("tor", LINUX) == (True, "sudo apt-get -o DPkg::Lock::Timeout=120 install -y --no-install-recommends tor")
-        assert rufe == [["sudo", "-n", "apt-get", "-o", "DPkg::Lock::Timeout=120", "update", "-qq"],
-                        ["sudo", "-n", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-o", "DPkg::Lock::Timeout=120", "install", "-y",
+        warten = f"DPkg::Lock::Timeout={einrichten.APT_WARTEN}"
+        assert einrichten.APT_WARTEN >= 600, "die automatischen Aktualisierungen des Systems brauchen Minuten, nicht Sekunden"
+        assert einrichten.paket_installieren("tor", LINUX) == (True, f"sudo apt-get -o {warten} install -y --no-install-recommends tor")
+        assert rufe == [["sudo", "-n", "apt-get", "-o", warten, "update", "-qq"],
+                        ["sudo", "-n", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "-o", warten, "install", "-y",
                          "--no-install-recommends", "tor"]], rufe
         assert einrichten.stand.paketfehler == {}, "ohne Fehlschlag gibt es nichts zu melden"
+        assert "belegt" not in laufzeilen[-1] and "tor wird installiert (apt)" in laufzeilen[-1], laufzeilen
+        # So gesehen am 18.11.2026 unter Ubuntu 26.04: Kurz nach dem Start spielte das System automatische Aktualisierungen ein, und apt
+        # brach sofort mit «Could not get lock» ab. Jetzt wartet apt. Die Einrichtung sagt vorher worauf, in einer Zeile, die stehen
+        # bleibt: Die Laufzeile wird auf die Breite des Terminals gekürzt. Bleibt es dabei, heisst es beim Namen
+        einrichten.paketverwaltung_belegt = lambda *a, **k: "unattended-upgr"
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        einrichten.paket_installieren("tor", LINUX)
+        gesagt = flach(aus.getvalue())
+        assert "Die Paketverwaltung ist gerade belegt (unattended-upgr, die automatischen Aktualisierungen des Systems)." in gesagt, gesagt
+        assert f"Die Einrichtung wartet, bis sie frei ist, höchstens {einrichten.APT_WARTEN // 60} Minuten." in gesagt, gesagt
+        assert laufzeilen[-1] == "Warten auf die Paketverwaltung, dann: tor wird installiert (apt)", laufzeilen[-1]
+        einrichten.paketverwaltung_belegt = lambda *a, **k: ""
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        einrichten.paket_installieren("tor", LINUX)
+        assert aus.getvalue() == "" and laufzeilen[-1] == "tor wird installiert (apt)", "ist die Paketverwaltung frei, steht davon nichts da"
+        einrichten.ui = echt[2]
+        einrichten.paketverwaltung_belegt = echt_belegt
+        sperre = ("E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 5661 (unattended-upgr)\n"
+                  "E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?")
+        assert einrichten.sperre_erkannt(sperre) == "unattended-upgr" and einrichten.sperre_erkannt("E: Unable to locate package tor") == ""
+        assert einrichten.sperre_erkannt("E: Could not get lock /var/lib/dpkg/lock-frontend") == "ein anderer Vorgang"
+        # Mit Wartezeit meldet apt es so (nachgestellt am 18.11.2026 mit apt 2.8): jede Sekunde eine Zeile «Waiting …», am Ende der Fehler
+        wartet = "Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 5661 (unattended-upgr)...\n"
+        gewartet = wartet * 600 + "E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?"
+        assert einrichten.sperre_erkannt(gewartet) == "unattended-upgr"
+        # Kam apt nach dem Warten weiter und scheiterte an etwas anderem, lag es nicht an der Sperre: Die Zeilen «Waiting …» stehen trotzdem da
+        assert einrichten.sperre_erkannt(wartet * 3 + "Reading package lists...\nE: Unable to locate package tor") == ""
+        assert einrichten.sperre_erkannt(wartet * 3 + "0 upgraded, 0 newly installed, 0 to remove and 37 not upgraded.") == ""
+        einrichten.stand.paketfehler["tor"] = gewartet
+        with contextlib.redirect_stdout(io.StringIO()) as aus:
+            einrichten.ursache_zeigen("tor")
+        zeilen = [z.strip() for z in aus.getvalue().splitlines()]
+        assert zeilen == ["Die Paketverwaltung meldet:", wartet.strip(), gewartet.splitlines()[-1]], "600 gleiche Zeilen sagen nicht mehr als eine"
+        einrichten.stand.paketfehler["tor"] = sperre
+        satz = einrichten.belegt_satz("tor")
+        assert satz == (f"Die Paketverwaltung war belegt (unattended-upgr, die automatischen Aktualisierungen des Systems). Das geht von "
+                        f"selbst vorbei: in ein paar Minuten {plattform.SETUP} erneut ausführen."), satz
+        assert einrichten.belegt_satz("pdftotext") == "" and einrichten.belegt_von("dpkg") == "dpkg"
+        einrichten.stand.paketfehler.clear()
+        if not WINDOWS:
+            # Ob die Paketverwaltung belegt ist, steht in der Sperrtabelle des Systems, hier nachgebaut. Der Name eines Prozesses
+            # sagt es nicht: Ein Prozess namens unattended-upgr, der die Sperre nicht hält, zählt nicht
+            with tempfile.TemporaryDirectory() as ordner:
+                sperrdatei, tabelle, prozesse = Path(ordner) / "lock-frontend", Path(ordner) / "locks", Path(ordner) / "proc"
+                sperrdatei.write_text("", encoding="utf-8")
+                s = os.stat(sperrdatei)
+                stelle = f"{os.major(s.st_dev):02x}:{os.minor(s.st_dev):02x}:{s.st_ino}"
+                for nummer, name in (("101", "bash"), ("5661", "unattended-upgr"), ("777", "unattended-upgr")):
+                    (prozesse / nummer).mkdir(parents=True)
+                    (prozesse / nummer / "comm").write_text(name + "\n", encoding="utf-8")
+
+                def belegt(*zeilen: str) -> str:
+                    tabelle.write_text("".join(z + "\n" for z in zeilen), encoding="utf-8")
+                    return einrichten.paketverwaltung_belegt((str(Path(ordner) / "fehlt"), str(sperrdatei)), tabelle, prozesse)
+                fremd = f"1: FLOCK  ADVISORY  WRITE 101 {stelle[:-1]}{(int(stelle[-1]) + 1) % 10} 0 EOF"      # eine andere Datei
+                assert belegt(fremd, f"2: POSIX  ADVISORY  WRITE 5661 {stelle} 0 EOF") == "unattended-upgr"
+                assert belegt(fremd) == "", "ein Prozess namens unattended-upgr läuft, hält die Sperre aber nicht"
+                assert belegt(fremd, f"2: -> POSIX  ADVISORY  WRITE 5661 {stelle} 0 EOF") == "", "wer auf die Sperre wartet, hält sie nicht"
+                assert belegt(f"2: POSIX  ADVISORY  WRITE 4242 {stelle} 0 EOF") == "ein anderer Vorgang", "der Halter hat keinen lesbaren Namen"
+                assert belegt(f"2: POSIX  ADVISORY  WRITE {os.getpid()} {stelle} 0 EOF") == "", "die eigene Sperre zählt nicht"
+                assert belegt("", "Unsinn", "2: POSIX") == ""
+                assert einrichten.paketverwaltung_belegt((str(sperrdatei),), Path(ordner) / "keine-tabelle", prozesse) == ""
+                assert einrichten.paketverwaltung_belegt((str(Path(ordner) / "fehlt"),), tabelle, prozesse) == ""
+                # Und gegen das echte System, wo es eine Sperrtabelle gibt: Ein Kindprozess sperrt eine Datei so, wie apt es tut
+                halter = subprocess.Popen([sys.executable, "-c", "import fcntl, sys, time\nf = open(sys.argv[1], 'w')\n"
+                                           "fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nprint('gesperrt', flush=True)\ntime.sleep(60)\n",
+                                           str(sperrdatei)], stdout=subprocess.PIPE, text=True)
+                try:
+                    assert halter.stdout.readline().strip() == "gesperrt"
+                    try:
+                        echte_zeilen = Path("/proc/locks").read_text(encoding="utf-8", errors="replace").splitlines()
+                    except OSError:
+                        echte_zeilen = []           # macOS kennt keine solche Tabelle
+                    eigene = [z.split() for z in echte_zeilen if z.split()[-4:-3] == [str(halter.pid)] and "->" not in z.split()]
+                    s = os.stat(sperrdatei)
+                    stelle = f"{os.major(s.st_dev):02x}:{os.minor(s.st_dev):02x}:{s.st_ino}"
+                    gefunden = einrichten.paketverwaltung_belegt((str(sperrdatei),))
+                    if any(z[-3] == stelle for z in eigene):
+                        name = Path(f"/proc/{halter.pid}/comm").read_text(encoding="utf-8").strip()
+                        assert gefunden == name and name, (gefunden, name, eigene)
+                    else:       # keine Tabelle, oder das Dateisystem nennt dort eine andere Gerätenummer: Dann gilt sie als frei
+                        assert gefunden == "", (gefunden, eigene)
+                finally:
+                    halter.kill()
+                    halter.wait()
+                    halter.stdout.close()
+        else:
+            assert einrichten.paketverwaltung_belegt() == "", "unter Windows gibt es keine Sperre von apt"
+        einrichten.paketverwaltung_belegt = lambda *a, **k: ""
         antworten.update(update=(100, "E: Die Paketlisten liessen sich nicht laden"), tor=(100, "Reading package lists...\nE: Unable to locate package tor"))
         einrichten.stand = einrichten.Stand()
         versucht, hinweis = einrichten.paket_installieren("tor", LINUX)
@@ -1606,11 +1757,27 @@ def _():
                 starten = any(s.startswith("Docker starten") for s in pruefen.schritte)
                 assert (neu, starten) == ((True, False) if erwartet == "neue Anmeldung" else (False, True)), (lage_docker, pruefen.schritte)
                 assert ("noch keinen Zugriff" in docker[0][3]) == (erwartet == "neue Anmeldung"), docker
+            # Ein Browser aus einem Snap, den dieses Fenster nicht sieht, gilt in der Prüfung nicht als vorhanden
+            from tools import pdf as pdf_werkzeug
+            echt_finden, echt_snap = pdf_werkzeug.browser_finden, pruefen.snap_lage
+            try:
+                pdf_werkzeug.browser_finden = lambda: "/snap/bin/chromium"
+                for lage_snap, art, stueck in (("anderswo", "aus", "noch nicht zu sehen"), ("nicht", "aus", "nicht eingehängt"), ("", "gut", "chromium")):
+                    pruefen.snap_lage = lambda name="chromium", snaps=None: lage_snap
+                    pruefen.schritte.clear()
+                    pruefen.gemeldet.clear()
+                    pruefen.umgebung({})
+                    zeilen = [g for g in pruefen.gemeldet if g[2] == "Browser für PDF"]
+                    assert len(zeilen) == 1 and zeilen[0][1] == art and stueck in zeilen[0][3], (lage_snap, zeilen)
+                    assert any("Chromium, der Browser für PDF" in s for s in pruefen.schritte) == (lage_snap == "anderswo"), pruefen.schritte
+            finally:
+                pdf_werkzeug.browser_finden, pruefen.snap_lage = echt_finden, echt_snap
         finally:
             pruefen.still, pruefen.lauf, pruefen.docker_gruppe, pruefen.claude_stand = merker[0], merker[4], merker[5], merker[6]
             pruefen.noetig_fehlt[:], pruefen.schritte[:], pruefen.gemeldet[:] = merker[1], merker[2], merker[3]
     finally:
         einrichten.lauf, einrichten.root_praefix, einrichten.ui, einrichten.subprocess, sys.stdin, shutil.which = echt
+        einrichten.paketverwaltung_belegt = echt_belegt
         einrichten.stand = einrichten.Stand()
 
 

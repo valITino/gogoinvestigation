@@ -100,9 +100,14 @@ PAKETE = {
     "browser": {"apt": ["chromium"], "dnf": ["chromium"], "yum": ["chromium"], "pacman": ["chromium"], "zypper": ["chromium"],
                 "apk": ["chromium"]},
 }
-# apt wartet bis zu zwei Minuten, wenn gerade ein anderer Vorgang die Paketverwaltung sperrt (etwa die automatischen
-# Aktualisierungen kurz nach dem Start des Systems), statt sofort zu scheitern.
-APT = ["apt-get", "-o", "DPkg::Lock::Timeout=120"]
+# apt wartet bis zu zehn Minuten, wenn gerade ein anderer Vorgang die Paketverwaltung sperrt, statt sofort zu scheitern. So
+# gesehen am 18.11.2026 unter Ubuntu 26.04: Kurz nach dem Start spielte das System automatische Aktualisierungen ein
+# (unattended-upgr), und die Installation von Tor brach mit «Could not get lock» ab.
+APT_WARTEN = 600
+APT = ["apt-get", "-o", f"DPkg::Lock::Timeout={APT_WARTEN}"]
+APT_SPERREN = ("/var/lib/dpkg/lock-frontend", "/var/lib/dpkg/lock")
+# Wer die Paketverwaltung belegt, in einfachen Worten. Der Name ist der, den apt in seiner Meldung nennt.
+PAKETVORGAENGE = {"unattended-upgr": "die automatischen Aktualisierungen des Systems"}
 INSTALLIEREN = {
     "apt": APT + ["install", "-y", "--no-install-recommends"], "dnf": ["dnf", "install", "-y"],
     "yum": ["yum", "install", "-y"], "pacman": ["pacman", "-S", "--noconfirm", "--needed"],
@@ -170,12 +175,70 @@ def letzte_zeilen(text: str, n: int = 4) -> str:
     return "\n".join("      " + z for z in text.strip().splitlines()[-n:])
 
 
+def paketverwaltung_belegt(sperren: tuple[str, ...] = APT_SPERREN, tabelle: Path = Path("/proc/locks"),
+                           prozesse: Path = Path("/proc")) -> str:
+    """Hält gerade ein anderer Vorgang die Sperre der Paketverwaltung? Gibt seinen Namen zurück, sonst "". Gelesen wird die
+    Sperrtabelle des Systems, nicht die Liste der Prozesse: Der Name eines Prozesses sagt nicht, ob er die Sperre hält. Auch
+    ein Skript namens unattended-upgrade-shutdown heisst dort unattended-upgr (nachgestellt am 18.11.2026). Lässt es sich
+    nicht feststellen, gilt die Paketverwaltung als frei: apt wartet dann trotzdem, nur ohne Ankündigung."""
+    gesucht = set()
+    for datei in sperren:
+        with contextlib.suppress(OSError, AttributeError):
+            s = os.stat(datei)
+            gesucht.add(f"{os.major(s.st_dev):02x}:{os.minor(s.st_dev):02x}:{s.st_ino}")
+    try:
+        zeilen = tabelle.read_text(encoding="utf-8", errors="replace").splitlines() if gesucht else []
+    except OSError:
+        return ""
+    for z in zeilen:
+        # «2: POSIX  ADVISORY  WRITE 5661 08:20:262214 0 EOF»: Vorgang 5661 hält die Sperre auf Gerät 08:20, Datei 262214.
+        # Steht «->» davor, wartet ein Vorgang erst auf sie.
+        teile = z.split()
+        if len(teile) < 6 or "->" in teile or teile[-3] not in gesucht or not teile[-4].isdigit() or int(teile[-4]) == os.getpid():
+            continue
+        try:
+            name = Path(prozesse, teile[-4], "comm").read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            name = ""
+        return name or "ein anderer Vorgang"
+    return ""
+
+
+def belegt_von(wer: str) -> str:
+    """Der Name des Vorgangs, und was er bedeutet, wo das bekannt ist."""
+    return wer + (", " + PAKETVORGAENGE[wer] if wer in PAKETVORGAENGE else "")
+
+
+def sperre_erkannt(text: str) -> str:
+    """Scheiterte die Paketverwaltung daran, dass ein anderer Vorgang sie belegt hat? Gibt dessen Namen zurück, «ein anderer
+    Vorgang», wenn die Meldung ihn nicht nennt, und "" bei jedem anderen Fehlschlag. Massgebend sind die Fehlerzeilen (E: …).
+    Die Zeilen «Waiting for cache lock: Could not get lock …» schreibt apt jede Sekunde, solange es wartet: Sie stehen auch
+    da, wenn apt danach weiterkommt und an etwas anderem scheitert (so nachgestellt am 18.11.2026 mit apt 2.8)."""
+    fehler = [z for z in text.splitlines() if z.lstrip().startswith("E:")]
+    if not any("Could not get lock" in z or "Unable to acquire the dpkg frontend lock" in z for z in fehler):
+        return ""
+    m = re.search(r"held by process \d+ \(([^)]+)\)", text)
+    return m.group(1) if m else "ein anderer Vorgang"
+
+
+def belegt_satz(was: str) -> str:
+    """Der Satz für den Fall, dass eine Installation nur an der belegten Paketverwaltung scheiterte. Sonst ""."""
+    wer = sperre_erkannt(stand.paketfehler.get(was, ""))
+    if not wer:
+        return ""
+    return f"Die Paketverwaltung war belegt ({belegt_von(wer)}). Das geht von selbst vorbei: in ein paar Minuten {SETUP} erneut ausführen."
+
+
 def ursache_zeigen(was: str, n: int = 4) -> None:
     """Zeigt unter einer Zeile, was die Paketverwaltung zuletzt gemeldet hat. Die Ursache einer gescheiterten Installation
     soll auf dem Bildschirm stehen, nicht nur in einer Protokolldatei, die niemand öffnet."""
-    text = "\n".join(z.rstrip()[:220] for z in stand.paketfehler.get(was, "").splitlines() if z.strip())
-    if text:
-        print("      Die Paketverwaltung meldet:\n" + letzte_zeilen(text, n), flush=True)
+    zeilen: list[str] = []
+    for z in stand.paketfehler.get(was, "").splitlines():
+        z = z.rstrip()[:220]
+        if z.strip() and z not in zeilen[-1:]:      # apt schreibt «Waiting for cache lock …» jede Sekunde neu: einmal genügt
+            zeilen.append(z)
+    if zeilen:
+        print("      Die Paketverwaltung meldet:\n" + letzte_zeilen("\n".join(zeilen), n), flush=True)
 
 
 # --------------------------------------------------------------------------- System
@@ -260,8 +323,15 @@ def paket_installieren(was: str, sysinfo: dict, namen: dict[str, list[str]] | No
         return False, "sudo " + " ".join(befehl)
     umgebung = {**os.environ, "DEBIAN_FRONTEND": "noninteractive"}
     gemeldet = []       # was scheiterte, mit dem, was die Paketverwaltung dazu sagte: für ursache_zeigen()
+    if verwaltung == "apt":
+        belegt = paketverwaltung_belegt()
+        if belegt:      # vorher sagen, worauf gewartet wird: Sonst sähe eine lange Wartezeit wie ein Hänger aus
+            ui.text(f"Die Paketverwaltung ist gerade belegt ({belegt_von(belegt)}). Die Einrichtung wartet, bis sie frei ist, "
+                    f"höchstens {APT_WARTEN // 60} Minuten.", einzug=4)
+            anzeige = f"Warten auf die Paketverwaltung, dann: {anzeige}"
     if verwaltung == "apt" and not stand.apt_aktuell:
-        code, text = lauf(vor + APT + ["update", "-qq"], 600, "pakete.log", umgebung, anzeige="Paketlisten werden aktualisiert (apt)")
+        code, text = lauf(vor + APT + ["update", "-qq"], APT_WARTEN + 300, "pakete.log", umgebung,
+                          anzeige="Paketlisten werden aktualisiert (apt)")
         if code != 0:
             gemeldet.append(text)
         stand.apt_aktuell = True
@@ -444,8 +514,26 @@ def browser_installieren(sysinfo: dict) -> tuple[bool, str]:
 
 def snap_nicht_eingehaengt(meldung: str) -> bool:
     """Meldet snap, dass es den Inhalt eines installierten Snaps nicht findet? Dann ist der Snap installiert, sein Inhalt
-    aber unter /snap nicht eingehängt. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL, gleich nach der Installation."""
+    aber unter /snap nicht zu sehen. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL, gleich nach der Installation."""
     return "cannot find installed snap" in meldung or "meta/snap.yaml" in meldung
+
+
+def snap_lage(name: str = "chromium", snaps: Path = Path("/snap")) -> str:
+    """Warum der Inhalt eines installierten Snaps hier fehlt. "anderswo": systemd hat ihn eingehängt, dieses Terminal sieht
+    ihn aber nicht. So war es am 18.11.2026 unter Ubuntu 26.04 in WSL: Die Einheit snap-chromium-3593.mount war «active
+    (mounted)», im offenen Fenster zeigte mount keinen einzigen Snap. "nicht": Er ist auch für systemd nicht eingehängt.
+    "": Sein Inhalt ist da, oder es lässt sich nicht feststellen."""
+    ordner = snaps / name
+    try:
+        revision = os.readlink(ordner / "current")
+    except OSError:
+        return ""
+    if (ordner / revision / "meta" / "snap.yaml").is_file():
+        return ""
+    # Die Einheit heisst wie der Pfad /snap/<Name>/<Revision>: Schrägstriche werden zu Bindestrichen, Bindestriche im Namen zu \x2d
+    einheit = "-".join(teil.replace("-", "\\x2d") for teil in ("snap", name, revision)) + ".mount"
+    code, text = lauf(["systemctl", "is-active", einheit], 15)
+    return "anderswo" if code == 0 and text.strip() == "active" else "nicht"
 
 
 def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None:
@@ -463,7 +551,9 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
     wo = "im Browser" + (" von Windows" if sysinfo.get("wsl") else "")
     ohne = f"Rapport und Protokoll gibt es trotzdem, als HTML: {wo} öffnen und über «Drucken» als PDF speichern."
     if not browser:
-        if versucht:
+        if versucht and belegt_satz("browser"):
+            grund = f"Chromium liess sich noch nicht installieren. {belegt_satz('browser')}"
+        elif versucht:
             grund = "Chromium liess sich nicht installieren."
         elif von_hand:      # die Einrichtung wollte, kam aber nicht an die nötigen Rechte
             grund = f"Für die Installation von Chromium fehlen die Rechte (sudo). Von Hand: {von_hand}  "
@@ -491,7 +581,17 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
         return
     # Der Browser ist da, druckt hier aber nicht. Die Zeile sagt in einfachen Worten warum, und was zu versuchen ist, steht am Schluss.
     lage = "installiert" if neu else "gefunden"
-    if snap_nicht_eingehaengt(fehler):
+    fenster = "WSL-Fenster" if sysinfo.get("wsl") else "Terminal"
+    if snap_nicht_eingehaengt(fehler) and snap_lage(name) == "anderswo":
+        # Der Snap ist da und eingehängt, nur dieses Terminal sieht ihn nicht. Ein neues Fenster braucht es unter WSL nach der
+        # Einrichtung ohnehin: Der Grund kommt deshalb zu den übrigen, und die Probe folgt dort.
+        zeile(AUS, "Browser für PDF", f"{name} ist {'jetzt ' if neu else ''}installiert, in diesem {fenster} aber noch nicht zu sehen: Sein Snap ist "
+                                      f"eingehängt, nur dieses {fenster} kennt ihn noch nicht. Bis dahin: PDF über «Drucken» {wo}.")
+        grund = "Chromium, der Browser für PDF (sein Snap ist in diesem Fenster noch nicht zu sehen)"
+        if grund not in stand.neues_terminal:
+            stand.neues_terminal.append(grund)
+        stand.offen.append(f"Ob Chromium druckt, zeigt die Zeile «Browser für PDF», sobald ihr {SETUP} im neuen {fenster} noch einmal ausführt.")
+    elif snap_nicht_eingehaengt(fehler):
         zeile(AUS, "Browser für PDF", f"{name} ist als Snap installiert, startet aber nicht: Sein Inhalt ist unter /snap nicht eingehängt. {ohne}")
         neustart = ("WSL neu starten (in PowerShell wsl --shutdown ausführen, das beendet alle offenen WSL-Fenster, dann WSL neu öffnen)"
                     if sysinfo.get("wsl") else "den Rechner neu starten")
@@ -610,6 +710,9 @@ def tor_einrichten(a: argparse.Namespace, sysinfo: dict) -> None:
     elif not versucht:      # die Einrichtung wollte, kam aber nicht an die nötigen Rechte
         grund = "ist nicht installiert, und für die Installation fehlen die Rechte (sudo)"
         tun = f"Tor von Hand installieren: {von_hand}   Dann {SETUP} erneut ausführen. {ohne}"
+    elif belegt_satz("tor"):        # kein Fehler am Paket: Ein anderer Vorgang hielt die Paketverwaltung besetzt
+        grund = "liess sich noch nicht installieren, die Paketverwaltung war belegt"
+        tun = f"Tor ist noch nicht installiert. {belegt_satz('tor')} {ohne}"
     else:
         grund = "liess sich nicht installieren"
         tun = (f"Tor liess sich nicht installieren. Was die Paketverwaltung dazu meldet, steht oben bei «Tor (Proxy)», vollständig in "

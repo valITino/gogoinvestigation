@@ -241,11 +241,18 @@ def ordner_vertraut(projekt: Path = PROJEKT) -> bool | None:
 def schritt_terminal(neues_terminal: tuple[str, ...] | list[str]) -> str:
     """Der Schritt «neues Terminal», mit dem, was erst dort gilt. Derselbe Wortlaut, ob der Arbeitsplatz schon einsatzbereit
     ist oder noch etwas fehlt."""
-    return (("Dieses WSL-Fenster schliessen und ein neues öffnen" if wsl() else "Dieses Terminal schliessen und ein neues öffnen")
-            + f", dort in den Projektordner wechseln: cd {PROJEKT}   Erst im neuen Fenster gilt: " + " und ".join(neues_terminal) + "."
-            # Eine neue Gruppe gilt ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster.
-            + (" Prüfen mit: docker ps   Kommt dort «permission denied»: in PowerShell wsl --shutdown ausführen und WSL neu öffnen."
-               if wsl() and any("Gruppe docker" in grund for grund in neues_terminal) else ""))
+    text = (("Dieses WSL-Fenster schliessen und ein neues öffnen" if wsl() else "Dieses Terminal schliessen und ein neues öffnen")
+            + f", dort in den Projektordner wechseln: cd {PROJEKT}   Erst im neuen Fenster gilt: " + " und ".join(neues_terminal) + ".")
+    # Eine neue Gruppe gilt ab der nächsten Anmeldung, und ein Snap ist erst in einem Fenster zu sehen, das nach ihm geöffnet wurde.
+    # Unter WSL ist das nicht in jedem Fall schon das nächste Fenster: Dann hilft es, WSL ganz neu zu starten.
+    proben = []
+    if any("Gruppe docker" in grund for grund in neues_terminal):
+        proben.append("docker ps meldet dort «permission denied»")
+    if any("Chromium" in grund for grund in neues_terminal):
+        proben.append(f"{SETUP} meldet Chromium dort wieder so")
+    if wsl() and proben:
+        text += " Reicht das neue Fenster nicht (" + ", oder ".join(proben) + "): in PowerShell wsl --shutdown ausführen und WSL neu öffnen."
+    return text
 
 
 def schritt_ordner(ordner: bool | None) -> str:
