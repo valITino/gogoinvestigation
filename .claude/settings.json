@@ -93,6 +93,8 @@
       "Bash(python tools/dienste.py aus*)",
       "Bash(python3 tools/dienste.py ein*)",
       "Bash(python tools/dienste.py ein*)",
+      "Bash(python3 tools/loeschen.py alles*)",
+      "Bash(python tools/loeschen.py alles*)",
       "Bash(*.env)",
       "Bash(*.env *)",
       "Bash(*.env.local*)",

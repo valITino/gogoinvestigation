@@ -1200,7 +1200,30 @@ class Bedienung:
         return {"abgeschaltet": True, "gelungen": gelungen, "punkte": punkte, "start": f"{plattform.PY} tools/oberflaeche.py",
                 "meldung": "Die Oberfläche ist beendet. Gelöscht wurde nichts: Fallakten, Schlüssel und Einstellungen sind, wie sie waren."}
 
+    # ---- 10. Arbeitsplatz: alles löschen
+    def arbeitsplatz_loeschen(self, d: dict) -> dict:
+        """Entfernt den Arbeitsplatz von diesem Rechner (tools/loeschen.py). Zur Bestätigung gehört der Name des Projektordners, von
+        Hand eingetippt. Reihenfolge: Ermittlungen anhalten. Fallakten und Sitzungsprotokolle ausserhalb des Projekts sichern und die
+        Sicherung prüfen. Erst dann löschen: Schlüssel, Fallakten, Einstellungen, Container und Abbilder. Den Projektordner entfernt
+        ein Helfer, sobald die Oberfläche beendet ist: Der Server stösst sein Ende an, wenn diese Antwort draussen ist.
+        Scheitert die Sicherung, ist nichts gelöscht."""
+        from tools import loeschen
+        name = PROJEKT.resolve().name       # derselbe Name, den die Seite nennt: der des Ordners selbst, nicht der eines Verweises auf ihn
+        if " ".join(str(d.get("bestaetigung") or "").split()) != name:
+            raise Fehler(f"Zur Bestätigung bitte den Namen des Projektordners eintippen: {name}. Es wurde nichts geändert.")
+        faelle = self.alles_anhalten("«Alles löschen» in der Oberfläche")
+        try:
+            r = loeschen.ausfuehren(PROJEKT, None, weg="Oberfläche", aus_oberflaeche=True, ablage=self.ablage)
+        except loeschen.Fehler as e:
+            raise Fehler(f"{e} Gelöscht wurde nichts." + (f" Die Ermittlung ist angehalten ({', '.join(faelle)}) und lässt sich fortsetzen." if faelle else "")) from e
+        punkte = ([f"Ermittlung angehalten: {', '.join(faelle)}."] if faelle else []) + [f"{was}: {wie}" for _, was, wie in r["zeilen"]]
+        return {"abgeschaltet": True, "geloescht": True, "gelungen": r["gelungen"], "punkte": punkte, "bleibt": [f"{was}: {wo}" for was, wo in r["bleibt"]],
+                "bericht": r["bericht"],
+                "meldung": "Der Arbeitsplatz ist von diesem Rechner gelöscht. Die Oberfläche beendet sich jetzt, danach verschwindet der Projektordner."
+                           if r["gelungen"] else
+                           "Der Arbeitsplatz ist gelöscht, aber nicht alles liess sich entfernen. Die Zeilen unten nennen, was bleibt und wie es von Hand geht."}
+
 
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_risiko", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
             "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "eingang_nachbessern", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente",
-            "zurueckfuehren", "quelle_testen", "quelle_schluessel", "quelle_schalten", "fehler_melden", "fehler_leeren", "abschalten")
+            "zurueckfuehren", "quelle_testen", "quelle_schluessel", "quelle_schalten", "fehler_melden", "fehler_leeren", "abschalten", "arbeitsplatz_loeschen")

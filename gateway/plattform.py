@@ -484,18 +484,35 @@ def zeile_anhaengen(datei: Path, zeile: str) -> None:
         os.fsync(f.fileno())
 
 
+def ist_verweis(pfad: str | os.PathLike) -> bool:
+    """Ein Verweis: ein symbolischer Link oder, unter Windows, eine Verknüpfung des Dateisystems (Junction). Dieselbe
+    Regel wendet shutil.rmtree an. Ein Verweis zeigt irgendwohin: Was hinter ihm liegt, gehört nicht zu seinem Ordner."""
+    try:
+        st = os.lstat(pfad)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                                            and getattr(st, "st_reparse_tag", 0) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1))
+
+
+def _nochmal(funktion, ziel, fehler):
+    """Für shutil.rmtree: Schreibgeschützt ist kein Hindernis (Rohdaten sind es mit Absicht). Rechte öffnen und noch einmal
+    versuchen. Nur beim Entfernen selbst, und nie durch einen Verweis hindurch: Sein Ziel liegt vielleicht ausserhalb des
+    Ordners, der entfernt wird. Alles andere bleibt der Fehler, der es war (`fehler`: die Ausnahme, vor Python 3.12 ihr Tripel)."""
+    if funktion not in (os.unlink, os.rmdir) or ist_verweis(ziel):
+        raise fehler[1] if isinstance(fehler, tuple) else fehler
+    os.chmod(ziel, stat.S_IRWXU if os.path.isdir(ziel) else stat.S_IWRITE | stat.S_IREAD)
+    funktion(ziel)
+
+
 def baum_loeschen(pfad: Path) -> None:
     """Wie shutil.rmtree, kommt aber auch an schreibgeschützten Dateien vorbei (Rohdaten sind es mit Absicht)."""
-    def nochmal(funktion, ziel, _fehler):
-        os.chmod(ziel, stat.S_IWRITE | stat.S_IREAD)
-        funktion(ziel)
-
     if not Path(pfad).exists():
         return
     if sys.version_info >= (3, 12):
-        shutil.rmtree(pfad, onexc=nochmal)
+        shutil.rmtree(pfad, onexc=_nochmal)
     else:
-        shutil.rmtree(pfad, onerror=nochmal)
+        shutil.rmtree(pfad, onerror=_nochmal)
 
 
 def programm(name: str) -> str | None:

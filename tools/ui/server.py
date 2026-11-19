@@ -274,7 +274,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
             if len(weg) == 3 and weg[:2] == ["api", "aktion"]:
                 antwort = self.aktion(weg[2], angaben)
                 self.json(antwort)
-                if weg[2] == "abschalten" and antwort.get("abgeschaltet"):
+                if weg[2] in ("abschalten", "arbeitsplatz_loeschen") and antwort.get("abgeschaltet"):
                     # Erst antworten, dann enden: serve_forever() kehrt zurück, und wer den Server gestartet hat, räumt auf.
                     # Aus einem eigenen Faden, denn shutdown() wartet auf die Schleife, in der diese Anfrage noch steckt.
                     threading.Thread(target=self.server.shutdown, daemon=True).start()

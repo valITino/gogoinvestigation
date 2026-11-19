@@ -746,6 +746,71 @@ startet mit jeder Ermittlung von selbst. Läuft Tor nicht, sagt es der Start und
 Auch wer die Oberfläche mit Strg+C beendet, hält damit laufende Ermittlungen an: Eine Sitzung ohne Oberfläche könnte
 niemanden mehr fragen.
 
+### Arbeitsplatz löschen
+
+Unter «Alles abschalten» steht auf der Seite «Arbeitsplatz», eingeklappt, der Abschnitt **«Arbeitsplatz löschen»**. Er
+ist für den Fall gedacht, dass ein Rechner den Arbeitsplatz nicht mehr führen soll. Im Modus «nur lesen» steht dort nur,
+wie es geht.
+
+Aufgeklappt zeigt der Abschnitt den Plan, ohne etwas zu ändern: wie viele Fallakten es gibt und wie viele davon
+Abfragen enthalten, wohin sie gesichert werden, was gelöscht wird und was bleibt. Liegen im Projektordner Dateien, die
+verändert oder neu sind und nicht im Repository stehen, sagt er es: Sie gingen verloren.
+
+Zum Löschen tippt der Sachbearbeiter den **Namen des Projektordners** ein und bestätigt die Rückfrage. Dann geschieht in
+dieser Reihenfolge:
+
+1. Jede laufende Ermittlung wird angehalten. Das steht im Sitzungsprotokoll ihres Falls und damit in der Sicherung.
+   Dann wird der Bericht angelegt, im Ordner der Sicherung. Lässt er sich nicht schreiben, geschieht nichts weiter.
+2. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` im Benutzerordner. Es
+   enthält jede Datei unter `faelle/` ausser dem Musterfall, die Sitzungsprotokolle unter `protokoll/` und, falls
+   vorhanden, den Ordner `intern/`. `INHALT.txt` nennt je Datei die Prüfsumme. Unter Linux und macOS sind Archiv und
+   Bericht nur für das eigene Konto lesbar. Unter Windows gelten die Rechte des Ordners: Im Benutzerordner sind das das
+   eigene Konto, die Administratoren und das System.
+3. Die Sicherung wird geprüft: Jede Datei im Archiv hat die Prüfsumme ihrer Quelle, und keine Quelle hat sich seit dem
+   Lesen verändert. **Scheitert das, wird nichts gelöscht**, und die Oberfläche läuft weiter.
+4. Gelöscht werden: die Container und Abbilder von Web-Check und Robin, die Schlüsseldatei, Fallakten und
+   Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes.
+5. Die Oberfläche beendet sich. Das Fenster zeigt, was gelöscht wurde, wo die Sicherung liegt und was bleibt. Ein Helfer
+   entfernt danach den Projektordner selbst, mit Code und Python-Umgebung, und hängt das Ergebnis an den Bericht im
+   Ordner der Sicherung.
+
+**Was bleibt:** die Sicherung, die Ablage des Sachbearbeiters (Klartext, Zuordnungstabellen, Fehlerprotokoll), Claude
+Code mit seinen eigenen Gesprächsverläufen, und was die Einrichtung im System installiert hat (Docker, Tor, ein Browser).
+
+**Warum es keinen Weg ohne Sicherung gibt.** Fallakten und Protokolle sind Beweismittel. Ein einzelner Fall lässt sich
+nur löschen, solange in ihm nichts abgefragt wurde. Dieselbe Regel gilt hier: Was abgefragt wurde, verlässt den Rechner
+nicht, es zieht in die Sicherung um. Wer auch die Sicherung nicht mehr braucht, entfernt sie selbst und bewusst.
+
+**Wann der Abschnitt keinen Knopf zeigt.** Dann steht an seiner Stelle der Grund, und es lässt sich nichts auslösen:
+
+| Grund | Warum das anhält |
+|---|---|
+| In den Fallakten liegt ein Verweis auf einen anderen Ort, oder `faelle`, `protokoll` oder `intern` ist selbst einer (etwa auf ein anderes Laufwerk) | Gelöscht würde nur der Verweis. Was dahinter liegt, bliebe an seinem Ort, und der Bericht behauptete das Gegenteil. Das klärt ein Mensch von Hand. |
+| Die Ablage liegt im Projektordner | Sie würde mit dem Ordner entfernt, samt den Zuordnungstabellen. Die Oberfläche selbst nimmt eine solche Ablage nicht an. Am Terminal kann `OSINT_ABLAGE` dorthin zeigen. |
+| Der Ordner ist nicht der Projektordner dieses Arbeitsplatzes | Es fehlen die Dateien, die nur dieses Projekt hat, oder der Benutzerordner liegt darin. |
+
+Steht der Projektordner nicht unter Git (etwa als entpacktes Archiv), kann der Plan nicht sagen, ob darin eigene
+Dateien liegen. Er sagt dann genau das. Gesichert wird in jedem Fall nur, was unter `faelle/`, `protokoll/` und
+`intern/` liegt.
+
+Am Terminal geht dasselbe:
+
+```bash
+python3 tools/loeschen.py                             # zeigt den Plan, ändert nichts
+python3 tools/loeschen.py alles                       # löscht, nach der Eingabe des Ordnernamens
+python3 tools/loeschen.py alles --sicherung <Ordner>  # mit einem eigenen Ordner für die Sicherung
+```
+
+Der Helfer, der den Projektordner entfernt, ist ein kleines eigenes Programm. Es liegt und läuft ausserhalb des Projekts,
+denn ein Programm kann den Ordner, aus dem es läuft, nicht auf jedem System selbst entfernen. Es wartet, bis die
+Oberfläche oder das Werkzeug beendet ist, und prüft dann noch einmal, dass der Ordner wirklich dieser Projektordner ist:
+ein vollständiger Pfad, kein Verweis, nicht die Wurzel, nicht der Benutzerordner, mit den Dateien, die nur dieses
+Projekt hat. Sonst fasst es nichts an und schreibt das in den Bericht. Steht noch ein Terminal im Projektordner, bleibt
+unter Windows der leere Ordner zurück. Auch das steht im Bericht, mit dem Befehl dafür. Schreibgeschützte Dateien
+entfernt der Helfer (Rohdaten sind es mit Absicht). Rechte ändert er dabei nie durch einen Verweis hindurch: Das Ziel
+eines Verweises liegt vielleicht ausserhalb des Projektordners. Läuft die Oberfläche oder das Werkzeug nach zwei
+Minuten noch, räumt er nichts weg und schreibt in den Bericht, wie es von Hand geht.
+
 ### Fehlerprotokoll
 
 Geht bei der Oberfläche etwas schief, stand der Wortlaut bisher im Terminal oder nirgends. Die Seite
@@ -947,6 +1012,7 @@ Projektordner (siehe «Rückfragen»).
 | Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
 | Schlüssel bleiben in ihrer Datei | Einen Schlüssel eintragen, ersetzen oder entfernen und eine Quelle schalten verlangt das Geheimnis wie jede Änderung. Geschrieben wird `.env` mit derselben Funktion wie in der Einrichtung, die Datei bleibt nur für das eigene Konto lesbar. Den Wert eines Schlüssels gibt der Server nie heraus: Die Seite «Quellen» nennt den Namen der Variablen und ob ein Schlüssel eingetragen ist. Für Agenten bleibt `.env` durch die Berechtigungen des Projekts gesperrt, und die Seite hat für sie keine Knöpfe: Ohne Geheimnis antwortet der Server mit 403. |
+| Löschen entscheidet ein Mensch, und nie ohne Sicherung | «Alles löschen» verlangt das Geheimnis und dazu den Namen des Projektordners, von Hand eingetippt. Vor dem Löschen werden Fallakten und Sitzungsprotokolle ausserhalb des Projekts gesichert und die Sicherung geprüft. Einen Schalter, der das auslässt, gibt es nicht. `tools/loeschen.py alles` verlangt ein Terminal und läuft nicht aus Claude Code, die Berechtigungen des Projekts verbieten den Befehl für Agenten. Den Plan zeigen darf jeder. |
 | Abschalten entscheidet ein Mensch | «Alles abschalten» verlangt das Geheimnis wie jede Änderung. `tools/dienste.py aus` und `ein` verlangen ein Terminal und laufen nicht aus Claude Code, die Berechtigungen des Projekts verbieten beide Befehle für Agenten. Den Stand zeigen darf jeder. |
 
 **Grenzen dieses Schutzes.** Einen Wächter, der jeden Werkzeugaufruf vorab prüft, gibt es seit dem 17.11.2026 nicht
@@ -1007,6 +1073,13 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   ist, wie das Team in einer echten Ermittlung mit einer ausgeschalteten Quelle umgeht: Das Gateway lehnt ihre Werkzeuge
   ab und sagt, was zu tun ist. Ob das Team sie unter Lücken meldet, hängt an der Steuerung mit dem echten Claude Code.
   Unter Windows schränkt `icacls` die Rechte an `.env` ein, wie in der Einrichtung. Gesehen ist das dort nicht.
+- **Alles löschen.** Geprüft am 19.11.2026 unter Linux, an Wegwerf-Projekten: Sicherung mit Prüfsummen, Abbruch bei
+  einer Datei, die sich während der Sicherung ändert, das Löschen der Daten, und der Helfer, der den Ordner erst entfernt,
+  wenn der aufrufende Prozess beendet ist, und einen fremden Ordner nicht anfasst. Docker war dabei gestellt. Nicht
+  geprüft: das Löschen eines echten, eingerichteten Arbeitsplatzes mit echten Containern und Abbildern, und der Befehl
+  an einem echten Terminal (er verlangt einen Menschen). Unter Windows und macOS prüft die CI denselben Selbsttest.
+  Gesehen ist dort nichts. Unter Windows wartet der Helfer mit einer Abfrage an das System auf das Ende des Prozesses:
+  Ob sie dort trägt, zeigt nur dieser Test.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
 - **Alles abschalten.** Geprüft am 19.11.2026 unter Linux, an einem echten Docker: Der Container von Web-Check wurde
