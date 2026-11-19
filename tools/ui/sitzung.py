@@ -140,7 +140,7 @@ def eingabe_pruefen(text: object, was: str) -> str:
     text = str(text or "").strip()
     if len(text) > NACHRICHT_LAENGE:
         raise bedienung_modul.Fehler(f"{was} ist länger als {NACHRICHT_LAENGE} Zeichen. Längeres gehört als Dokument in den Fall.")
-    funde, platzhalter = pii_pruefen(text)
+    funde, platzhalter = pii_pruefen(text, "streng")       # eine Nachricht hat keine Abschnitte: Jede Angabe, die nach Personendaten aussieht, zählt
     if any(f.stufe == "sperre" for f in funde):
         raise bedienung_modul.Fehler(f"{was} wurde nicht gesendet: Darin steht etwas, das nach Personendaten aussieht. Bitte Platzhalter verwenden.\n"
                                      + "\n".join(z for z in pii_bericht(was, funde, platzhalter).splitlines() if "SPERRE" in z))

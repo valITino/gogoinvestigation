@@ -32,7 +32,8 @@ fehlt, wird nie abgefragt. Was hier falsch abgeschrieben ist, führt zu falschen
 
 ## Was kein Indikator ist
 
-- **Platzhalter.** `[PERSON_01]`, `[ORG_01]`, `[TEL_01]`, `[EMAIL_01]` und alles in dieser Form. Sie stehen für
+- **Platzhalter.** `[PERSON_01]`, `[ORG_01]`, `[TEL_01]`, `[EMAIL_01]` und alles in dieser Form, auch ohne eckige
+  Klammern (`ADRESSE_02`) und mit anderen Typen (`HEIMATORT_01`). Sie stehen für
   Personendaten und werden nie abgefragt. Erwähne im Plan, wenn eine Abfrage nur mit dem Klarnamen möglich wäre
   (zum Beispiel die Suche nach der geschädigten Organisation auf Leak-Seiten). Sie wird im Haus nachgeholt.
 - **Infrastruktur der Geschädigten.** Deren eigene Server, Domains und Adressen werden nicht untersucht,
@@ -42,9 +43,22 @@ fehlt, wird nie abgefragt. Was hier falsch abgeschrieben ist, führt zu falschen
 
 ## Auffälligkeiten sofort melden
 
-- Im Dokument stehen offenbar echte Personendaten (Name, Telefonnummer, Adresse), die keine Platzhalter sind.
-  Dann: nicht weiterverarbeiten, die Stelle mit Zeilennummer melden, ohne den Wert zu wiederholen. Der Sachbearbeiter
-  pseudonymisiert nach und nimmt das Dokument neu auf.
+- **Eine geschützte Angabe steht im Klartext da.** Geschützt sind nach der Vorgabe des Eigentümers die Angaben zur
+  Dienststelle, zur Verfasserin oder zum Verfasser (EL-Fall) und zu Geschädigten (CLAUDE.md, «Was pseudonymisiert ist»).
+  Dann: die Angabe nicht verwenden und nirgends hinschreiben, die Stelle in `arbeitsstand/klartext.json` eintragen
+  und dem Sachbearbeiter mit Dokument und Zeile nennen. Du arbeitest weiter. Das Format, ohne den Wert:
+
+  ```json
+  {"stellen": [{"dokument": "rapport-01.txt", "zeile": 67, "was": "Adresse im Abschnitt Geschädigte/-r"}]}
+  ```
+
+  `was` nennt die Art der Angabe und den Abschnitt, nie die Angabe selbst.
+- **Angaben der Täterseite im Klartext sind gewollt:** Namen, Rufnummern, Konten, E-Mail-Adressen, Benutzernamen im
+  Abschnitt «Beschuldigte/-r» oder im Sachverhalt. Sie sind keine Auffälligkeit. Für Rufnummern und Bankkonten gibt
+  es im Gateway keine Quelle: Sie sind keine Indikatoren, sondern Ansätze für ein Editionsbegehren beim Anbieter oder
+  bei der Bank. Trage sie unter `nur_im_haus_abfragbar` ein, mit der Art und der Fundstelle.
+- **Ein Dokument ist offenbar gar nicht pseudonymisiert** (keine Platzhalter, Angaben zu Geschädigten an vielen
+  Stellen): nicht weiterverarbeiten, das Dokument nennen, anhalten.
 - Ein Wert ist erkennbar verstümmelt (Hash mit 63 Zeichen, IP mit fünf Blöcken). Als `anmerkung` festhalten und nicht abfragen.
 
 ## Wallets und Transaktionen

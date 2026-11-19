@@ -385,11 +385,16 @@ Je Datei zeigt die Tabelle den Namen, den Ordner, aus dem sie kam, die Grösse u
 
 - **bereit:** Die Prüfung findet nichts. Die Seite nennt die Zahl der Platzhalter. Namen erkennt die Prüfung nicht von
   selbst, deshalb lohnt der Blick auf den lokalen Bildschirm auch bei Dokumenten, die als bereit gelten.
-- **Personendaten:** Die Prüfung findet eine Telefonnummer, eine AHV-Nummer, eine IBAN, ein Geburtsdatum, ein
-  Kontrollschild oder eine Kreditkartennummer. Der Bericht zeigt die Fundstellen maskiert. Die Datei geht so nicht in
-  einen Fall. E-Mail-Adressen und Strassenadressen meldet die Prüfung als Hinweis: Sie sperren nicht, weil sie auch zur
-  Täterseite gehören können. Die Zeile trägt dann die Marke «Hinweis». Gehört die Adresse zur geschädigten Seite, wird
-  sie auf dem lokalen Bildschirm ersetzt.
+- **Personendaten:** Die Prüfung findet im Klartext, was nach der Vorgabe des Eigentümers ersetzt sein muss: eine
+  Angabe zur Dienststelle, zur Verfasserin oder zum Verfasser (EL-Fall) oder zu Geschädigten. Das kann eine Rufnummer,
+  eine Adresse, ein Geburtsdatum oder ein Feld wie «Heimatort» sein. Gesperrt ist auch der Rest einer
+  Word-Feldfunktion, die eine Angabe im Klartext wiederholt, und jedes Dokument ganz ohne Platzhalter. Der Bericht
+  zeigt die Fundstellen maskiert und nennt den Abschnitt. Die Datei geht so nicht in einen Fall.
+- **Hinweis:** Angaben der Täterseite (Rufnummern, Konten, E-Mail-Adressen) und Angaben, die in keinem Abschnitt zu
+  einer Person stehen, sperrt die Prüfung nicht: Die Ermittlung braucht sie. Die Zeile trägt dann die Marke «Hinweis»,
+  und der Bericht nennt jede Stelle. Gehört eine davon zur geschädigten Seite, wird sie auf dem lokalen Bildschirm
+  ersetzt. Woran die Prüfung die Seite erkennt, steht in [PSEUDONYMISIERUNG.md](PSEUDONYMISIERUNG.md), «Die PII-Prüfung
+  nach der Vorgabe».
 - **nicht lesbar:** Was sich nicht lesen lässt, lässt sich nicht prüfen. Die Datei geht nicht in den Fall und nicht an
   das Sprachmodell. Sie bleibt beim Sachbearbeiter. Im Sitzungsprotokoll steht, wie viele Dateien welcher Art nicht
   übergeben wurden, ohne ihre Namen.
@@ -412,6 +417,21 @@ liegen und wird genannt.
 - Die Aufnahme läuft über `tools/fall.py`, das jede Datei selbst noch einmal prüft und im Register des Eingangs einträgt.
 - Ein Dokument überschreibt nie ein anderes. Gibt es den Namen im Fall schon, bekommt das neue eine Nummer.
 
+**Risiko übernehmen.** Ein gesperrtes Dokument lässt sich bewusst so aufnehmen, wie es ist (Entscheid des Eigentümers
+vom 19.11.2026: Wer ermittelt, darf das selbst verantworten). Unter der Tabelle steht dafür «Trotzdem aufnehmen: Risiko
+übernehmen»: Dateien anhaken, Kürzel und Begründung eintragen, bestätigen (Aktion `korb_risiko`). Die Zeile trägt
+danach die Marke «Risiko übernommen» mit Kürzel und Begründung, und «In den Fall aufnehmen» nimmt die Datei mit.
+
+- Die gesperrten Angaben stehen dann im Klartext in der Fallakte und gehen an das Sprachmodell. Die Agenten verwenden
+  sie nicht: Für sie gilt, was in CLAUDE.md unter «Was pseudonymisiert ist» steht.
+- Festgehalten wird es an zwei Orten: im Register des Eingangs (`ergebnis: uebersteuert`, wer, Begründung, Weg
+  «Oberfläche», Zahl der Fundstellen) und im Sitzungsprotokoll des Falls («Dokument trotz Sperrfund aufgenommen»). Die
+  Ansicht «Akten» zeigt das Dokument als «übersteuert».
+- Zurücknehmen geht, solange die Datei im Akten-Eingang liegt. Wird sie danach doch pseudonymisiert und besteht die
+  Prüfung, ist der Entscheid hinfällig.
+- Am Terminal gibt es dasselbe weiterhin mit `--trotzdem "Begründung" --durch "Kürzel"` und einer Eingabe von Hand. Ein
+  Agent kann es auf keinem der beiden Wege: Die Oberfläche verlangt das Geheimnis, das Terminal einen Menschen.
+
 **Was im Fall liegt.** Unter «Akten» steht auch der Eingang des Falls. Gewählte Dokumente lassen sich entfernen (mit
 «Durch» und «Grund», das Register hält es fest) oder in einen anderen Fall verschieben (dort mit PII-Prüfung
 aufgenommen, hier entfernt). Liegt dort schon ein Dokument gleichen Namens, kommt das verschobene unter der nächsten
@@ -431,9 +451,16 @@ bleibt. Technische Indikatoren sind eigens gekennzeichnet und bleiben immer steh
 Eingabe rechnet neu, damit sich eine Angabe im ganzen Dokument fortpflanzt. Dahinter steht dieselbe Bibliothek wie hinter
 `tools/pseudonymisieren.py`, ohne Sprachmodell und ohne Netz.
 
-- **Platzhalter von anderer Hand bleiben.** Steht im Dokument schon `[PERSON_08]`, bleibt das so. Neue Platzhalter
-  zählen hinter der höchsten Nummer weiter, die im Akten-Eingang und in den Dokumenten des Falls vorkommt: Eine Nummer
-  meint nie zwei Angaben.
+- **Die Vorgabe steht oben auf dem Bildschirm.** Ersetzt wird, was zur Dienststelle, zur Verfasserin oder zum Verfasser
+  und zu Geschädigten gehört. Angaben im Abschnitt der Täterseite bleiben stehen, im ganzen Dokument gleich: Die
+  Ermittlung braucht sie. Trägt das Dokument schon Platzhalter, bleiben auch Angaben ausserhalb der geschützten
+  Abschnitte stehen. Jede lässt sich mit «doch ersetzen» ersetzen. Steht dieselbe Angabe auch bei einer geschädigten
+  Person, geht der Schutz vor.
+- **Reste von Word-Feldfunktionen** (`IF "Musterweg 12" = "" …`) entfernt der Bildschirm von selbst, wenn sie eine Angabe
+  im Klartext wiederholen, und nennt ihre Zahl.
+- **Platzhalter von anderer Hand bleiben.** Steht im Dokument schon `[PERSON_08]`, bleibt das so, auch hinter einer
+  Marke wie «Dienstort» und auch ohne eckige Klammern. Neue Platzhalter zählen hinter der höchsten Nummer weiter, die im
+  Akten-Eingang und in den Dokumenten des Falls vorkommt: Eine Nummer meint nie zwei Angaben.
 - **Gleiche Angabe, gleicher Platzhalter**, über alle Dokumente desselben Akten-Eingangs und, bei einem bestehenden Fall,
   über dessen Zuordnungstabelle.
 - **«Übernehmen»** schickt das Ergebnis durch die PII-Prüfung. Besteht es, ersetzt es die Datei im Akten-Eingang, und der
@@ -697,7 +724,7 @@ Die Probe nennt dazu, über welchen Zugang abgerechnet wird und welche MCP-Serve
 | Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen, keinen Beleg erfassen und seine eigene Rückfrage nicht beantworten. |
 | Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. Die eine Datei, die sie selbst in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand. |
 | Der Chat geht durch die PII-Prüfung | Vorgaben und Nachrichten prüft die Oberfläche wie ein Dokument, bevor sie an Claude Code gehen. Titel, Auftrag und Kürzel eines Falls ebenso. |
-| Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Entfernen, Löschen, Pseudonymisieren und Zurückführen verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
+| Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Entfernen, Löschen, Pseudonymisieren, Zurückführen und das Aufnehmen trotz Sperrfund («Risiko übernehmen») verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
 | Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
 | Abschalten entscheidet ein Mensch | «Alles abschalten» verlangt das Geheimnis wie jede Änderung. `tools/dienste.py aus` und `ein` verlangen ein Terminal und laufen nicht aus Claude Code, die Berechtigungen des Projekts verbieten beide Befehle für Agenten. Den Stand zeigen darf jeder. |
@@ -757,7 +784,10 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Beenden der Oberfläche weg. Dasselbe gilt für eine Pseudonymisierung, die noch nicht übernommen ist.
 - **Formate.** Gelesen werden Text, Word (.docx), OpenDocument, Excel (.xlsx), PowerPoint (.pptx), RTF, E-Mail (.eml)
   und PDF mit Text. Bilder, Ton, gescannte PDF und die alten Office-Formate nicht: Es gibt keine Texterkennung. Die
-  Textfassung eines Office-Dokuments enthält den Text, nicht das Layout, keine Kommentare und keine Bilder.
+  Textfassung eines Office-Dokuments enthält den sichtbaren Text, nicht das Layout, keine Kommentare und keine Bilder.
+  Aus Word, OpenDocument und RTF kommen seit dem 19.11.2026 auch Feldanweisungen, gelöschter Text («Änderungen
+  nachverfolgen») und ausgeblendeter Text nicht mehr hinein: Dort kann eine Angabe im Klartext stehen, die im
+  sichtbaren Text längst ersetzt ist. Text, der über eine Formatvorlage ausgeblendet ist, erkennt das nicht.
 - **Ordner hineinziehen** stützt sich auf eine Schnittstelle des Browsers (`webkitGetAsEntry`, `webkitdirectory`), die
   alle grossen Browser kennen. Geprüft ist Chromium.
 - **Nachrichten warten auf das Ende eines Auftrags.** Claude Code nimmt im Skriptbetrieb keine Eingabe in einen

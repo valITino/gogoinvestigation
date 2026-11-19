@@ -266,7 +266,8 @@ function auswahlEinrichten(bereich) {
     for (const knopf of $$(".auswahlleiste button", bereich)) knopf.disabled = gemerkt.size === 0;
     const hinweis = bereich.dataset.auswahl === "korb" ? $("[data-aufnehmen-hinweis]") : null;
     if (hinweis) {      // beim Knopf steht, was er aufnehmen wird: Eine Auswahl von vorhin soll niemanden überraschen
-      const bereit = liste.filter(k => k.dataset.stand === "sauber"), davon = bereit.filter(k => gemerkt.has(k.value)).length;
+      // bereit ist auch, wofür der Sachbearbeiter das Risiko übernommen hat
+      const bereit = liste.filter(k => k.dataset.stand === "sauber" || k.dataset.stand === "risiko"), davon = bereit.filter(k => gemerkt.has(k.value)).length;
       hinweis.textContent = gemerkt.size ? `Aufgenommen werden die ${gemerkt.size} gewählten Dateien, soweit sie bereit sind: ${davon} von ${gemerkt.size}. Für alle: die Auswahl aufheben.`
         : `Nichts gewählt: Aufgenommen wird alles, was bereit ist (${bereit.length} von ${liste.length} Dateien).`;
     }

@@ -111,7 +111,8 @@ def erfassen(fall_id: str, *, indikator: str, typ: str, quelle: str, abgeklaert:
                          "dass eine Adresse zu einem solchen Dienst gehört.")
     if (art or dienst or residential) and wert != "ja":
         raise Fehler("Art, Dienst und «residential» gehören zum Wert «ja».")
-    funde = [f for f in pii_pruefen("\n".join((quelle, wortlaut, durch, art or "", dienst or "")))[0] if f.stufe == "sperre"]
+    # streng: Ein Beleg von Hand ist kein Dokument mit Abschnitten. Darin sperrt jede Angabe, die nach Personendaten aussieht
+    funde = [f for f in pii_pruefen("\n".join((quelle, wortlaut, durch, art or "", dienst or "")), "streng")[0] if f.stufe == "sperre"]
     if funde:
         raise Fehler("Die Angaben enthalten Personendaten (" + ", ".join(sorted({f"{f.art} {f.maske}" for f in funde})) + "). "
                      "In den Beleg gehört nur, was die Quelle zum Indikator sagt.")

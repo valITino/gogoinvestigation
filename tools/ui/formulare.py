@@ -25,7 +25,10 @@ NUR_LESEN = ('<p class="banner">Die Oberfläche läuft im Modus «nur lesen». B
 OHNE_GEHEIMNIS = ('<p class="banner">Dieses Fenster kann nur lesen. Hochladen, ordnen und entfernen lässt sich aus dem Browserfenster, das die Oberfläche '
                   "beim Start geöffnet hat.</p>")
 FREIGABE_NAME = {"aktiv": "Aktive Massnahmen", "darkweb": "Dark Web", "personenbezug": "Kontoabfragen"}
-STAND_MARKE = {"sauber": ("gut", "✓ bereit"), "personendaten": ("kritisch", "✕ Personendaten"), "nicht_lesbar": ("leer", "– nicht lesbar")}
+STAND_MARKE = {"sauber": ("gut", "✓ bereit"), "personendaten": ("kritisch", "✕ Personendaten"), "nicht_lesbar": ("leer", "– nicht lesbar"),
+               "risiko": ("warnung", "! Risiko übernommen")}
+RISIKO_FRAGE = ("Das Risiko übernehmen? Die gewählten Dateien gehen dann so in den Fall, wie sie sind. Die gesperrten Angaben stehen im Klartext in der "
+                "Fallakte und gehen an das Sprachmodell. Kürzel und Begründung stehen im Register des Falls und im Sitzungsprotokoll.")
 STATUS_WORT = {"aus": "nicht gestartet", "laeuft": "läuft", "wartet": "wartet auf eine Antwort", "angehalten": "angehalten", "beendet": "beendet", "fehler": "abgebrochen"}
 STATUS_FARBE = {"laeuft": "gut", "wartet": "warnung", "fehler": "kritisch"}
 PFLICHT_STAND_KOPF = "<h3>Stand laut Protokoll</h3>"
@@ -100,6 +103,9 @@ def akten_seite(bedienung, ziel: str) -> str:
             pruefung = f'<span class="marke z-{farbe}">{wort}</span>'
             if e.stand == "personendaten":
                 pruefung += f' <span class="klein">{e.sperren} Fundstelle{"n" if e.sperren != 1 else ""}</span>'
+            elif e.stand == "risiko":
+                pruefung += (f' <span class="klein">{e.sperren} Fundstelle{"n" if e.sperren != 1 else ""} {"bleiben" if e.sperren != 1 else "bleibt"} im Klartext. '
+                             f'Durch {esc(e.risiko["durch"])}: {esc(e.risiko["grund"])}</span>')
             elif e.stand == "nicht_lesbar":
                 pruefung += f'<div class="klein">{esc(e.grund)}</div>'
             elif e.platzhalter:
@@ -107,7 +113,8 @@ def akten_seite(bedienung, ziel: str) -> str:
             else:
                 pruefung += ' <span class="klein">keine Platzhalter gefunden</span>'
             if e.text is not None and e.hinweise:       # sperrt nicht, soll aber niemandem entgehen
-                pruefung += (' <span class="marke z-warnung" title="E-Mail-Adressen und Strassenadressen sperrt die Prüfung nicht: Sie können zur Täterseite gehören. Bitte ansehen.">'
+                pruefung += (' <span class="marke z-warnung" title="Diese Angaben bleiben im Klartext stehen: Nach der Vorgabe sind es Angaben der Täterseite, '
+                             'die die Ermittlung braucht. Bitte ansehen.">'
                              f'! {e.hinweise} Hinweis{"e" if e.hinweise != 1 else ""}</span>')
             if e.bericht:
                 pruefung += f'<details><summary class="klein">Bericht der Prüfung</summary><pre class="rohtext">{esc(e.bericht)}</pre></details>'
@@ -130,8 +137,22 @@ def akten_seite(bedienung, ziel: str) -> str:
                        + "".join(f'<option value="{esc(w)}">{esc(t)}</option>' for w, t in andere) + "</select>") if andere else ""
         bereit = sum(1 for e in eintraege if e.stand == "sauber")
         pii = sum(1 for e in eintraege if e.stand == "personendaten")
+        gewagt = sum(1 for e in eintraege if e.stand == "risiko")
         unlesbar = sum(1 for e in eintraege if e.stand == "nicht_lesbar")
-        h.append(f'<h2>Im Akten-Eingang ({len(eintraege)})</h2><p class="klein">{bereit} bereit, {pii} mit Personendaten, {unlesbar} nicht lesbar.</p>'
+        # Der Sachbearbeiter darf ein gesperrtes Dokument bewusst so aufnehmen, wie es ist: Er übernimmt das Risiko, mit Kürzel und Begründung
+        risiko = ""
+        if pii or gewagt:
+            risiko = ("<details class='risiko'><summary>Trotzdem aufnehmen: Risiko übernehmen</summary>"
+                      "<p class='klein'>Für ein gesperrtes Dokument, das ihr bewusst so aufnehmen wollt, wie es ist. Die gesperrten Angaben stehen dann im Klartext "
+                      "in der Fallakte und gehen an das Sprachmodell. Das Register des Falls und das Sitzungsprotokoll halten fest, wer das entschieden hat und "
+                      "warum. Der Bericht der Prüfung in der Zeile nennt die Stellen. Ersetzen geht weiterhin: «pseudonymisieren».</p>"
+                      + formular("korb_risiko", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True)
+                                 + feld("grund", "Begründung", pflicht=True, platzhalter="Angaben werden für die Ermittlung gebraucht") + "</div>",
+                                 "Risiko übernehmen für die gewählten Dateien", verborgen={"ziel": ziel}, danach="neu-laden", klasse="mit-auswahl", frage=RISIKO_FRAGE)
+                      + (formular("korb_risiko", "", "Für die gewählten Dateien zurücknehmen", verborgen={"ziel": ziel, "zurueck": "1"}, danach="neu-laden",
+                                  klasse="mit-auswahl still") if gewagt else "") + "</details>")
+        h.append(f'<h2>Im Akten-Eingang ({len(eintraege)})</h2><p class="klein">{bereit} bereit, {pii} mit Personendaten, '
+                 + (f'{gewagt} trotz Fund zur Aufnahme vorgesehen, ' if gewagt else "") + f'{unlesbar} nicht lesbar.</p>'
                  f'<div class="auswahl" data-auswahl="korb" data-ziel="{esc(ziel)}">'
                  '<div class="auswahlleiste" role="group" aria-label="Mit der Auswahl"><span class="klein" data-gewaehlt>nichts gewählt</span> '
                  '<button type="button" data-korb="pseudo-auswahl">Nochmals pseudonymisieren</button> '
@@ -140,14 +161,16 @@ def akten_seite(bedienung, ziel: str) -> str:
                  '<button type="button" data-korb="entfernen" data-frage="Die gewählten Dateien aus dem Akten-Eingang entfernen? Sie werden aus dem Speicher der Oberfläche gelöscht.">Entfernen</button>'
                  + verschieben + "</div>"
                  + tabelle([ALLE, "Datei", "Art", "Grösse", "PII-Prüfung", "Pseudonymisierung", "Rolle"], zeilen, "Akten-Eingang", klasse="daten auswahltabelle")
-                 + '<div class="ergebnis" data-korb-ergebnis aria-live="polite"></div></div>')
+                 + '<div class="ergebnis" data-korb-ergebnis aria-live="polite"></div>' + risiko + '</div>')
         hinweise = []
         if pii:
-            hinweise.append("<b>Personendaten:</b> «pseudonymisieren» öffnet das Dokument auf dem lokalen Bildschirm. Dort sind die Fundstellen markiert: annehmen, verwerfen, "
+            hinweise.append("<b>Personendaten:</b> Gesperrt ist, was nach der Vorgabe ersetzt sein muss: Angaben zur Dienststelle, zur Verfasserin oder zum Verfasser "
+                            "und zu Geschädigten. «pseudonymisieren» öffnet das Dokument auf dem lokalen Bildschirm. Dort sind die Fundstellen markiert: annehmen, verwerfen, "
                             "ergänzen. Namen erkennt die Prüfung nicht von selbst, deshalb lohnt der Blick auch bei Dokumenten, die als bereit gelten.")
         if any(e.hinweise and e.text is not None for e in eintraege):
-            hinweise.append("<b>Hinweise:</b> E-Mail-Adressen und Strassenadressen sperrt die Prüfung nicht, weil sie zur Täterseite gehören können und dann stehen "
-                            "bleiben müssen. Gehört eine zur geschädigten Seite: «pseudonymisieren» öffnen und dort entscheiden. Der Bericht der Prüfung nennt die Stellen.")
+            hinweise.append("<b>Hinweise:</b> Angaben der Täterseite sperrt die Prüfung nicht: Rufnummern, Konten, E-Mail-Adressen. Die Ermittlung braucht sie, "
+                            "sie bleiben stehen. Dasselbe gilt für Angaben, die in keinem Abschnitt zu einer Person stehen. Gehört eine davon zur geschädigten Seite: "
+                            "«pseudonymisieren» öffnen und dort entscheiden. Der Bericht der Prüfung nennt die Stellen und den Abschnitt.")
         if unlesbar:
             hinweise.append("<b>Nicht lesbar:</b> Bilder, Ton, alte Formate. Was sich nicht lesen lässt, lässt sich nicht prüfen. Diese Dateien gehen nicht in den Fall "
                             "und nicht an das Sprachmodell. Sie bleiben bei dir.")
@@ -295,10 +318,17 @@ def klartext_seite(pseudo, kennung: str) -> str:
         "pseudo_uebernehmen", "", "Übernehmen", verborgen={"vorgang": kennung}, danach="weiter", klasse="uebernehmen",
         frage=(f"{ergebnis.offen} Kandidaten sind noch offen und bleiben stehen. Trotzdem übernehmen?" if ergebnis.offen else ""))
     verwerfen = formular("pseudo_verwerfen", "", "Abbrechen: Die Datei bleibt, wie sie war", verborgen={"vorgang": kennung}, danach=zurueck, klasse="still")
+    belassen = len({v.erk.verweis.get(f.angabe, f.angabe) for f in v.erk.funde if f.frage == "taeter" and ps.stand(f, v.ent) is False})
+    vorgabe = ("<p class='vorgabe'><b>Vorgabe.</b> Ersetzt wird, was zur Dienststelle, zur Verfasserin oder zum Verfasser und zu Geschädigten gehört. "
+               "Angaben der Täterseite bleiben stehen: Die Ermittlung braucht sie."
+               + (f" In diesem Dokument {'bleibt eine solche Angabe' if belassen == 1 else f'bleiben {belassen} solche Angaben'} stehen. "
+                  f"Gehört {'sie' if belassen == 1 else 'eine davon'} doch zu einer geschädigten Person: unten «doch ersetzen»." if belassen else "")
+               + (f" {v.feldreste} {'Rest einer Word-Feldfunktion wurde' if v.feldreste == 1 else 'Reste von Word-Feldfunktionen wurden'} entfernt: "
+                  "Sie wiederholten Angaben im Klartext." if v.feldreste else "") + "</p>")
     return (
         f'<h1>Pseudonymisieren · {esc(pseudo.name)}</h1>{KLARTEXT_BAND}'
         f'<p class="unter"><span data-warteschlange></span>{sum(ergebnis.ersetzt.values())} Fundstellen werden ersetzt, {len(ergebnis.zuordnung)} Platzhalter, {ergebnis.offen} Kandidaten offen. '
-        "Technische Indikatoren bleiben stehen. Platzhalter, die schon im Dokument stehen, bleiben, wie sie sind: Neue zählen dahinter weiter.</p>"
+        "Technische Indikatoren bleiben stehen. Platzhalter, die schon im Dokument stehen, bleiben, wie sie sind: Neue zählen dahinter weiter.</p>" + vorgabe +
         '<div class="klartext"><div class="klartext-text"><h2>Dokument</h2><p class="legende"><mark class="fund s-ersetzen">wird ersetzt</mark> '
         '<mark class="fund s-offen">Kandidat, noch offen</mark> <mark class="fund s-lassen">bleibt stehen</mark> <span class="technik">technischer Indikator</span></p>'
         f'<pre class="dokument">{text_markiert(v)}</pre></div>'

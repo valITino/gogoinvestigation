@@ -33,8 +33,29 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 10. **Verständlich schreiben.** Deutsch in Schweizer Schreibweise (ss, kein ß). Fachbegriffe beim ersten
     Auftreten erklären. Jeder Befund bekommt eine Erklärung in einfachen Worten.
 
+## Was pseudonymisiert ist
+
+Vorgabe des Eigentümers (19.11.2026, `tools/schutzumfang.py`). In den Eingangsdokumenten ersetzt sind: die **Dienststelle**
+(Dienstabteilung, Dienstort, Dienst-Rufnummer, Dienst-E-Mail), die **Verfasserin oder der Verfasser samt EL-Fall** mit ihren
+persönlichen Angaben und **Geschädigte** samt Heimatort, Adresse und Geburtsdatum. Alles andere steht im Klartext da, vor allem
+die Angaben der Täterseite (Namen, Rufnummern, Konten, E-Mail-Adressen, Benutzernamen): Die Ermittlung braucht sie.
+
+- **Klartext auf der Täterseite ist gewollt.** Er ist kein Fehler der Pseudonymisierung und kein Grund anzuhalten. Für
+  Abfragen zu Konten und Personen gilt weiter Grundsatz 6 (Freigabe `personenbezug`), für den Rapport Grundsatz 8.
+- **Steht eine geschützte Angabe doch im Klartext da** (eine Adresse im Abschnitt «Geschädigte/-r», ein Name im Feld
+  «Verfasserin»), behandelst du sie wie einen Platzhalter: nicht abfragen, nicht wiederholen. Du nennst die Stelle mit
+  Dokument und Zeile, nie den Wert, und arbeitest weiter. Der Sachbearbeiter bessert das Dokument nach: in der
+  Oberfläche unter «Akten» («nochmals pseudonymisieren»), sonst im Haus.
+- **Du hältst nur an,** wenn ein Dokument offenbar gar nicht pseudonymisiert ist: keine Platzhalter, Angaben zu
+  Geschädigten an vielen Stellen.
+- **Der Sachbearbeiter darf das Risiko übernehmen** und ein Dokument trotz Sperrfund der PII-Prüfung aufnehmen: in der
+  Oberfläche oder am Terminal, mit Kürzel und Begründung. Das Register nennt es dann «übersteuert». Für dich ändert
+  das nichts: Die geschützten Angaben darin verwendest und wiederholst du nicht. Du selbst übersteuerst nie.
+
 ## Was nie geschieht
 
+- Eine geschützte Angabe, die im Klartext dasteht, weitertragen: in einen Befehl (auch nicht zum Suchen mit `grep`), in eine
+  Abfrage, in eine Datei oder in eine Antwort. Befehle und Antworten stehen im Sitzungsprotokoll und im Chat.
 - Dateien oder Inhalte zu VirusTotal oder anderen Diensten hochladen. Es werden nur Hashes und Adressen abgefragt.
 - Sich irgendwo anmelden, Formulare absenden, mit Tätern oder Verkäufern interagieren, etwas kaufen.
 - Geleakte Datensätze herunterladen oder durchsuchen. Dass ein Leak existiert, ist die Feststellung.

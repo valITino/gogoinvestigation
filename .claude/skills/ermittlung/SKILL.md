@@ -43,7 +43,9 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
    - Fall existiert nicht und ein Dokumentpfad wurde mitgegeben:
      `python3 tools/fall.py neu <Fall-ID> --rapport <Pfad…>` ausführen. Das Werkzeug prüft das Dokument auf
      übersehene Personendaten. **Lies das Dokument nicht selbst, bevor es aufgenommen ist.**
-     Meldet die Prüfung Sperrfunde: Ausgabe zeigen, erklären, dass im Haus nachpseudonymisiert werden muss, anhalten.
+     Meldet die Prüfung Sperrfunde: Ausgabe zeigen und anhalten. Gesperrt ist, was nach der Vorgabe ersetzt sein muss.
+     Nachbessern kann der Sachbearbeiter in der Oberfläche («Neuer Fall», «nochmals pseudonymisieren») oder im Haus.
+     Hinweise der Prüfung («Täterseite», «ohne Abschnitt») sperren nicht: Diese Angaben bleiben stehen.
    - Fall existiert nicht und kein Pfad: nach dem Pfad fragen, anhalten.
    - Wurde zu einem bestehenden Fall ein weiterer Pfad mitgegeben: `python3 tools/fall.py aufnehmen <Fall-ID> <Pfad>`.
 3. Ist der Eingang leer, halte an und sage, wie ein Dokument aufgenommen wird.
@@ -57,8 +59,24 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
 ## Phase 1: Indikatoren
 
 Lies die Dokumente aus `eingang` (nur die von `fall_status` genannten) und folge dem Skill `ioc-extraktion`.
-Ergebnis: `faelle/<Fall-ID>/arbeitsstand/indikatoren.json`. Findest du echte Personendaten im Dokument, halte an
-und melde die Stelle, ohne den Wert zu wiederholen.
+Ergebnis: `faelle/<Fall-ID>/arbeitsstand/indikatoren.json`.
+
+**Personendaten im Dokument.** Es gilt «Was pseudonymisiert ist» in CLAUDE.md. Kurz:
+
+- Angaben der Täterseite stehen mit Absicht im Klartext da. Du arbeitest damit und hältst nicht an.
+- Steht eine geschützte Angabe im Klartext da (zu Geschädigten, zur Verfasserin oder zum Verfasser, zur Dienststelle),
+  hältst du **nicht** an. Du verwendest sie nicht, trägst die Stelle in `arbeitsstand/klartext.json` ein (Format im
+  Skill `ioc-extraktion`) und nennst sie dem Sachbearbeiter in einem Satz, mit Dokument und Zeile, ohne den Wert:
+  «In rapport-01.txt, Zeile 67, steht eine Adresse im Abschnitt der Geschädigten im Klartext. Ich verwende sie nicht.
+  Nachbessern: in der Oberfläche unter «Akten».» Dann fährst du fort.
+- Den Wert schreibst du nirgends hin: in keinen Befehl (auch nicht zum Zählen oder Suchen), keine Abfrage, keine Datei,
+  keine Antwort.
+- Du hältst nur an, wenn ein Dokument offenbar gar nicht pseudonymisiert ist (keine Platzhalter, Angaben zu
+  Geschädigten an vielen Stellen). Dann nennst du das Dokument und sagst, was zu tun ist.
+
+Arbeitet der Sachbearbeiter in der Oberfläche (der Auftrag kommt von dort, wenn der MCP-Server `oberflaeche` geladen
+ist), nennst du ihm die Ansicht und den Knopf, keinen Terminalbefehl. Fragen stellst du nur, wo dieser Skill es
+verlangt, und dann als kurzen Text am Schluss deiner Antwort.
 
 ## Phase 2: Plan
 

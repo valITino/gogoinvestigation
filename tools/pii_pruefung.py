@@ -6,6 +6,13 @@ Die Prüfung erkennt Muster (AHV-Nummer, IBAN, Telefonnummer, Geburtsdatum, Kont
 Kreditkarte, E-Mail, Strassenadresse). Namen erkennt sie NICHT. Sie ersetzt die
 Pseudonymisierung nicht, sie fängt deren Ausrutscher ab.
 
+Gesperrt wird nach der Vorgabe des Eigentümers (tools/schutzumfang.py): was zur Dienststelle, zur
+Verfasserin oder zum Verfasser und zu Geschädigten gehört. Die Seite erkennt die Prüfung am Aufbau
+des Dokuments (Abschnitt «Geschädigte/-r», Feld «Dienstort»). Angaben der Täterseite und Angaben
+ohne Abschnitt bleiben stehen: Die Prüfung zeigt sie an und sperrt nicht. Zwei Dinge sperren
+immer: ein Dokument ganz ohne Platzhalter (es ist offenbar nicht pseudonymisiert) und der Rest
+einer Word-Feldfunktion mit Klartext. Mit OSINT_SCHUTZ=streng sperrt jede Angabe wie früher.
+
 Die Ausgabe zeigt Fundstellen nur maskiert, damit sie gefahrlos in einem Agenten-Kontext
 landen kann.
 
@@ -30,6 +37,9 @@ if __name__ == "__main__":
     plattform.start()
 
 PLATZHALTER = re.compile(r"\[([A-ZÄÖÜ]{2,20})_(\d{1,3})\]")
+# Platzhalter von anderer Hand stehen manchmal ohne Klammern da: ADRESSE_02. Sie gelten hier als Platzhalter, damit ein Werkzeug
+# im Haus nicht umgestellt werden muss. Neue Platzhalter dieses Arbeitsplatzes haben immer Klammern.
+PLATZHALTER_OHNE = re.compile(r"(?<![\w\[])([A-ZÄÖÜ]{3,20})_(\d{2,3})(?![\w\]])")
 KANTONE = "AG|AI|AR|BE|BL|BS|FR|GE|GL|GR|JU|LU|NE|NW|OW|SG|SH|SO|SZ|TG|TI|UR|VD|VS|ZG|ZH"
 
 
@@ -78,12 +88,51 @@ MUSTER = [
 ]
 
 
+# Reste von Word-Feldfunktionen in einem Text: «IF "Musterweg 12" = "" "" "Musterweg 12, "». Die Anweisung eines Felds wiederholt
+# den Wert, den es zeigt. Ersetzt jemand nur den sichtbaren Text, steht er hier noch im Klartext (gesehen am 19.11.2026). Aus
+# einem Word-Dokument liest dieser Arbeitsplatz die Anweisungen gar nicht erst mit. In einem Text von anderswo erkennt er sie
+# an ihrer Form: Bedingung in Anführungszeichen, danach mindestens ein Text in Anführungszeichen. Eine Zeile aus einem Skript
+# («if "$a" = "" ; then») hat das nicht und bleibt stehen.
+_ANF = "\"“”„«»"
+FELDREST = re.compile(
+    rf"(?i)(?<![\w{_ANF}])(?:\{{\s*)?\b(?:IF|COMPARE)[ \t]+[{_ANF}][^{_ANF}\n]{{0,200}}[{_ANF}][ \t]*(?:=|<>|<=|>=|<|>)[ \t]*[{_ANF}][^{_ANF}\n]{{0,200}}[{_ANF}]"
+    rf"(?:[ \t]+[{_ANF}][^{_ANF}\n]{{0,400}}[{_ANF}]){{1,2}}(?:[ \t]*\}})?")
+_FELDWERT = re.compile(rf"[{_ANF}]([^{_ANF}\n]*)[{_ANF}]")
+
+
+def feldrest_klartext(rest: str) -> str:
+    """Der erste Wert in einem Feldrest, der kein Platzhalter und nicht leer ist. Leer, wenn der Rest nichts verrät."""
+    for wert in _FELDWERT.findall(rest):
+        kern = PLATZHALTER_OHNE.sub("", PLATZHALTER.sub("", wert)).strip(" ,;.:-")
+        if re.search(r"[^\W_]", kern):
+            return wert.strip()
+    return ""
+
+
+def feldreste_entfernen(text: str) -> tuple[str, int]:
+    """Der Text ohne die Reste von Feldfunktionen, die Klartext wiederholen, und ihre Zahl. Der sichtbare Text bleibt stehen."""
+    zahl = 0
+
+    def weg(m: re.Match) -> str:
+        nonlocal zahl
+        if not feldrest_klartext(m.group()):
+            return m.group()
+        zahl += 1
+        return ""
+    neu = FELDREST.sub(weg, text)
+    if zahl:
+        neu = re.sub(r"[ \t]{2,}(?=\S)", lambda m: m.group() if "\t" in m.group() else " ", neu)      # die Lücke, die der Rest hinterlässt
+        neu = re.sub(r"[ \t]+$", "", neu, flags=re.M)
+    return neu, zahl
+
+
 @dataclass
 class Fund:
     art: str
     stufe: str      # sperre | hinweis
     zeile: int
     maske: str
+    rolle: str = ""         # Seite laut Aufbau des Dokuments: dienst, verfasser, geschaedigte, taeter, dritte. Leer: kein Abschnitt
 
 
 def maskieren(text: str) -> str:
@@ -151,8 +200,44 @@ def _nummer(name: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+# Was in einem Word-Dokument steht, aber nicht zu seinem sichtbaren Text gehört. Es bliebe sonst in der Textfassung stehen, auch
+# wenn der sichtbare Text längst durch Platzhalter ersetzt ist. Gesehen am 19.11.2026: Die Anweisung eines Seriendruckfelds
+# («IF "Musterweg 12" = "" …») wiederholt den Wert, den das Feld zeigt.
+_DOCX_NICHT_TEXT = re.compile(
+    r"<w:(instrText|delInstrText|delText|fldData)\b[^>]*(?<!/)>.*?</w:\1>"       # Feldanweisungen, Felddaten, gelöschter Text (Änderungen nachverfolgen)
+    r"|<w:(del|moveFrom)(?=[\s>])[^>]*(?<!/)>.*?</w:\2>"                         # gelöschte und an ihrer alten Stelle verschobene Abschnitte
+    r"|<w:r\b(?:(?!</w:r>).)*?<w:vanish(?:\s+w:val=\"(?:1|true|on)\")?\s*/>(?:(?!</w:r>).)*?</w:r>",      # ausgeblendeter Text
+    re.S)
+
+
+_DOCX_FELDZEICHEN = re.compile(r'<w:fldChar\b[^>]*\bw:fldCharType="(begin|separate|end)"[^>]*>')
+_DOCX_TEXT = re.compile(r"<w:t\b[^>]*(?<!/)>.*?</w:t>", re.S)
+
+
+def _docx_sichtbar(xml: str) -> str:
+    """Ein Teil eines Word-Dokuments ohne das, was man im Dokument nicht sieht. Ein Feld besteht aus Beginn, Anweisung,
+    Trennmarke, Ergebnis und Ende. Die Anweisung kann selbst Felder enthalten: Deren Ergebnisse sind dann Teil der Anweisung
+    («IF "Musterweg 12" = "" …») und erscheinen im Dokument nicht. Sichtbar ist nur, was in keinem Feld im Anweisungsteil steht."""
+    stuecke, lage, pos = [], [], 0
+    for m in _DOCX_FELDZEICHEN.finditer(xml):
+        stueck = xml[pos:m.start()]
+        stuecke.append(_DOCX_TEXT.sub("", stueck) if "anweisung" in lage else stueck)
+        if m.group(1) == "begin":
+            lage.append("anweisung")
+        elif m.group(1) == "separate" and lage:
+            lage[-1] = "ergebnis"
+        elif m.group(1) == "end" and lage:
+            lage.pop()
+        pos = m.end()
+    if not lage:        # gehen die Felder nicht auf (beschädigtes Dokument), bleibt der Text stehen: lieber zu viel als ein halbes Dokument
+        xml = "".join(stuecke) + xml[pos:]
+    return _DOCX_NICHT_TEXT.sub("", xml)
+
+
 def _docx(name: str, roh: bytes) -> str:
-    xml = "\n".join(text for _n, text in _zip_teile(name, roh, r"word/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml"))
+    """Der sichtbare Text: Dokument, Kopf- und Fusszeilen, Fuss- und Endnoten. Kommentare, Feldanweisungen, gelöschter und
+    ausgeblendeter Text gehören nicht dazu. Ausgeblendet über eine Formatvorlage erkennt das nicht: Die Vorlagen werden nicht gelesen."""
+    xml = "\n".join(_docx_sichtbar(text) for _n, text in _zip_teile(name, roh, r"word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml"))
     xml = re.sub(r"</w:p>|<w:br[^>]*/>|</w:tr>", "\n", xml)
     xml = re.sub(r"<w:tab[^>]*/>|</w:tc>", "\t", xml)
     return _xml_text(xml)
@@ -160,6 +245,8 @@ def _docx(name: str, roh: bytes) -> str:
 
 def _odf(name: str, roh: bytes) -> str:
     xml = "\n".join(text for _n, text in _zip_teile(name, roh, r"content\.xml"))
+    # Aufgezeichnete Änderungen (darin steht der gelöschte Text) und Kommentare gehören nicht zum sichtbaren Text
+    xml = re.sub(r"<text:tracked-changes\b[^>]*(?<!/)>.*?</text:tracked-changes>|<office:annotation\b[^>]*(?<!/)>.*?</office:annotation>", "", xml, flags=re.S)
     xml = re.sub(r"<text:s text:c=\"(\d{1,3})\"\s*/>", lambda m: " " * int(m.group(1)), xml)
     xml = re.sub(r"</text:p>|</text:h>|<text:line-break\s*/>|</table:table-row>", "\n", xml)
     xml = re.sub(r"<text:tab\s*/>|</table:table-cell>", "\t", xml)
@@ -209,29 +296,36 @@ _RTF_ZEICHEN = {"par": "\n", "sect": "\n\n", "page": "\n\n", "line": "\n", "tab"
 
 def _rtf(roh: str) -> str:
     """Text aus RTF: Steuerwörter fallen weg, Zeichen in Hex- und Unicode-Schreibweise werden gelesen, Absätze werden Zeilen.
-    Schrifttabelle, Bilder, Kopf- und Fusszeilen und die Angaben zum Verfasser gehören nicht zum Text."""
-    stapel: list[tuple[int, bool]] = []
+    Schrifttabelle, Bilder, Kopf- und Fusszeilen und die Angaben zum Verfasser gehören nicht zum Text. Auch nicht, was im
+    Dokument nicht zu sehen ist: Feldanweisungen, gelöschter Text (Änderungen nachverfolgen) und ausgeblendeter Text."""
+    stapel: list[tuple[int, bool, bool]] = []
     aus: list[str] = []
-    ignorieren, ucskip, rest = False, 1, 0
+    ignorieren, ucskip, rest, unsichtbar = False, 1, 0, False
     for m in _RTF.finditer(roh):
         wort, zahl, hexa, zeichen, klammer, sonst = m.groups()
         if klammer:
             rest = 0
             if klammer == "{":
-                stapel.append((ucskip, ignorieren))
+                stapel.append((ucskip, ignorieren, unsichtbar))
             elif stapel:
-                ucskip, ignorieren = stapel.pop()
+                ucskip, ignorieren, unsichtbar = stapel.pop()
         elif zeichen:
             rest = 0
             if zeichen == "*":
                 ignorieren = True
-            elif not ignorieren:
+            elif not ignorieren and not unsichtbar:
                 aus.append("\xa0" if zeichen == "~" else zeichen if zeichen in "{}\\" else "")
         elif wort:
             rest = 0
             if wort in _RTF_ZIELE:
                 ignorieren = True
             elif ignorieren:
+                continue
+            elif wort in ("deleted", "v"):      # gelöscht oder ausgeblendet: gilt bis zum Ende der Gruppe oder bis zur Null dahinter
+                unsichtbar = zahl != "0"
+            elif wort == "plain":               # setzt die Zeichenformate zurück, auch «ausgeblendet»
+                unsichtbar = False
+            elif unsichtbar:
                 continue
             elif wort in _RTF_ZEICHEN:
                 aus.append(_RTF_ZEICHEN[wort])
@@ -244,12 +338,12 @@ def _rtf(roh: str) -> str:
         elif hexa:
             if rest > 0:
                 rest -= 1
-            elif not ignorieren:
+            elif not ignorieren and not unsichtbar:
                 aus.append(bytes.fromhex(hexa).decode("cp1252", "replace"))
         elif sonst:
             if rest > 0:
                 rest -= 1
-            elif not ignorieren:
+            elif not ignorieren and not unsichtbar:
                 aus.append(sonst)
     return "".join(aus)
 
@@ -361,11 +455,28 @@ def text_lesen(datei: Path) -> str:
     return text_aus(datei.name, datei.read_bytes(), datei)
 
 
-def pruefen(text: str) -> tuple[list[Fund], dict[str, int]]:
-    """Gibt Funde und die Zahl der gefundenen Platzhalter je Typ zurück."""
+def pruefen(text: str, strenge: str | None = None) -> tuple[list[Fund], dict[str, int]]:
+    """Gibt Funde und die Zahl der gefundenen Platzhalter je Typ zurück. `strenge` ist «vorgabe» oder «streng», ohne Angabe gilt
+    die Einstellung des Arbeitsplatzes (tools/schutzumfang.py). Nach der Vorgabe sperrt, was in einem geschützten Abschnitt
+    steht. Was auf der Täterseite oder in keinem Abschnitt steht, ist ein Hinweis. Ein Text ganz ohne Platzhalter wird streng
+    geprüft: Er ist offenbar nicht pseudonymisiert."""
+    from tools import schutzumfang as su
+    streng = (strenge or su.modus()) == "streng"
+    zeilen = text.splitlines()
+    platzhalter: dict[str, set] = {}
+    for typ, nummer in PLATZHALTER.findall(text) + PLATZHALTER_OHNE.findall(text):
+        platzhalter.setdefault(typ, set()).add(nummer)
+    seiten = [""] * len(zeilen) if streng else su.rollen(text)
+    nach_vorgabe = not streng and bool(platzhalter)
     funde: list[Fund] = []
-    for nr, zeile in enumerate(text.splitlines(), 1):
+    for nr, zeile in enumerate(zeilen, 1):
+        rolle = seiten[nr - 1]
         belegt: list[tuple[int, int]] = []
+        for m in FELDREST.finditer(zeile):
+            klar = feldrest_klartext(m.group())
+            if klar:
+                belegt.append(m.span())
+                funde.append(Fund("Rest einer Feldfunktion", "sperre", nr, maskieren(klar), rolle))
         for art, stufe, muster, zusatz in MUSTER:
             for m in muster.finditer(zeile):
                 if zusatz and not zusatz(m.group()):
@@ -373,14 +484,20 @@ def pruefen(text: str) -> tuple[list[Fund], dict[str, int]]:
                 if any(a < m.end() and m.start() < b for a, b in belegt):
                     continue    # dieselbe Stelle nicht doppelt melden
                 belegt.append(m.span())
-                funde.append(Fund(art, stufe, nr, maskieren(m.group())))
-    platzhalter: dict[str, set] = {}
-    for typ, nummer in PLATZHALTER.findall(text):
-        platzhalter.setdefault(typ, set()).add(nummer)
+                if su.geschuetzt(rolle):
+                    stufe = "sperre"        # auch eine Adresse oder E-Mail-Adresse: In diesem Abschnitt gehört sie ersetzt
+                elif nach_vorgabe:
+                    stufe = "hinweis"
+                funde.append(Fund(art, stufe, nr, maskieren(m.group()), rolle))
+        marke = "" if streng else su.klartextfeld(zeile, rolle)
+        if marke and not any(f.zeile == nr and f.stufe == "sperre" for f in funde):
+            wert = zeile.split(marke, 1)[-1].lstrip(" :\t")
+            funde.append(Fund("Feld im Klartext", "sperre", nr, f"{marke}: {maskieren(wert)}", rolle))
     return funde, {typ: len(n) for typ, n in sorted(platzhalter.items())}
 
 
 def bericht(name: str, funde: list[Fund], platzhalter: dict[str, int]) -> str:
+    from tools import schutzumfang as su
     sperren = [f for f in funde if f.stufe == "sperre"]
     hinweise = [f for f in funde if f.stufe == "hinweis"]
     zeilen = [f"PII-Prüfung: {name}"]
@@ -390,14 +507,18 @@ def bericht(name: str, funde: list[Fund], platzhalter: dict[str, int]) -> str:
         zeilen.append("  ! Keine Platzhalter wie [PERSON_01] gefunden. Wurde das Dokument pseudonymisiert?")
     for titel, gruppe in (("SPERRE", sperren), ("Hinweis", hinweise)):
         for f in gruppe[:40]:
-            zeilen.append(f"  {titel:7} Zeile {f.zeile:>4}  {f.art:<20} {f.maske}")
+            wo = f"  ({su.bezeichnung(f.rolle)})" if f.rolle or titel == "Hinweis" and platzhalter else ""
+            zeilen.append(f"  {titel:7} Zeile {f.zeile:>4}  {f.art:<20} {f.maske}{wo}")
         if len(gruppe) > 40:
             zeilen.append(f"  … und {len(gruppe) - 40} weitere ({titel}).")
     if sperren:
         zeilen.append(f"  Ergebnis: {len(sperren)} Sperrfund(e). Dokument wird NICHT aufgenommen.")
+        if any(f.rolle for f in sperren):
+            zeilen.append("  Gesperrt ist, was nach der Vorgabe ersetzt sein muss: Angaben zur Dienststelle, zur Verfasserin oder zum "
+                          "Verfasser und zu Geschädigten.")
     elif hinweise:
-        zeilen.append(f"  Ergebnis: keine Sperrfunde, {len(hinweise)} Hinweis(e). E-Mail-Adressen und Adressen der "
-                      "Täterinfrastruktur dürfen bleiben, solche von Personen nicht.")
+        zeilen.append(f"  Ergebnis: keine Sperrfunde, {len(hinweise)} Hinweis(e). Diese Angaben bleiben im Klartext stehen: Nach der Vorgabe "
+                      "sind es Angaben der Täterseite, die die Ermittlung braucht. Gehört eine davon zu einer geschädigten Person, bitte ersetzen.")
     else:
         zeilen.append("  Ergebnis: keine Funde.")
     zeilen.append("  Namen erkennt diese Prüfung nicht. Dafür ist die Pseudonymisierung zuständig.")

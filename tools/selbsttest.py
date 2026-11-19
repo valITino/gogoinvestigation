@@ -46,7 +46,7 @@ if "OSINT_SELBSTTEST" not in os.environ:
     venv = plattform.venv_python(ECHT)
     python = str(venv) if venv.is_file() else sys.executable
     umgebung = {k: v for k, v in os.environ.items()
-                if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("OSINT_PROXY", "OSINT_PYTHON", "OSINT_ZEITZONE")}
+                if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("OSINT_PROXY", "OSINT_PYTHON", "OSINT_ZEITZONE", "OSINT_SCHUTZ")}
     # Ohne Eingabe: Mehrere Tests prüfen, dass ein Werkzeug ohne Terminal ablehnt. Wer die Selbsttests selbst an einem Terminal
     # startet, bekäme sonst dessen Eingabe vererbt: Vier Tests scheiterten dort, und einer wartete auf eine Bestätigung.
     code = subprocess.run([python, str(tmp / "tools" / "selbsttest.py")], stdin=subprocess.DEVNULL,
@@ -251,14 +251,106 @@ def _():
     assert kette_pruefen(FALL)["ok"]
 
 
-@test("PII-Prüfung sperrt AHV-Nummer, IBAN, Telefon und lässt Indikatoren durch")
+@test("PII-Prüfung erkennt AHV-Nummer, IBAN und Telefon und lässt Indikatoren durch. Streng sperrt jede dieser Angaben, ein Text ohne Platzhalter wird immer streng geprüft")
 def _():
-    funde, platzhalter = pii_pruefen("[PERSON_01], AHV 756.1234.5678.97, Tel. 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7")
+    angaben = "AHV 756.1234.5678.97, Tel. 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7"
+    funde, platzhalter = pii_pruefen(f"[PERSON_01], {angaben}", "streng")
     arten = {f.art for f in funde if f.stufe == "sperre"}
     assert {"AHV-Nummer", "Telefonnummer", "IBAN"} <= arten, arten
     assert platzhalter == {"PERSON": 1}
-    funde, _ = pii_pruefen("IP 203.0.113.7, Hash " + "a1" * 32 + ", Zeit 20260928101500, hxxps://boese[.]example/login")
-    assert not [f for f in funde if f.stufe == "sperre"], [(f.art, f.maske) for f in funde]
+    for strenge in ("streng", "vorgabe", None):
+        funde, _ = pii_pruefen("IP 203.0.113.7, Hash " + "a1" * 32 + ", Zeit 20260928101500, hxxps://boese[.]example/login", strenge)
+        assert not [f for f in funde if f.stufe == "sperre"], [(f.art, f.maske) for f in funde]
+        # Ohne einen einzigen Platzhalter ist ein Text offenbar nicht pseudonymisiert: Dann sperrt jede Angabe, auch nach der Vorgabe
+        funde, platzhalter = pii_pruefen(f"Hans Muster, {angaben}", strenge)
+        assert {"AHV-Nummer", "Telefonnummer", "IBAN"} <= {f.art for f in funde if f.stufe == "sperre"} and platzhalter == {}, (strenge, funde)
+    # Platzhalter von anderer Hand zählen auch ohne eckige Klammern. Was nur so aussieht (SHA_1, TLS_1), zählt nicht
+    assert pii_pruefen("PERSON_01 wohnt an ADRESSE_02, [TEL_03]. SHA_1 und TLS_1 sind keine.")[1] == {"ADRESSE": 1, "PERSON": 1, "TEL": 1}
+
+
+@test("PII-Prüfung nach der Vorgabe: Gesperrt ist, was zur Dienststelle, zur Verfasserin und zu Geschädigten gehört. Angaben der Täterseite bleiben stehen und werden angezeigt")
+def _():
+    from tools import pii_pruefung as pp, schutzumfang as su
+    rapport = ("Kantonspolizei Beispiel\nDienstabteilung: [ORG_01]\nDienstort: [ADRESSE_01]\nVerfasserin/EL-Fall: [PERSON_01]\nDienst-Rufnummer: [TEL_01]\nDienst-E-Mail: [EMAIL_01]\n\n"
+               "1. Geschädigte/-r\nName: [PERSON_02]\nGeburtsdatum: [GEBDAT_01]\nNationalität, Heimatort: Schweiz, [HEIMATORT_01]\nOrt: [ADRESSE_02]\nBeruf: Buchhalterin\nTelefon: [TEL_02]\n\n"
+               "2. Beschuldigte/-r\nName: unbekannt\nTelefon: +41 79 555 01 99\nIBAN: CH93 0076 2011 6238 5295 7\n\n"
+               "Sachverhalt\nDie Täterschaft rief von der Nummer 079 555 01 98 an und nannte die Adresse support@boese.example.\n"
+               "Die Zahlung ging an 0x52908400098527886E0F7030069857D2E4169EE7.\n")
+
+    def sperren(text: str, strenge: str = "vorgabe") -> list[tuple[int, str, str]]:
+        return [(f.zeile, f.art, f.rolle) for f in pp.pruefen(text, strenge)[0] if f.stufe == "sperre"]
+
+    # ---- Der Aufbau des Dokuments sagt, auf welcher Seite eine Zeile steht
+    seiten = dict(zip(rapport.splitlines(), su.rollen(rapport)))
+    assert seiten["Dienstort: [ADRESSE_01]"] == "dienst" and seiten["Verfasserin/EL-Fall: [PERSON_01]"] == "verfasser" and seiten["Ort: [ADRESSE_02]"] == "geschaedigte", seiten
+    assert seiten["IBAN: CH93 0076 2011 6238 5295 7"] == "taeter" and seiten["Die Zahlung ging an 0x52908400098527886E0F7030069857D2E4169EE7."] == "", seiten
+    for zeile, rolle in (("Geschädigte/-r", "geschaedigte"), ("3. Geschädigte Person Nr. 2:", "geschaedigte"), ("GESCHÄDIGTER", "geschaedigte"), ("Anzeigeerstatterin", "geschaedigte"),
+                         ("## Beschuldigte/-r", "taeter"), ("Unbekannte Täterschaft", "taeter"), ("Tatverdächtige Person (Firma)", "taeter"), ("Auskunftsperson", "dritte"),
+                         ("Zeugin", "dritte"), ("Verfasser/in", "verfasser"), ("Sachverhalt", ""), ("4.2 Massnahmen", "")):
+        assert su.ueberschrift(zeile) == rolle, (zeile, su.ueberschrift(zeile))
+    for zeile in ("Die Geschädigte meldet einen Betrug.", "Absender: support@boese.example", "Geschädigte/-r: [PERSON_02], wohnhaft in [ADRESSE_02], meldet am 02.10.2026 einen Vorfall und nennt weitere Angaben"):
+        assert su.ueberschrift(zeile) is None, f"keine Überschrift: {zeile}"
+    # Ein Abschnitt endet an der nächsten Überschrift, auch an einer unbekannten, und spätestens nach einer festen Zahl von Zeilen
+    assert su.rollen("Geschädigte/-r\nName: [PERSON_01]\n\nVorgeschichte\nText mit 079 555 01 98.") == ["geschaedigte", "geschaedigte", "geschaedigte", "", ""]
+    lang = su.rollen("Geschädigte/-r\n" + "Zeile mit Text, die keine Überschrift ist.\n" * (su.ABSCHNITT_HOECHSTENS + 5))
+    assert lang[su.ABSCHNITT_HOECHSTENS] == "geschaedigte" and lang[-1] == "", "ein Abschnitt reicht nicht bis ans Ende des Dokuments"
+
+    # ---- Nach der Vorgabe pseudonymisiert: nichts gesperrt. Was stehen bleibt, zeigt die Prüfung an, mit dem Abschnitt
+    funde, platzhalter = pp.pruefen(rapport, "vorgabe")
+    assert not [f for f in funde if f.stufe == "sperre"] and platzhalter["HEIMATORT"] == 1, funde
+    assert sorted((f.art, f.rolle) for f in funde) == [("E-Mail-Adresse", ""), ("IBAN", "taeter"), ("Telefonnummer", ""), ("Telefonnummer", "taeter")], funde
+    bericht = pp.bericht("rapport.txt", funde, platzhalter)
+    assert "keine Sperrfunde, 4 Hinweis(e)" in bericht and "(Täterseite)" in bericht and "(ohne Abschnitt)" in bericht and "+41 79 555 01 99" not in bericht, bericht
+    # streng, wie bis zum 19.11.2026: Dieselben Angaben sperren, gleich auf welcher Seite sie stehen
+    assert sorted(art for _, art, _ in sperren(rapport, "streng")) == ["IBAN", "Telefonnummer", "Telefonnummer"]
+
+    # ---- Was nach der Vorgabe ersetzt sein muss und im Klartext dasteht, sperrt. Auch, was die Prüfung früher nur als Hinweis zeigte oder gar nicht sah
+    for alt, neu, erwartet in (("Ort: [ADRESSE_02]", "Ort: Musterweg 12", (12, "Strassenadresse", "geschaedigte")),
+                               ("Schweiz, [HEIMATORT_01]", "Schweiz, Beispielwil BE", (11, "Feld im Klartext", "geschaedigte")),
+                               ("Telefon: [TEL_02]", "Telefon: 079 555 01 97", (14, "Telefonnummer", "geschaedigte")),
+                               ("Name: [PERSON_02]", "Name: Muster Hans", (9, "Feld im Klartext", "geschaedigte")),
+                               ("Dienst-Rufnummer: [TEL_01]", "Dienst-Rufnummer: 044 555 01 23", (5, "Telefonnummer", "dienst")),
+                               ("Dienstabteilung: [ORG_01]", "Dienstabteilung: Cybercrime Nord", (2, "Feld im Klartext", "dienst")),
+                               ("Verfasserin/EL-Fall: [PERSON_01]", "Verfasserin/EL-Fall: Erika Erfunden", (4, "Feld im Klartext", "verfasser")),
+                               ("Dienst-E-Mail: [EMAIL_01]", "Dienst-E-Mail: erika.erfunden@polizei.example", (6, "E-Mail-Adresse", "dienst"))):
+        assert alt in rapport and sperren(rapport.replace(alt, neu)) == [erwartet], (neu, sperren(rapport.replace(alt, neu)))
+    bericht = pp.bericht("rapport.txt", *pp.pruefen(rapport.replace("Ort: [ADRESSE_02]", "Ort: Musterweg 12"), "vorgabe"))
+    assert "SPERRE" in bericht and "(Geschädigte)" in bericht and "Musterweg" not in bericht and "Gesperrt ist, was nach der Vorgabe ersetzt sein muss" in bericht, bericht
+    # Was nicht auf der Liste steht oder nichts verrät, sperrt nicht
+    for alt, neu in (("Telefon: [TEL_02]", "Telefon: unbekannt"), ("Name: [PERSON_02]", "Name: -"), ("Schweiz, [HEIMATORT_01]", "Deutschland"), ("Beruf: Buchhalterin", "Beruf: Treuhänderin")):
+        assert sperren(rapport.replace(alt, neu)) == [], (neu, sperren(rapport.replace(alt, neu)))
+
+    # ---- Reste von Word-Feldfunktionen: Sie wiederholen den Wert, den das Feld zeigt. Mit Klartext sperren sie, in jeder Strenge
+    rest = 'Ort: [ADRESSE_02] IF "Musterweg 12" = "" "" "Musterweg 12, "'
+    mit = rapport.replace("Ort: [ADRESSE_02]", rest)
+    assert sperren(mit) == [(12, "Rest einer Feldfunktion", "geschaedigte")] and ("Rest einer Feldfunktion" in [art for _, art, _ in sperren(mit, "streng")])
+    assert sperren(rapport.replace("Ort: [ADRESSE_02]", 'Ort: [ADRESSE_02] IF "[ADRESSE_02]" = "" "" "[ADRESSE_02], "')) == [], "ein Feldrest ohne Klartext verrät nichts"
+    assert sperren(rapport + 'Im Skript stand: if "$a" = "" ; then echo "leer"\n') == [], "eine Zeile aus einem Skript ist kein Feldrest"
+    bereinigt, zahl = pp.feldreste_entfernen(mit)
+    assert zahl == 1 and "Ort: [ADRESSE_02]\n" in bereinigt and "Musterweg" not in bereinigt and bereinigt.count("\n") == mit.count("\n"), bereinigt
+    assert pp.feldreste_entfernen(rapport) == (rapport, 0), "ohne Feldrest bleibt der Text Zeichen für Zeichen, wie er war"
+
+    # ---- Platzhalter von anderer Hand ohne Klammern gelten. Und ein Text ganz ohne Platzhalter wird streng geprüft
+    ohne_klammern = rapport.replace("[", "").replace("]", "")
+    assert sperren(ohne_klammern) == [] and pp.pruefen(ohne_klammern, "vorgabe")[1]["PERSON"] == 2
+    assert sperren("Rapport\nHans Muster, Tel. 079 555 01 97, meldet einen Betrug.\n") == [(2, "Telefonnummer", "")]
+
+    # ---- Die Einstellung des Arbeitsplatzes: ohne Angabe gilt die Vorgabe, OSINT_SCHUTZ=streng stellt um
+    alt = os.environ.pop("OSINT_SCHUTZ", None)
+    try:
+        assert su.modus() == "vorgabe" and sperren(rapport, None) == []
+        os.environ["OSINT_SCHUTZ"] = "streng"
+        assert su.modus() == "streng" and len(pp.pruefen(rapport)[0]) == 4 and len([f for f in pp.pruefen(rapport)[0] if f.stufe == "sperre"]) == 3
+    finally:
+        os.environ.pop("OSINT_SCHUTZ", None)
+        if alt is not None:
+            os.environ["OSINT_SCHUTZ"] = alt
+    # ---- Wo es keine Abschnitte gibt (Titel, Dateiname, Nachricht im Chat, Beleg von Hand), prüfen die Aufrufer ausdrücklich streng
+    for datei, stueck in (("tools/beleg.py", '"streng")[0]'), ("tools/ui/bedienung.py", 'pii_pruefen(name, "streng")'), ("tools/ui/sitzung.py", 'pii_pruefen(text, "streng")')):
+        assert stueck in lesen(PROJEKT / datei), f"{datei} prüft nicht mehr ausdrücklich streng"
+    doku = lesen(REPO / "docs" / "PSEUDONYMISIERUNG.md")
+    for stueck in ("Dienstabteilung", "Dienstort", "EL-Fall", "Dienst-Rufnummer", "Dienst-E-Mail", "Heimatort", "OSINT_SCHUTZ", "tools/schutzumfang.py"):
+        assert stueck in doku, f"docs/PSEUDONYMISIERUNG.md nennt «{stueck}» nicht"
 
 
 @test("Eingang: Geprüft ist nur, was die PII-Prüfung aufgenommen hat. Von Hand Kopiertes und nachträglich Verändertes nennt fall_status nicht")
@@ -316,7 +408,8 @@ def _():
     assert r.returncode != 0 and "Terminal" in r.stderr, "Freigabe ohne Terminal wurde angenommen"
     assert not json.loads(lesen(pfad / "fall.json"))["freigaben"], "ohne Terminal wurde eine Freigabe eingetragen"
     unsauber = PROJEKT / "mit_telefon.md"
-    unsauber.write_text("[PERSON_01] ist erreichbar unter 079 123 45 67.", encoding="utf-8")
+    # die Nummer steht im Abschnitt der Geschädigten: Dort sperrt die Prüfung nach der Vorgabe
+    unsauber.write_text("Geschädigte/-r\nName: [PERSON_01]\nTelefon: 079 123 45 67\n", encoding="utf-8")
     r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "aufnehmen", FALL, str(unsauber), "--trotzdem", "Fehlalarm", "--durch", "agent"],
                        capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
     assert r.returncode != 0 and "Terminal" in r.stderr and not (pfad / "eingang" / unsauber.name).exists(), "Übersteuern der PII-Prüfung ohne Terminal wurde angenommen"
@@ -5648,7 +5741,8 @@ def _():
     u = bedien_vorbereiten()
     b, port, aktion, hochladen, korbseite = u["b"], u["port"], u["aktion"], u["hochladen"], u["korbseite"]
     zwischen_vorher = sorted(p.name for p in Path(tempfile.gettempdir()).glob("osint-oberflaeche-*"))
-    unsauber = GESCHWAERZT + "4. Erreichbar unter 079 123 45 67, IBAN CH93 0076 2011 6238 5295 7.\n"
+    # Telefon und Konto stehen im Abschnitt der Geschädigten: Dort sperrt die Prüfung nach der Vorgabe
+    unsauber = GESCHWAERZT + "\nGeschädigte/-r\nTelefon: 079 123 45 67\nKonto: IBAN CH93 0076 2011 6238 5295 7\n"
     # Einzelne Dateien, auch aus einem Ordner. Jede wird sofort gelesen und geprüft, in einen Fall kommt noch nichts
     status, antwort = hochladen("", "Fall 2026/rapport geschwärzt.txt", GESCHWAERZT)
     assert status == 200 and antwort["neu"] == 1, antwort
@@ -5895,7 +5989,7 @@ def _():
     assert platzhalter in b.korb("").eintraege[zweites["id"]].text and person not in b.korb("").eintraege[zweites["id"]].text
     # Ein Dokument, das von anderer Hand pseudonymisiert wurde und noch eine Lücke hat: Seine Platzhalter bleiben, neue zählen dahinter weiter
     fremd_person = f"[PERSON_{max(nummer(p) for p in paare if p.startswith('[PERSON_')) + 7:02d}]"
-    luecke = hochladen("", "von anderer hand.txt", f"Einvernahme\n\n{fremd_person} ist erreichbar unter 079 123 45 67. Die alte Nummer war [TEL_93].\n")[1]["eintraege"][0]
+    luecke = hochladen("", "von anderer hand.txt", f"Einvernahme\n\nGeschädigte/-r\nName: {fremd_person}\nTelefon: 079 123 45 67\n\nBemerkungen\nDie alte Nummer war [TEL_93].\n")[1]["eintraege"][0]
     assert luecke["stand"] == "personendaten" and luecke["platzhalter"] == 2, luecke
     v3 = aktion("korb_pseudo", {"ziel": "", "id": luecke["id"]})[1]["vorgang"]
     assert aktion("pseudo_entscheid", {"vorgang": v3, "art": "alle_verwerfen"})[0] == 200 and not b.pseudo_holen(v3).vorgang.kandidaten()
@@ -6853,6 +6947,203 @@ def _():
     v = ps.Vorgang("Erreichbar unter 079 123 45 67.", belegt={"TEL": 3})
     assert "[TEL_04]" in v.ergebnis().text and "[TEL_01]" not in v.ergebnis().text, v.ergebnis().text
     assert "[TEL_01]" in ps.Vorgang("Erreichbar unter 079 123 45 67.").ergebnis().text
+
+
+@test("Textfassung: Was man im Dokument nicht sieht, kommt nicht hinein. Feldanweisungen, gelöschter und ausgeblendeter Text, Kommentare (Word, OpenDocument, RTF)")
+def _():
+    def lauf(text: str, art: str = "t", zusatz: str = "") -> str:
+        return f'<w:r>{zusatz}<w:{art} xml:space="preserve">{html_escape(text)}</w:{art}></w:r>'
+
+    def marke(art: str) -> str:
+        return f'<w:r><w:fldChar w:fldCharType="{art}"/></w:r>'
+
+    def feld(anweisung: str, ergebnis: str) -> str:
+        return marke("begin") + lauf(anweisung, "instrText") + marke("separate") + lauf(ergebnis) + marke("end")
+
+    # Ein Rapport aus einer Vorlage mit Feldern, nachdem ein Werkzeug den sichtbaren Text ersetzt hat. So blieb am 19.11.2026 eine
+    # Adresse im Klartext stehen: Die Anweisung des Felds wiederholt den Wert, den es zeigt.
+    absaetze = [
+        lauf("Geschädigte/-r"),
+        lauf("Ort: ") + feld(' IF "Musterweg 12" = "" "" "Musterweg 12, " ', "[ADRESSE_02]") + feld(' IF "9999 Beispielwil" = "" "" "9999 Beispielwil" ', ""),
+        lauf("Nationalität, Heimatort: Schweiz, ") + feld(' IF "Beispielwil BE" = "" "unbekannt" "Beispielwil BE" ', "[HEIMATORT_01]"),
+        # ein Feld in der Anweisung eines Felds: Sein Ergebnis ist Teil der Anweisung und im Dokument nicht zu sehen
+        lauf("Strasse: ") + marke("begin") + lauf(' IF "', "instrText") + feld(" DOCVARIABLE Strasse ", "Musterweg 12") + lauf('" = "" "" "', "instrText")
+        + feld(" DOCVARIABLE Strasse ", "Musterweg 12") + lauf(', " ', "instrText") + marke("separate") + lauf("[ADRESSE_03]") + marke("end") + lauf(" (Wohnadresse)"),
+        lauf("Name: ") + '<w:del w:id="1" w:author="x">' + lauf("Erika Erfunden", "delText") + "</w:del>" + '<w:ins w:id="2" w:author="x">' + lauf("[PERSON_01]") + "</w:ins>",
+        lauf("Beruf: ") + lauf("Buchhalterin", zusatz="<w:rPr><w:vanish/></w:rPr>") + lauf("[BERUF_01]") + lauf(" sichtbar", zusatz='<w:rPr><w:vanish w:val="0"/></w:rPr>'),
+        lauf("Inhalt: ") + feld(' TOC \\o "1-3" ', "1 Sachverhalt") + lauf(" Ende"),
+        '<w:fldSimple w:instr=" MERGEFIELD Sachverhalt ">' + lauf("Die Zahlung ging an 0x52908400098527886E0F7030069857D2E4169EE7.") + "</w:fldSimple>",
+    ]
+    teile = {"[Content_Types].xml": "<Types/>", "word/document.xml": "<w:document><w:body>" + "".join(f"<w:p>{a}</w:p>" for a in absaetze) + "</w:body></w:document>",
+             "word/comments.xml": "<w:comments><w:comment w:id=\"0\"><w:p>" + lauf("Rückfrage an Erika Erfunden") + "</w:p></w:comment></w:comments>",
+             "word/footnotes.xml": "<w:footnotes><w:footnote><w:p>" + lauf("Fussnote bleibt") + "</w:p></w:footnote></w:footnotes>"}
+    text = pii_text_aus("rapport.docx", zip_bytes(teile))
+    assert [z for z in text.splitlines() if z.strip()] == ["Geschädigte/-r", "Ort: [ADRESSE_02]", "Nationalität, Heimatort: Schweiz, [HEIMATORT_01]", "Strasse: [ADRESSE_03] (Wohnadresse)", "Name: [PERSON_01]",
+                                         "Beruf: [BERUF_01] sichtbar", "Inhalt: 1 Sachverhalt Ende", "Die Zahlung ging an 0x52908400098527886E0F7030069857D2E4169EE7.",
+                                         "Fussnote bleibt"], text
+    for klartext in ("Musterweg", "Beispielwil", "Erika", "Buchhalterin", "DOCVARIABLE", "MERGEFIELD", "TOC"):
+        assert klartext not in text, f"«{klartext}» steht in der Textfassung"
+    assert not [f for f in pii_pruefen(text, "vorgabe")[0] if f.stufe == "sperre"], "nach der Bereinigung besteht das Dokument die Prüfung"
+    # Gehen die Felder nicht auf (beschädigtes Dokument), bleibt der sichtbare Text stehen: lieber zu viel als ein halbes Dokument
+    kaputt = dict(teile, **{"word/document.xml": "<w:document><w:body><w:p>" + lauf("Anfang ") + marke("begin") + lauf(' IF "x" ', "instrText") + lauf("und der Rest des Dokuments")
+                            + "</w:p></w:body></w:document>"})
+    assert "und der Rest des Dokuments" in pii_text_aus("kaputt.docx", zip_bytes(kaputt)) and ' IF "x" ' not in pii_text_aus("kaputt.docx", zip_bytes(kaputt))
+    # OpenDocument: aufgezeichnete Änderungen und Kommentare
+    odt = zip_bytes({"content.xml": '<office:document-content><office:body><office:text><text:tracked-changes><text:changed-region><text:deletion><text:p>Erika Erfunden</text:p>'
+                                    '</text:deletion></text:changed-region></text:tracked-changes><text:p>Name: [PERSON_01]<office:annotation><dc:creator>x</dc:creator>'
+                                    "<text:p>Rückfrage an Erika Erfunden</text:p></office:annotation> (Geschädigte)</text:p></office:text></office:body></office:document-content>"})
+    assert pii_text_aus("a.odt", odt).strip() == "Name: [PERSON_01] (Geschädigte)"
+    # RTF: gelöscht, ausgeblendet, Feldanweisung
+    rs = chr(92)
+    rtf = ("{" + rs + "rtf1" + rs + "ansi{" + rs + "fonttbl{" + rs + "f0 Arial;}}" + rs + "f0 Name: {" + rs + "deleted Erika Erfunden}[PERSON_01]" + rs + "par "
+           "Beruf: {" + rs + "v Buchhalterin}[BERUF_01] sichtbar " + rs + "v weg" + rs + "v0  da" + rs + "par "
+           "Ort: {" + rs + "field{" + rs + "*" + rs + 'fldinst IF "Musterweg 12" = "" "" "Musterweg 12"}{' + rs + "fldrslt [ADRESSE_02]}}" + rs + "par "
+           "Schluss " + rs + "deleted alt" + rs + "plain  neu" + rs + "par}").encode("ascii")
+    assert pii_text_aus("a.rtf", rtf) == "Name: [PERSON_01]\nBeruf: [BERUF_01] sichtbar  da\nOrt: [ADRESSE_02]\nSchluss  neu\n", repr(pii_text_aus("a.rtf", rtf))
+    assert "Kommentare" in lesen(REPO / "docs" / "OBERFLAECHE.md") and "Feldanweisungen" in lesen(REPO / "docs" / "OBERFLAECHE.md")
+
+
+@test("Pseudonymisierung nach der Vorgabe: Geschädigte, Verfasserin und Dienststelle werden ersetzt. Die Täterseite bleibt stehen, im ganzen Dokument gleich. Platzhalter von anderer Hand bleiben")
+def _():
+    roh = ("Kantonspolizei Beispiel\nDienstabteilung: Cybercrime Nord\nDienstort: 9999 Beispielwil\nVerfasserin/EL-Fall: Erika Erfunden\nDienst-Rufnummer: 044 555 01 23\n"
+           "Dienst-E-Mail: erika.erfunden@polizei.example\n\n1. Geschädigte/-r\nName: Muster\nVorname: Hans\nGeburtsdatum: 01.02.1970\nHeimatort: Beispielwil BE\n"
+           "Adresse: Musterweg 12, 9999 Beispielwil\nTelefon: 079 555 01 97\n\n2. Beschuldigte/-r\nName: Betrug\nVorname: Bruno\nTelefon: +41 79 555 01 99\n"
+           "IBAN: CH93 0076 2011 6238 5295 7\n\nSachverhalt\nHans Muster erhielt einen Anruf von der Nummer +41 79 555 01 99. Der Anrufer nannte sich Bruno Betrug.\n"
+           "Hans Muster überwies CHF 12'000 auf CH93 0076 2011 6238 5295 7. Rückfragen an 044 555 01 23.\n")
+    taeterseite = ("Name: Betrug", "Vorname: Bruno", "Telefon: +41 79 555 01 99", "IBAN: CH93 0076 2011 6238 5295 7", "von der Nummer +41 79 555 01 99", "nannte sich Bruno Betrug",
+                   "auf CH93 0076 2011 6238 5295 7")
+    # ---- Ein Rapport im Klartext: Was die Vorgabe nennt, wird ersetzt. Was im Abschnitt der Täterseite steht, bleibt, auch im Sachverhalt
+    v = ps.Vorgang(roh)
+    text = v.ergebnis().text
+    for stueck in ("Dienstabteilung: [ORG_01]", "Dienstort: [ADRESSE_01]", "Verfasserin/EL-Fall: [PERSON_01]", "Dienst-Rufnummer: [TEL_01]", "Dienst-E-Mail: [EMAIL_01]",
+                   "Name: [PERSON_02]", "Vorname: [PERSON_02]", "Geburtsdatum: [GEBDAT_01]", "Heimatort: [ADRESSE_02]", "Adresse: [ADRESSE_03]", "Telefon: [TEL_02]",
+                   "[PERSON_02] erhielt einen Anruf", "Rückfragen an [TEL_01].", *taeterseite):
+        assert stueck in text, f"«{stueck}» fehlt:\n{text}"
+    for klartext in ("Hans", "Muster", "Erika", "Erfunden", "Cybercrime", "Beispielwil", "01.02.1970", "079 555 01 97", "044 555 01 23"):
+        assert klartext not in text, f"«{klartext}» blieb stehen"
+    assert not [f for f in pii_pruefen(text, "vorgabe")[0] if f.stufe == "sperre"], "das Ergebnis besteht die Prüfung nach der Vorgabe"
+    bleibt = {v.erk.text[f.start:f.ende] for f in v.erk.funde if f.frage == "taeter"}
+    assert {"+41 79 555 01 99", "CH93 0076 2011 6238 5295 7", "Bruno Betrug"} <= bleibt and all("Täterseite" in f.grund for f in v.erk.funde if f.frage == "taeter"), bleibt
+    # Der Mensch entscheidet anders: Dann wird die Angabe ersetzt, an jeder Stelle
+    konto = next(f for f in v.erk.funde if f.frage == "taeter" and f.typ == "KONTO")
+    v.angabe_entscheiden(konto.angabe, True)
+    assert "CH93" not in v.ergebnis().text and v.ergebnis().text.count("[KONTO_01]") == 2 and "+41 79 555 01 99" in v.ergebnis().text
+    # Steht dieselbe Angabe auch im Abschnitt der Geschädigten, geht der Schutz vor
+    doppelt = ps.Vorgang(roh.replace("Telefon: 079 555 01 97", "Telefon: +41 79 555 01 99")).ergebnis().text
+    assert "+41 79 555 01 99" not in doppelt, "eine Angabe, die auch bei der Geschädigten steht, bleibt nicht stehen"
+
+    # ---- Derselbe Rapport, im Haus pseudonymisiert, mit einer Lücke: der Rest einer Feldfunktion. Der Vorgang entfernt ihn, lässt die Platzhalter, wie sie sind,
+    # und lässt stehen, was ausserhalb der geschützten Abschnitte steht
+    haus = (roh.replace("Cybercrime Nord", "[ORG_01]").replace("9999 Beispielwil\n", "[ADRESSE_01]\n", 1).replace("Erika Erfunden", "[PERSON_01]").replace("044 555 01 23", "[TEL_01]")
+            .replace("erika.erfunden@polizei.example", "[EMAIL_01]").replace("Name: Muster", "Name: [PERSON_02]").replace("Vorname: Hans", "Vorname: [PERSON_02]")
+            .replace("01.02.1970", "[GEBDAT_01]").replace("Beispielwil BE", "[HEIMATORT_01]").replace("079 555 01 97", "[TEL_02]").replace("Hans Muster", "[PERSON_02]")
+            .replace("Adresse: Musterweg 12, 9999 Beispielwil", 'Adresse: [ADRESSE_03] IF "Musterweg 12" = "" "" "Musterweg 12, "')
+            + "Die Täterschaft nannte zudem die Nummer 079 555 01 96.\n")
+    assert [f.art for f in pii_pruefen(haus, "vorgabe")[0] if f.stufe == "sperre"] == ["Rest einer Feldfunktion"]
+    v = ps.Vorgang(haus)
+    ergebnis = v.ergebnis()
+    assert v.feldreste == 1 and "Musterweg" not in ergebnis.text and "Adresse: [ADRESSE_03]\n" in ergebnis.text, ergebnis.text
+    for stueck in ("Dienstabteilung: [ORG_01]", "Dienstort: [ADRESSE_01]", "Heimatort: [HEIMATORT_01]", "Telefon: [TEL_02]", "die Nummer 079 555 01 96", *taeterseite):
+        assert stueck in ergebnis.text, f"«{stueck}» fehlt:\n{ergebnis.text}"
+    assert ergebnis.neu == [] and sum(ergebnis.ersetzt.values()) == 0, f"ein Platzhalter von anderer Hand bekommt keinen zweiten: {ergebnis.neu}"
+    assert not [f for f in pii_pruefen(ergebnis.text, "vorgabe")[0] if f.stufe == "sperre"]
+    # Auf dem lokalen Bildschirm steht die Vorgabe, und was deshalb stehen bleibt
+    import types
+    from tools.ui import formulare as ui_formulare
+    seite = ui_formulare.klartext_seite(types.SimpleNamespace(vorgang=v, ziel="", name="rapport.txt"), "kennung")
+    assert "Vorgabe." in seite and "Angaben der Täterseite bleiben stehen" in seite and "1 Rest einer Word-Feldfunktion wurde entfernt" in seite, seite[:600]
+    assert "doch ersetzen" in seite, "was stehen bleibt, lässt sich doch ersetzen"
+    # Die Messwerte der Pseudonymisierung gelten weiter: Der Prüfsatz kennt keine Abschnitte der Täterseite und keine Platzhalter
+    marken = {m.marke for m in ps.feldmarken_lesen().liste}
+    assert {"Dienstabteilung", "Dienstort", "Dienst-Rufnummer", "Dienst-E-Mail", "EL-Fall", "Verfasserin/EL-Fall", "Heimatort"} <= marken, "tools/feldmarken.txt kennt die Marken der Vorgabe nicht"
+
+
+@test("Bedienung, Risiko übernehmen: Der Sachbearbeiter nimmt ein gesperrtes Dokument bewusst auf, mit Kürzel und Begründung. Register und Sitzungsprotokoll halten es fest, ohne Geheimnis geht es nicht")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion, hochladen, korbseite = u["b"], u["port"], u["aktion"], u["hochladen"], u["korbseite"]
+    fall = "BEDIEN-0005"
+    gesperrt = "Rapport\n\nGeschädigte/-r\nName: [PERSON_01]\nTelefon: 079 555 01 97\n\nSachverhalt\n[PERSON_01] meldet einen Zugriff von 203.0.113.7.\n"
+    sauber = "Beilage\n\n[PERSON_01] bestätigt die Zahlung an bc1qbeispiel.\n"
+    try:
+        erster = hochladen("", "rapport mit luecke.txt", gesperrt)[1]["eintraege"][0]
+        zweiter = hochladen("", "beilage.txt", sauber)[1]["eintraege"][0]
+        assert (erster["stand"], erster["sperren"], erster["risiko"]) == ("personendaten", 1, False) and zweiter["stand"] == "sauber", (erster, zweiter)
+        seite = Seite(korbseite("")[1])
+        assert "Trotzdem aufnehmen: Risiko übernehmen" in seite.text and any(a.get("data-aktion") == "korb_risiko" and "data-frage" in a for t, a in seite.elemente if t == "form"), \
+            "wo etwas gesperrt ist, bietet die Seite an, das Risiko zu übernehmen, und fragt vorher nach"
+        # ---- Ohne Kürzel, ohne Begründung, mit Personendaten in der Begründung, für eine Datei, die gar nicht gesperrt ist: abgelehnt
+        for angaben, grund in (({"ids": [erster["id"]], "durch": "", "grund": "Angaben werden gebraucht"}, "Kürzel"), ({"ids": [erster["id"]], "durch": "MUS", "grund": "ja"}, "Begründung"),
+                               ({"ids": [erster["id"]], "durch": "MUS", "grund": "Rückruf an 079 555 01 97 nötig"}, "Personendaten"),
+                               ({"ids": [zweiter["id"]], "durch": "MUS", "grund": "Angaben werden gebraucht"}, "Keine der gewählten Dateien ist gesperrt"),
+                               ({"ids": [], "durch": "MUS", "grund": "Angaben werden gebraucht"}, "auswählen")):
+            status, antwort = aktion("korb_risiko", {"ziel": "", **angaben})
+            assert status == 400 and grund in antwort["fehler"] and "079 555 01 97" not in antwort["fehler"], (grund, antwort)
+        assert b.korb("").eintraege[erster["id"]].stand == "personendaten"
+        # Solange niemand das Risiko übernommen hat, bleibt das Dokument draussen
+        status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": fall, "titel": "Risiko", "ids": [erster["id"]]})
+        assert status == 200 and antwort["aufgenommen"] is False and not (PROJEKT / "faelle" / fall).exists(), antwort
+        # ---- Übernehmen: Die Seite zeigt es, mit Kürzel und Begründung, und der Entscheid lässt sich zurücknehmen
+        status, antwort = aktion("korb_risiko", {"ziel": "", "namen": [erster["id"], zweiter["id"]], "durch": "MUS", "grund": "Die Nummer wird für die Ermittlung gebraucht"})
+        assert status == 200 and "Risiko übernommen für 1 Datei(en)" in antwort["meldung"] and "1 Fundstelle(n) bleiben im Klartext" in antwort["meldung"], antwort
+        e = b.korb("").eintraege[erster["id"]]
+        assert e.stand == "risiko" and e.kurz()["risiko"] is True and b.korb("").eintraege[zweiter["id"]].risiko is None
+        seite_html = korbseite("")[1]
+        assert "Risiko übernommen" in seite_html and "Durch MUS: Die Nummer wird für die Ermittlung gebraucht" in seite_html and "079 555 01 97" not in seite_html, seite_html[:500]
+        assert 'data-stand="risiko"' in seite_html and "Für die gewählten Dateien zurücknehmen" in seite_html
+        assert aktion("korb_risiko", {"ziel": "", "ids": [erster["id"]], "zurueck": "1"})[0] == 200 and e.stand == "personendaten" and e.risiko is None
+        assert aktion("korb_risiko", {"ziel": "", "ids": [erster["id"]], "durch": "MUS", "grund": "Die Nummer wird für die Ermittlung gebraucht"})[0] == 200
+        # Wird das Dokument danach doch pseudonymisiert, gibt es kein Risiko mehr zu übernehmen
+        vorgang = aktion("korb_pseudo", {"ziel": "", "id": erster["id"]})[1]["vorgang"]
+        assert aktion("korb_risiko", {"ziel": "", "ids": [erster["id"]], "durch": "MUS", "grund": "Die Nummer wird gebraucht"})[0] == 400, "während ein Dokument in Arbeit ist, entscheidet niemand darüber"
+        assert aktion("pseudo_verwerfen", {"vorgang": vorgang})[0] == 200 and e.stand == "risiko"
+        # ---- Aufnehmen: Beide Dokumente kommen in den Fall. Das gesperrte so, wie es ist, und als übersteuert vermerkt
+        assert aktion("korb_rolle", {"ziel": "", "ids": [erster["id"]], "rolle": "rapport"})[0] == 200 and aktion("korb_rolle", {"ziel": "", "ids": [zweiter["id"]], "rolle": "beilage"})[0] == 200
+        status, antwort = aktion("korb_aufnehmen", {"ziel": "", "fall": fall, "titel": "Risiko", "kuerzel": "MUS", "ids": [erster["id"], zweiter["id"]]})
+        assert status == 200 and antwort["aufgenommen"] is True and antwort["anzahl"] == 2 and "Davon 1 trotz Sperrfund" in antwort["meldung"], antwort
+        pfad = PROJEKT / "faelle" / fall
+        geprueft, ungeprueft = eingang_stand(pfad)
+        assert sorted(geprueft) == ["beilage-01.txt", "rapport-01.txt"] and ungeprueft == [], (geprueft, ungeprueft)
+        assert "079 555 01 97" in lesen(pfad / "eingang" / "rapport-01.txt"), "das Dokument liegt so im Fall, wie es war"
+        register = json.loads(lesen(pfad / "eingang" / ".freigabe.json"))["dateien"]
+        assert register["beilage-01.txt"]["ergebnis"] == "sauber" and "durch" not in register["beilage-01.txt"], register["beilage-01.txt"]
+        eintrag = register["rapport-01.txt"]
+        assert (eintrag["ergebnis"], eintrag["durch"], eintrag["begruendung"], eintrag["weg"], eintrag["sperrfunde"]) == \
+            ("uebersteuert", "MUS", "Die Nummer wird für die Ermittlung gebraucht", "Oberfläche", 1), eintrag
+        sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
+        schritte = [(z["schritt"], z["angabe"]) for z in sitzung if z.get("ereignis") == "Oberflaeche"]
+        assert [s for s, _ in schritte] == ["Fall angelegt", "Dokument trotz Sperrfund aufgenommen"], schritte
+        assert "rapport-01.txt: 1 Fundstelle(n)" in schritte[1][1] and "Risiko übernommen durch MUS" in schritte[1][1] and "079 555 01 97" not in json.dumps(schritte), schritte
+        assert "übersteuert" in Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/akten")[2])["html"]).text, "die Ansicht «Akten» zeigt, dass das Dokument trotz Fund aufgenommen wurde"
+        # ---- Nur der Sachbearbeiter: ohne Geheimnis nichts, und am Terminal verlangt dasselbe weiter eine Eingabe von Hand
+        drittes = hochladen(fall, "nachtrag.txt", gesperrt.replace("079 555 01 97", "079 555 01 96"))[1]["eintraege"][0]
+        status, _kopf, _inhalt = ui_anfrage(port, "/api/aktion/korb_risiko", "POST", {"ziel": fall, "ids": [drittes["id"]], "durch": "x", "grund": "ohne Geheimnis"})
+        assert status == 403 and b.korb(fall).eintraege[drittes["id"]].stand == "personendaten"
+        datei = PROJEKT / "nachtrag von hand.txt"
+        datei.write_text(gesperrt, encoding="utf-8")
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                fallwerkzeug.aufnehmen(fall, [str(datei)], "Angaben werden gebraucht", "MUS")
+            raise AssertionError("am Terminal wurde ohne Eingabe von Hand übersteuert")
+        except fallwerkzeug.Fehler as fehler:
+            assert "Terminal" in str(fehler) and not (pfad / "eingang" / datei.name).exists()
+        try:
+            fallwerkzeug.aufnehmen(fall, [str(datei)], "x", "MUS", weg="Agent")
+            raise AssertionError("ein unbekannter Weg wurde angenommen")
+        except fallwerkzeug.Fehler:
+            pass
+        finally:
+            datei.unlink()
+        assert aktion("korb_entfernen", {"ziel": fall, "ids": [drittes["id"]]})[0] == 200
+        doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
+        for stueck in ("Risiko übernehmen", "korb_risiko"):
+            assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
+        assert "Risiko übernehmen" in lesen(REPO / "README.md") and "Risiko" in lesen(REPO / "CLAUDE.md")
+    finally:
+        korb = b.koerbe.get("")
+        if korb is not None:
+            for kennung in [k for k, e in korb.eintraege.items() if e.name in ("rapport mit luecke.txt", "beilage.txt")]:
+                korb.eintraege.pop(kennung, None)
 
 
 @test("Bedienung, Arbeitsplatz: Die Seite zeigt, was läuft. «Alles abschalten» verlangt das Geheimnis, hält die Ermittlung an, stoppt die Dienste und beendet die Oberfläche. Gelöscht wird nichts")
