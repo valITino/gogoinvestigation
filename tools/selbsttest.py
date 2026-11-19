@@ -6765,7 +6765,22 @@ def _():
     assert worte.schritt("mcp__osint__shodan_host", {"ip": "203.0.113.7", "zweck": "Test"}) == {
         "text": "Shodan: offene Dienste, Zertifikate und Betreiber einer IP · 203.0.113.7", "technik": "shodan_host", "ziel": "203.0.113.7", "zweck": "Test", "art": "quelle"}
     assert worte.schritt("mcp__robin__robin_search", {"query": "musterlocker"})["text"] == "Robin (Dark Web): im Dark Web suchen · musterlocker"
-    assert worte.schritt("Read", {"file_path": str(PROJEKT / "faelle" / fall / "eingang" / "rapport-01.txt")})["text"] == f"Datei lesen: faelle/{fall}/eingang/rapport-01.txt"
+    gelesen = worte.schritt("Read", {"file_path": str(PROJEKT / "faelle" / fall / "eingang" / "rapport-01.txt")})["text"]
+    assert gelesen == f"Datei lesen: faelle/{fall}/eingang/rapport-01.txt", f"eine Datei des Projekts steht mit ihrem Pfad im Projekt da: {gelesen}"
+    # Der Projektordner über einen Verweis erreicht, wie der Ordner für Zwischendateien unter macOS: Verglichen werden die aufgelösten Pfade.
+    # (Am 19.11.2026 scheiterte genau das in der CI unter macOS und Windows, unter Linux nicht.)
+    verweis = Path(tempfile.mkdtemp(prefix="osint-verweis-")) / "projekt"
+    try:
+        verweis.symlink_to(PROJEKT, target_is_directory=True)
+    except OSError:
+        verweis = None          # wo sich kein Verweis anlegen lässt (Windows ohne das Recht dazu), entfällt diese Probe
+    if verweis is not None:
+        echtes_projekt, worte.PROJEKT = worte.PROJEKT, verweis
+        try:
+            ueber_verweis = [worte.datei(str(ort / "faelle" / fall / "eingang" / "rapport-01.txt")) for ort in (verweis, PROJEKT)]
+        finally:
+            worte.PROJEKT = echtes_projekt
+        assert ueber_verweis == [f"faelle/{fall}/eingang/rapport-01.txt"] * 2, f"über einen Verweis erreicht, gilt eine Datei des Projekts als fremd: {ueber_verweis}"
     fremd = "C:/Users/irgendwer/Dokumente/notiz.txt" if plattform.WINDOWS else "/home/irgendwer/Dokumente/notiz.txt"
     assert worte.datei(fremd) == "notiz.txt", "von einem Pfad ausserhalb des Projekts steht nur der Name der Datei im Chat, kein Benutzerordner"
     assert worte.schritt("Bash", {"command": "python3 tools/fall.py status X", "description": "Stand lesen"}) == {

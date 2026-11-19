@@ -1414,6 +1414,13 @@ PowerShell 7:
   meldet, dass es die Erlaubt-Liste nicht anwendet, habe ich nicht gesehen. Die Oberfläche verlässt sich deshalb auch
   auf das zweite Zeichen: eine Rückfrage für ein Werkzeug, das auf der Liste steht. Befehle und Dateien fragen in einem
   Ordner ohne Vertrauen weiter einzeln.
+  **In der CI gesehen und behoben (19.11.2026):** Unter macOS und Windows scheiterte einer der beiden neuen
+  Selbsttests, unter Linux nicht. Der Chat nannte von einer Datei des Projekts nur den Namen statt des Pfads im
+  Projekt, wenn der Projektordner über einen Verweis erreicht war: Verglichen wurde ein aufgelöster Pfad mit einem
+  nicht aufgelösten. Unter macOS liegt der Ordner für Zwischendateien hinter einem Verweis, dort entsteht das Projekt
+  der Selbsttests. Unter Linux nachgestellt (Zwischenordner hinter einem Verweis): Der Test scheiterte an derselben
+  Stelle, nach der Korrektur bestand er. Für Windows ist die Ursache daraus geschlossen (dort wohl ein Kurzname im
+  Pfad). Jetzt werden beide Seiten aufgelöst, und der Selbsttest prüft den Fall mit einem Verweis.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
