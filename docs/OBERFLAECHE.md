@@ -9,7 +9,7 @@ ohne Terminal arbeiten: Akten hochladen, Fall anlegen, im Chat Vorgaben geben un
 Ergebnisse herunterladen. Sie ändert die Fallakte nicht selbst, sondern ruft die bestehenden Werkzeuge auf, und nur für
 den, der die Oberfläche am Terminal gestartet hat.
 
-Stand: 17.11.2026.
+Stand: 19.11.2026.
 
 ## Start
 
@@ -24,6 +24,13 @@ python3 tools/oberflaeche.py --selbstpruefung    # kurz starten, Hauptseiten abr
 
 Der Befehl startet einen kleinen Server in Python und öffnet den Browser. Der Server braucht nur die
 Standardbibliothek, keine Bauschritte und kein Internet. Beendet wird er mit Strg+C im Terminal.
+
+Vertraut Claude Code dem Projektordner noch nicht, fragt der Start einmal danach, bevor die Oberfläche öffnet: Claude
+Code startet, ihr bestätigt mit Ja und beendet es mit `/exit`. Die Antwort gebt ihr selbst, der Start liest nur ab, ob
+sie gefallen ist. Mit `n` geht es ohne weiter, dann fragt der nächste Start wieder. Im Modus «nur lesen» fragt niemand.
+
+Auf der ersten Seite der bedienbaren Oberfläche steht unter «So geht es», was zu tun ist: Fall anlegen, ermitteln,
+Ergebnisse holen. Der Kasten ist aufgeklappt, solange es ausser dem Musterfall keinen Fall gibt.
 
 Unter WSL öffnet der Befehl den Browser von Windows, denn in WSL selbst gibt es meist keinen. Ob dort wirklich ein
 Fenster aufging, kann er nicht feststellen. Deshalb steht die Adresse unter WSL immer auch im Terminal, und auf jedem

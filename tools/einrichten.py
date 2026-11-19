@@ -1307,7 +1307,7 @@ def ordner_melden(erstmals: bool = False) -> None:
     if vertraut:
         zeile(GUT, "Projektordner", "in Claude Code bestätigt")
     elif stand.ordner is False:
-        zeile(AUS, "Projektordner", "in Claude Code noch nicht bestätigt. Der Schritt dazu steht am Schluss.")
+        zeile(AUS, "Projektordner", "in Claude Code noch nicht bestätigt. Dazu mehr am Schluss.")
 
 
 # --------------------------------------------------------------------------- Schritt 6: Musterfall und Prüfung
@@ -1410,24 +1410,51 @@ def ordner_bestaetigen(a: argparse.Namespace) -> None:
     if plattform.ordner_vertraut(PROJEKT):
         stand.ordner = True
         zeile(GUT, "Projektordner", "in Claude Code bestätigt")
-    else:       # gestartet wurde Claude Code. Ob das Ja fiel, lässt sich nicht ablesen: Der Schritt steht unten noch einmal
+    else:       # gestartet wurde Claude Code. Ob das Ja fiel, lässt sich nicht ablesen: Der Start der Oberfläche fragt dann noch einmal
         stand.ordner = None
-        zeile(AUS, "Projektordner", "keine Bestätigung gefunden. Der Schritt steht unten noch einmal.")
+        zeile(AUS, "Projektordner", "keine Bestätigung gefunden. Der Start der Oberfläche fragt später noch einmal danach.")
 
 
-def oberflaeche_starten(a: argparse.Namespace) -> None:
+def oberflaeche_starten(a: argparse.Namespace) -> bool:
     """Auf Wunsch: die Oberfläche gleich starten. Nicht, wenn das Konto eben erst in die Gruppe docker kam: Aus diesem
-    Terminal erreichte eine Ermittlung Docker noch nicht, und Robin bliebe stumm. Dann steht der Weg unter «So geht es weiter»."""
+    Terminal erreichte eine Ermittlung Docker noch nicht, und Robin bliebe stumm. Dann steht der Weg unter «So geht es weiter».
+    Gibt zurück, ob sie gestartet wurde."""
     if a.start != "alles" or stand.neu_anmelden:
-        return
+        return False
     ui.abschnitt("Oberfläche")
     ui.text("Die Oberfläche startet jetzt. Beenden mit Strg+C. Später wieder starten: " + f"{PY} tools/oberflaeche.py", "matt")
     ui.leer()
     sys.stdout.flush()
-    try:
-        subprocess.call([str(VENV), str(PROJEKT / "tools" / "oberflaeche.py")])
+    try:        # nach dem Ja zum Projektordner hat die Einrichtung eben selbst gefragt: Der Start fragt nicht gleich noch einmal
+        subprocess.call([str(VENV), str(PROJEKT / "tools" / "oberflaeche.py"), "--ordner-gefragt"])
     except KeyboardInterrupt:
         pass
+    return True
+
+
+def start_fragen(a: argparse.Namespace) -> None:
+    """Der Arbeitsplatz ist bereit: eine Frage statt einer Liste von Schritten. Sie entfällt, wenn der Assistent sie schon
+    gestellt hat, wenn niemand am Terminal sitzt, und wenn erst in einem neuen Terminal gilt, was die Oberfläche braucht."""
+    if a.start_gefragt or not ui.interaktiv or a.ohne_rueckfragen or os.environ.get("CI") or stand.neu_anmelden:
+        return
+    bestaetigen = not stand.ordner and bool(plattform.programm("claude")) and bool(anmeldung()[0])
+    erklaerung = (["Davor startet einmal Claude Code und fragt, ob es dem Projektordner vertrauen soll. Die Antwort gebt ihr selbst."]
+                  if bestaetigen else [])
+    ui.leer()
+    try:
+        nr = ui.auswahl(TITEL["start"], "Soll die Oberfläche jetzt öffnen?",
+                        [("Ja", "der Browser öffnet sich" + (", davor einmal Claude Code" if bestaetigen else "")),
+                         ("Nein, später", "der Befehl dafür steht dann hier")], 0, erklaerung)
+    except Abbruch:
+        nr = 1
+    a.start = ("alles", "")[nr]
+    ui.erledigt(TITEL["start"], "die Oberfläche öffnet jetzt" if a.start else "später von Hand")
+
+
+def weiter_zeigen() -> None:
+    """Was im Terminal noch zu tun ist, wenn die Einrichtung die Oberfläche nicht selbst gestartet hat. Höchstens zwei Schritte."""
+    ui.liste("So geht es weiter", plattform.weiter(stand.neues_terminal, stand.ordner), nummeriert=True)
+    ui.paare("Ausserdem", [("Stand prüfen", f"{PY} tools/pruefen.py"), ("Einstellungen ändern", SETUP)])
 
 
 def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
@@ -1439,7 +1466,8 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
             stand.offen.insert(0, plattform.schritt_terminal(stand.neues_terminal))
         if stand.ordner is False:
             stand.offen.append(plattform.schritt_ordner(False))
-        stand.offen.append(f"Ist das erledigt: {SETUP} erneut ausführen. Steht dort «Einsatzbereit», folgen die Schritte bis in die Oberfläche.")
+        stand.offen.append(f"Ist das erledigt: {SETUP} erneut ausführen. Steht dort «Einsatzbereit», öffnet die Einrichtung auf Wunsch "
+                           "gleich die Oberfläche.")
     ui.leer()
     ui.linie()
     if bereit and tests_ok:
@@ -1451,16 +1479,7 @@ def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:
                                              else "Die Prüfung oben meldet Fehler."), FEHLT, breit=0)
     ui.liste("Neu eingerichtet", stand.neu)
     ui.liste("Noch offen" if bereit else "Das ist zu tun", list(dict.fromkeys(stand.offen)), nummeriert=True)
-    if not bereit:
-        return 1
-    ui.liste("So geht es weiter", plattform.weiter(stand.neues_terminal, stand.ordner), nummeriert=True)
-    ui.paare("Ausserdem", [
-        ("Zum Ausprobieren", f"{PY} tools/oberflaeche.py MUSTER-2026-001   (der Musterfall, erfunden)"),
-        ("Am Terminal statt im Browser", f"{PY} tools/fall.py neu 2026-0001 --titel \"…\" --rapport <Dokument>   dann   claude   und dort   /ermittlung 2026-0001"),
-        ("Stand prüfen", f"{PY} tools/pruefen.py"),
-        ("Einstellungen ändern", SETUP),
-    ])
-    return 0
+    return 0 if bereit else 1
 
 
 # --------------------------------------------------------------------------- Assistent
@@ -1865,7 +1884,7 @@ class Assistent:
             a.ohne_webcheck, a.ohne_robin = not w["webcheck"], not w["robin"]
         a.anmelden = w["anmelden"] if "anmeldung" in self.themen() else ""
         a.testen = w["testen"]
-        a.start = w["start"]
+        a.start, a.start_gefragt = w["start"], True
         stand.assistent = True
 
     def kurzstand(self) -> str:
@@ -1923,7 +1942,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--env-von")
     p.add_argument("-h", "--hilfe", "--help", action="store_true", dest="hilfe")
     a, unbekannt = p.parse_known_args(argv)
-    a.werte, a.anmelden, a.start = {}, "", ""       # füllt nur der Assistent
+    a.werte, a.anmelden, a.start, a.start_gefragt = {}, "", "", False       # füllt nur der Assistent
     if a.hilfe:
         print(__doc__)
         return 0
@@ -1986,11 +2005,15 @@ def main(argv: list[str]) -> int:
     if code == 0:
         anmelden(a)
         tests_ok = testabfragen(a)
-        ordner_bestaetigen(a)
     ergebnis = abschluss(code, fazit, tests_ok)
-    if ergebnis == 0:
-        oberflaeche_starten(a)
-    return ergebnis
+    if ergebnis != 0:
+        return ergebnis
+    # Bereit: eine Frage, dann geht es von selbst weiter. Nur wenn die Oberfläche nicht startet, steht da, was noch zu tun ist.
+    start_fragen(a)
+    ordner_bestaetigen(a)
+    if not oberflaeche_starten(a):
+        weiter_zeigen()
+    return 0
 
 
 if __name__ == "__main__":

@@ -118,7 +118,7 @@ eine Vorgabe: Wer nur Enter drückt, bekommt eine lauffähige Einrichtung ohne M
 | Dienste | Web-Check und Robin über Docker. Fehlt Docker, bietet der Assistent unter Debian, Ubuntu und Kali die Installation an. Läuft es nur nicht, lässt sich nach dem Start erneut prüfen. |
 | Anmeldung | Erscheint nur, wenn Claude Code noch nicht angemeldet ist. Auf Wunsch startet die Einrichtung am Ende die Anmeldung im Browser. |
 | Testabfragen | Auf Wunsch geht am Ende je eingerichteter Quelle eine harmlose Abfrage hinaus. Das zeigt sofort, ob Schlüssel, Netz und Proxy stimmen. |
-| Start | Auf Wunsch führt die Einrichtung am Ende bis in die Oberfläche: Sie startet Claude Code einmal im Projektordner, damit ihr dem Ordner vertraut (Ordner bestätigen, die Antwort gebt ihr selbst), und öffnet danach die Oberfläche. Ist der Ordner schon bestätigt, fragt sie nur noch nach der Oberfläche. |
+| Start | Auf Wunsch führt die Einrichtung am Ende bis in die Oberfläche: Sie startet Claude Code einmal im Projektordner, damit ihr dem Ordner vertraut (Ordner bestätigen, die Antwort gebt ihr selbst), und öffnet danach die Oberfläche. Ist der Ordner schon bestätigt, fragt sie nur noch nach der Oberfläche. Wer «Prüfen und auffrischen» wählt, bekommt dieselbe Frage am Schluss, sobald der Arbeitsplatz einsatzbereit ist. |
 
 Am Schluss steht die Übersicht. Jede Zeile lässt sich öffnen und ändern. Erst «Einrichten» verändert etwas,
 «Abbrechen» lässt alles, wie es war. Tasten, die vor einer Frage getippt wurden, zählen nicht, und die Übersicht
@@ -177,22 +177,26 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
    (`.claude/settings.local.json`), Anmeldung prüfen.
 6. Musterfall bauen und die Einrichtung mit 97 Selbsttests prüfen.
 
-Auf Wunsch folgen die Anmeldung bei Claude Code, die Testabfragen und der Start: Claude Code einmal im Projektordner,
-danach die Oberfläche. Während längerer Arbeiten läuft eine Zeile mit, die sagt, was gerade geschieht. Am Ende steht,
-wo ihr steht und wie es weitergeht: ob der Arbeitsplatz einsatzbereit ist, was neu eingerichtet wurde und was offen
-bleibt. Unter «So geht es weiter» steht jeder Schritt, der noch zu tun ist, in der Reihenfolge, in der er zu tun ist:
+Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
+die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
+eingerichtet wurde und was offen bleibt.
+
+Ist er einsatzbereit, fragt die Einrichtung einmal: «Soll die Oberfläche jetzt öffnen?» Mit Ja geht es von selbst
+weiter. Vertraut Claude Code dem Projektordner noch nicht, startet es davor einmal und fragt danach: mit Ja bestätigen,
+dann `/exit`. Danach öffnet die Oberfläche, und auf ihrer ersten Seite steht unter «So geht es», was dort zu tun ist:
+Fall anlegen, ermitteln, Ergebnisse holen.
+
+Wer Nein sagt oder ohne Terminal einrichtet, findet unter «So geht es weiter» höchstens zwei Schritte:
 
 1. Ein neues Terminal öffnen, wenn es eines braucht. Der Grund steht dabei, etwa: Das Konto kam eben erst in die
    Gruppe `docker`.
-2. Claude Code einmal im Projektordner starten und den Ordner bestätigen. Die Einrichtung liest ab, ob das schon
-   geschehen ist (Zeile «Projektordner»): Dann entfällt der Schritt.
-3. Die Oberfläche starten: `python3 tools/oberflaeche.py`.
-4. Die drei Schritte in der Oberfläche: Fall anlegen, ermitteln, Ergebnisse holen.
+2. Die Oberfläche starten: `python3 tools/oberflaeche.py`. Fehlt Claude Code noch das Ja zum Projektordner, fragt
+   dieser Start einmal danach.
 
 ![Ergebnis der Einrichtung](docs/bilder/einrichtung-ergebnis.png)
 
-Das Bild stammt aus einem Lauf vor dem 17.11.2026. Die letzten Zeilen heissen seither «So geht es weiter» und nennen
-jeden Schritt bis in die Oberfläche.
+Das Bild stammt aus einem Lauf vor dem 17.11.2026. Der Schluss ist seit dem 19.11.2026 kürzer: eine Frage statt einer
+Liste von Schritten.
 
 Die Prüfung erscheint hier als Kurzfassung, jeder Fehler steht einzeln da. Ausführlich zeigt sie
 `python3 tools/pruefen.py`. Die Meldungen der Installationsprogramme liegen im Ordner `osint-setup` des
@@ -231,7 +235,8 @@ Wunsch mit `OSINT_MYTHOS=ja`. Dann genügt je Laptop ein Befehl, und niemand mus
 - Bei Claude Code anmelden. Der Assistent startet die Anmeldung auf Wunsch, durch den Browser geht ihr selbst.
   Sonst: `claude` starten und der Anmeldung folgen.
 - Den Projektordner bestätigen. Claude Code fragt beim ersten Start in einem Ordner, ob es ihm vertrauen soll. Die
-  Einrichtung startet Claude Code dafür auf Wunsch, die Antwort gebt ihr selbst: Ja, dann `/exit`. Erst mit diesem Ja
+  Einrichtung startet Claude Code dafür auf Wunsch, und der Start der Oberfläche fragt danach, solange das Ja fehlt.
+  Die Antwort gebt ihr selbst: Ja, dann `/exit`. Erst mit diesem Ja
   wendet Claude Code die Erlaubnisse des Projekts an (`.claude/settings.json`). Ohne sie fragt es bei jeder Abfrage
   einzeln nach. Ob der Ordner bestätigt ist, liest die Einrichtung aus der Datei von Claude Code ab (`~/.claude.json`)
   und zeigt es in der Zeile «Projektordner». Sie schreibt dort nie.
@@ -1272,6 +1277,16 @@ PowerShell 7:
   liest und das PDF dorthin schreibt, ob es sich aus WSL ohne Fenster starten lässt und sich danach beendet, und ob ein
   Edge, der nicht antwortet, sich über PowerShell beenden lässt. Unter Windows selbst druckt Edge mit denselben
   Schaltern in der CI. Warum das Fenster den Snap nicht sieht, ist weiterhin nicht geklärt.
+- Der Schluss der Einrichtung ist seit dem 19.11.2026 kürzer. Anlass war die Rückmeldung des Eigentümers nach dem
+  zweiten echten Lauf: Sechs Schritte unter «So geht es weiter» waren zu viel. Geprüft ist jetzt, mit Attrappen für
+  Tastatur, Claude Code und den Start der Oberfläche: Ist der Arbeitsplatz einsatzbereit und sitzt ein Mensch am
+  Terminal, stellt die Einrichtung eine Frage und macht den Rest selbst (Claude Code für das Ja zum Projektordner,
+  dann die Oberfläche). Sie fragt nicht, wenn der Assistent schon gefragt hat, ohne Terminal, mit
+  `--ohne-rueckfragen`, in der CI, und wenn erst ein neues Terminal gilt, was die Oberfläche braucht. Im Terminal
+  bleiben höchstens zwei Schritte. Der Start der Oberfläche fragt selbst nach dem Ja zum Projektordner, solange es
+  fehlt, und behauptet nichts, wenn der Mensch Claude Code ohne Ja verlässt. Die drei Schritte in der Oberfläche
+  stehen auf ihrer ersten Seite. Das alles steckt in zwei bestehenden Selbsttests, die dafür erweitert wurden.
+  **Nicht geprüft:** der neue Schluss an einem echten Terminal, mit dem echten Claude Code und einem echten Browser.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum

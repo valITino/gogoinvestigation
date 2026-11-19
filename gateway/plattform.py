@@ -46,9 +46,10 @@ PROJEKT = Path(__file__).resolve().parents[1]
 # So heissen die Befehle in Meldungen an den Menschen am Terminal.
 PY = "python" if WINDOWS else "python3"
 SETUP = ".\\setup.cmd" if WINDOWS else "./setup.sh"
-# Die nächsten Schritte, wenn der Arbeitsplatz eingerichtet ist. Die Einrichtung und tools/pruefen.py nennen dieselben: weiter()
+# Was in der Oberfläche zu tun ist, vom ersten Fall bis zu den Ergebnissen. Die Oberfläche zeigt es auf ihrer ersten Seite.
+# Im Terminal steht es nicht mehr: Dort nennen die Einrichtung und tools/pruefen.py nur noch den Start, siehe weiter().
 IN_DER_OBERFLAECHE = (
-    "Dort «Neuer Fall»: Akten hineinziehen (einzeln, als Ordner oder als ZIP). Wo die erste Schwärzung im Haus etwas übersehen hat, "
+    "«Neuer Fall»: Akten hineinziehen (einzeln, als Ordner oder als ZIP). Wo die erste Schwärzung im Haus etwas übersehen hat, "
     "auf dem lokalen Bildschirm nachbessern. Fall-ID und Titel eintragen, Fall anlegen.",
     "«Ermittlung»: Wer will, wählt Pflichtquellen an. Vorgaben in den Chat schreiben, wenn es welche gibt, und starten. Zusehen, "
     "Rückfragen beantworten.",
@@ -330,22 +331,30 @@ def schritt_ordner(ordner: bool | None) -> str:
             "vertrauen soll. Mit Ja bestätigen, dann mit /exit beenden. " + OHNE_VERTRAUEN)
 
 
+def schritt_start(ordner: bool | None) -> str:
+    """Der Schritt «Oberfläche starten». Fehlt Claude Code noch das Ja zum Projektordner, fragt der Start einmal danach: Ein
+    eigener Schritt dafür ist nicht mehr nötig. Was in der Oberfläche zu tun ist, steht dort."""
+    return (f"Oberfläche starten: {PY} tools/oberflaeche.py   "
+            + ("Der Browser von Windows öffnet sich von selbst." if wsl() else "Der Browser öffnet sich von selbst.")
+            + " Öffnet sich keiner, steht die Adresse im Terminal: einmal im Browser öffnen."
+            + ("" if ordner else " Beim ersten Mal startet davor einmal Claude Code und fragt, ob es dem Ordner vertrauen soll: mit Ja "
+                                 "bestätigen, dann mit /exit beenden.")
+            + " Wie es weitergeht, steht in der Oberfläche.")
+
+
 def weiter(neues_terminal: tuple[str, ...] | list[str] = (), ordner: bool | None = None) -> list[str]:
-    """Was nach der Einrichtung zu tun ist, vollständig und in der Reihenfolge, in der es zu tun ist: vom Terminal bis zu den
-    Ergebnissen. Niemand soll einen Schritt erraten müssen.
+    """Was nach der Einrichtung im Terminal noch zu tun ist, in der Reihenfolge, in der es zu tun ist. Mehr als zwei Schritte
+    sind es nie: das neue Terminal, wo es eines braucht, und der Start der Oberfläche. Den Projektordner bestätigt der Mensch
+    beim Start, und was in der Oberfläche zu tun ist (IN_DER_OBERFLAECHE), zeigt sie selbst.
 
     neues_terminal   was erst in einem neuen Terminal gilt (leer: Dieses Terminal genügt)
-    ordner           True: Claude Code vertraut dem Projektordner schon, der Schritt entfällt. False: keine Bestätigung
-                     gefunden. None: unbekannt, der Schritt steht mit «falls noch nicht geschehen» da. Siehe ordner_vertraut()."""
+    ordner           True: Claude Code vertraut dem Projektordner schon. Sonst sagt der Schritt, dass der Start danach fragt.
+                     Siehe ordner_vertraut()."""
     schritte: list[str] = []
     if neues_terminal:
         schritte.append(schritt_terminal(neues_terminal))
-    if not ordner:
-        schritte.append(schritt_ordner(ordner))
-    schritte.append(f"Oberfläche starten: {PY} tools/oberflaeche.py   "
-                    + ("Der Browser von Windows öffnet sich von selbst." if wsl() else "Der Browser öffnet sich von selbst.")
-                    + " Öffnet sich keiner, steht die Adresse im Terminal: einmal im Browser öffnen.")
-    return schritte + list(IN_DER_OBERFLAECHE)
+    schritte.append(schritt_start(ordner))
+    return schritte
 
 
 def proxy_zeigen(adresse: str) -> str:

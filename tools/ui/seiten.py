@@ -17,6 +17,7 @@ import json
 import re
 from urllib.parse import quote
 
+from gateway import plattform
 from gateway.akte import eingang_stand
 from tools import rapport
 from tools._html import STATUS, TYPEN
@@ -232,11 +233,22 @@ def kopf(fall: daten.Fall) -> str:
 
 # --------------------------------------------------------------------------- Ansichten
 
+def einstieg(faelle: list[dict]) -> str:
+    """Wie es in der Oberfläche weitergeht, in drei Schritten. Sie standen früher am Schluss der Einrichtung im Terminal. Solange
+    es ausser dem Musterfall keinen Fall gibt, ist der Kasten aufgeklappt. Danach bleibt er als eine Zeile stehen."""
+    punkte = "".join(f"<li>{esc(schritt)}</li>" for schritt in plattform.IN_DER_OBERFLAECHE)
+    muster = next((f for f in faelle if f["muster"]), None)
+    probe = f'<p class="klein">Zum Ausprobieren: der <a href="{pfad(muster["id"])}">Musterfall</a>. Er ist erfunden.</p>' if muster else ""
+    offen = "" if any(not f["muster"] for f in faelle) else " open"
+    return f'<details class="einstieg"{offen}><summary>So geht es</summary><ol>{punkte}</ol>{probe}</details>'
+
+
 def faelle_seite(bedienbar: bool = False) -> str:
+    faelle = daten.faelle()
     zeilen = [[f'<a href="{pfad(f["id"])}">{esc(f["id"])}</a>' + (' <span class="marke z-warnung">Muster</span>' if f["muster"] else ""), esc(f["titel"]),
-               zeit(f["eroeffnet"]), esc(f["sachbearbeiter"]), esc(f["klassifizierung"])] for f in daten.faelle()]
+               zeit(f["eroeffnet"]), esc(f["sachbearbeiter"]), esc(f["klassifizierung"])] for f in faelle]
     neu = ('<p><a class="knopf haupt" href="#/neu">Neuer Fall</a> <span class="klein">Akten hineinziehen, prüfen, wo nötig nochmals pseudonymisieren, Fall anlegen.</span></p>'
-           if bedienbar else "")
+           + einstieg(faelle) if bedienbar else "")
     return ("<h1>Fälle</h1><p class='unter'>Alle Fallakten in diesem Arbeitsplatz." + ("" if bedienbar else " Die Oberfläche liest sie nur.") + "</p>" + neu
             + (tabelle(["Fall", "Titel", "Eröffnet", "Sachbearbeitung", "Klassifizierung"], zeilen, "Fälle") if zeilen else
                "<p>Noch kein Fall angelegt." + ("" if bedienbar else " Ein Fall entsteht in der bedienbaren Oberfläche unter «Neuer Fall» oder mit "
