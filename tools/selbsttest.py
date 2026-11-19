@@ -47,7 +47,9 @@ if "OSINT_SELBSTTEST" not in os.environ:
     python = str(venv) if venv.is_file() else sys.executable
     umgebung = {k: v for k, v in os.environ.items()
                 if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("OSINT_PROXY", "OSINT_PYTHON", "OSINT_ZEITZONE")}
-    code = subprocess.run([python, str(tmp / "tools" / "selbsttest.py")],
+    # Ohne Eingabe: Mehrere Tests prüfen, dass ein Werkzeug ohne Terminal ablehnt. Wer die Selbsttests selbst an einem Terminal
+    # startet, bekäme sonst dessen Eingabe vererbt: Vier Tests scheiterten dort, und einer wartete auf eine Bestätigung.
+    code = subprocess.run([python, str(tmp / "tools" / "selbsttest.py")], stdin=subprocess.DEVNULL,
                           env={**umgebung, "OSINT_SELBSTTEST": "1", "OSINT_PROJEKT": str(tmp),
                                "CLAUDE_PROJECT_DIR": str(tmp), "OSINT_ECHT": str(ECHT)}).returncode
     with contextlib.suppress(OSError):
@@ -4379,6 +4381,9 @@ def _():
         for name in ("pseudonymisieren", "reidentifizieren"):
             assert f"Bash({py} tools/{name}.py *)" in verbote, f"Verbot für {py} tools/{name}.py fehlt in settings.json"
     assert "pseudonymisieren.py" in lesen(REPO / "CLAUDE.md"), "CLAUDE.md nennt das Verbot nicht"
+    # Die Selbsttests laufen selbst ohne Eingabe, auch wenn ein Mensch sie an einem Terminal startet. Sonst prüfte «ohne Terminal
+    # lehnt das Werkzeug ab» dort nichts, und ein Werkzeug wartete mitten im Test auf eine Bestätigung (gesehen am 19.11.2026)
+    assert not plattform.terminal(sys.stdin, sys.stdout), "die Selbsttests haben ein Terminal als Eingabe geerbt"
 
 
 @test("Prüfsatz: über 200 synthetische Rapporte, immer gleich, jede Feldmarke kommt vor, nichts darin kann echt sein")

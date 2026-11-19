@@ -1328,6 +1328,12 @@ PowerShell 7:
   **Nicht geprüft:** der Befehl an einem echten Terminal (er verlangt einen Menschen: Aufgerufen wurden die Funktionen
   dahinter). Tor an einem echten System abschalten und starten. Robin mit seinem echten Abbild: Gestoppt wurde ein
   Container, der dafür stand. Docker Desktop unter Windows und macOS.
+- Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
+  Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
+  Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
+  Änderung bestanden dort 92 von 96 Tests, und einer wartete mitten im Lauf auf eine Bestätigung. Danach bestanden an
+  derselben Stelle 99 von 99. In der Einrichtung und in der CI fiel das nie auf, weil die Tests dort ohne Terminal
+  laufen. **Nicht geprüft:** ein echtes Terminal unter Windows und macOS.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
