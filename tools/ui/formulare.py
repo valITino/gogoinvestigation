@@ -488,6 +488,31 @@ def zurueck_seite(fall: daten.Fall, bedienung) -> str:
             + '<div id="klartext-ergebnis"></div>' + ablage_zeile(bedienung))
 
 
+ABSCHALTEN_FRAGE = ("Alles abschalten? Laufende Ermittlungen werden angehalten, Robin und Web-Check gestoppt, und die Oberfläche beendet sich. "
+                    "Gelöscht wird nichts.")
+
+
+def arbeitsplatz_seite(bedienung) -> str:
+    """Was zum Arbeitsplatz gehört und gerade läuft, und der Knopf «Alles abschalten». Im Modus «nur lesen» nur die Anzeige.
+    Dasselbe am Terminal: python3 tools/dienste.py"""
+    from tools import dienste
+    farbe = {dienste.GUT: "gut", dienste.FEHLT: "kritisch"}
+    zeilen = [[esc(was), f'<span class="marke z-{farbe.get(zeichen, "leer")}">{esc(wie)}</span>'] for zeichen, was, wie in dienste.stand_zeilen(dienste.stand(False))]
+    laufend = sorted(fall for fall, sitzung in (bedienung.ermittlungen.items() if bedienung is not None else ()) if sitzung.laeuft())
+    zeilen.insert(0, ["Oberfläche", '<span class="marke z-gut">läuft</span>' + ("" if bedienung is not None else " <span class='klein'>im Modus «nur lesen»</span>")])
+    zeilen.insert(1, ["Ermittlung", f'<span class="marke z-gut">läuft</span> {esc(", ".join(laufend))}' if laufend else '<span class="marke z-leer">läuft keine</span>'])
+    knopf = (formular("abschalten", "<p>Hält laufende Ermittlungen an, stoppt Robin und Web-Check und beendet die Oberfläche. Gelöscht wird nichts: Fallakten, Schlüssel "
+                      "und Einstellungen bleiben. Eine angehaltene Ermittlung lässt sich später fortsetzen.</p>", "Alles abschalten",
+                      danach="abgeschaltet", klasse="abschalten", frage=ABSCHALTEN_FRAGE)
+             if bedienung is not None else NUR_LESEN)
+    return ("<h1>Arbeitsplatz</h1><p class='unter'>Was zu diesem Arbeitsplatz gehört und gerade läuft.</p>"
+            + tabelle(["Was", "Stand"], zeilen, "Was läuft")
+            + "<h2>Alles abschalten</h2>" + knopf
+            + "<p class='klein'>Tor läuft dabei weiter, wenn der Arbeitsplatz es als Proxy nutzt: Es gehört zum System und braucht euer Passwort. "
+              f"Am Terminal schaltet <code>{dienste.PY} tools/dienste.py aus</code> auch Tor ab, <code>{dienste.PY} tools/dienste.py ein</code> schaltet "
+              f"Web-Check und Tor wieder ein. Die Oberfläche startet wieder mit <code>{dienste.PY} tools/oberflaeche.py</code>. Docker selbst bleibt an.</p>")
+
+
 def quellen_bedienung(bedienung) -> str:
     """Testabfragen je Quelle, Kontingent, Stand der lokalen Listen. Von Schlüsseln nur die Namen der Variablen."""
     from gateway import krypto_listen as kl

@@ -24,8 +24,10 @@ läuft sie im Modus «nur lesen». Ein Agent kann sich so über die Oberfläche 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -142,7 +144,7 @@ def selbstpruefung(port: int) -> int:
     oeffner = urllib.request.build_opener(urllib.request.ProxyHandler({}))      # nie über einen Proxy: Es geht nur um den eigenen Rechner
     try:
         fehler = []
-        wege = ["/", "/app.js", "/app.css", "/bedienung.css", "/basis.css", "/api/faelle", "/api/quellen", "/api/neu"]
+        wege = ["/", "/app.js", "/app.css", "/bedienung.css", "/basis.css", "/api/faelle", "/api/quellen", "/api/neu", "/api/arbeitsplatz"]
         for fall in daten.faelle():
             if fall["muster"]:
                 wege += [f"/api/fall/{fall['id']}/{a}" for a in ("kopf", "uebersicht", "akten", "rapport", "indikatoren", "rohdaten", "dokumente", "ergebnisse", "verlauf", "spur")]
@@ -265,12 +267,40 @@ def main() -> int:
         print("Beenden mit Strg+C.")
     if not a.ohne_browser:
         threading.Timer(0.6, oeffnen_oder_zeigen, [adresse]).start()
+    from tools import dienste
+    port = server.server_address[1]
+    schluss = threading.Event()
+
+    def anlauf() -> None:                   # was «Alles abschalten» gestoppt hat und kein Passwort braucht, läuft mit ihr wieder an
+        for satz in dienste.beim_start():
+            print(satz, flush=True)
+
+    def enden(*_: object) -> None:          # von aussen beendet: enden wie mit Strg+C
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    def wache() -> None:                    # «tools/dienste.py aus» bittet über eine Datei ums Ende. Das geht auch unter Windows
+        while not schluss.wait(0.5):
+            if dienste.oberflaeche_soll_enden(port):
+                return enden()
+    if bedienung is not None:               # im Hintergrund: Der Browser soll nicht warten, bis Docker geantwortet hat
+        threading.Thread(target=anlauf, daemon=True).start()
+    dienste.oberflaeche_merken(port)        # so findet «tools/dienste.py aus» sie, auch aus einem anderen Terminal
+    threading.Thread(target=wache, daemon=True).start()
+    with contextlib.suppress(ValueError, OSError, AttributeError):
+        signal.signal(signal.SIGTERM, enden)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nBeendet.")
+        pass
     finally:
+        schluss.set()
+        if bedienung is not None:           # eine Sitzung ohne Oberfläche könnte niemanden mehr fragen: anhalten, fortsetzen geht später
+            faelle = bedienung.alles_anhalten("Die Oberfläche wurde beendet")
+            if faelle:
+                print(f"\nErmittlung angehalten: {', '.join(faelle)}. Fortsetzen: Oberfläche starten, dort «Ermittlung».")
+        dienste.oberflaeche_vergessen(port)
         server.server_close()
+    print("\nBeendet.")
     return 0
 
 

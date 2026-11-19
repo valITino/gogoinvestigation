@@ -17,7 +17,8 @@ const el = (name, attribute = {}, ...kinder) => {
 };
 const zustand = { fall: null, ansicht: "", adresse: "", lauf: 0, spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
   bedienung: false, geheimnis: "", auswahl: {}, warteschlange: null, hochgeladen: null, titel: "OSINT-Arbeitsplatz",
-  chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null }, rueckfrage: "", rueckfrageTimer: null };
+  chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null }, rueckfrage: "", rueckfrageTimer: null,
+  aus: false };       // wahr nach «Alles abschalten»: Der Server ist beendet, das Fenster fragt nichts mehr ab
 const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einzelne Datei im Akten-Eingang
 
 async function antwortLesen(antwort) {
@@ -111,6 +112,7 @@ async function formularSenden(form) {
   try {
     const aktion = form.dataset.aktion;
     const daten = await senden("/api/aktion/" + aktion, angaben);
+    if (daten.abgeschaltet) return abgeschaltet(daten);
     ergebnisZeigen(feld, daten);
     if (aktion === "zurueckfuehren") klartextZeigen(daten);
     const gelungen = (daten.aufgenommen !== false || daten.angelegt === true) && daten.gelungen !== false && daten.uebernommen !== false;
@@ -127,6 +129,20 @@ async function formularSenden(form) {
   } catch (e) {
     ergebnisZeigen(feld, null, e.message);
   } finally { knopf.disabled = false; }
+}
+
+function abgeschaltet(daten) {
+  // «Alles abschalten»: Der Server beendet sich gleich. Nichts mehr abfragen, das Geheimnis vergessen und sagen, was jetzt gilt
+  zustand.aus = true;
+  clearTimeout(zustand.spurTimer); clearTimeout(zustand.chat.timer); clearTimeout(zustand.rueckfrageTimer);
+  zustand.geheimnis = "";
+  try { sessionStorage.removeItem("geheimnis"); } catch (e) { /* ohne Speicher gibt es nichts zu räumen */ }
+  const liste = el("ul");
+  for (const punkt of daten.punkte || []) liste.append(el("li", { text: punkt }));
+  document.body.replaceChildren(el("main", { klasse: "abgeschaltet" }, el("h1", { text: "Abgeschaltet" }),
+    el("p", { text: daten.meldung || "Die Oberfläche ist beendet." }), liste,
+    el("p", {}, "Dieses Fenster kann geschlossen werden. Wieder starten, im Terminal: ", el("code", { text: daten.start || "python3 tools/oberflaeche.py" }))));
+  document.title = "Abgeschaltet · OSINT-Arbeitsplatz";
 }
 
 function klartextZeigen(daten) {
@@ -602,6 +618,7 @@ function navigation(a) {
     for (const [name, text] of eintraege) punkt(text, weg("fall", a.fall, name), (gleich[a.ansicht] || a.ansicht) === name, true);
   }
   punkt("Quellen", "#/quellen", !a.fall && a.ansicht === "quellen");
+  punkt("Arbeitsplatz", "#/arbeitsplatz", !a.fall && a.ansicht === "arbeitsplatz");
   nav.append(liste);
   const farbe = el("button", { type: "button", klasse: "farbwahl", text: "Hell / Dunkel" });
   farbe.addEventListener("click", () => {
@@ -616,6 +633,7 @@ function navigation(a) {
 }
 
 async function laden() {
+  if (zustand.aus) return;          // nach «Alles abschalten» gibt es nichts mehr zu laden, auch nicht über «Zurück» im Browser
   const a = adresse(), lauf = ++zustand.lauf;
   const gleiche = zustand.adresse === location.hash;
   navigation(a);
@@ -632,7 +650,7 @@ async function laden() {
     if (lauf !== zustand.lauf) return;          // inzwischen wurde eine andere Ansicht verlangt
     zustand.ansicht = a.ansicht;
     const pfad = a.fall ? `/api/fall/${encodeURIComponent(a.fall)}/${encodeURIComponent(a.ansicht)}`
-      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${a.ansicht === "quellen" ? "quellen" : a.ansicht === "neu" ? "neu" : "faelle"}`;
+      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${["quellen", "neu", "arbeitsplatz"].includes(a.ansicht) ? a.ansicht : "faelle"}`;
     // Was echte Angaben zeigen kann, gibt der Server nur gegen das Geheimnis heraus: den Bildschirm der Pseudonymisierung und den Akten-Eingang
     const daten = a.ansicht === "klartext" ? await senden("/api/klartext/pseudo", { vorgang: a.arg })
       : bedienbar() && ((!a.fall && a.ansicht === "neu") || (a.fall && a.ansicht === "akten")) ? await senden("/api/klartext/korb", { ziel: a.fall || "" })
@@ -778,7 +796,7 @@ function spurFiltern() {
 
 async function spurHolen() {
   const fall = zustand.spurFall;
-  if (!fall) return;
+  if (!fall || zustand.aus) return;
   try {
     const daten = await holen(`/api/fall/${encodeURIComponent(fall)}/spur?ab=${zustand.spurStand}`);
     if (fall !== zustand.spurFall) return;

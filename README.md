@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 97 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 99 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -248,6 +248,24 @@ python3 tools/pruefen.py          # Umgebung, Konfiguration, Modelle, Quellen, a
 python3 tools/pruefen.py --live   # zusätzlich eine harmlose Testabfrage je eingerichteter Quelle
 claude mcp list                   # zeigt "osint … Connected", sobald der Ordner als vertrauenswürdig bestätigt ist
 ```
+
+**Abschalten und einschalten**
+
+```bash
+python3 tools/dienste.py          # zeigt, was läuft: Oberfläche, Web-Check, Robin, Tor
+python3 tools/dienste.py aus      # schaltet alles ab, auch eine Oberfläche in einem anderen Terminal
+python3 tools/dienste.py ein      # schaltet Web-Check und Tor wieder ein
+```
+
+«Alles abschalten» hält eine laufende Ermittlung an, beendet die Oberfläche und stoppt Robin und Web-Check. Am Terminal
+stoppt es auch Tor, wenn der Arbeitsplatz es als Proxy nutzt, und fragt dafür nach dem Passwort (sudo).
+Gelöscht wird dabei nichts: Fallakten, Schlüssel und Einstellungen bleiben, und eine angehaltene Ermittlung lässt sich
+fortsetzen. Docker selbst läuft weiter, es kann auch anderem dienen.
+
+In der Oberfläche steht derselbe Knopf auf der Seite «Arbeitsplatz». Er lässt Tor laufen, denn ein Browser kann nicht
+nach dem Passwort fragen. Die Oberfläche startet wieder mit `python3 tools/oberflaeche.py` und schaltet dabei einen
+abgeschalteten Web-Check von selbst wieder ein. Abschalten und einschalten kann nur ein Mensch am Terminal oder im
+bedienbaren Fenster: Ohne Terminal und aus Claude Code heraus zeigt das Werkzeug nur den Stand.
 
 ### Windows
 
@@ -479,7 +497,9 @@ python3 tools/oberflaeche.py MUSTER-2026-001     # öffnet gleich diesen Fall
 ```
 
 Ein Befehl, auf Linux, macOS und Windows. Dahinter steht ein kleiner Server in Python, der nur die
-Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C.
+Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C, oder mit
+«Alles abschalten» auf der Seite «Arbeitsplatz»: Sie zeigt, was läuft (Oberfläche, Ermittlung, Web-Check, Robin, Tor),
+und hält mit einem Knopf alles an. Siehe [Abschalten und einschalten](#einrichten).
 
 ![Fallübersicht mit Kennzahlen, Schritten und Arbeitsspur](docs/bilder/oberflaeche-uebersicht.png)
 
@@ -1148,7 +1168,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 97 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 99 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1287,6 +1307,27 @@ PowerShell 7:
   fehlt, und behauptet nichts, wenn der Mensch Claude Code ohne Ja verlässt. Die drei Schritte in der Oberfläche
   stehen auf ihrer ersten Seite. Das alles steckt in zwei bestehenden Selbsttests, die dafür erweitert wurden.
   **Nicht geprüft:** der neue Schluss an einem echten Terminal, mit dem echten Claude Code und einem echten Browser.
+- «Alles abschalten» gibt es seit dem 19.11.2026: als Befehl (`tools/dienste.py`) und als Knopf auf der Seite
+  «Arbeitsplatz». Zwei Selbsttests gelten dem. Der eine prüft mit Stellvertretern für Docker und den Dienst Tor, was
+  gestoppt wird und was nicht: Robin und Web-Check immer, Tor nur am Terminal und nur, wenn der Arbeitsplatz es als
+  Proxy nutzt, Docker selbst nie, und kein Befehl löscht etwas. Er startet dazu eine echte Oberfläche, findet sie von
+  aussen und bittet sie ums Ende. Der andere prüft den Knopf: Er verlangt das Geheimnis, hält laufende Ermittlungen an,
+  vermerkt das im Sitzungsprotokoll und beendet die Oberfläche.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux, echter Docker mit dem Container von Web-Check): Eine laufende
+  Oberfläche wurde über ihren Merker gefunden, gebeten und endete in weniger als einer Sekunde von selbst
+  (Rückgabewert 0). Der Container wurde gestoppt (0,3 Sekunden), beim zweiten Mal hiess es «war schon aus», der Start
+  der Oberfläche schaltete ihn wieder ein. Im Browser (Chromium): Wer die Rückfrage abbricht, schaltet nichts ab. Nach dem Ja stand
+  der Container still, das Fenster zeigte «Abgeschaltet», der Server antwortete nicht mehr, und das Fenster fragte
+  danach nichts mehr ab. Lief dabei eine Ermittlung (gespielt von dem Programm, das in den Tests für Claude Code
+  steht), wurde sie angehalten, und im Sitzungsprotokoll stand «Ermittlung angehalten» mit dem Grund.
+  Hart beendet wird nur ein Prozess, der sich auf dem Port seines Merkers eben noch als diese Oberfläche ausgewiesen
+  hat (Prozess und Projekt). So trifft der Befehl nie einen fremden Prozess, dessen Nummer in einem alten Merker steht.
+  Die Merker liegen in einem Ordner, der nur dem eigenen Konto gehört. Das Beenden geht über eine Bitte, die die
+  Oberfläche selbst liest. So soll sie auch unter Windows sauber enden, wo es das Signal dafür nicht gibt: Ein
+  Selbsttest prüft das mit einer echten Oberfläche, in der CI auch unter Windows und macOS.
+  **Nicht geprüft:** der Befehl an einem echten Terminal (er verlangt einen Menschen: Aufgerufen wurden die Funktionen
+  dahinter). Tor an einem echten System abschalten und starten. Robin mit seinem echten Abbild: Gestoppt wurde ein
+  Container, der dafür stand. Docker Desktop unter Windows und macOS.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1310,7 +1351,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026: Jede der 25 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten»: Jede der 26 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei liest der Server erst ein, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,

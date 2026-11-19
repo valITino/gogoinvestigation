@@ -16,6 +16,13 @@
 .einstieg ol{margin:8px 0 6px;padding-left:22px}
 .einstieg li{margin:4px 0}
 
+/* Arbeitsplatz: «Alles abschalten», und was danach im Fenster steht */
+form.abschalten{max-width:78ch}
+form.abschalten .knoepfe button{border-color:var(--kritisch,#b3261e);color:var(--kritisch,#b3261e);font-weight:600}
+main.abgeschaltet{max-width:70ch;min-height:0;margin:12vh auto;padding:22px 26px 18px;border:1px solid var(--rand);border-radius:10px;line-height:1.5}
+main.abgeschaltet h1{margin-bottom:10px}
+main.abgeschaltet li{margin:4px 0}
+
 /* Knöpfe, und Verweise, die wie Knöpfe aussehen */
 a.knopf,label.knopf{display:inline-block;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:4px 12px;text-decoration:none;cursor:pointer}
 a.knopf:hover,label.knopf:hover{background:var(--seite)}

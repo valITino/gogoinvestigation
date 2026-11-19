@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import sys
 import threading
 import traceback
@@ -178,7 +179,13 @@ class Bearbeiter(BaseHTTPRequestHandler):
             if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
                 return self.fehler_json(403, OHNE_GEHEIMNIS)
             if len(weg) == 3 and weg[:2] == ["api", "aktion"]:
-                return self.json(self.aktion(weg[2], angaben))
+                antwort = self.aktion(weg[2], angaben)
+                self.json(antwort)
+                if weg[2] == "abschalten" and antwort.get("abgeschaltet"):
+                    # Erst antworten, dann enden: serve_forever() kehrt zurück, und wer den Server gestartet hat, räumt auf.
+                    # Aus einem eigenen Faden, denn shutdown() wartet auf die Schleife, in der diese Anfrage noch steckt.
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return None
             # Ansichten, die echte Angaben zeigen können: nur per POST und nur mit Geheimnis
             if weg == ["api", "klartext", "pseudo"]:
                 pseudo = b.pseudo_holen(angaben.get("vorgang"))
@@ -294,10 +301,15 @@ class Bearbeiter(BaseHTTPRequestHandler):
             return self.json({"anzahl": len(fragen), "html": formulare.rueckfrage_dialog(fragen)})
         if weg == ["quellen"]:
             return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + formulare.quellen_bedienung(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
-        if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt. Das Geheimnis steht hier nie
-            return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else ""})
+        if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt, und wer hier antwortet. Das Geheimnis steht hier nie
+            from tools import dienste
+            # Prozess und Projekt: Daran prüft «tools/dienste.py aus», dass hinter einem Merker wirklich diese Oberfläche steht
+            return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else "",
+                              "prozess": os.getpid(), "projekt": dienste.kennung()})
         if weg == ["neu"]:
             return self.json({"titel": "Neuer Fall", "html": formulare.neu_seite(self.bedienung)})
+        if weg == ["arbeitsplatz"]:     # was zum Arbeitsplatz gehört und läuft, und der Knopf «Alles abschalten»
+            return self.json({"titel": "Arbeitsplatz", "html": formulare.arbeitsplatz_seite(self.bedienung)})
         if len(weg) >= 3 and weg[0] == "fall":
             fall = self.zustand.fall(weg[1])
             ansicht, arg = weg[2], "/".join(weg[3:])
