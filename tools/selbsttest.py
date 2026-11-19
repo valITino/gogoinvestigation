@@ -1149,6 +1149,8 @@ def _():
     echt = (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
             einrichten.snap_lage)
     echt_systemd, echt_admin = plattform.systemd, plattform.windows_administrator
+    echt_alle, echt_von_windows = pdf.browser_alle, pdf.von_windows
+    edge = "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
     ubuntu, fedora = {**LINUX, "id": "ubuntu", "wsl": True}, {**LINUX, "id": "fedora", "paketverwaltung": "dnf"}
     try:
         plattform.systemd = lambda: False       # der Prüfrechner entscheidet nicht mit, ob hier systemd läuft
@@ -1165,14 +1167,23 @@ def _():
 
         # ---- Die Zeile der Einrichtung: finden, sonst installieren, dann wirklich drucken
         def lauf_browser(sysinfo: dict, vorhanden: bool, nach_installation: bool = True, probe: str | None = None, snap: bool = True,
-                         rechte: bool = True, meldung: str = "", snap_lage: str = "nicht", admin: bool | None = None, **angaben):
+                         rechte: bool = True, meldung: str = "", snap_lage: str = "nicht", admin: bool | None = None,
+                         windows: bool = False, probe_windows: str | None = None, hinten: bool = False, **angaben):
+            """windows: Unter den Kandidaten ist auch der Browser von Windows. hinten: Der Browser von WSL ist ein Snap ohne
+            sichtbaren Inhalt und steht deshalb hinter dem von Windows, so wie pdf.browser_alle() es ordnet."""
             zustand, rufe = {"da": vorhanden}, []
             einrichten.stand = einrichten.Stand()
             plattform.windows_administrator = lambda: admin
             einrichten.ui, aus = oberflaeche([], interaktiv=False)
             einrichten.snap_bereit = lambda: snap
             einrichten.snap_lage = lambda name="chromium", snaps=None: snap_lage
-            pdf.browser_finden = lambda: "/usr/bin/chromium" if zustand["da"] else None
+
+            def alle() -> list[str]:
+                hiesige, fremde = (["/usr/bin/chromium"] if zustand["da"] else []), ([edge] if windows else [])
+                return fremde + hiesige if hinten else hiesige + fremde
+            pdf.browser_alle = alle
+            pdf.browser_finden = lambda: next(iter(alle()), None)
+            pdf.von_windows = lambda browser: browser.lower().endswith(".exe")
 
             def installieren(sysinfo: dict) -> tuple[bool, str]:        # (versucht, Befehl von Hand), wie die echte Funktion
                 if not rechte:
@@ -1183,7 +1194,8 @@ def _():
                     einrichten.stand.paketfehler["browser"] = meldung
                 return True, "sudo snap install chromium"
             einrichten.browser_installieren = installieren
-            pdf.probe = lambda browser, ordner, zeit=45: (rufe.append("probe"), probe)[1]
+            pdf.probe = lambda browser, ordner, zeit=45: ((rufe.append("probe-windows"), probe_windows)[1] if browser == edge
+                                                          else (rufe.append("probe"), probe)[1])
             a = einrichtung_optionen(**angaben)
             with contextlib.redirect_stdout(io.StringIO()) as darunter:     # die Meldung der Paketverwaltung steht eingerückt unter der Zeile
                 einrichten.browser_einrichten(a, sysinfo, not (a.nur_pruefen or a.nichts_installieren))
@@ -1285,6 +1297,32 @@ def _():
                 plattform.subprocess.run, plattform.shutil.which = echt_run, echt_which
         finally:
             plattform.wsl = echt_wsl
+        # ---- Unter WSL druckt der Browser von Windows. So war es am 19.11.2026 unter Ubuntu 26.04 in WSL nötig: Der Snap von
+        # Chromium blieb auch im neuen, gewöhnlich geöffneten Fenster unsichtbar. Steht in WSL kein Browser bereit, kommt der
+        # von Windows zuerst dran, und installiert wird dann nichts
+        rufe, text, s = lauf_browser(ubuntu, True, windows=True, hinten=True, probe=snap_fehler, snap_lage="anderswo")
+        assert rufe == ["probe-windows"] and text.startswith(plattform.GUT + " "), (rufe, text)
+        assert "msedge.exe, der Browser von Windows, Probe-PDF erzeugt" in text and s.neu == [] and s.neues_terminal == [] and s.offen == [], (text, s.offen)
+        rufe, text, s = lauf_browser(ubuntu, False, windows=True)
+        assert rufe == ["probe-windows"] and "der Browser von Windows, Probe-PDF erzeugt" in text, "kein Snap, wenn der Browser von Windows druckt"
+        # Druckt er von hier nicht, bleibt der bisherige Weg, und die Zeile sagt, was er gemeldet hat
+        rufe, text, s = lauf_browser(ubuntu, False, windows=True, probe_windows="Der Browser hat kein PDF geschrieben (Rückgabewert 1).")
+        assert rufe == ["probe-windows", "installieren", "probe"] and "chromium installiert, Probe-PDF erzeugt" in text, (rufe, text)
+        assert s.neu == ["Chromium (Browser für PDF)"]
+        rufe, text, s = lauf_browser(ubuntu, True, windows=True, hinten=True, probe=snap_fehler, snap_lage="anderswo",
+                                     probe_windows="Der Browser hat kein PDF geschrieben (Rückgabewert 1).")
+        assert rufe == ["probe-windows", "probe"] and "noch nicht zu sehen" in text, (rufe, text)
+        assert "Auch der Browser von Windows (msedge.exe) druckt von hier nicht: Der Browser hat kein PDF geschrieben" in text, text
+        rufe, text, s = lauf_browser(ubuntu, False, windows=True, probe_windows="Nichts geht.", nichts_installieren=True)
+        assert rufe == ["probe-windows"] and "keiner druckt." in text and "Auch der Browser von Windows (msedge.exe) druckt von hier nicht: Nichts geht." in text, text
+        # Druckt ein Browser in WSL nicht, ist der von Windows der zweite Versuch: So hält es auch tools/pdf.py
+        rufe, text, s = lauf_browser(ubuntu, True, windows=True, probe="Der Browser chromium hat nach 45 Sekunden nicht geantwortet.")
+        assert rufe == ["probe", "probe-windows"] and text.startswith(plattform.GUT + " "), (rufe, text)
+        assert "msedge.exe, der Browser von Windows, Probe-PDF erzeugt. chromium druckt hier nicht." in text, text
+        rufe, text, s = lauf_browser(ubuntu, True, windows=True)
+        assert rufe == ["probe"] and "chromium, Probe-PDF erzeugt" in text, "druckt der Browser in WSL, bleibt es bei ihm"
+        rufe, text, s = lauf_browser(ubuntu, False, windows=True, nur_pruefen=True)
+        assert rufe == [] and "msedge.exe (Browser von Windows)" in text, text
         # snap_lage() selbst: Liegt der Inhalt da, ist nichts zu melden. Fehlt er, entscheidet systemd, ob er nur hier fehlt
         echt_lauf = einrichten.lauf
         einrichten.snap_lage = echt[6]
@@ -1342,7 +1380,7 @@ def _():
                     raise subprocess.TimeoutExpired("browser", zeit)
                 return 0
         echt_beenden = pdf.beenden
-        pdf.beenden = lambda prozess: gesehen.setdefault("beendet", []).append(prozess.pid)
+        pdf.beenden = lambda prozess, marke="": gesehen.setdefault("beendet", []).append(prozess.pid)
         pdf.subprocess = types.SimpleNamespace(Popen=Browser, TimeoutExpired=subprocess.TimeoutExpired, DEVNULL=subprocess.DEVNULL, STDOUT=subprocess.STDOUT)
         try:
             assert pdf.probe("/usr/bin/chromium", ordner) is None, "die Probe muss ein erzeugtes PDF erkennen"
@@ -1367,7 +1405,197 @@ def _():
         (einrichten.snap_bereit, einrichten.browser_installieren, einrichten.ui, pdf.browser_finden, pdf.probe, pdf.subprocess,
          einrichten.snap_lage) = echt
         plattform.systemd, plattform.windows_administrator = echt_systemd, echt_admin
+        pdf.browser_alle, pdf.von_windows = echt_alle, echt_von_windows
         einrichten.stand = einrichten.Stand()
+
+
+@test("PDF unter WSL: Druckt in WSL kein Browser, druckt der von Windows. Seine Pfade stehen in der Schreibweise von Windows, sein Wegwerf-Profil liegt bei Windows und wird wieder entfernt")
+def _():
+    import types
+
+    from tools import pdf
+    if WINDOWS:
+        assert not pdf.von_windows(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"), "unter Windows selbst ist Edge kein fremder Browser"
+        assert plattform.windows_laufwerk() is None and plattform.windows_pfad("C:\\") is None and plattform.windows_ordner() is None
+        return
+    echt = (plattform.wsl, plattform.subprocess.run, plattform.shutil.which, pdf.subprocess, pdf.SNAPS, pdf.KANDIDATEN, pdf.windows_beenden)
+    gewuenscht = os.environ.pop("OSINT_BROWSER", None)
+    try:
+        with tempfile.TemporaryDirectory() as wurzel_text:
+            wurzel = Path(wurzel_text).resolve()
+            laufwerk = wurzel / "mnt" / "c"                     # steht für das Laufwerk C: von Windows
+            temp = laufwerk / "Users" / "Tester Ä" / "AppData" / "Local" / "Temp"
+            edge = laufwerk / "Program Files (x86)" / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+            snaps, projekt = wurzel / "snap", wurzel / "home" / "tester" / "projekt mit Leerzeichen" / "faelle"
+            for ordner in (temp, edge.parent, snaps / "bin", snaps / "chromium" / "3593", projekt):
+                ordner.mkdir(parents=True)
+            starter = snaps / "bin" / "chromium"
+            for programm in (edge, starter):
+                programm.write_text("", encoding="utf-8")
+                programm.chmod(0o755)
+            os.symlink("3593", snaps / "chromium" / "current")
+            gefragt: list[tuple[list[str], str | None]] = []
+            lage = {"cmd": True, "wslpath": True}
+
+            def nach_windows(pfad: Path) -> str:        # so schreibt wslpath -w einen Ort von Linux
+                if pfad == laufwerk or laufwerk in pfad.parents:
+                    return "C:\\" + "\\".join(pfad.relative_to(laufwerk).parts)
+                return "\\\\wsl.localhost\\Ubuntu" + str(pfad).replace("/", "\\")
+
+            def nach_linux(pfad: str) -> Path:          # und so kommt man von dort zurück
+                if pfad.startswith("\\\\wsl.localhost\\Ubuntu"):
+                    return Path(pfad[len("\\\\wsl.localhost\\Ubuntu"):].replace("\\", "/"))
+                assert pfad[:3] == "C:\\", pfad
+                return laufwerk.joinpath(*[teil for teil in pfad[3:].split("\\") if teil])
+
+            def windows(befehl, **mehr):                # steht für wslpath und cmd.exe
+                gefragt.append((list(befehl), mehr.get("cwd")))
+                name = Path(befehl[0]).name
+                if name == "wslpath" and lage["wslpath"]:
+                    if befehl[1] == "-u":
+                        return subprocess.CompletedProcess(befehl, 0, str(nach_linux(befehl[2])) + "\n", "")
+                    if Path(befehl[2]).exists():
+                        return subprocess.CompletedProcess(befehl, 0, nach_windows(Path(befehl[2])) + "\n", "")
+                    return subprocess.CompletedProcess(befehl, 1, "", "wslpath: Invalid argument\n")
+                if name == "cmd.exe" and lage["cmd"]:
+                    assert befehl[1:4] == ["/u", "/c", "echo"] and mehr.get("cwd") == str(laufwerk), (befehl, mehr.get("cwd"))
+                    wert = "C:\\Users\\Tester Ä\\AppData\\Local\\Temp" if befehl[4] == "%TEMP%" else befehl[4]
+                    return subprocess.CompletedProcess(befehl, 0, (wert + "\r\n").encode("utf-16-le"), b"")
+                raise FileNotFoundError(befehl[0])
+            plattform.subprocess.run = windows
+            plattform.shutil.which = lambda name, *mehr, **angaben: None if name in ("wslpath", "cmd.exe", "powershell.exe") else echt[2](name, *mehr, **angaben)
+            pdf.SNAPS, pdf.KANDIDATEN = snaps, [str(starter)]
+
+            # ---- Ausserhalb von WSL gibt es keinen Browser von Windows, und Windows wird nichts gefragt
+            plattform.wsl = lambda: False
+            assert plattform.windows_laufwerk() is None and plattform.windows_pfad(temp) is None and plattform.windows_ordner() is None
+            assert not pdf.von_windows(str(edge)) and pdf.browser_alle() == [str(starter)] and gefragt == [], (pdf.browser_alle(), gefragt)
+
+            # ---- Unter WSL: Laufwerk, Ordner und Pfade von Windows
+            plattform.wsl = lambda: True
+            assert plattform.windows_laufwerk() == laufwerk and gefragt[-1][0] == ["/usr/bin/wslpath", "-u", "C:\\"], gefragt
+            assert plattform.windows_ordner("TEMP") == temp, "der Name mit Umlaut und Leerzeichen muss den Weg überstehen"
+            assert plattform.windows_ordner("GIBT_ES_NICHT") is None, "eine Variable, die es nicht gibt, lässt cmd unverändert stehen"
+            assert plattform.windows_pfad(temp) == "C:\\Users\\Tester Ä\\AppData\\Local\\Temp"
+            assert plattform.windows_pfad(projekt) == "\\\\wsl.localhost\\Ubuntu" + str(projekt).replace("/", "\\")
+            assert plattform.windows_pfad(projekt / "gibt-es-nicht") is None
+            assert pdf.windows_adresse("\\\\wsl.localhost\\Ubuntu\\home\\t\\a b\\ä.html") == "file://wsl.localhost/Ubuntu/home/t/a%20b/%C3%A4.html"
+            assert pdf.windows_adresse("\\\\wsl$\\Ubuntu\\home\\t\\a.html") == "file://wsl$/Ubuntu/home/t/a.html", "ältere Fassungen von WSL"
+            assert pdf.windows_adresse("C:\\Users\\t\\a.html") == "file:///C:/Users/t/a.html"
+
+            # ---- Die Reihenfolge der Versuche: Ein Snap ohne sichtbaren Inhalt kommt hinter den Browser von Windows
+            assert pdf.von_windows(str(edge)) and not pdf.von_windows(str(starter))
+            assert pdf.snap_ohne_inhalt(str(starter)) and not pdf.snap_ohne_inhalt("/usr/bin/chromium") and not pdf.snap_ohne_inhalt(str(edge))
+            assert pdf.browser_alle() == [str(edge), str(starter)] and pdf.browser_finden() == str(edge), pdf.browser_alle()
+            (snaps / "chromium" / "3593" / "meta").mkdir()
+            (snaps / "chromium" / "3593" / "meta" / "snap.yaml").write_text("name: chromium\n", encoding="utf-8")
+            assert pdf.browser_alle() == [str(starter), str(edge)], "ist der Snap zu sehen, bleibt der Browser von WSL der erste"
+            shutil.rmtree(snaps / "chromium" / "3593" / "meta")
+            os.environ["OSINT_BROWSER"] = str(starter)
+            assert pdf.browser_alle() == [str(edge), str(starter)], "auch ein gewünschter Snap ohne Inhalt druckt nicht"
+            del os.environ["OSINT_BROWSER"]
+
+            # ---- Der Druck selbst: Der Browser bekommt alles in der Schreibweise von Windows
+            quelle, ziel = projekt / "Abschlussrapport.html", projekt / "Abschlussrapport.pdf"
+            quelle.write_text("<p>nichts aus einem Fall</p>", encoding="utf-8")
+            gesehen: dict = {}
+
+            class Browser:          # steht für subprocess.Popen mit dem Browser von Windows
+                pid = 999_999_999   # eine Nummer, die es nicht gibt: Hier darf nie ein echter Prozess getroffen werden
+
+                def __init__(self, befehl: list[str], **mehr) -> None:
+                    profil = nach_linux(next(x for x in befehl if x.startswith("--user-data-dir=")).split("=", 1)[1])
+                    gesehen.update(befehl=list(befehl), profil=profil, profil_da=profil.is_dir(), warten=0)
+                    (profil / "Default").mkdir()            # der Browser legt in seinem Profil etwas an
+                    (profil / "Default" / "History").write_text("x", encoding="utf-8")
+                    if gesehen.get("verhalten") != "haengt":
+                        nach_linux(next(x for x in befehl if x.startswith("--print-to-pdf=")).split("=", 1)[1]).write_bytes(b"%PDF-1.7\n" + bytes(2000))
+
+                def wait(self, zeit: float | None = None) -> int:
+                    gesehen["warten"] += 1
+                    if gesehen.get("verhalten") == "haengt" and gesehen["warten"] == 1:
+                        raise subprocess.TimeoutExpired("msedge.exe", zeit)
+                    return 0
+
+                def poll(self) -> int:
+                    return 0
+
+                def kill(self) -> None:
+                    gesehen["kill"] = True
+            aufrufe: list[tuple[list[str], dict]] = []
+            pdf.subprocess = types.SimpleNamespace(Popen=Browser, TimeoutExpired=subprocess.TimeoutExpired, DEVNULL=subprocess.DEVNULL,
+                                                   STDOUT=subprocess.STDOUT, SubprocessError=subprocess.SubprocessError,
+                                                   run=lambda befehl, **mehr: aufrufe.append((list(befehl), mehr)))
+            assert pdf.umwandeln(str(edge), quelle, ziel, 30) is None and ziel.is_file(), "der Browser von Windows muss das PDF im Projektordner schreiben"
+            befehl = gesehen["befehl"]
+            assert befehl[0] == str(edge) and "--headless=new" in befehl and "--no-sandbox" not in befehl, befehl
+            profil_fuer = next(x for x in befehl if x.startswith("--user-data-dir=")).split("=", 1)[1]
+            assert profil_fuer.startswith("C:\\Users\\Tester Ä\\AppData\\Local\\Temp\\osint-pdf-"), f"das Profil gehört auf ein Laufwerk von Windows: {profil_fuer}"
+            assert f"--print-to-pdf={nach_windows(projekt)}\\Abschlussrapport.pdf" in befehl, befehl
+            assert befehl[-1] == pdf.windows_adresse(nach_windows(quelle)) and befehl[-1].startswith("file://wsl.localhost/Ubuntu/") \
+                and "projekt%20mit%20Leerzeichen" in befehl[-1], befehl[-1]
+            assert gesehen["profil_da"] and not gesehen["profil"].exists() and not list(temp.glob("osint-pdf-*")), "das Wegwerf-Profil bleibt nicht bei Windows liegen"
+            assert not list(projekt.glob("osint-pdf-*")), "im Projektordner entsteht kein Profil"
+
+            # Antwortet er nicht, wird er auch unter Windows beendet: Unter Linux läuft nur sein Stellvertreter
+            beendet: list[str] = []
+            pdf.windows_beenden = lambda marke: beendet.append(marke)
+            ziel.unlink()
+            gesehen["verhalten"] = "haengt"
+            fehler = pdf.umwandeln(str(edge), quelle, ziel, 7)
+            assert fehler and "msedge.exe hat nach 7 Sekunden nicht geantwortet" in fehler and gesehen.get("kill"), (fehler, gesehen)
+            assert beendet == [gesehen["profil"].name] and beendet[0].startswith("osint-pdf-") and not list(temp.glob("osint-pdf-*")), beendet
+            pdf.windows_beenden = echt[6]
+            pdf.windows_beenden(beendet[0])
+            befehl, mehr = aufrufe[-1]
+            assert befehl[0].endswith("powershell.exe") and befehl[1:4] == ["-NoProfile", "-NonInteractive", "-Command"] and mehr.get("cwd") == str(laufwerk), befehl
+            assert f"-like '*{beendet[0]}*'" in befehl[4] and "Stop-Process" in befehl[4] and "$PID" in befehl[4] and mehr.get("timeout"), befehl[4]
+            vorher = len(aufrufe)
+            pdf.windows_beenden("")
+            assert len(aufrufe) == vorher, "ohne Marke wird unter Windows nichts beendet"
+
+            # Lässt sich Windows von hier nicht ansprechen, startet kein Browser, und die Meldung sagt warum
+            gesehen.clear()
+            lage["cmd"] = False
+            fehler = pdf.umwandeln(str(edge), quelle, ziel, 7)
+            assert fehler and "Ordner TEMP von Windows war nicht zu ermitteln" in fehler and not gesehen, (fehler, gesehen)
+            lage.update(cmd=True)
+            fehler = pdf.umwandeln(str(edge), quelle, projekt / "gibt-es-nicht" / "x.pdf", 7)
+            assert fehler and "Schreibweise von Windows" in fehler and not gesehen and not list(temp.glob("osint-pdf-*")), (fehler, gesehen)
+
+            # Ein Browser von WSL bekommt seine Pfade wie bisher
+            gesehen.clear()
+
+            class Hiesiger(Browser):
+                def __init__(self, befehl: list[str], **mehr) -> None:
+                    gesehen.update(befehl=list(befehl), warten=0)
+                    Path(next(x for x in befehl if x.startswith("--print-to-pdf=")).split("=", 1)[1]).write_bytes(b"%PDF-1.7\n" + bytes(2000))
+            pdf.subprocess.Popen = Hiesiger
+            assert pdf.umwandeln(str(starter), quelle, ziel, 7) is None
+            assert gesehen["befehl"][-1] == quelle.as_uri() and f"--print-to-pdf={ziel}" in gesehen["befehl"], gesehen["befehl"]
+            assert not any(x.startswith("--user-data-dir=C:") for x in gesehen["befehl"]) and not list(temp.glob("osint-pdf-*")), gesehen["befehl"]
+
+            # ---- tools/pruefen.py nennt ihn beim Namen
+            from tools import pruefen
+            merker = (pruefen.still, list(pruefen.noetig_fehlt), list(pruefen.schritte), list(pruefen.gemeldet), pruefen.lauf, pruefen.claude_stand)
+            try:
+                pruefen.still = True
+                pruefen.lauf = lambda befehl, zeit=20: (0, "")
+                pruefen.claude_stand = lambda: ("/daheim/.local/bin/claude", (9, 9, 9), "9.9.9 (Claude Code)")
+                pruefen.gemeldet.clear()
+                pruefen.umgebung({})
+                zeilen = [g for g in pruefen.gemeldet if g[2] == "Browser für PDF"]
+                assert len(zeilen) == 1 and zeilen[0][1] == "gut" and zeilen[0][3] == "msedge.exe (Browser von Windows)", zeilen
+            finally:
+                pruefen.still, pruefen.lauf, pruefen.claude_stand = merker[0], merker[4], merker[5]
+                pruefen.noetig_fehlt[:], pruefen.schritte[:], pruefen.gemeldet[:] = merker[1], merker[2], merker[3]
+        readme = lesen(REPO / "README.md")
+        for stueck in ("Browser von Windows", "msedge.exe", "Ordner TEMP von Windows"):
+            assert stueck in readme, f"README nennt «{stueck}» nicht"
+    finally:
+        plattform.wsl, plattform.subprocess.run, plattform.shutil.which, pdf.subprocess, pdf.SNAPS, pdf.KANDIDATEN, pdf.windows_beenden = echt
+        if gewuenscht is not None:
+            os.environ["OSINT_BROWSER"] = gewuenscht
 
 
 @test("Einrichtung führt bis zum Start: Jeder Schritt steht da, in der Reihenfolge, in der er zu tun ist. Claude Code und die Oberfläche starten nur auf Wunsch")

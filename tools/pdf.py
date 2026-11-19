@@ -9,6 +9,10 @@ unsichtbar mit einem leeren Wegwerf-Profil und wird so gestartet, dass er nur di
 und keine Hintergrunddienste (Updates, Konto, Übersetzer) kontaktiert. Die Dokumente sind in sich geschlossen.
 Anderer Browser oder anderer Pfad: Umgebungsvariable OSINT_BROWSER setzen.
 
+Unter WSL druckt auch der Browser von Windows (Edge, Chrome, Brave), wenn in WSL selbst keiner druckt. Dokument und PDF
+bleiben dabei im Projektordner: Der Browser liest und schreibt sie unter dem Namen, unter dem Windows das Dateisystem
+von WSL zeigt. Nur sein leeres Wegwerf-Profil liegt für die Dauer des Drucks im Ordner TEMP von Windows.
+
 Ohne solchen Browser: die HTML-Datei in einem beliebigen Browser öffnen und als PDF drucken.
 Das Ergebnis ist dasselbe, das Druckbild ist in den Dokumenten festgelegt.
 
@@ -23,7 +27,8 @@ import signal
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+import time
+from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -50,15 +55,42 @@ if plattform.WINDOWS:   # Edge gehört zu Windows, Chrome und Brave liegen an fe
                    for ort in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA") if os.environ.get(ort)]
 
 
+# Unter WSL kann auch der Browser von Windows drucken: Edge gehört zu Windows, Chrome und Brave liegen an festen Orten.
+# Die Orte gelten ab dem Laufwerk C:, so wie WSL es einhängt (meist /mnt/c).
+WINDOWS_BROWSER = ("Program Files (x86)/Microsoft/Edge/Application/msedge.exe", "Program Files/Microsoft/Edge/Application/msedge.exe",
+                   "Program Files/Google/Chrome/Application/chrome.exe", "Program Files (x86)/Google/Chrome/Application/chrome.exe",
+                   "Program Files/BraveSoftware/Brave-Browser/Application/brave.exe")
+SNAPS = Path("/snap")
+
+
+def von_windows(browser: str) -> bool:
+    """Ein Browser von Windows, aus WSL gestartet. Er sieht die Dateien von WSL unter einem anderen Namen und braucht alle
+    Pfade in der Schreibweise von Windows."""
+    return browser.lower().endswith(".exe") and plattform.wsl()
+
+
+def snap_ohne_inhalt(browser: str) -> bool:
+    """Ein Browser aus einem Snap, dessen Inhalt dieses Terminal nicht sieht. Der Starter unter /snap/bin ist dann da, starten
+    lässt sich damit nichts. So gesehen am 18. und 19.11.2026 unter Ubuntu 26.04 in WSL."""
+    pfad = Path(browser)
+    return pfad.parent == SNAPS / "bin" and not (SNAPS / pfad.name / "current" / "meta" / "snap.yaml").is_file()
+
+
 def browser_alle() -> list[str]:
-    """Alle Browser, die sich finden lassen, in der Reihenfolge der Versuche. OSINT_BROWSER zuerst."""
+    """Alle Browser, die sich finden lassen, in der Reihenfolge der Versuche: OSINT_BROWSER zuerst, dann die Browser dieses
+    Systems, unter WSL danach die von Windows. Ein Snap ohne sichtbaren Inhalt kommt ganz ans Ende: Er druckt hier nicht."""
     gewuenscht = os.environ.get("OSINT_BROWSER", "").strip()
+    kandidaten = ([gewuenscht] if gewuenscht else []) + KANDIDATEN
+    laufwerk = plattform.windows_laufwerk()         # nur unter WSL
+    if laufwerk:
+        kandidaten += [str(laufwerk / ort) for ort in WINDOWS_BROWSER]
     gefunden: list[str] = []
-    for kandidat in ([gewuenscht] if gewuenscht else []) + KANDIDATEN:
+    hinten: list[str] = []
+    for kandidat in kandidaten:
         pfad = shutil.which(kandidat) or (kandidat if Path(kandidat).is_file() else None)
-        if pfad and pfad not in gefunden:
-            gefunden.append(pfad)
-    return gefunden
+        if pfad and pfad not in gefunden + hinten:
+            (hinten if snap_ohne_inhalt(pfad) else gefunden).append(pfad)
+    return gefunden + hinten
 
 
 def browser_finden() -> str | None:
@@ -90,16 +122,34 @@ def probe(browser: str, ordner: Path, zeit: int = 45) -> str | None:
 
 def umwandeln(browser: str, quelle: Path, ziel: Path, zeit: int = ZEITLIMIT) -> str | None:
     """Gibt None zurück, wenn das PDF erzeugt wurde, sonst die Fehlermeldung."""
+    fremd = von_windows(browser)
+    profil_ort = None
+    if fremd:
+        # Der Browser von Windows braucht sein Profil auf einem Laufwerk von Windows. Dokument und PDF bleiben, wo sie sind.
+        profil_ort = plattform.windows_ordner("TEMP")
+        if profil_ort is None:
+            return ("Der Browser von Windows liess sich von hier nicht ansprechen: Der Ordner TEMP von Windows war nicht zu "
+                    "ermitteln. Programme von Windows müssen sich aus WSL starten lassen.")
     # Eigenes, leeres Browserprofil. Beim Aufräumen darf ein Rest liegen bleiben: Unter Windows hält ein Browser, der sich
     # gerade beendet, seine Dateien noch einen Augenblick fest. Das soll kein gelungenes PDF zum Fehler machen.
-    with tempfile.TemporaryDirectory(prefix="osint-pdf-", ignore_cleanup_errors=True) as profil, tempfile.TemporaryFile() as meldungen:
+    with tempfile.TemporaryDirectory(prefix="osint-pdf-", dir=profil_ort, ignore_cleanup_errors=True) as profil, \
+            tempfile.TemporaryFile() as meldungen:
+        if fremd:
+            orte = [plattform.windows_pfad(ort) for ort in (profil, quelle.resolve(), ziel.resolve().parent)]
+            if not all(orte):
+                return ("Der Browser von Windows liess sich von hier nicht ansprechen: Die Pfade liessen sich nicht in die "
+                        "Schreibweise von Windows übersetzen (wslpath).")
+            profil_fuer, ziel_fuer, adresse = orte[0], orte[2].rstrip("\\") + "\\" + ziel.name, windows_adresse(orte[1])
+        else:
+            profil_fuer, ziel_fuer, adresse = profil, str(ziel), quelle.resolve().as_uri()
         befehl = [browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer", "--disable-extensions",
                   # Der Browser soll nur die lokale Datei drucken und sich nirgends melden (Updates, Konto, Übersetzer).
                   "--disable-background-networking", "--disable-component-update", "--disable-sync",
                   "--disable-default-apps", "--no-first-run", "--disable-features=Translate,OptimizationHints,MediaRouter",
-                  f"--user-data-dir={profil}", f"--print-to-pdf={ziel}", quelle.resolve().as_uri()]
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
+                  f"--user-data-dir={profil_fuer}", f"--print-to-pdf={ziel_fuer}", adresse]
+        if not fremd and hasattr(os, "geteuid") and os.geteuid() == 0:
             befehl.insert(1, "--no-sandbox")       # Chromium startet als root nur so
+        marke = Path(profil).name if fremd else ""  # daran sind die Prozesse des Browsers unter Windows zu erkennen
         try:
             # Was der Browser meldet, geht in eine Datei und nicht in eine Leitung: An einer Leitung hinge dieser Aufruf nach dem
             # Zeitlimit weiter, solange ein Kindprozess des Browsers sie offen hält. Auf eine Eingabe wartet er nie. Er läuft in
@@ -111,22 +161,60 @@ def umwandeln(browser: str, quelle: Path, ziel: Path, zeit: int = ZEITLIMIT) -> 
         try:
             code = prozess.wait(zeit)
         except subprocess.TimeoutExpired:
-            beenden(prozess)
+            beenden(prozess, marke)
+            if fremd:
+                profil_raeumen(Path(profil))
             return (f"Der Browser {Path(browser).name} hat nach {zeit} Sekunden nicht geantwortet. Das kommt vor, wenn er beim Start "
                     "auf das Netz wartet. Ausweg: einen anderen Browser in OSINT_BROWSER nennen, etwa chrome-headless-shell.")
         except BaseException:       # Strg+C erreicht den Browser in seiner eigenen Gruppe nicht: von hier aus beenden
-            beenden(prozess)
+            beenden(prozess, marke)
             raise
         meldungen.seek(0)
         meldung = meldungen.read().decode("utf-8", errors="replace").strip().splitlines()
+        if fremd:
+            profil_raeumen(Path(profil))
     if not ziel.is_file() or ziel.stat().st_size < 1000:
         return meldung[-1] if meldung else f"Der Browser hat kein PDF geschrieben (Rückgabewert {code})."
     return None
 
 
-def beenden(prozess: subprocess.Popen) -> None:
+def windows_adresse(pfad: str) -> str:
+    """Die Adresse file://… zu einem Pfad in der Schreibweise von Windows (C:\\… oder \\\\Rechner\\Freigabe\\…)."""
+    adresse = PureWindowsPath(pfad).as_uri()
+    alt = "file://wsl%24/"      # ältere Fassungen von WSL nennen das Dateisystem \\wsl$\…: Das $ gehört unverändert in die Adresse
+    return "file://wsl$/" + adresse[len(alt):] if adresse.startswith(alt) else adresse
+
+
+def profil_raeumen(profil: Path, versuche: int = 6) -> None:
+    """Entfernt das Wegwerf-Profil des Browsers von Windows. Ein Browser, der sich gerade beendet, hält seine Dateien noch
+    einen Augenblick fest: Deshalb mehrere Versuche. Bleibt trotzdem ein Rest, liegt er im Ordner TEMP von Windows unter
+    einem Namen, der mit osint-pdf- beginnt."""
+    for versuch in range(versuche):
+        shutil.rmtree(profil, ignore_errors=True)
+        if not profil.exists():
+            return
+        if versuch + 1 < versuche:
+            time.sleep(0.4)
+
+
+def windows_beenden(marke: str) -> None:
+    """Beendet unter WSL die Prozesse von Windows, in deren Aufruf die Marke steht: der Name des Wegwerf-Profils. Unter Linux
+    läuft nur ein Stellvertreter des Browsers. Ist der beendet, liefe der Browser unter Windows sonst unsichtbar weiter."""
+    laufwerk = plattform.windows_laufwerk()
+    if not laufwerk or not marke:
+        return
+    programm = shutil.which("powershell.exe") or str(laufwerk / "Windows" / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+    auftrag = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*" + marke + "*' -and $_.ProcessId -ne $PID } | "
+               "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run([programm, "-NoProfile", "-NonInteractive", "-Command", auftrag], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, cwd=str(laufwerk))
+
+
+def beenden(prozess: subprocess.Popen, marke: str = "") -> None:
     """Beendet einen Browser, der nicht antwortet, samt seinen Kindprozessen. Sonst blieben sie liegen und hielten das
-    Wegwerf-Profil fest. Aufgerufen wird nur, solange der Browser selbst noch läuft: Seine Gruppe ist dann sicher seine."""
+    Wegwerf-Profil fest. Aufgerufen wird nur, solange der Browser selbst noch läuft: Seine Gruppe ist dann sicher seine.
+    Mit marke ist es ein Browser von Windows, aus WSL gestartet: Dann wird er auch dort beendet."""
     with contextlib.suppress(OSError, subprocess.SubprocessError):
         if plattform.WINDOWS:
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(prozess.pid)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -137,6 +225,8 @@ def beenden(prozess: subprocess.Popen) -> None:
         prozess.kill()
     with contextlib.suppress(OSError, subprocess.SubprocessError):
         prozess.wait(10)
+    if marke:
+        windows_beenden(marke)
 
 
 def main(argv: list[str]) -> int:
