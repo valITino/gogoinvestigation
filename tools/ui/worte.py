@@ -101,10 +101,13 @@ def team(name: str) -> str:
 
 
 def datei(pfad: object) -> str:
-    """Ein Pfad aus einer Eingabe, bezogen auf den Projektordner: So steht kein Benutzerordner im Chat."""
+    """Ein Pfad aus einer Eingabe, bezogen auf den Projektordner: So steht kein Benutzerordner im Chat.
+    Verglichen werden die aufgelösten Pfade. Der Projektordner kann über einen Verweis oder unter einem Kurznamen erreicht
+    sein (unter macOS liegt der Ordner für Zwischendateien hinter einem Verweis): Ohne das Auflösen beider Seiten gälte eine
+    Datei des Projekts dann als fremd, und im Chat stünde nur ihr Name."""
     text = str(pfad or "")
     try:
-        return Path(text).resolve().relative_to(PROJEKT).as_posix() if Path(text).is_absolute() else text
+        return Path(text).resolve().relative_to(PROJEKT.resolve()).as_posix() if Path(text).is_absolute() else text
     except (OSError, ValueError):
         return Path(text).name or text
 
