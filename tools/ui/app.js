@@ -24,7 +24,11 @@ const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einz
 async function antwortLesen(antwort) {
   let daten = null;
   try { daten = await antwort.json(); } catch (e) { /* keine lesbare Antwort */ }
-  if (!antwort.ok || !daten) throw new Error((daten && daten.fehler) || `Der Server antwortet nicht wie erwartet (HTTP ${antwort.status}).`);
+  if (!antwort.ok || !daten) {
+    const fehler = new Error((daten && daten.fehler) || `Der Server antwortet nicht wie erwartet (HTTP ${antwort.status}).`);
+    fehler.daten = daten || {};       // was der Server neben dem Text mitgibt, etwa dass sich eine gesperrte Nachricht bewusst doch senden lässt
+    throw fehler;
+  }
   return daten;
 }
 
@@ -377,28 +381,133 @@ function pflichtEinrichten(feld) {
 
 /* ---------- Chat mit der Ermittlung: Vorgaben, Nachrichten, jeder Schritt ---------- */
 
-const STATUS_WORT = { aus: "nicht gestartet", laeuft: "läuft", wartet: "wartet auf eine Antwort", angehalten: "angehalten", beendet: "beendet", fehler: "abgebrochen" };
+const STATUS_WORT = { aus: "nicht gestartet", laeuft: "läuft", wartet: "wartet auf dich", angehalten: "angehalten", beendet: "beendet", fehler: "abgebrochen" };
 const STATUS_FARBE = { laeuft: "gut", wartet: "warnung", fehler: "kritisch" };
-const ERGEBNIS_WORT = { ok: ["● Treffer", "gut"], kein_treffer: ["○ kein Treffer", "neutral"], fehler: ["✕ Fehlschlag", "kritisch"], abgelehnt: ["⊘ abgelehnt", "warnung"] };
-const ENTSCHEID_FARBE = { offen: "warnung", erlaubt: "gut", abgelehnt: "kritisch", "nicht beantwortet": "kritisch" };
+const ERGEBNIS_WORT = { ok: ["● Treffer", "gut"], kein_treffer: ["○ kein Treffer", "neutral"], fehler: ["✕ Fehlschlag", "kritisch"], abgelehnt: ["⊘ abgelehnt", "warnung"],
+  nicht_ausgefuehrt: ["⊘ nicht ausgeführt", "warnung"] };
+const ENTSCHEID_FARBE = { offen: "warnung", erlaubt: "gut", beantwortet: "gut", abgelehnt: "kritisch", "nicht beantwortet": "kritisch" };
+// Wer im Team arbeitet, wie ein Mensch es liest. Der Name des Agenten steht als Hinweis am Wort
+const TEAM = { hauptsitzung: "Ermittlungsleitung", "infrastruktur-analyst": "Infrastruktur", "malware-url-analyst": "Malware und URLs", "darkweb-analyst": "Dark Web",
+  "socmint-analyst": "Kanäle und Foren", "blockchain-analyst": "Blockchain", gegenpruefer: "Gegenprüfung", rapportfuehrer: "Rapport" };
+
+/* Antworten der Ermittlung lesbar machen: Überschriften, Listen, Tabellen, Hervorhebungen.
+   Claude schreibt Markdown. Daraus werden hier Elemente gebaut, nie HTML eingesetzt: Jeder Text geht über textContent.
+   Verweise werden nicht anklickbar, denn was die Ermittlung nennt, kann eine Adresse der Täterseite sein. Ein Beleg (P-0007) führt zu seiner Ansicht. */
+function zeileBauen(text, fall) {
+  const teile = document.createDocumentFragment();
+  const muster = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\s][^*\n]*\*)|(\[[^\]\n]+\]\([^)\s]+\))|(\b[PX]-\d{4,}\b)/g;
+  let pos = 0, m;
+  while ((m = muster.exec(text))) {
+    if (m.index > pos) teile.append(text.slice(pos, m.index));
+    const t = m[0];
+    if (m[1]) teile.append(el("code", { text: t.slice(1, -1) }));
+    else if (m[2]) { const fett = el("strong"); fett.append(zeileBauen(t.slice(2, -2), fall)); teile.append(fett); }
+    else if (m[3]) teile.append(el("em", { text: t.slice(1, -1) }));
+    else if (m[4]) { const v = t.match(/^\[([^\]]+)\]\(([^)]+)\)$/); teile.append(v[1] === v[2] ? v[1] : `${v[1]} (${v[2]})`); }
+    else teile.append(fall ? el("a", { href: weg("fall", fall, "beleg", t), text: t }) : t);
+    pos = m.index + t.length;
+  }
+  if (pos < text.length) teile.append(text.slice(pos));
+  return teile;
+}
+
+function antwortBauen(text, fall) {
+  const feld = el("div", { klasse: "chat-text md" });
+  const zeilen = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const LISTE = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/, TABELLE = /^\s*\|.*\|\s*$/, TRENNER = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+  let i = 0, absatz = [];
+  const absatzEnde = () => {
+    if (!absatz.length) return;
+    const p = el("p");
+    absatz.forEach((z, n) => { if (n) p.append(el("br")); p.append(zeileBauen(z, fall)); });
+    feld.append(p);
+    absatz = [];
+  };
+  while (i < zeilen.length) {
+    const z = zeilen[i];
+    let m;
+    if (/^\s*```/.test(z)) {            // Block im Wortlaut
+      absatzEnde();
+      const block = [];
+      for (i += 1; i < zeilen.length && !/^\s*```/.test(zeilen[i]); i += 1) block.push(zeilen[i]);
+      i += 1;
+      feld.append(el("pre", { klasse: "rohtext", text: block.join("\n") }));
+    } else if (!z.trim()) { absatzEnde(); i += 1; }
+    else if ((m = z.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/))) {      // Überschrift: im Chat zwei Stufen tiefer als auf der Seite
+      absatzEnde();
+      const h = el("h" + Math.min(6, m[1].length + 2));
+      h.append(zeileBauen(m[2], fall));
+      feld.append(h);
+      i += 1;
+    } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(z)) { absatzEnde(); feld.append(el("hr")); i += 1; }
+    else if (TABELLE.test(z) && i + 1 < zeilen.length && TRENNER.test(zeilen[i + 1])) {
+      absatzEnde();
+      const zellen = (s) => s.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+      const reihe = (s, art) => { const tr = el("tr"); for (const c of zellen(s)) { const zelle = el(art); zelle.append(zeileBauen(c, fall)); tr.append(zelle); } return tr; };
+      const rumpf = el("tbody");
+      const tabelle = el("table", {}, el("thead", {}, reihe(z, "th")), rumpf);
+      for (i += 2; i < zeilen.length && TABELLE.test(zeilen[i]); i += 1) rumpf.append(reihe(zeilen[i], "td"));
+      feld.append(el("div", { klasse: "md-tabelle" }, tabelle));
+    } else if (LISTE.test(z)) {         // Liste, auch verschachtelt: Die Einrückung entscheidet über die Stufe
+      absatzEnde();
+      const stapel = [];
+      while (i < zeilen.length) {
+        const zeile = zeilen[i], treffer = zeile.match(LISTE);
+        if (treffer) {
+          const tiefe = treffer[1].replace(/\t/g, "    ").length, geordnet = /\d/.test(treffer[2]);
+          while (stapel.length && stapel[stapel.length - 1].tiefe > tiefe) stapel.pop();
+          if (!stapel.length || stapel[stapel.length - 1].tiefe < tiefe) {
+            const liste = el(geordnet ? "ol" : "ul");
+            (stapel.length && stapel[stapel.length - 1].punkt ? stapel[stapel.length - 1].punkt : feld).append(liste);
+            stapel.push({ tiefe, liste, punkt: null });
+          }
+          const oben = stapel[stapel.length - 1];
+          oben.punkt = el("li");
+          oben.punkt.append(zeileBauen(treffer[3], fall));
+          oben.liste.append(oben.punkt);
+          i += 1;
+        } else if (zeile.trim() && /^\s{2,}/.test(zeile) && stapel.length && stapel[stapel.length - 1].punkt) {      // Fortsetzung eines Punkts
+          stapel[stapel.length - 1].punkt.append(" ", zeileBauen(zeile.trim(), fall));
+          i += 1;
+        } else if (!zeile.trim() && i + 1 < zeilen.length && LISTE.test(zeilen[i + 1])) i += 1;       // Leerzeile zwischen zwei Punkten
+        else break;
+      }
+    } else if ((m = z.match(/^\s*>\s?(.*)$/))) {
+      absatzEnde();
+      const zitat = el("blockquote");
+      for (; i < zeilen.length && (m = zeilen[i].match(/^\s*>\s?(.*)$/)); i += 1) { if (zitat.childNodes.length) zitat.append(el("br")); zitat.append(zeileBauen(m[1], fall)); }
+      feld.append(zitat);
+    } else { absatz.push(z.trim()); i += 1; }
+  }
+  absatzEnde();
+  return feld;
+}
 
 function chatEintrag(z, fall) {
-  const li = el("li", { klasse: "c-" + z.art + (z.wartet ? " wartet" : "") + (z.zurueck ? " zurueck" : ""), "data-nr": String(z.nr) });
+  const li = el("li", { klasse: "c-" + z.art + (z.wartet ? " wartet" : "") + (z.zurueck ? " zurueck" : "") + (z.wichtig ? " wichtig" : ""), "data-nr": String(z.nr) });
+  const team = (name) => { const wort = el("span", { klasse: "chat-quelle", text: TEAM[name] || name }); if (TEAM[name] && name !== "hauptsitzung") wort.title = "Agent " + name; return wort; };
   if (z.art === "sachbearbeiter" || z.art === "claude") {
-    li.append(el("div", { klasse: "chat-wer" }, el("b", { text: z.art === "sachbearbeiter" ? "Du" : z.wer === "hauptsitzung" ? "Ermittlung" : z.wer }), el("time", { text: z.zeit })),
-      el("div", { klasse: "chat-text", text: z.text }));
+    const wer = el("b", { text: z.art === "sachbearbeiter" ? "Du" : z.wer === "hauptsitzung" ? "Ermittlung" : (TEAM[z.wer] || z.wer) });
+    li.append(el("div", { klasse: "chat-wer" }, wer, el("time", { text: z.zeit })), z.art === "claude" ? antwortBauen(z.text, fall) : el("div", { klasse: "chat-text", text: z.text }));
     if (z.wartet) li.append(el("div", { klasse: "klein", text: "wartet auf das Ende des laufenden Auftrags" }));
     if (z.zurueck) li.append(el("div", { klasse: "klein", text: "zurückgenommen, nicht zugestellt" }));
     return li;
   }
   const zeile = el("div", { klasse: "chat-zeile" }, el("time", { text: z.zeit }));
-  if (z.wer && z.wer !== "oberfläche") zeile.append(el("span", { klasse: "chat-quelle", text: z.wer }));
-  zeile.append(el("span", { klasse: z.art === "schritt" ? "mono" : "", text: z.text }));
+  if (z.wer && z.wer !== "oberfläche") zeile.append(team(z.wer));
+  zeile.append(el("span", { klasse: "chat-was", text: z.text }));
   if (z.beleg) zeile.append(el("a", { href: weg("fall", fall, "beleg", z.beleg), text: z.beleg }));
   if (z.ergebnis) { const [wort, farbe] = ERGEBNIS_WORT[z.ergebnis] || [z.ergebnis, "neutral"]; zeile.append(el("span", { klasse: "z-" + farbe, text: wort })); }
   if (z.entscheid) zeile.append(el("span", { klasse: "marke z-" + (ENTSCHEID_FARBE[z.entscheid] || "neutral"), text: z.entscheid }));
   if (z.ergebnisse) zeile.append(el("a", { klasse: "knopf", href: weg("fall", fall, "ergebnisse"), text: "Ergebnisse ansehen" }));
   li.append(zeile);
+  // Unter einem Schritt: wozu er dient (das Gateway verlangt den Zweck bei jeder Abfrage) und der Name des Werkzeugs, wie er im Protokoll steht
+  if (z.art === "schritt" && (z.zweck || (z.technik && z.quelle))) {
+    const dazu = el("div", { klasse: "chat-dazu" });
+    if (z.zweck) dazu.append(el("span", { text: "Zweck: " + z.zweck }));
+    if (z.technik && z.quelle) dazu.append(el("span", { klasse: "mono", title: "Name des Werkzeugs im Protokoll", text: z.technik }));
+    li.append(dazu);
+  }
   return li;
 }
 
@@ -410,6 +519,8 @@ function chatBauen(feld, fall, gross) {
   feld.classList.add("chat");
   feld.dataset.fall = fall;
   const kopf = el("div", { klasse: "chat-kopf" }, el("h2", { text: "Chat mit der Ermittlung" }), el("span", { klasse: "marke", "data-chat-status": "", text: "…" }));
+  // Die Lage in einem Satz: was die Ermittlung gerade tut, worauf sie wartet, wie es weitergeht
+  const lage = el("p", { klasse: "chat-lage", "data-chat-lage": "", role: "status", hidden: "" });
   const verlauf = el("ol", { klasse: "chat-verlauf", "aria-live": "polite", "aria-label": "Verlauf der Ermittlung", tabindex: "0" });
   const schritte = el("input", { type: "checkbox", checked: "" });
   let zeigeSchritte = true;
@@ -429,12 +540,21 @@ function chatBauen(feld, fall, gross) {
     try { klappen(sessionStorage.getItem("chat-zu") === "1"); } catch (e) { /* siehe oben */ }
     kopf.append(zu);
   }
-  const text = el("textarea", { name: "text", rows: "3", id: "chat-text", "aria-label": "Nachricht an die Ermittlung" });
+  const text = el("textarea", { name: "text", rows: "2", id: "chat-text", "aria-label": "Nachricht an die Ermittlung" });
   const form = el("form", { klasse: "chat-eingabe" }, text, el("div", { klasse: "knopfzeile", "data-chat-knoepfe": "" }), el("div", { klasse: "ergebnis", "aria-live": "polite" }));
   form.addEventListener("submit", (e) => { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); });
   text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); } });
-  feld.append(kopf, verlauf, el("div", { klasse: "chat-wartend" }), form);
+  feld.append(kopf, lage, verlauf, el("div", { klasse: "chat-wartend" }), form);
+  if (gross) chatHoehe();
   chatHolen();
+}
+
+function chatHoehe() {
+  // Der grosse Chat füllt, was vom Fenster unter ihm bleibt: So steht die Eingabe immer am unteren Rand, und der Verlauf hat den Platz
+  const feld = zustand.chat.feld, mitte = $("#mitte");
+  if (!feld || !feld.isConnected || !feld.classList.contains("gross")) return;
+  const oben = feld.getBoundingClientRect().top - mitte.getBoundingClientRect().top + mitte.scrollTop;
+  feld.style.height = Math.max(440, mitte.clientHeight - oben - 18) + "px";
 }
 
 async function chatSenden(aktion, zusatz, textfeld, frage) {
@@ -460,7 +580,15 @@ async function chatSenden(aktion, zusatz, textfeld, frage) {
     if (pflicht) pflicht.open = false;       // die Ermittlung läuft: Der Chat bekommt den Platz. Der Stand steht in der Kopfzeile der Auswahl
     if (textfeld) eingabe.value = "";
     ergebnis.replaceChildren();
-  } catch (e) { ergebnisZeigen(ergebnis, null, e.message); }
+  } catch (e) {
+    ergebnisZeigen(ergebnis, null, e.message);
+    if (e.daten && e.daten.sperrfund && textfeld && !(zusatz && zusatz.trotzdem)) {
+      // Die Prüfung sieht einer Nachricht nicht an, zu wem eine Angabe gehört. Gehört sie zur Täterseite, entscheidet der Sachbearbeiter
+      const trotzdem = el("button", { type: "button", text: "Trotzdem senden: Die Angabe gehört zur Täterseite" });
+      trotzdem.addEventListener("click", () => chatSenden(aktion, { ...zusatz, trotzdem: "1" }, textfeld));
+      ergebnis.append(el("p", { klasse: "knopfzeile" }, trotzdem), el("p", { klasse: "klein", text: "Das Sitzungsprotokoll hält fest, dass die Nachricht trotz Fund gesendet wurde." }));
+    }
+  }
   knoepfe.forEach(k => { k.disabled = false; });
   chatHolen();
 }
@@ -502,6 +630,10 @@ function chatZeigen(d) {
   const marke = $("[data-chat-status]", feld);
   marke.textContent = STATUS_WORT[d.status] || d.status;
   marke.className = "marke z-" + (STATUS_FARBE[d.status] || "leer");
+  const lage = $("[data-chat-lage]", feld);
+  lage.textContent = d.lage || "";
+  lage.hidden = !d.lage;
+  lage.className = "chat-lage l-" + d.status;
   const wartend = $(".chat-wartend", feld);
   wartend.replaceChildren();
   for (const w of d.wartend || []) {
@@ -994,4 +1126,5 @@ function zeitachseEinrichten(liste, ereignisse) {
 try { const farbe = localStorage.getItem("farbe"); if (farbe) document.documentElement.dataset.farbe = farbe; } catch (e) { /* ohne Speicher gilt die Vorgabe des Systems */ }
 addEventListener("beforeprint", () => $$("details").forEach(d => { d.dataset.war = d.open ? "1" : ""; d.open = true; }));
 addEventListener("afterprint", () => $$("details").forEach(d => { d.open = d.dataset.war === "1"; }));
+addEventListener("resize", chatHoehe);
 anmelden().then(() => { addEventListener("hashchange", laden); laden(); rueckfragenHolen(); });

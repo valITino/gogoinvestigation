@@ -28,6 +28,12 @@ Du leitest die Ermittlung. Die Abfragen machen die Analysten in eigenen Kontexte
 bleibt für Überblick und Qualität. Arbeite die Phasen der Reihe nach ab. Halte nur an, wo es unten verlangt ist:
 Der Sachbearbeiter will ein Ergebnis, keine Rückfragen.
 
+Brauchst du doch einen Entscheid des Sachbearbeiters (der Auftrag ist mehrdeutig, zwei Wege kosten sehr verschieden
+viel), stell **eine** Frage mit dem Werkzeug `AskUserQuestion`: zwei bis vier Antworten zur Auswahl, jede mit einem
+Satz, was sie bedeutet. In der Oberfläche erscheint sie als Fenster und lässt sich dort beantworten. Bleibt die Antwort
+aus oder lehnt der Sachbearbeiter ab, frag nicht noch einmal: Triff eine vertretbare Annahme, nenne sie in deiner
+Antwort und im Rapport als Annahme, und fahre fort. In einer Frage steht nie eine geschützte Angabe.
+
 Zwei Modelle teilen sich die Arbeit, und die Zuteilung steht fest in den Dateien: Dieser Skill und die fünf
 Analysten verlangen Claude Mythos 5.2, der Abschluss (`gegenpruefer`, `rapportfuehrer`) Claude Fable 5.2.
 Claude Code schaltet nur dann auf Mythos, wenn es an diesem Arbeitsplatz freigeschaltet ist. Sonst läuft alles auf

@@ -151,6 +151,11 @@ stand eine Adresse nach zwei Pseudonymisierungen noch im Klartext da, in der Anw
 Personendaten aussieht, gleich wo sie steht, wie bis zum 19.11.2026. Titel, Dateinamen, Nachrichten im Chat und Belege
 von Hand prüft der Arbeitsplatz immer streng: Sie haben keine Abschnitte.
 
+**Im Chat** sieht die Prüfung einer Nachricht nicht an, zu wem eine Angabe gehört, und sperrt deshalb auch die
+Rufnummer oder das Konto der Täterseite. Der Sachbearbeiter kann eine solche Nachricht bewusst doch senden («Trotzdem
+senden»). Das Sitzungsprotokoll hält es fest, mit der Zahl der Fundstellen. Mit `OSINT_SCHUTZ=streng` gibt es diesen
+Weg nicht.
+
 ## Anweisung für euer LLM
 
 Als Systemanweisung für das Modell im Haus. Anpassen, wo eure Dokumente anders aufgebaut sind.

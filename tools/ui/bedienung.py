@@ -62,11 +62,13 @@ WERKZEUGE = {       # was «Dokumente» auslösen kann: Name -> (Bezeichnung, Be
 
 
 class Fehler(Exception):
-    """Eine Bedienung, die so nicht geht. Der Text ist für den Sachbearbeiter und nennt nie Klartext."""
+    """Eine Bedienung, die so nicht geht. Der Text ist für den Sachbearbeiter und nennt nie Klartext.
+    `mehr`: Angaben, die das Fenster neben dem Text braucht, etwa dass sich eine gesperrte Nachricht bewusst doch senden lässt."""
 
     def __init__(self, text: str, status: int = 400):
         super().__init__(text)
         self.status = status
+        self.mehr: dict = {}
 
 
 def innerhalb(pfad: Path) -> bool:
@@ -141,6 +143,7 @@ class Eintrag:
         self.vorgang: str | None = None         # Kennung einer laufenden Pseudonymisierung
         self.ersetzt: int | None = None         # Zahl der ersetzten Fundstellen, sobald eine Pseudonymisierung übernommen ist
         self.risiko: dict | None = None         # {"durch", "grund"}: Der Sachbearbeiter nimmt die Datei trotz Sperrfund auf
+        self.statt: dict | None = None          # {"name", "durch"}: zum Nachbessern aus dem Fall geholt. Aufgenommen, ersetzt sie dort das Dokument dieses Namens
 
     @property
     def stand(self) -> str:
@@ -155,7 +158,7 @@ class Eintrag:
     def kurz(self) -> dict:
         return {"id": self.id, "name": self.name, "ordner": self.ordner, "groesse": self.groesse, "endung": self.endung, "stand": self.stand, "grund": self.grund,
                 "sperren": self.sperren, "hinweise": self.hinweise, "platzhalter": self.platzhalter, "rolle": self.rolle, "ersetzt": self.ersetzt,
-                "vorgang": self.vorgang or "", "risiko": bool(self.risiko)}
+                "vorgang": self.vorgang or "", "risiko": bool(self.risiko), "statt": (self.statt or {}).get("name", "")}
 
 
 class Korb:
@@ -684,6 +687,18 @@ class Bedienung:
                     for p in self.pseudo.values():      # eine Pseudonymisierung, die noch läuft, zieht mit um
                         if p.ziel == "":
                             p.ziel = fall
+        # Eine nachgebesserte Fassung ersetzt im Fall das Dokument, aus dem sie entstand: Die neue liegt jetzt dort, die alte wird
+        # entfernt. Das Register hält fest, was wodurch ersetzt wurde. Überschrieben wird nie.
+        ersetzt_im_fall: list[str] = []
+        for e in drin:
+            if e.statt and e.statt["name"] != namen[e.id] and (fall_pfad(fall) / "eingang" / e.statt["name"]).is_file():
+                try:
+                    fallwerkzeug.entfernen(fall, [e.statt["name"]], durch=e.statt["durch"], grund=f"ersetzt durch die nachgebesserte Fassung {namen[e.id]}", weg="Oberfläche")
+                except (fallwerkzeug.Fehler, FileNotFoundError, ValueError) as fehler:
+                    ausgabe += f"\n{e.statt['name']} liess sich nicht entfernen: {fehler}"
+                    continue
+                ersetzt_im_fall.append(f"{e.statt['name']} durch {namen[e.id]}")
+                self.vermerken(fall, "Dokument nachgebessert", f"{e.statt['name']} ersetzt durch {namen[e.id]}, durch {e.statt['durch']}")
         lokal = sum(1 for e in drin if e.ersetzt is not None)
         bleibt = [e for e in zurueck if e.stand == "nicht_lesbar"]
         arten: dict = {}
@@ -705,6 +720,8 @@ class Bedienung:
                 "meldung": ((f"Fall {fall} angelegt, " if neu else "") + f"{len(drin)} Dokument(e) aufgenommen."
                             + (f" Davon {sum(1 for e in drin if e in gewagt)} trotz Sperrfund: Das Risiko ist übernommen und im Protokoll vermerkt."
                                if any(e in gewagt for e in drin) else "")
+                            + (f" Ersetzt im Fall: {'; '.join(ersetzt_im_fall)}. Läuft dazu eine Ermittlung, sag ihr im Chat, dass sie das Dokument neu lesen soll."
+                               if ersetzt_im_fall else "")
                             + (f" {len(zurueck)} bleiben im Akten-Eingang: Personendaten oder nicht lesbar." if zurueck else "")
                             + (f" {tabelle_hinweis}" if tabelle_hinweis else "")) if drin
                 else (f"Fall {fall} ist angelegt, aber kein Dokument wurde aufgenommen, siehe Ausgabe. Die Dateien liegen im Akten-Eingang dieses Falls."
@@ -787,6 +804,45 @@ class Bedienung:
             raise Fehler(str(e).replace("--durch", "«Durch»").replace("--grund", "«Grund»")) from e
         self.vermerken(fall, "Dokumente aus dem Eingang entfernt", f"{len(entfernt)} Datei(en), durch {durch}, Grund: {grund}")
         return {"meldung": f"{len(entfernt)} Datei(en) aus dem Eingang von Fall {fall} entfernt. Das Register der PII-Prüfung hält fest, was entfernt wurde.", "entfernt": entfernt}
+
+    def eingang_nachbessern(self, d: dict) -> dict:
+        """Holt Dokumente, die schon im Fall liegen, in den Akten-Eingang dieses Falls: zum Nachbessern auf dem lokalen Bildschirm
+        (nochmals pseudonymisieren). Im Fall bleibt jedes liegen, bis seine nachgebesserte Fassung aufgenommen ist. Erst dann wird
+        die alte Fassung entfernt. Anlass: Die Ermittlung meldet eine geschützte Angabe, die noch im Klartext dasteht."""
+        fall, namen, durch = self._fall_id(str(d.get("fall") or "")), self._namen(d), self._durch(d)
+        fall_daten(fall)
+        sitzung = self.ermittlungen.get(fall)
+        eingang = fall_pfad(fall) / "eingang"
+        im_fall = set(sum(eingang_stand(fall_pfad(fall)), []))
+        korb = self.korb(fall)
+        geholt: list[Eintrag] = []
+        meldungen: list[str] = []
+        with self.sperre:
+            for n in dict.fromkeys(namen):
+                if n not in im_fall or Path(n).name != n:
+                    continue
+                if Path(n).suffix.lower() in GEWANDELT:
+                    meldungen.append(f"{n}: Das ist ein Original. Nachbessern lässt sich seine Textfassung.")
+                    continue
+                if any(e.statt and e.statt["name"] == n for e in korb.eintraege.values()):
+                    meldungen.append(f"{n}: liegt schon zum Nachbessern im Akten-Eingang.")
+                    continue
+                neu: list[Eintrag] = []
+                self._einlegen(korb, n, "", (eingang / n).read_bytes(), AUSPACK_TIEFE, neu, meldungen)
+                for e in neu:
+                    e.statt = {"name": n, "durch": durch}
+                    e.rolle = "rapport" if n.lower().startswith("rapport") else "beilage"
+                geholt += neu
+        if not geholt:
+            with self.sperre:
+                if not korb.eintraege:      # kein leerer Akten-Eingang bleibt zurück, wenn nichts geholt wurde
+                    self.koerbe.pop(fall, None)
+            raise Fehler("Keines der gewählten Dokumente liess sich zum Nachbessern holen." + (" " + " ".join(meldungen) if meldungen else ""))
+        self.vermerken(fall, "Dokumente zum Nachbessern geholt", f"{len(geholt)} Datei(en), durch {durch}: {', '.join(e.statt['name'] for e in geholt)}",
+                       sitzung=getattr(sitzung, "kennung", None))
+        return {"ziel": fall, "eintraege": [e.kurz() for e in geholt], "meldungen": meldungen,
+                "meldung": f"{len(geholt)} Dokument(e) liegen jetzt im Akten-Eingang dieses Falls. Dort «pseudonymisieren» wählen, die Stellen ersetzen und danach "
+                           "aufnehmen: Die nachgebesserte Fassung ersetzt dann die alte." + (" " + " ".join(meldungen) if meldungen else "")}
 
     def eingang_pruefen(self, d: dict) -> dict:
         """Ein Dokument, das von Hand in den Eingang kopiert wurde, geht nachträglich durch die PII-Prüfung. Besteht es, gilt es als geprüft."""
@@ -1028,5 +1084,5 @@ class Bedienung:
 
 
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_risiko", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
-            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente", "zurueckfuehren", "quelle_testen",
-            "abschalten")
+            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "eingang_nachbessern", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente",
+            "zurueckfuehren", "quelle_testen", "abschalten")

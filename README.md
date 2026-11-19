@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 104 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 106 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -564,11 +564,16 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
   einem neutralen Namen (`rapport-01.txt`, `beilage-01.txt`). Welche Datei wie heisst, hält die Ablage ausserhalb des
   Projekts fest.
 - **Ermitteln mit Chat.** Unter «Ermittlung»: Vorgaben eintragen, wenn es welche gibt, und starten. Die Oberfläche
-  steuert Claude Code mit `/ermittlung <Fall-ID>`. Der Verlauf zeigt jeden Schritt: welcher Analyst, welche Abfrage,
-  welcher Beleg, welches Ergebnis. Eine Nachricht an die Ermittlung wartet auf das Ende des laufenden Auftrags oder
-  unterbricht ihn. Anhalten und fortsetzen geht jederzeit. Derselbe Chat steht in den übrigen Ansichten klein am Rand.
+  steuert Claude Code mit `/ermittlung <Fall-ID>`. Über dem Verlauf steht die Lage in einem Satz. Der Verlauf zeigt
+  jeden Schritt in Worten: wer im Team, welche Quelle, was sie gefragt wird, wozu, mit Beleg und Ergebnis. Antworten
+  der Ermittlung erscheinen formatiert, mit Überschriften, Listen und Tabellen. Eine Nachricht an die Ermittlung wartet
+  auf das Ende des laufenden Auftrags oder unterbricht ihn. Anhalten und fortsetzen geht jederzeit. Derselbe Chat steht
+  in den übrigen Ansichten klein am Rand.
+- **Was in den Chat darf.** Jede Eingabe geht durch die PII-Prüfung. Sperrt sie eine Angabe der Täterseite (eine
+  Rufnummer, ein Konto), lässt sich die Nachricht bewusst doch senden: «Trotzdem senden». Das Sitzungsprotokoll hält
+  es fest. Angaben zu Geschädigten gehören nie in den Chat.
 
-![Ermittlung: der Chat mit Vorgaben, Schritten und wartenden Nachrichten](docs/bilder/oberflaeche-ermittlung.png)
+![Ermittlung: Lage, Schritte in Worten mit Zweck, formatierte Antwort](docs/bilder/oberflaeche-ermittlung.png)
 
 - **Pflichtquellen.** Über dem Chat, eingeklappt: anwählen, welche Quellen die Ermittlung abfragen muss. Leer lassen,
   einzeln anwählen oder «Alle auswählen». Was nicht eingerichtet ist, ist gesperrt und nennt den Grund. Der Start der
@@ -578,10 +583,22 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 
 ![Pflichtquellen: Auswahl in drei Gruppen und der Stand laut Protokoll, am Musterfall](docs/bilder/oberflaeche-pflichtquellen.png)
 
-- **Rückfragen.** Braucht Claude Code eine Zustimmung, etwa für eine einzelne aktive Massnahme, erscheint ein Fenster,
-  in jeder Ansicht: erlauben oder ablehnen. «Erst nachsehen» lässt die Ermittlung warten.
+- **Rückfragen.** Braucht die Ermittlung etwas von euch, erscheint ein Fenster, in jeder Ansicht. Stellt sie eine
+  Frage (Werkzeug `AskUserQuestion`), lässt sie sich dort beantworten: mit einer Auswahl oder einer eigenen Antwort.
+  Braucht ein Schritt eine Zustimmung, sagt das Fenster in Worten, was geschehen soll, wozu und warum gefragt wird:
+  eine aktive Massnahme, ein Abruf am Gateway vorbei, ein Befehl. Erlauben oder ablehnen gilt für den einen Aufruf.
+  «Erst nachsehen» lässt die Ermittlung warten.
+- **Wenn Claude Code bei jedem Werkzeug fragt.** Dann wendet es die Erlaubt-Liste des Projekts nicht an, meist weil es
+  dem Projektordner noch nicht vertraut. Das Fenster sagt es, nennt die Schritte zur Abhilfe und bietet «Erlauben und
+  nicht mehr fragen» an: Für den Rest dieser Ermittlung gelten dann die Werkzeuge der Erlaubt-Liste ohne Fenster.
+  Aktive Massnahmen fragen weiter einzeln.
+- **Dokument nachbessern.** Meldet die Ermittlung eine geschützte Angabe, die noch im Klartext dasteht, zeigt die
+  Ansicht «Ermittlung» die Stelle, ohne die Angabe. Unter «Akten» lässt sich das Dokument aus dem Fall holen, auf dem
+  lokalen Bildschirm nachbessern und wieder aufnehmen. Die neue Fassung ersetzt die alte.
 
-![Rückfrage: Claude Code braucht eine Zustimmung, das Fenster nennt Werkzeug und Eingabe](docs/bilder/oberflaeche-rueckfrage.png)
+![Rückfrage: Das Fenster sagt in Worten, was geschehen soll und warum gefragt wird](docs/bilder/oberflaeche-rueckfrage.png)
+
+![Frage der Ermittlung: eine Antwort wählen, mehrere, oder eine eigene schreiben](docs/bilder/oberflaeche-frage.png)
 
 - **Ergebnisse.** Rapport, Protokoll und Datenblätter ansehen, als HTML und PDF einzeln herunterladen oder alles als
   ein Archiv mitnehmen: mit Sitzungsprotokoll und Verlauf, auf Wunsch die ganze Fallakte mit Rohdaten. Jedes Archiv
@@ -1134,6 +1151,9 @@ Was ihr wissen müsst:
 | Strg+V fügt im Assistenten nichts ein (altes Konsolenfenster unter Windows) | Dieses Fenster reicht Strg+V nicht als Text weiter | Rechtsklick fügt ein. Oder Windows Terminal verwenden. |
 | Ein Schlüssel wird mit «enthält keine Leerzeichen» oder «zu kurz» abgewiesen | Beim Kopieren ist etwas mitgekommen oder verloren gegangen | noch einmal kopieren, nur den Schlüssel selbst. Notfalls direkt in `.env` eintragen. |
 | Am Ende steht «Eingerichtet» statt «Einsatzbereit» | Nicht jede Testabfrage kam durch | Die Zeilen mit ✗ nennen den Grund: Schlüssel, Netz oder Proxy. Danach `python3 tools/pruefen.py --live` |
+| In der Oberfläche fragt Claude Code bei jedem Werkzeug nach, auch bei `fall_status` | Claude Code wendet die Erlaubt-Liste des Projekts nicht an: Es vertraut dem Projektordner noch nicht | Ermittlung anhalten, im Terminal im Projektordner einmal `claude` starten, die Frage nach dem Ordner mit Ja bestätigen, `/exit`, in der Oberfläche fortsetzen. Für die laufende Ermittlung: im Fenster «Erlauben und nicht mehr fragen» |
+| Der Chat nimmt eine Nachricht nicht an: «sieht nach Personendaten aus» | Die PII-Prüfung sperrt jede Rufnummer und jedes Konto, sie sieht nicht, wem die Angabe gehört | Gehört sie zur Täterseite: «Trotzdem senden». Gehört sie zu Geschädigten: den Platzhalter verwenden |
+| Die Ermittlung meldet eine Angabe im Klartext | Im Dokument steht noch eine geschützte Angabe | Unter «Akten»: Dokument wählen, «Gewählte nachbessern», auf dem lokalen Bildschirm ersetzen, wieder aufnehmen |
 | Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
@@ -1174,7 +1194,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 104 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 106 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1374,6 +1394,25 @@ PowerShell 7:
   **Nicht geprüft:** eure Vorlage und ein Dokument aus eurem Haus. Die Prüfung erkennt die Seite an üblichen
   Überschriften und Marken (`tools/schutzumfang.py`), nicht an euren. Ob ein Agent die neuen Regeln in einer echten
   Ermittlung einhält, ist ebenfalls nicht geprüft: Es sind Anweisungen an ein Sprachmodell, keine Sperre.
+- Die Ermittlung lässt sich seit dem 19.11.2026 in der Oberfläche verstehen und führen. Anlass war derselbe Lauf des
+  Eigentümers: Eine Frage der Ermittlung erschien als Rohtext und liess sich nicht beantworten, Claude Code fragte für
+  ein Werkzeug der Erlaubt-Liste nach, und der Verlauf nannte Werkzeuge bei ihrem technischen Namen.
+  **Geändert:** Eine Frage der Ermittlung (`AskUserQuestion`) erscheint mit ihrer Auswahl und lässt sich beantworten.
+  Eine Zustimmung sagt in Worten, was geschehen soll, wozu und warum gefragt wird. Fragt Claude Code für ein Werkzeug
+  der Erlaubt-Liste, sagt die Oberfläche, dass es die Liste nicht anwendet, nennt die Abhilfe und fragt auf Wunsch für
+  den Rest der Ermittlung nicht mehr. Der Chat zeigt die Lage in einem Satz, jeden Schritt in Worten mit seinem Zweck
+  und die Antworten formatiert. Eine gesperrte Nachricht mit einer Angabe der Täterseite lässt sich bewusst doch
+  senden. Meldet die Ermittlung eine geschützte Angabe im Klartext, zeigt die Oberfläche die Stelle, und das Dokument
+  lässt sich aus dem Fall holen, nachbessern und ersetzen.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux, Chromium), mit einem Programm, das Claude Code spielt, am
+  Musterfall: die vier Fenster (Erlaubt-Liste, Frage, aktive Massnahme, Abruf am Gateway vorbei), die Antworten bei
+  dem Programm, der Chat mit Tabelle und Listen, kein Fehler in der Konsole, keine Anfrage nach aussen. Zwei neue
+  Selbsttests prüfen dasselbe ohne Browser, dazu die Worte für jedes Werkzeug des Gateways.
+  **Nicht geprüft: mit dem echten Claude Code.** Die Form der Antwort auf eine Frage folgt seiner Dokumentation (gelesen
+  am 19.11.2026): Dass es sie auf dem Weg der Rückfrage annimmt, ist daraus geschlossen. Den Wortlaut, mit dem es
+  meldet, dass es die Erlaubt-Liste nicht anwendet, habe ich nicht gesehen. Die Oberfläche verlässt sich deshalb auch
+  auf das zweite Zeichen: eine Rückfrage für ein Werkzeug, das auf der Liste steht. Befehle und Dateien fragen in einem
+  Ordner ohne Vertrauen weiter einzeln.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1397,7 +1436,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten» und «Risiko übernehmen»: Jede der 27 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen» und «nachbessern»: Jede der 28 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,

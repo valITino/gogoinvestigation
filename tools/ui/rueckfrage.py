@@ -38,6 +38,11 @@ def fragen(tool_name: str, eingabe: object, tool_use_id: str = "") -> dict:
     except (OSError, ValueError, urllib.error.URLError):
         return ablehnung
     if antwort.get("erlauben") is True:
+        antworten = antwort.get("antworten")
+        if isinstance(antworten, dict) and antworten and isinstance(eingabe, dict):
+            # Eine Frage der Ermittlung an den Sachbearbeiter (AskUserQuestion): Die Antworten gehen in der Eingabe zurück, je Frage
+            # ihr Wortlaut als Schlüssel. So beschreibt es die Dokumentation von Claude Code (gelesen am 19.11.2026).
+            return {"behavior": "allow", "updatedInput": {**eingabe, "answers": {str(k): str(v) for k, v in antworten.items()}}}
         # Die Eingabe geht unverändert zurück. Ältere Fassungen von Claude Code verlangen das Feld, bei sehr grossen Eingaben
         # sprengt die Kopie die Grenze für Werkzeugausgaben (Dokumentation: ab etwa 40 KB weglassen).
         klein = isinstance(eingabe, dict) and len(json.dumps(eingabe, ensure_ascii=False)) < GROSSE_EINGABE

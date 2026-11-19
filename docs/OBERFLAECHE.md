@@ -479,16 +479,35 @@ lässt sich einklappen.
 - **Vorgaben.** Vor dem Start nimmt das Feld Vorgaben auf: ein Schwerpunkt, eine Eingrenzung, ein Hinweis. Sie gehen
   mit dem Auftrag `/ermittlung <Fall-ID>` an Claude Code. Der Skill berücksichtigt sie im Plan. Vorgaben ersetzen keine
   Freigabe.
-- **Jeder Schritt im Verlauf.** Antworten der Ermittlung, jeder Auftrag an einen Analysten, jeder Werkzeugaufruf mit
-  Ziel, Beleg (`P-0007`, anklickbar) und Ergebnis (Treffer, kein Treffer, Fehlschlag), jede Rückfrage mit ihrem
-  Entscheid. «Jeden Schritt zeigen» blendet die Einzelschritte aus, wenn nur die Nachrichten interessieren.
+- **Die Lage in einem Satz.** Über dem Verlauf steht, was gerade gilt: «Die Ermittlung läuft. 12 Schritte bisher.
+  Gerade: Infrastruktur, Shodan …», «Die Ermittlung wartet auf dich: Sie hat eine Frage», «angehalten», «abgeschlossen».
+- **Jeder Schritt im Verlauf, in Worten.** Ein Werkzeugaufruf steht als Satz da: welche Quelle, was sie gefragt wird, zu
+  welchem Ziel («Shodan: offene Dienste, Zertifikate und Betreiber einer IP · 203.0.113.7»). Darunter steht der Zweck,
+  den die Ermittlung für die Abfrage angibt, und der Name des Werkzeugs, wie er im Protokoll steht (`shodan_host`).
+  Dazu Beleg (`P-0007`, anklickbar) und Ergebnis (Treffer, kein Treffer, Fehlschlag). Das Team steht mit Namen da, die
+  ein Mensch liest: Ermittlungsleitung, Infrastruktur, Blockchain. Die Worte kommen aus einer Stelle im Code
+  (`tools/ui/worte.py`). Ein Selbsttest hält sie mit den Werkzeugen des Gateways in Deckung.
+- **Antworten der Ermittlung sind formatiert.** Überschriften, Listen, Tabellen und Hervorhebungen erscheinen als
+  solche, nicht als Rohtext mit Sternchen und Strichen. Ein Beleg in der Antwort führt zu seiner Ansicht. Adressen aus
+  einer Antwort sind nie anklickbar. Das Skript baut dafür Elemente und setzt nie HTML ein.
+- **«Jeden Schritt zeigen»** blendet die Einzelschritte aus, wenn nur die Nachrichten interessieren.
 - **Nachrichten.** Arbeitet die Sitzung nicht, setzt eine Nachricht sie fort. Arbeitet sie, wartet die Nachricht auf das
   Ende des laufenden Auftrags und lässt sich bis dahin zurücknehmen, oder sie unterbricht ihn («Jetzt unterbrechen und
   senden»). Strg+Eingabe sendet.
 - **Anhalten, fortsetzen, neu starten.** Anhalten beendet den laufenden Schritt. Fortsetzen nimmt dieselbe Sitzung
   wieder auf, auch nach einem Neustart der Oberfläche: Sie findet die letzte Sitzung zum Fall im Sitzungsprotokoll.
-- **Was hier steht, liest das Sprachmodell.** Jede Eingabe geht durch dieselbe PII-Prüfung wie ein Dokument. Findet sie
-  etwas, geht nichts hinaus, und die Meldung zeigt die Stelle maskiert.
+- **Was hier steht, liest das Sprachmodell.** Jede Eingabe geht durch die strenge PII-Prüfung. Findet sie etwas, geht
+  nichts hinaus, und die Meldung zeigt die Stelle maskiert.
+- **«Trotzdem senden».** Einer Nachricht sieht die Prüfung nicht an, zu wem eine Angabe gehört. Gehört sie zur
+  Täterseite (eine Rufnummer, ein Konto), kann der Sachbearbeiter die gesperrte Nachricht bewusst doch senden: Der
+  Knopf erscheint unter der Meldung. Das Sitzungsprotokoll und der Verlauf halten fest, dass trotz Fund gesendet wurde
+  und wie viele Stellen es betraf. Dasselbe gilt für Vorgaben und für eine eigene Antwort auf eine Frage der
+  Ermittlung. Angaben zu Geschädigten, zur Verfasserin oder zum Verfasser und zur Dienststelle gehören nie in den Chat.
+- **Vor dem Start.** Vertraut Claude Code dem Projektordner noch nicht, sagt die Ansicht das und wie es sich beheben
+  lässt (siehe «Rückfragen»).
+- **Meldungen zu den Dokumenten.** Meldet die Ermittlung eine geschützte Angabe, die noch im Klartext dasteht
+  (`arbeitsstand/klartext.json`), zeigt die Ansicht die Stellen: Dokument, Zeile und Art der Angabe, nie die Angabe
+  selbst. Von dort führt ein Knopf zu den Akten, wo sich das Dokument nachbessern lässt (siehe «Dokument nachbessern»).
 - **Am Ende.** Hat die Ermittlung Befunde und einen Rapport hinterlassen, erzeugt die Oberfläche Ermittlungsprotokoll,
   PDF und Datenblätter und bietet «Ergebnisse ansehen» an.
 
@@ -531,11 +550,34 @@ werden muss. Am Terminal zeigt `python3 tools/fall.py quellen <Fall-ID>` dieselb
 
 ### Rückfragen
 
-Braucht ein Werkzeugaufruf eine Zustimmung, erscheint ein Fenster über der Ansicht, in jeder Ansicht und auch, wenn
-gerade ein anderer Fall offen ist. Es nennt den Fall, das Werkzeug und die Eingabe im Wortlaut. Der Titel des
-Browser-Reiters zeigt die Rückfrage an.
+Braucht die Ermittlung etwas vom Sachbearbeiter, erscheint ein Fenster über der Ansicht, in jeder Ansicht und auch,
+wenn gerade ein anderer Fall offen ist. Der Titel des Browser-Reiters zeigt die Rückfrage an. Es gibt zwei Arten.
+
+**Die Ermittlung fragt dich.** Stellt die Ermittlung eine Frage (Werkzeug `AskUserQuestion` von Claude Code), zeigt das
+Fenster sie mit ihrer Auswahl: eine Antwort wählen, mehrere, oder eine eigene schreiben. «Antworten» schickt die
+Antwort an die Ermittlung, «Nicht beantworten» sagt ihr, sie solle selbst eine vertretbare Annahme treffen und sie
+nennen. Frage und Antwort stehen im Verlauf und im Sitzungsprotokoll. Eine eigene Antwort geht durch dieselbe Prüfung
+wie eine Nachricht.
+
+**Ein Schritt braucht deine Zustimmung.** Das Fenster sagt in Worten, was Claude Code tun will, zu welchem Ziel und
+wozu, und warum es fragt. Die Eingabe im Wortlaut und der Name des Werkzeugs stehen eingeklappt unter «Einzelheiten».
+
+| Warum gefragt wird | Was das Fenster sagt | Knöpfe |
+|---|---|---|
+| Aktive Massnahme (`urlquery_einreichen`, `urlscan_einreichen`, `wayback_sichern`, `webcheck_aktiv`) | was das Ziel davon bemerkt | Erlauben, Ablehnen. Immer einzeln. |
+| Abruf am Gateway vorbei (`WebFetch`, `WebSearch`) | er stünde in keinem Protokoll. Empfehlung: ablehnen | Ablehnen, Trotzdem erlauben |
+| Das Werkzeug steht auf der Erlaubt-Liste des Projekts | Claude Code wendet die Liste nicht an, meist weil es dem Projektordner noch nicht vertraut | Erlauben, Erlauben und nicht mehr fragen, Ablehnen |
+| Ein Befehl oder eine Datei auf keiner Liste | der Befehl oder die Datei | Erlauben, Ablehnen |
 
 - **Erlauben** gilt für diesen einen Aufruf. **Ablehnen** auch. Ohne Antwort innert 30 Minuten gilt die Frage als abgelehnt.
+- **«Erlauben und nicht mehr fragen»** gibt es nur bei einem Werkzeug, das beim Namen auf der Erlaubt-Liste des Projekts
+  steht (`.claude/settings.json`, `permissions.allow`). Danach erlaubt die Oberfläche für den Rest dieser Ermittlung
+  alle solchen Werkzeuge ohne Fenster und zählt im Verlauf mit. Aktive Massnahmen, Befehle, Dateien und alles ohne
+  Eintrag fragen weiter einzeln. Eine neue Ermittlung fragt wieder. Wer das entschieden hat, steht im Sitzungsprotokoll.
+- **So entfällt die Frage künftig.** Claude Code wendet die Erlaubt-Liste eines Projekts erst an, wenn der Mensch dem
+  Ordner vertraut hat: einmal im Terminal im Projektordner `claude` starten, die Frage nach dem Ordner mit Ja
+  bestätigen, mit `/exit` beenden. Die Einrichtung und der Start der Oberfläche führen dorthin. Fehlt das Ja trotzdem,
+  sagt es die Ansicht «Ermittlung» vor dem Start, und das Fenster nennt die Schritte.
 - **«Erst nachsehen»** blendet das Fenster aus und lässt einen Balken stehen. Die Ermittlung wartet.
 - Mehrere Rückfragen (Hauptsitzung und Analysten) kommen nacheinander, in der Reihenfolge ihres Eingangs.
 - Eine Rückfrage stellt Claude Code für jeden Aufruf, den die Einstellungen des Projekts weder erlauben noch verbieten.
@@ -562,6 +604,23 @@ Die Ansicht «Ergebnisse» sammelt, was die Ermittlung hinterlassen hat:
 Jedes Archiv enthält `INHALT.txt`: jede Datei mit Grösse und SHA-256, der Stand der Protokollkette und, was fehlt oder
 älter ist als die Daten. Das Archiv entsteht im Speicher und liest die Fallakte nur. Es enthält die pseudonymisierte
 Akte, keinen Klartext.
+
+### Dokument nachbessern
+
+Für ein Dokument, das schon im Fall liegt und in dem noch eine geschützte Angabe im Klartext steht. Anlass ist meist
+eine Meldung der Ermittlung: Sie verwendet die Angabe nicht, nennt die Stelle (Dokument und Zeile) und trägt sie in
+`arbeitsstand/klartext.json` ein. Die Ansicht «Ermittlung» zeigt die Meldung.
+
+1. Unter «Akten» das Dokument auswählen und **«Gewählte nachbessern»** öffnen, Kürzel eintragen, «Zum Nachbessern holen»
+   (`eingang_nachbessern`). Das Dokument kommt in den Akten-Eingang dieses Falls. Im Fall bleibt es vorerst liegen.
+2. Im Akten-Eingang «pseudonymisieren»: Das Dokument öffnet sich auf dem lokalen Bildschirm, die Fundstellen sind
+   markiert. Ersetzen, was ersetzt sein muss, und übernehmen.
+3. «In den Fall aufnehmen». Die nachgebesserte Fassung kommt unter dem nächsten freien Namen in den Fall
+   (`rapport-02.txt`), und die alte wird entfernt. Überschrieben wird nie. Das Register der PII-Prüfung hält fest, was
+   wodurch ersetzt wurde, das Sitzungsprotokoll auch. Die Meldung der Ermittlung zum alten Dokument ist damit erledigt.
+
+Läuft zu dem Fall eine Ermittlung, erfährt sie von selbst nichts davon: ihr im Chat sagen, dass sie das Dokument neu
+lesen soll. Solange die geschützte Angabe im Akten-Eingang noch dasteht, ersetzt die Fassung dort nichts.
 
 ### Weitere Funktionen
 
@@ -670,6 +729,19 @@ claude -p "/ermittlung <Fall-ID>" --output-format stream-json --verbose
   als Fenster. Die Karte, mit der sich der MCP-Server bei der Oberfläche ausweist, taugt nur zum Fragen: Erlauben kann
   nur das Browserfenster mit dem Geheimnis. Die Antwort geht als ein Textblock mit JSON zurück, wie die Dokumentation
   es verlangt.
+- **Fragen der Ermittlung.** Das Werkzeug `AskUserQuestion` kommt auf demselben Weg an. Seine Eingabe nennt die Fragen
+  (`questions`, je Frage `question`, `header`, `options` mit `label` und `description`, `multiSelect`). Die Antwort
+  geht als erlaubter Aufruf zurück, mit den Antworten in der Eingabe: `updatedInput` enthält die Fragen unverändert und
+  dazu `answers`, je Frage ihr Wortlaut als Schlüssel und die gewählte Bezeichnung als Wert, mehrere durch Komma
+  getrennt, eine eigene Antwort im Wortlaut. So beschreibt es die Dokumentation von Claude Code für Programme, die
+  Zustimmungen selbst behandeln (gelesen am 19.11.2026). Dass Claude Code die Antwort über `--permission-prompt-tool`
+  ebenso annimmt, ist daraus geschlossen und nicht gesehen.
+- **Erlaubt-Liste und Vertrauen in den Ordner.** Laut derselben Dokumentation wendet Claude Code die Erlaubt-Regeln
+  eines Projekts im Skriptbetrieb nicht an, solange der Mensch dem Ordner nicht vertraut hat. Verbots- und
+  Rückfrage-Regeln, Hooks und MCP-Server gelten trotzdem. Die Oberfläche erkennt das an zwei Zeichen: an der Meldung
+  von Claude Code am Fehlerkanal und daran, dass eine Rückfrage für ein Werkzeug kommt, das beim Namen auf der
+  Erlaubt-Liste steht. Den Wortlaut der Meldung kennt die Oberfläche nicht aus eigener Anschauung: Sie sucht nach
+  «permissions.allow» zusammen mit «trust». Das zweite Zeichen hängt nicht am Wortlaut.
 - **Anhalten und fortsetzen.** Anhalten beendet den Prozess. Claude Code bricht dabei den laufenden Schritt ab. Was bis
   dahin abgefragt wurde, steht im Protokoll. Fortsetzen nimmt dieselbe Sitzung wieder auf (`--resume`) und gibt ihr
   den Auftrag weiterzumachen.
@@ -763,6 +835,17 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Schalter, Antwortform der Rückfrage und die Meldung der MCP-Server beim Start folgen der Dokumentation (gelesen am
   16.11.2026). Nicht nachgelesen ist, ob die Variable `MCP_TOOL_TIMEOUT` eine Rückfrage wirklich 30 Minuten warten
   lässt. Die Probe dafür: `python3 tools/oberflaeche.py --sitzungsprobe`.
+- **Fragen der Ermittlung und Erlaubt-Liste.** Nach der Rückmeldung des Eigentümers vom 19.11.2026 kam an seinem
+  Arbeitsplatz eine Frage der Ermittlung (`AskUserQuestion`) als Rückfrage bei der Oberfläche an: Sie erschien als
+  Rohtext und liess sich nicht beantworten. Seither zeigt die Oberfläche sie mit Auswahl und schickt die Antwort
+  zurück. Ob das echte Claude Code die Antwort in dieser Form annimmt, ist nicht geprüft: Die Form folgt der
+  Dokumentation, und die Probe deckt diesen Fall nicht ab. Ebenso nicht geprüft: der Wortlaut, mit dem Claude Code
+  meldet, dass es die Erlaubt-Liste nicht anwendet, und ob «Erlauben und nicht mehr fragen» in einer echten
+  Ermittlung alle Fragen zu Werkzeugen des Gateways abstellt. Befehle und Dateien fragen in einem Ordner ohne
+  Vertrauen weiter einzeln: Ihre Regeln gleicht nur Claude Code selbst ab.
+- **Formatierte Antworten.** Die Oberfläche liest die gängigen Formen von Markdown: Überschriften, Listen (auch
+  verschachtelt), Tabellen, Hervorhebung, Text im Wortlaut, Zitate. Anderes bleibt als Text stehen, zum Beispiel
+  Bilder, Fussnoten und HTML. Geprüft ist Chromium.
 - **Pflichtquellen.** Ob das Team sie in einer echten Ermittlung abarbeitet, ist nicht geprüft: Das hängt an der
   Steuerung mit dem echten Claude Code. Geprüft ist die Auswertung am Protokoll und dass der Rapport eine Lücke meldet.
   Zu einem Indikator gehört eine Abfrage, wenn sie seinen Wert zum Ziel hatte, Grundlage einer Auswertung zu ihm ist
