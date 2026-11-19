@@ -30,7 +30,7 @@ from collections import Counter
 from typing import Any
 
 from . import krypto_listen
-from .kern import Abbruch, Vorgang, einstellung, saeubern
+from .kern import Abbruch, Vorgang, einstellung, saeubern, schluessel_aus
 from .krypto_ketten import KETTEN, Kette, Quellfehler, gleich, tron_gesperrt
 
 OFAC_URLS = (
@@ -74,6 +74,11 @@ def etikett(quelle: str, art: str, name: str, detail: str = "", dienst: bool = F
     if beleg:
         d["beleg"] = beleg
     return d
+
+
+def _ohne(name: str, fehlt: str) -> str:
+    """Der Hinweis, wenn eine Quelle ausgelassen wird: Der Sachbearbeiter hat sie ausgeschaltet, oder ihr Schlüssel fehlt."""
+    return "Vom Sachbearbeiter ausgeschaltet." if schluessel_aus(name) else fehlt
 
 
 def _schluessel(adresse: str) -> str:
@@ -341,7 +346,7 @@ class Zuordner:
     async def _tronscan(self, adresse: str) -> list[dict]:
         key = einstellung("TRONSCAN_API_KEY")
         if not key:
-            self._melden("Tronscan", "aus", hinweis="TRONSCAN_API_KEY fehlt. Ohne ihn gibt es für TRON keine Namen von Börsen und Diensten.")
+            self._melden("Tronscan", "aus", hinweis=_ohne("TRONSCAN_API_KEY", "TRONSCAN_API_KEY fehlt. Ohne ihn gibt es für TRON keine Namen von Börsen und Diensten."))
             return []
         kopf, ergebnis = {"TRON-PRO-API-KEY": key}, []
         a = await self.v.hole("Tronscan", adresse, "wallet", "https://apilist.tronscanapi.com/api/accountv2", schritt="Etikett der Adresse",
@@ -378,7 +383,7 @@ class Zuordner:
     async def _chainabuse(self, adresse: str) -> list[dict]:
         key = einstellung("CHAINABUSE_API_KEY")
         if not key:
-            self._melden("Chainabuse", "aus", hinweis="CHAINABUSE_API_KEY fehlt.")
+            self._melden("Chainabuse", "aus", hinweis=_ohne("CHAINABUSE_API_KEY", "CHAINABUSE_API_KEY fehlt."))
             return []
         kopf = {"Authorization": "Basic " + base64.b64encode(f"{key}:{key}".encode()).decode()}
         a = await self.v.hole("Chainabuse", adresse, "wallet", "https://api.chainabuse.com/v0/reports", schritt="Betrugsmeldungen zur Adresse",
@@ -404,7 +409,7 @@ class Zuordner:
         kuerzel = {"bitcoin": "btc", "ethereum": "eth", "tron": "trx"}.get(kette.name)
         if not key or not kuerzel:
             if not key:
-                self._melden("Iknaio", "aus", hinweis="IKNAIO_API_KEY fehlt.")
+                self._melden("Iknaio", "aus", hinweis=_ohne("IKNAIO_API_KEY", "IKNAIO_API_KEY fehlt."))
             return []
         kopf, ergebnis = {"Authorization": key}, []
         a = await self.v.hole("Iknaio", adresse, "wallet", f"https://api.ikna.io/{kuerzel}/addresses/{adresse}/tag_summary",

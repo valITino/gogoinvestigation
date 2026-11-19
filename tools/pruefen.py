@@ -34,7 +34,7 @@ if __name__ == "__main__":
     plattform.start()
 
 from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
-from gateway.quellen import QUELLEN  # noqa: E402
+from gateway.quellen import EINSTELLUNG_AUS, QUELLEN, aus_namen  # noqa: E402
 from tools.einrichten import (CLAUDE_MIN, MODELLE, SNAP_GRUND, anmeldung, benutzervariable, claude_stand, docker_gruppe,  # noqa: E402
                               git_bash, modell_testen, modellzuteilung, snap_lage, snap_unsichtbar, ui)
 
@@ -77,7 +77,7 @@ def env_lesen() -> dict[str, str]:
                     werte[name.strip()] = wert
     for name, wert in os.environ.items():
         if wert.strip():
-            werte.setdefault(name, wert.strip())
+            werte[name] = wert.strip()      # wie im Gateway: Was in der Umgebung gesetzt ist, gilt vor der Datei
     return werte
 
 
@@ -278,7 +278,11 @@ def modelle(nur_merken: bool) -> dict:
 def quellen(env: dict[str, str]) -> list:
     abschnitt("Quellen")
     bereit = []
+    abgeschaltet = aus_namen(env.get(EINSTELLUNG_AUS))     # vom Sachbearbeiter ausgeschaltet: weder bereit noch ein fehlender Schlüssel
     for q in QUELLEN:
+        if q.name in abgeschaltet:
+            zeile(AUS, q.name, "ausgeschaltet (einschalten: Oberfläche, Seite «Quellen»)")
+            continue
         if q.name == "ransomware.live":
             ok = bool(env.get(q.env)) or env.get("RANSOMWARE_LIVE_V2") == "1"
         elif q.name == "Web-Check":
@@ -293,7 +297,7 @@ def quellen(env: dict[str, str]) -> list:
             zeile(AUS, q.name, "aus: Instanz läuft nicht")
         else:
             zeile(AUS, q.name, f"aus: {q.env} fehlt in .env  →  {q.woher}")
-    fehlend = len(QUELLEN) - len(bereit)
+    fehlend = len(QUELLEN) - len(bereit) - len(abgeschaltet)
     if fehlend:
         schritte.append(f"Schlüssel für {fehlend} Quelle(n) eintragen, wenn ihr sie braucht: {SETUP} und «Einstellungen ändern», "
                         "oder direkt in .env. Jede Quelle ist für sich optional.")
@@ -447,10 +451,13 @@ def kurzfassung(bereit: list, tests: tuple[int, int]) -> list[list[str]]:
     zeilen += fehler
     zeilen.append(["gut" if bereit else "aus", "Quellen", f"{len(bereit)} von {len(QUELLEN)} bereit"])
     namen = {q.name for q in bereit}
-    ohne = [q.name for q in QUELLEN if q.name not in namen and q.env]
+    abgeschaltet = aus_namen(plattform.einstellung(EINSTELLUNG_AUS))       # vom Sachbearbeiter ausgeschaltet: Dort fehlt nichts
+    ohne = [q.name for q in QUELLEN if q.name not in namen and q.env and q.name not in abgeschaltet]
     if ohne:
         zeilen.append(["aus", "Ohne Schlüssel", ", ".join(ohne)])
-    if "Web-Check" not in namen:
+    if abgeschaltet:
+        zeilen.append(["aus", "Ausgeschaltet", ", ".join(q.name for q in QUELLEN if q.name in abgeschaltet)])
+    if "Web-Check" not in namen and "Web-Check" not in abgeschaltet:
         zeilen.append(["aus", "Web-Check", "aus: Die Instanz läuft nicht"])
     return zeilen
 

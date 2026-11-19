@@ -11,6 +11,12 @@ geprüften Dienste stehen als Vorlagen in `tools/_vorlagen.py`, die Selbsttests 
 steht die Antwort des Anbieters in `faelle/SELBSTTEST/rohdaten/`, und der Endpunkt lässt sich in der genannten
 Datei anpassen.
 
+**Eine Quelle ausschalten.** Wer eine Quelle an seinem Arbeitsplatz nicht fragen will oder darf, schaltet sie aus: in
+der Oberfläche auf der Seite «Quellen», oder mit `OSINT_QUELLEN_AUS` in `.env` (Namen aus der ersten Spalte, durch
+Komma getrennt). Das Gateway führt ihre Werkzeuge dann nicht aus, ein gebündeltes Werkzeug lässt sie aus und sagt es,
+und ihr Schlüssel bleibt stehen. Einen Schalter haben 20 der 28 Quellen. Welche acht keinen haben und warum, steht in
+[docs/OBERFLAECHE.md](OBERFLAECHE.md#quellen-verwalten).
+
 ## Über das Gateway
 
 | Quelle | Werkzeug | Abfrage | Stand |

@@ -19,6 +19,7 @@ const zustand = { fall: null, ansicht: "", adresse: "", lauf: 0, spurStand: 0, s
   bedienung: false, geheimnis: "", auswahl: {}, warteschlange: null, hochgeladen: null, titel: "OSINT-Arbeitsplatz",
   chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null }, rueckfrage: "", rueckfrageTimer: null,
   fehler: { zahl: 0, gesehen: 0, lauf: "", gemeldet: 0 },      // Fehlerprotokoll: Fehler in diesem Lauf, wie viele davon schon gesehen sind, was dieses Fenster selbst gemeldet hat
+  quellen: { filter: "", suche: "", offen: new Set() },        // Seite «Quellen»: Filter, Suche und was aufgeklappt ist, bleiben über ein Speichern hinweg
   aus: false };       // wahr nach «Alles abschalten»: Der Server ist beendet, das Fenster fragt nichts mehr ab
 const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einzelne Datei im Akten-Eingang
 
@@ -97,6 +98,52 @@ function hinweisZeigen(text) {
   feld.zeit = setTimeout(() => { feld.hidden = true; }, 15000);
 }
 
+/* ---------- Rückfrage vor einem Schritt, Eingabe eines Namens: ein eigenes Fenster statt der Dialoge des Browsers ---------- */
+
+function dialogZeigen({ titel, text, ja = "Ja", nein = "Abbrechen", gefahr = false, eingabe = null }) {
+  // Gibt bei einer Rückfrage wahr oder falsch zurück, bei einer Eingabe den Text oder null. Esc und ein Klick daneben brechen ab.
+  return new Promise((fertig) => {
+    const vorher = document.activeElement;
+    const ebene = el("div", { klasse: "dialog-ebene" });
+    const feld = eingabe !== null ? el("input", { type: "text", value: eingabe, "aria-labelledby": "dialog-text", autocomplete: "off", spellcheck: "false" }) : null;
+    const knopfJa = el("button", { type: "button", klasse: gefahr ? "gefahr" : "haupt", text: ja });
+    const knopfNein = el("button", { type: "button", text: nein });
+    const dialog = el("div", { klasse: "dialog" + (gefahr ? " gefahr" : ""), role: gefahr ? "alertdialog" : "dialog", "aria-modal": "true", "aria-labelledby": "dialog-titel", "aria-describedby": "dialog-text" },
+      el("h2", { id: "dialog-titel", text: titel }), el("p", { id: "dialog-text", text }), ...(feld ? [feld] : []), el("div", { klasse: "knopfzeile" }, knopfJa, knopfNein));
+    const ziele = [feld, knopfJa, knopfNein].filter(Boolean);
+    const ende = (wert) => {
+      document.removeEventListener("keydown", tasten, true);
+      ebene.remove();
+      if (vorher && vorher.isConnected && vorher.focus) vorher.focus();
+      fertig(wert);
+    };
+    const tasten = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); ende(feld ? null : false); }
+      else if (e.key === "Enter" && feld && document.activeElement === feld) { e.preventDefault(); ende(feld.value); }
+      else if (e.key === "Tab") {         // der Fokus bleibt im Fenster
+        e.preventDefault();
+        const i = ziele.indexOf(document.activeElement);
+        ziele[(i + (e.shiftKey ? ziele.length - 1 : 1) + ziele.length) % ziele.length].focus();
+      }
+    };
+    knopfJa.addEventListener("click", () => ende(feld ? feld.value : true));
+    knopfNein.addEventListener("click", () => ende(feld ? null : false));
+    ebene.addEventListener("mousedown", (e) => { if (e.target === ebene) ende(feld ? null : false); });
+    document.addEventListener("keydown", tasten, true);
+    ebene.append(dialog);
+    document.body.append(ebene);
+    // Bei einem Schritt, der etwas entfernt oder beendet, steht der Fokus auf «Abbrechen»: Die Eingabetaste löst ihn nicht versehentlich aus
+    (feld || (gefahr ? knopfNein : knopfJa)).focus();
+    if (feld) feld.select();
+  });
+}
+
+function fragen(frage, ja, gefahr) {
+  // Die Frage eines Formulars: Ihr erster Satz wird die Überschrift, der Rest die Erklärung. Der Knopf zum Bestätigen heisst wie der Schritt
+  const m = String(frage).match(/^(.{3,110}?\?)\s+([\s\S]+)$/);
+  return dialogZeigen({ titel: m ? m[1] : "Bitte bestätigen", text: m ? m[2] : String(frage), ja: (ja || "Ja").trim(), gefahr: Boolean(gefahr) });
+}
+
 const auswahlName = (bereich) => bereich.dataset.auswahl + ":" + (bereich.dataset.ziel || bereich.dataset.fall || "");
 
 async function formularSenden(form) {
@@ -112,8 +159,10 @@ async function formularSenden(form) {
     angaben.namen = gewaehlt;
   }
   if (form.classList.contains("aufnehmen")) angaben.ids = gewaehlt;
-  if (form.dataset.frage && !confirm(form.dataset.frage)) return;
   const knopf = $("button[type=submit]", form);
+  if (form.dataset.frage && !(await fragen(form.dataset.frage, knopf.textContent, form.hasAttribute("data-gefahr")))) return;
+  // Ein Schlüssel bleibt nie im Feld stehen: Er ist in den Angaben, das Feld wird gleich geleert
+  for (const geheim of $$("input[type=password]", form)) geheim.value = "";
   knopf.disabled = true;
   ergebnisZeigen(feld, { meldung: "Läuft …" });
   try {
@@ -301,7 +350,7 @@ async function korbAktion(bereich, knopf, gemerkt) {
   const ziel = bereich.dataset.ziel || "", art = knopf.dataset.korb, feld = $("[data-korb-ergebnis]", bereich);
   const ids = knopf.dataset.id ? [knopf.dataset.id] : Array.from(gemerkt);
   if (!ids.length) return;
-  if (knopf.dataset.frage && !confirm(knopf.dataset.frage)) return;
+  if (knopf.dataset.frage && !(await fragen(knopf.dataset.frage, knopf.textContent, true))) return;
   try {
     if (art === "pseudo" || art === "pseudo-auswahl") {
       // In der Reihenfolge der Tabelle, und nur, was sich lesen lässt
@@ -311,8 +360,8 @@ async function korbAktion(bereich, knopf, gemerkt) {
       return await naechstesDokument(ziel);
     }
     if (art === "umbenennen") {
-      const neu = prompt("Neuer Name der Datei (die Endung bleibt):", knopf.dataset.name || "");
-      if (!neu) return;
+      const neu = await dialogZeigen({ titel: "Datei umbenennen", text: "Neuer Name der Datei. Die Endung bleibt.", ja: "Umbenennen", eingabe: knopf.dataset.name || "" });
+      if (!neu || !neu.trim()) return;
       await senden("/api/aktion/korb_umbenennen", { ziel, id: ids[0], name: neu });
     } else if (art === "rolle" || art === "rolle-auswahl") await senden("/api/aktion/korb_rolle", { ziel, ids, rolle: knopf.dataset.rolle });
     else if (art === "verschieben") { const daten = await senden("/api/aktion/korb_verschieben", { ziel, ids, nach: $("[data-korb-nach]", bereich).value }); gemerkt.clear(); hinweisZeigen(daten.meldung); }
@@ -571,13 +620,13 @@ function chatHoehe() {
   feld.style.height = Math.max(440, mitte.clientHeight - oben - 18) + "px";
 }
 
-async function chatSenden(aktion, zusatz, textfeld, frage) {
+async function chatSenden(aktion, zusatz, textfeld, frage, ja) {
   const c = zustand.chat, feld = c.feld;
   if (!feld) return;
   const eingabe = $("textarea", feld), ergebnis = $(".chat-eingabe .ergebnis", feld);
   const text = eingabe.value.trim();
   if (textfeld === "text" && !text) { ergebnisZeigen(ergebnis, null, "Bitte zuerst eine Nachricht schreiben."); eingabe.focus(); return; }
-  if (frage && !confirm(frage)) return;
+  if (frage && !(await fragen(frage, ja))) return;
   const knoepfe = $$("[data-chat-knoepfe] button", feld);
   knoepfe.forEach(k => { k.disabled = true; });
   try {
@@ -622,7 +671,7 @@ function chatKnoepfe(d) {
   } else if (d.sitzung || d.frueher) {
     knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true, "Setzt die Sitzung mit dieser Nachricht fort (Strg+Eingabe)");
     knopf("Fortsetzen", () => chatSenden("ermittlung_fortsetzen", {}, ""), false, "Setzt die Sitzung fort, wo sie aufgehört hat");
-    knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt von vorn, mit dem Text im Feld als Vorgabe. Was schon abgefragt ist, bleibt im Protokoll."), false,
+    knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt von vorn, mit dem Text im Feld als Vorgabe. Was schon abgefragt ist, bleibt im Protokoll.", "Neu starten"), false,
       "Beginnt eine neue Sitzung mit /ermittlung. Der Text im Feld geht als Vorgabe mit");
   } else knopf("Ermittlung starten", () => chatSenden("ermittlung_starten", {}, "vorgaben"), true, "Startet Claude Code mit /ermittlung für diesen Fall. Der Text im Feld geht als Vorgabe mit");
 }
@@ -837,6 +886,39 @@ function fehlerEinrichten(wurzel, daten) {
   filtern();
 }
 
+/* ---------- Seite «Quellen»: filtern und suchen. Was aufgeklappt war, bleibt es nach einem Speichern ---------- */
+
+function quellenEinrichten(wurzel) {
+  const seite = $("[data-quellen]", wurzel);
+  if (!seite) return;
+  const merk = zustand.quellen, eintraege = $$("li.quelle", seite), knoepfe = $$("[data-quellen-filter]", seite);
+  const suche = $("[data-quellen-suche]", seite), zahl = $("[data-quellen-zahl]", seite), nichts = $("[data-quellen-nichts]", seite);
+  suche.value = merk.suche;
+  const texte = new Map(eintraege.map(li => [li, (li.dataset.suche + " " + $(".quelle-zweck", li).textContent).toLocaleLowerCase("de-CH")]));
+  for (const li of eintraege) {
+    const mehr = $("details.quelle-mehr", li);
+    mehr.open = merk.offen.has(li.dataset.name);
+    mehr.addEventListener("toggle", () => { if (mehr.open) merk.offen.add(li.dataset.name); else merk.offen.delete(li.dataset.name); });
+    const oeffnen = $("[data-schluessel-oeffnen]", li), feld = $("input[name=wert]", li);
+    if (oeffnen && feld) oeffnen.addEventListener("click", () => { mehr.open = true; feld.focus(); feld.scrollIntoView({ block: "nearest" }); });
+  }
+  const filtern = () => {
+    const q = suche.value.trim().toLocaleLowerCase("de-CH");
+    let n = 0;
+    for (const li of eintraege) {
+      const zeigen = (!merk.filter || li.dataset.stand === merk.filter) && (!q || texte.get(li).includes(q));
+      li.hidden = !zeigen;
+      n += zeigen ? 1 : 0;
+    }
+    for (const k of knoepfe) k.setAttribute("aria-pressed", String(k.dataset.quellenFilter === merk.filter));
+    zahl.textContent = `${n} von ${eintraege.length} Quellen`;
+    nichts.hidden = n > 0;
+  };
+  suche.addEventListener("input", () => { merk.suche = suche.value; filtern(); });
+  for (const k of knoepfe) k.addEventListener("click", () => { merk.filter = k.dataset.quellenFilter; filtern(); });
+  filtern();
+}
+
 function fehlerMelden(meldung, einzelheiten) {
   // Ein Fehler im Skript dieses Fensters. Höchstens zwanzig je Fenster: Ein Fehler in einer Schleife füllt das Protokoll nicht
   const f = zustand.fehler;
@@ -929,6 +1011,7 @@ async function laden() {
     einrichten(mitte, a);
     bedienungEinrichten(mitte);
     fehlerEinrichten(mitte, daten);
+    quellenEinrichten(mitte);
     chatEinrichten(a);
     if (a.ansicht === "rapport" && a.arg) { const ziel = document.getElementById(a.arg); if (ziel) { ziel.scrollIntoView(); ziel.classList.add("ziel"); } }
     else mitte.scrollTop = gleiche ? hoehe : 0;        // dieselbe Ansicht neu geladen: Die Stelle bleibt

@@ -21,7 +21,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from .kern import FREMD, Abbruch, Fall, Vorgang, Zweck, einstellung, werkzeug
+from .kern import FREMD, Abbruch, Fall, Vorgang, Zweck, einstellung, schluessel_aus, werkzeug
 from .krypto_adressen import erkennen
 from .krypto_fluss import Graf, Grenzen, btc_fluss, btc_start, ergebnis as fluss_ergebnis, konto_fluss, muster, nacharbeit
 from .krypto_ketten import (BEGEHRT, BEKANNT, KETTEN, Kette, Quellfehler, Wert, adresse_normal, btc_adresse, btc_tx, btc_txs,
@@ -615,7 +615,9 @@ async def _transaktion_konto(v: Vorgang, z: Zuordner, k: Kette, t: dict, quelle:
             befund["gegenpruefung"] = {"ergebnis": "nicht möglich", "grund": "Für TRON ist keine zweite, unabhängige Quelle eingerichtet."}
         elif not einstellung("ETHERSCAN_API_KEY") or quelle == "Etherscan":
             befund["gegenpruefung"] = {"ergebnis": "nicht möglich",
-                                       "grund": "Die Gegenprüfung braucht Blockscout und Etherscan (ETHERSCAN_API_KEY) nebeneinander."}
+                                       "grund": ("Die Gegenprüfung braucht Blockscout und Etherscan nebeneinander, und Etherscan ist an diesem Arbeitsplatz "
+                                                 "ausgeschaltet." if schluessel_aus("ETHERSCAN_API_KEY") else
+                                                 "Die Gegenprüfung braucht Blockscout und Etherscan (ETHERSCAN_API_KEY) nebeneinander.")}
         else:
             try:
                 belege, t2, _ = await evm_tx(v, k, t["tx"], schritt="Gegenprüfung bei zweiter Quelle", nur="etherscan")

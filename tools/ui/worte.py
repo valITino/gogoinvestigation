@@ -200,6 +200,8 @@ BEHEBEN = ("Die Ermittlung anhalten (Knopf «Anhalten» im Chat).",
            "Claude Code mit /exit beenden.",
            "Hier im Chat «Fortsetzen» wählen.")
 OHNE_VERTRAUEN = LISTE_RUHT + " Beheben: " + " ".join(f"({n}) {s}" for n, s in enumerate(BEHEBEN, 1))
+# Schlüssel und Schalter der Quellen: Das Gateway liest sie, wenn es startet, und es startet mit jeder Sitzung von Claude Code neu
+AB_WANN = "Das gilt für Ermittlungen, die danach starten oder fortgesetzt werden. Eine laufende arbeitet mit dem Stand von ihrem Start."
 
 
 def zustimmung(werkzeug: str, eingabe: object, alle: dict[str, list[str]] | None = None) -> dict:

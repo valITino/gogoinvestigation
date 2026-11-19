@@ -51,7 +51,7 @@ STUFEN = {"fehler": "Fehler", "hinweis": "Hinweis"}
 BEREICHE = ("Oberfläche", "Aktion", "Ermittlung", "Werkzeug", "Browser")
 # Aktionen, deren Absage im Wortlaut festgehalten wird: Ihre Meldungen nennen weder einen Dateinamen noch eine Eingabe des
 # Sachbearbeiters. Alles andere steht ohne Wortlaut da, auch jede Aktion, die später dazukommt und hier nicht eingetragen ist.
-MIT_WORTLAUT = ("anmelden", "rueckfrage", "fall_loeschen", "freigabe", "pflichtquellen", "dokumente", "quelle_testen", "abschalten", "fehler_", "ermittlung_")
+MIT_WORTLAUT = ("anmelden", "rueckfrage", "fall_loeschen", "freigabe", "pflichtquellen", "dokumente", "quelle_", "abschalten", "fehler_", "ermittlung_")
 GEHEIM_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSW|AUTH|CREDENTIAL|GEHEIM", re.I)
 SCHLUESSELDATEI = ".env"        # im Projektordner. Gelesen werden hier nur die Namen der Einstellungen
 # Was nach einem Schlüssel aussieht, auch wenn sein Wert hier nicht bekannt ist: in einer Adresse, in einer Kopfzeile, als Zuweisung

@@ -32,7 +32,7 @@ from urllib.parse import urlsplit
 from . import plattform
 from .akte import PROJEKT, freigabe_erteilt
 from .krypto_adressen import erkennen
-from .quellen import QUELLEN, ROBIN, VORGABEN, Vorgabe
+from .quellen import EINSTELLUNG_AUS, QUELLEN, ROBIN, VORGABEN, Vorgabe, aus_namen
 
 SCHLUESSEL = "pflichtquellen"
 BRAUCHBAR = ("ok", "kein_treffer")
@@ -114,17 +114,21 @@ def waehlbar(fall: dict | None = None, nur: set[str] | None = None) -> list[dict
     """Was sich als Pflichtquelle vorgeben lässt: je Eintrag Name, Gruppe, ob die Quelle bereit ist und wofür sie fällig würde.
     `nur`: bloss diese Namen (die Erreichbarkeit von Web-Check kostet eine Verbindung, die sonst niemand braucht)."""
     aus = []
+    abgeschaltet = aus_namen(plattform.einstellung(EINSTELLUNG_AUS))        # vom Sachbearbeiter ausgeschaltet (Seite «Quellen»)
     for q in QUELLEN:
         if nur is not None and q.name not in nur:
             continue
         v = VORGABEN[q.name]
-        if q.name == "ransomware.live":
+        if q.name in abgeschaltet:
+            bereit = False
+        elif q.name == "ransomware.live":
             bereit = bool(plattform.einstellung(q.env)) or plattform.einstellung("RANSOMWARE_LIVE_V2") == "1"
         elif q.name == "Web-Check":
             bereit = _erreichbar(plattform.einstellung("WEBCHECK_URL", "http://127.0.0.1:3000"))
         else:
             bereit = q.env is None or q.auch_ohne or bool(plattform.einstellung(q.env))
-        grund = "" if bereit else ("die Instanz läuft nicht" if q.name == "Web-Check" else f"der Schlüssel {q.env} fehlt")
+        grund = "" if bereit else ("sie ist ausgeschaltet" if q.name in abgeschaltet else
+                                   "die Instanz läuft nicht" if q.name == "Web-Check" else f"der Schlüssel {q.env} fehlt")
         aus.append({"name": q.name, "gruppe": "mit Schlüssel" if q.env else "ohne Schlüssel", "bereit": bereit, "grund": grund, "zweck": q.zweck,
                     "faellig": faellig_text(v), "kurz": faellig_kurz(v), "freigabe": "", "freigabe_fehlt": False})
     if nur is None or ROBIN in nur:

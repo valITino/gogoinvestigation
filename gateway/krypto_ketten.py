@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from functools import partial
 from typing import Any
 
-from .kern import Abbruch, Antwort, Vorgang, einstellung, saeubern
+from .kern import Abbruch, Antwort, Vorgang, einstellung, saeubern, schluessel_aus
 from .krypto_adressen import eip55, tron_aus_hex, tron_zu_hex
 
 SEITE = 200          # Zahlungen je Abruf auf Konto-Ketten. Wer mehr Abgänge hat, gilt als Sammeladresse
@@ -389,6 +389,9 @@ def evm_anbieter(kette: Kette) -> list[dict]:
         liste.append({"quelle": "Blockscout", "art": "blockscout", "basis": kette.blockscout})
     if einstellung("ETHERSCAN_API_KEY"):
         liste.append({"quelle": "Etherscan", "art": "etherscan", "basis": "https://api.etherscan.io/v2/api"})
+    if not liste and schluessel_aus("ETHERSCAN_API_KEY"):
+        raise Abbruch(f"{kette.anzeige} lässt sich nur über Etherscan abfragen, und Etherscan ist an diesem Arbeitsplatz ausgeschaltet "
+                      "(Oberfläche, Seite «Quellen»). Abfrage nicht ausgeführt: als Lücke melden.")
     if not liste:
         raise Abbruch(f"{kette.anzeige} lässt sich nur mit einem Etherscan-Schlüssel abfragen (ETHERSCAN_API_KEY in .env, "
                       "https://etherscan.io/apidashboard). Gnosis, Base und BNB Smart Chain verlangen dort ein bezahltes Abo.")

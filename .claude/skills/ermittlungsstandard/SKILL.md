@@ -10,6 +10,8 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
 ## Vor der Abfrage
 
 1. `mcp__osint__fall_status` zeigt Freigaben und eingerichtete Quellen. Was nicht bereit ist, wird nicht versucht.
+   Steht bei einer Quelle `ausgeschaltet`, hat der Sachbearbeiter sie ausgeschaltet: nicht abfragen, auch auf keinem
+   anderen Weg, und unter Lücken melden. Mit den übrigen Quellen arbeitest du weiter.
 2. Abgefragt wird nur, was dir im Auftrag zugeteilt wurde, plus Pivots mit belegter Verbindung.
 3. `zweck` nennt Fundstelle und Frage: «Anmelde-IP aus Rapport Ziff. 3: VPN oder Privatanschluss?»
 4. Günstig vor teuer: zuerst Quellen ohne Kontingent (InternetDB, Wayback, Web-Check passiv), dann die mit Kontingent.
@@ -19,7 +21,8 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
    deiner Indikatoren aus den Eingangsdokumenten fragst du jede davon, die zu ihm passt, auch wenn dir eine andere
    Quelle genügt hätte. `pflichtquellen.offen` ist die Arbeitsliste. Der Zweck nennt die Vorgabe und die Fundstelle:
    «Pflichtquelle laut Vorgabe. IP aus Rapport Ziff. 3: Betreiber?» Schlägt die Abfrage fehl, wiederholst du sie nicht:
-   Sie gilt als gefragt und gehört unter Lücken. Fehlt eine Freigabe oder ein Schlüssel, meldest du das und umgehst es nie.
+   Sie gilt als gefragt und gehört unter Lücken. Fehlt eine Freigabe oder ein Schlüssel, oder ist die Quelle
+   ausgeschaltet, meldest du das und umgehst es nie.
    Pivots sind ausgenommen. Eine Suchquelle (4chan, Telegram, Robin) fragst du mindestens einmal, mit einem Begriff aus dem Fall.
 
 ## Ergebnis lesen
@@ -29,7 +32,7 @@ Dieser Standard gilt für jeden, der in einem Fall abfragt oder Befunde formulie
 | `ok` | Die Quelle hat geantwortet. | Auswerten. Zahlen und Daten wörtlich übernehmen. |
 | `kein_treffer` | Die Quelle kennt den Indikator nicht. | Als Feststellung festhalten: «Bei X nicht bekannt». Das ist kein Freispruch. |
 | `fehler` | Abfrage fehlgeschlagen (Kontingent, Schlüssel, Störung). | Nicht wiederholen. Andere Quelle wählen, unter Lücken melden. |
-| `nicht_ausgefuehrt` | Freigabe oder Schlüssel fehlt, Eingabe ungültig. | Meldung lesen, unter Lücken melden. Nie umgehen. |
+| `nicht_ausgefuehrt` | Freigabe oder Schlüssel fehlt, die Quelle ist ausgeschaltet, Eingabe ungültig. | Meldung lesen, unter Lücken melden. Nie umgehen. |
 
 Reicht die Kurzfassung im Ergebnis nicht, liest du die Rohdatei (`rohdaten` im Ergebnis) mit Read.
 

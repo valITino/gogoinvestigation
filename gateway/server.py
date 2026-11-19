@@ -48,7 +48,11 @@ async def fall_status(fall: Fall) -> dict:
     akte = fall_laden(fall)
     eintraege = protokoll_lesen(akte.protokoll)
     quellen = []
+    aus = kern.ausgeschaltet()
     for q in QUELLEN:
+        if q.name in aus:       # vom Sachbearbeiter ausgeschaltet: nicht bereit, und es fehlt kein Schlüssel
+            quellen.append({"quelle": q.name, "bereit": False, "ausgeschaltet": True, "werkzeuge": list(q.werkzeuge)})
+            continue
         if q.name == "ransomware.live":
             bereit = bool(einstellung(q.env)) or einstellung("RANSOMWARE_LIVE_V2") == "1"
         else:

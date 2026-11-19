@@ -238,10 +238,73 @@ details.fehler-erklaerung{margin:18px 0 0;max-width:104ch;font-size:13.5px}
 details.fehler-erklaerung>summary{cursor:pointer;font-weight:600}
 details.fehler-erklaerung ul{margin:6px 0;padding-left:22px}
 
+/* Rückfrage vor einem Schritt und Eingabe eines Namens: ein eigenes Fenster statt der Dialoge des Browsers */
+.dialog-ebene{position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;z-index:60;padding:20px;animation:einblenden .12s ease-out}
+.dialog{background:var(--flaeche);border:1px solid var(--rand);border-radius:12px;max-width:520px;width:100%;padding:20px 22px 16px;box-shadow:0 16px 48px rgba(0,0,0,.35)}
+.dialog.gefahr{border-top:3px solid var(--kritisch)}
+.dialog h2{font-size:18px;margin:0 0 8px;padding:0;border:0;overflow-wrap:anywhere}
+.dialog p{margin:0 0 16px;color:var(--tinte-2);overflow-wrap:anywhere}
+.dialog input[type=text]{width:100%;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:6px 9px;margin:0 0 16px}
+.dialog .knopfzeile{justify-content:flex-end;gap:8px;margin:0}
+.dialog .knopfzeile button{padding:6px 16px;font-weight:600}
+button.gefahr{background:var(--kritisch);border-color:var(--kritisch);color:#fff}
+button.gefahr:hover{background:var(--kritisch);filter:brightness(1.1)}
+@keyframes einblenden{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.dialog-ebene{animation:none}}
+
+/* Seite «Quellen»: Zahlen, Filter, je Quelle eine Zeile mit Stand, Knöpfen und dem Feld für den Schlüssel */
+.kacheln.quellen-zahlen{max-width:760px}
+.quellen-zahlen .wert .klein{font-size:15px;font-weight:400}
+.listenfilter{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:10px 0 8px;position:sticky;top:-22px;background:var(--flaeche);padding:8px 0;z-index:2}
+.listenfilter input[type=search]{flex:0 1 300px;min-width:200px;padding:4px 9px}
+ul.quellenliste{list-style:none;margin:0;padding:0;border:1px solid var(--rand);border-radius:10px;overflow:hidden}
+ul.quellenliste>li{margin:0;padding:11px 14px 9px 11px;border-left:3px solid transparent;border-bottom:1px solid var(--raster)}
+ul.quellenliste>li:last-child{border-bottom:0}
+ul.quellenliste>li[hidden]{display:none}
+ul.quellenliste>li.s-bereit{border-left-color:var(--gut)}
+ul.quellenliste>li.s-aus{background:var(--seite)}
+ul.quellenliste>li.s-aus h3,ul.quellenliste>li.s-aus .quelle-zweck{color:var(--tinte-2)}
+.quelle-kopf{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.quelle-kopf h3{font-size:15.5px;margin:0;padding:0;border:0}
+.quelle-schluessel{font-size:12.5px;color:var(--tinte-2)}
+.quelle-knoepfe{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;justify-content:flex-end}
+.quelle-knoepfe form.aktion.klein-form{margin:0}
+.quelle-knoepfe .knoepfe{margin:0}
+.quelle-knoepfe .knoepfe button{padding:3px 10px;font-weight:400;font-size:13px}
+.quelle-knoepfe .ergebnis{max-width:440px;font-size:13px;text-align:left}
+.quelle-knoepfe .ergebnis .banner,.quelle-knoepfe .ergebnis .meldung{margin:6px 0 0}
+p.quelle-zweck{margin:4px 0 2px;font-size:13.5px;max-width:110ch}
+details.quelle-mehr{font-size:13px;margin-top:2px}
+details.quelle-mehr>summary{cursor:pointer;color:var(--tinte-2)}
+details.quelle-mehr dl.felder{margin:8px 0;max-width:110ch;font-size:13px}
+.quelle-verwalten{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-end;margin:8px 0 6px;padding:10px 12px;border:1px solid var(--rand);border-radius:8px;background:var(--seite);max-width:860px}
+.quelle-verwalten form.aktion{margin:0}
+form.schluessel-form{flex:1 1 380px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:end}
+form.schluessel-form .feld{margin:0}
+form.schluessel-form .knoepfe{margin:0}
+form.schluessel-form .ergebnis{grid-column:1/-1}
+form.schluessel-form .ergebnis:empty{display:none}
+form.schluessel-form .ergebnis .banner,form.schluessel-form .ergebnis .meldung{margin:0}
+p.quelle-schluessel-hilfe{flex-basis:100%;margin:0}
+.quelle-knoepfe>button{padding:3px 10px;font-size:13px}
+ul.quellenliste>li.s-fehlt .quelle-knoepfe>button{border-color:var(--serie);color:var(--serie);font-weight:600}
+.feld input[type=password]{width:100%;font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:6px 8px}
+p.liste-leer{border:1px dashed var(--achse);border-radius:10px;padding:18px;text-align:center;color:var(--tinte-2);margin:14px 0}
+p.liste-leer[hidden]{display:none}
+details.quellen-hinweis{max-width:110ch;margin:4px 0 12px}
+details.quellen-hinweis ul{margin:6px 0;padding-left:22px}
+
+/* Während eine Ansicht lädt: ein schmaler Balken am oberen Rand, statt dass nichts geschieht */
+#mitte[aria-busy=true]::before{content:"";position:sticky;display:block;top:-22px;margin:-22px -28px 19px;height:3px;background:linear-gradient(90deg,transparent,var(--serie),transparent);
+  background-size:40% 100%;background-repeat:no-repeat;animation:laden 1s linear infinite}
+@keyframes laden{from{background-position:-40% 0}to{background-position:140% 0}}
+@media (prefers-reduced-motion:reduce){#mitte[aria-busy=true]::before{animation:none;background:var(--serie)}}
+
 /* Meldung, die einen Wechsel der Ansicht übersteht */
 #hinweis{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(720px,90vw);background:var(--tinte);color:var(--flaeche);border-radius:8px;
   padding:9px 12px 9px 16px;display:flex;gap:12px;align-items:flex-start;z-index:40;box-shadow:0 6px 22px rgba(0,0,0,.3);font-size:14px}
 #hinweis[hidden]{display:none}
 #hinweis button{background:none;border:0;color:inherit;font-size:18px;line-height:1;padding:0 4px}
 
-@media print{#rand,#rueckfrage-ebene,#hinweis,.auswahlleiste,.ablegen{display:none}}
+@media print{#rand,#rueckfrage-ebene,#hinweis,.auswahlleiste,.ablegen,.dialog-ebene,.listenfilter,.quelle-knoepfe,.quelle-verwalten,details.quellen-hinweis{display:none}
+  #mitte[aria-busy=true]::before{display:none}}

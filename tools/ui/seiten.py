@@ -255,16 +255,55 @@ def faelle_seite(bedienbar: bool = False) -> str:
                                                 "<code>python3 tools/fall.py neu &lt;Fall-ID&gt; --titel \"…\" --rapport &lt;Dokument&gt;</code>.") + "</p>"))
 
 
-def quellen_seite() -> str:
-    zeilen = []
-    for q in daten.quellen():
-        farbe = "gut" if q["stand"] in ("eingerichtet", "kein Schlüssel nötig") else "warnung" if "gedrosselt" in q["stand"] else "leer"
-        zeilen.append([esc(q["name"]), esc(q["zweck"]), f'<span class="marke z-{farbe}">{esc(q["stand"])}</span>',
-                       esc(", ".join(q["werkzeuge"])) or '<span class="klein">über ein gebündeltes Werkzeug</span>',
-                       esc(", ".join(f"{w}: Freigabe {f}" for w, f in q["freigabe"].items())), esc(q["hinweis"])])
+QUELLE_STAND = {      # Stand einer Quelle -> (Merkmal für den Filter, Farbe, Marke)
+    "ausgeschaltet": ("aus", "leer", "⏻ ausgeschaltet"), "eingerichtet": ("bereit", "gut", "✓ bereit"), "kein Schlüssel nötig": ("bereit", "gut", "✓ bereit"),
+    "läuft ohne Schlüssel, gedrosselt": ("bereit", "warnung", "✓ bereit, gedrosselt"), "nicht eingerichtet": ("fehlt", "leer", "○ Schlüssel fehlt")}
+
+
+def quellen_seite(knoepfe=None, verwalten=None, hinweis: str = "") -> str:
+    """Die Quellen dieses Arbeitsplatzes: je Quelle eine Zeile mit Stand, Zweck und Einzelheiten, darüber Zahlen und ein Filter.
+    Von Schlüsseln steht hier nur der Name der Variablen und ob einer eingetragen ist, nie ein Wert.
+    `knoepfe`, `verwalten`: was die bedienbare Oberfläche je Quelle dazusetzt (tools/ui/formulare.py). Ohne sie liest die Seite nur."""
+    quellen = daten.quellen()
+    merkmal = {q["name"]: QUELLE_STAND[q["stand"]][0] for q in quellen}
+    zahl = {m: sum(1 for v in merkmal.values() if v == m) for m in ("bereit", "fehlt", "aus")}
+    kacheln = "".join(f'<div class="kachel"><div class="wert">{wert}</div><div class="name">{esc(name)}</div><div class="zusatz">{esc(zusatz)}</div></div>' for wert, name, zusatz in (
+        (f"{zahl['bereit']} <span class='klein'>von {len(quellen)}</span>", "Quellen bereit", f"{sum(1 for q in quellen if not q['schluessel'])} brauchen keinen Schlüssel"),
+        (str(zahl["fehlt"]), "nicht eingerichtet", "der Schlüssel fehlt, jede Quelle ist für sich freiwillig"), (str(zahl["aus"]), "ausgeschaltet", "das Gateway fragt sie nicht")))
+    eintraege = []
+    for q in quellen:
+        _m, farbe, marke = QUELLE_STAND[q["stand"]]
+        schluessel = (f'<span class="quelle-schluessel"><span class="mono">{esc(q["schluessel"])}</span> '
+                      + ("aus der Umgebung des Terminals" if q["aus_umgebung"] else "eingetragen" if q["gesetzt"] else "nicht eingetragen") + "</span>"
+                      if q["schluessel"] else '<span class="quelle-schluessel">kein Schlüssel nötig</span>')
+        angaben = [("Werkzeuge", f'<span class="mono">{esc(", ".join(q["werkzeuge"]))}</span>' if q["werkzeuge"] else "über ein gebündeltes Werkzeug (ip_einordnung oder die Blockchain-Werkzeuge)")]
+        if q["freigabe"]:
+            angaben.append(("Freigabe nötig", esc(", ".join(f"{w}: Freigabe {f}" for w, f in q["freigabe"].items()))))
+        if q["hinweis"]:
+            angaben.append(("Hinweis", esc(q["hinweis"])))
+        if q["woher"]:
+            angaben.append(("Schlüssel bekommen", f'<span class="mono">{esc(q["woher"])}</span>'))
+        if q["ohne_schalter"]:
+            angaben.append(("Kein Schalter", esc("Diese Quelle lässt sich nicht ausschalten. " + q["ohne_schalter"])))
+        eintraege.append(
+            f'<li class="quelle s-{merkmal[q["name"]]}" data-stand="{merkmal[q["name"]]}" data-name="{esc(q["name"])}" '
+            f'data-suche="{esc(" ".join([q["name"], q["schluessel"], *q["werkzeuge"]]).lower())}">'
+            f'<div class="quelle-kopf"><h3>{esc(q["name"])}</h3><span class="marke z-{farbe}">{marke}</span>{schluessel}'
+            + (f'<div class="quelle-knoepfe">{knoepfe(q)}</div>' if knoepfe else "") + "</div>"
+            f'<p class="quelle-zweck">{esc(q["zweck"])}</p>'
+            f'<details class="quelle-mehr"><summary>{"Einzelheiten und Schlüssel" if verwalten and q["schluessel"] else "Einzelheiten"}</summary>'
+            '<dl class="felder">' + "".join(f"<dt>{esc(name)}</dt><dd>{wert}</dd>" for name, wert in angaben) + "</dl>"
+            + (verwalten(q) if verwalten else "") + "</details></li>")
     return ("<h1>Quellen</h1><p class='unter'>Was das Gateway befragen kann und ob die Quelle an diesem Arbeitsplatz eingerichtet ist. "
-            "Von Schlüsseln zeigt die Oberfläche nur, ob einer gesetzt ist.</p>"
-            + tabelle(["Quelle", "Wozu", "Stand", "Werkzeuge", "Freigabe nötig", "Hinweis"], zeilen, "Quellen"))
+            "Von Schlüsseln zeigt die Oberfläche nur, ob einer gesetzt ist, nie den Wert.</p>" + hinweis
+            + f'<div data-quellen><div class="kacheln quellen-zahlen">{kacheln}</div>'
+            '<div class="listenfilter" role="group" aria-label="Quellen filtern">'
+            '<input type="search" data-quellen-suche placeholder="Quelle oder Werkzeug suchen" aria-label="Quelle oder Werkzeug suchen">'
+            + "".join(f'<button type="button" aria-pressed="{"true" if not wert else "false"}" data-quellen-filter="{wert}">{esc(text)}</button>'
+                      for wert, text in (("", "alle"), ("bereit", "bereit"), ("fehlt", "Schlüssel fehlt"), ("aus", "ausgeschaltet")))
+            + '<span class="klein" data-quellen-zahl></span></div>'
+            f'<ul class="quellenliste" aria-label="Quellen">{"".join(eintraege)}</ul>'
+            '<p class="liste-leer" data-quellen-nichts hidden>Keine Quelle passt zu diesem Filter.</p></div>')
 
 
 PFLICHT_MARKE = {"erfuellt": ("✓ erfüllt", "gut"), "offen": ("○ offen", "kritisch"), "fehlgeschlagen": ("✕ Fehlschlag", "warnung"),

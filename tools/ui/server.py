@@ -404,7 +404,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
         if weg == ["fehler"]:           # ohne Geheimnis nur der Hinweis, wo das Fehlerprotokoll zu sehen ist
             return self.json({"titel": "Fehlerprotokoll", "html": formulare.fehler_lesen(self.bedienung is not None)})
         if weg == ["quellen"]:
-            return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + formulare.quellen_bedienung(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
+            return self.json({"titel": "Quellen", "html": formulare.quellen_seite(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
         if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt, und wer hier antwortet. Das Geheimnis steht hier nie
             from tools import dienste
             # Prozess und Projekt: Daran prüft «tools/dienste.py aus», dass hinter einem Merker wirklich diese Oberfläche steht

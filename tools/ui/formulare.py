@@ -19,7 +19,8 @@ from tools import _pseudo as ps
 from tools._html import TYPEN as INDIKATOR_TYPEN
 from tools.pii_pruefung import pruefen as pii_pruefen
 from tools.ui import daten, fehlerbuch
-from tools.ui.seiten import esc, pfad, pflichtquellen_html, pflichtquellen_kurz, tabelle
+from tools.ui.seiten import esc, pfad, pflichtquellen_html, pflichtquellen_kurz, quellen_seite as quellen_ansicht, tabelle
+from tools.ui.worte import AB_WANN
 
 KLARTEXT_BAND = ('<div class="klartext-band" role="note"><b>lokal, Klartext</b> Dieser Bildschirm zeigt echte Angaben. Sie bleiben auf diesem Rechner: '
                  "im Speicher der Oberfläche und in der Ablage ausserhalb des Projektordners. Kein Sprachmodell sieht sie, und sie stehen in keinem Protokoll.</div>")
@@ -57,11 +58,15 @@ def wahl(name: str, text: str, werte: list[tuple[str, str]], gewaehlt: str = "")
             + "".join(f'<option value="{esc(w)}"{" selected" if w == gewaehlt else ""}>{esc(t)}</option>' for w, t in werte) + "</select></div>")
 
 
-def formular(aktion: str, inhalt: str, knopf: str, *, verborgen: dict | None = None, danach: str = "", klasse: str = "", frage: str = "") -> str:
-    """Ein Formular der Bedienung. `danach`: Adresse, die nach Erfolg geöffnet wird. `frage`: Rückfrage vor dem Absenden."""
+def formular(aktion: str, inhalt: str, knopf: str, *, verborgen: dict | None = None, danach: str = "", klasse: str = "", frage: str = "",
+             gefahr: bool = False) -> str:
+    """Ein Formular der Bedienung. `danach`: Adresse, die nach Erfolg geöffnet wird. `frage`: Rückfrage vor dem Absenden.
+    `gefahr`: Die Rückfrage gilt einem Schritt, der etwas entfernt oder beendet. Ihr Knopf zum Bestätigen ist dann rot, und der Fokus
+    steht auf «Abbrechen»."""
     fest = "".join(f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k, v in (verborgen or {}).items())
     return (f'<form class="aktion {esc(klasse)}" data-aktion="{esc(aktion)}"{f" data-danach={chr(34)}{esc(danach)}{chr(34)}" if danach else ""}'
-            f'{f" data-frage={chr(34)}{esc(frage)}{chr(34)}" if frage else ""}>{fest}{inhalt}<div class="knoepfe"><button type="submit">{esc(knopf)}</button></div>'
+            f'{f" data-frage={chr(34)}{esc(frage)}{chr(34)}" if frage else ""}{" data-gefahr" if gefahr and frage else ""}>{fest}{inhalt}'
+            f'<div class="knoepfe"><button type="submit">{esc(knopf)}</button></div>'
             '<div class="ergebnis" aria-live="polite"></div></form>')
 
 
@@ -158,7 +163,7 @@ def akten_seite(bedienung, ziel: str) -> str:
                       "warum. Der Bericht der Prüfung in der Zeile nennt die Stellen. Ersetzen geht weiterhin: «pseudonymisieren».</p>"
                       + formular("korb_risiko", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True)
                                  + feld("grund", "Begründung", pflicht=True, platzhalter="Angaben werden für die Ermittlung gebraucht") + "</div>",
-                                 "Risiko übernehmen für die gewählten Dateien", verborgen={"ziel": ziel}, danach="neu-laden", klasse="mit-auswahl", frage=RISIKO_FRAGE)
+                                 "Risiko übernehmen für die gewählten Dateien", verborgen={"ziel": ziel}, danach="neu-laden", klasse="mit-auswahl", frage=RISIKO_FRAGE, gefahr=True)
                       + (formular("korb_risiko", "", "Für die gewählten Dateien zurücknehmen", verborgen={"ziel": ziel, "zurueck": "1"}, danach="neu-laden",
                                   klasse="mit-auswahl still") if gewagt else "") + "</details>")
         h.append(f'<h2>Im Akten-Eingang ({len(eintraege)})</h2><p class="klein">{bereit} bereit, {pii} mit Personendaten, '
@@ -258,7 +263,7 @@ def eingang_teil(fall_id: str, bedienbar: bool = True) -> str:
                "entfernt wurde. Was ein Agent schon gelesen hat, bleibt im Protokoll belegt.</p>"
              + formular("eingang_entfernen", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + feld("grund", "Grund", pflicht=True, platzhalter="falsches Dokument")
                         + "</div>", "Entfernen", verborgen={"fall": fall_id, "namen": ""}, danach="neu-laden", klasse="mit-auswahl",
-                        frage="Die gewählten Dokumente aus dem Eingang des Falls entfernen?") + "</details>"
+                        frage="Die gewählten Dokumente aus dem Eingang des Falls entfernen?", gefahr=True) + "</details>"
              + ("<details><summary>Gewählte in einen anderen Fall verschieben</summary><p class='klein'>Das Dokument wird im anderen Fall aufgenommen (mit PII-Prüfung) und hier entfernt.</p>"
                 + formular("eingang_verschieben", '<div class="felder-raster">' + wahl("nach", "Nach Fall", [(f, f) for f in andere]) + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True)
                            + "</div>", "Verschieben", verborgen={"fall": fall_id, "namen": ""}, danach="neu-laden", klasse="mit-auswahl") + "</details>" if andere else "")
@@ -597,7 +602,7 @@ def bedienen_seite(fall: daten.Fall, bedienung) -> str:
     h.append("<h2>Fall löschen</h2>" + (f"<p class='klein'>{esc(grund)}</p>" if grund else
              "<p class='klein'>In diesem Fall wurde noch nichts abgefragt. Er lässt sich löschen, zum Beispiel nach einer falschen Fall-ID.</p>"
              + formular("fall_loeschen", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + "</div>", "Fall löschen",
-                        verborgen={"fall": fid}, danach="#/", frage=f"Fall {fid} mit allen Dokumenten in seinem Eingang löschen?")))
+                        verborgen={"fall": fid}, danach="#/", frage=f"Fall {fid} mit allen Dokumenten in seinem Eingang löschen?", gefahr=True)))
     return "\n".join(h)
 
 
@@ -631,7 +636,7 @@ def arbeitsplatz_seite(bedienung) -> str:
     zeilen.insert(1, ["Ermittlung", f'<span class="marke z-gut">läuft</span> {esc(", ".join(laufend))}' if laufend else '<span class="marke z-leer">läuft keine</span>'])
     knopf = (formular("abschalten", "<p>Hält laufende Ermittlungen an, stoppt Robin und Web-Check und beendet die Oberfläche. Gelöscht wird nichts: Fallakten, Schlüssel "
                       "und Einstellungen bleiben. Eine angehaltene Ermittlung lässt sich später fortsetzen.</p>", "Alles abschalten",
-                      danach="abgeschaltet", klasse="abschalten", frage=ABSCHALTEN_FRAGE)
+                      danach="abgeschaltet", klasse="abschalten", frage=ABSCHALTEN_FRAGE, gefahr=True)
              if bedienung is not None else NUR_LESEN)
     return ("<h1>Arbeitsplatz</h1><p class='unter'>Was zu diesem Arbeitsplatz gehört und gerade läuft.</p>"
             + tabelle(["Was", "Stand"], zeilen, "Was läuft")
@@ -725,7 +730,7 @@ def fehler_seite(bedienung) -> str:
     else:
         h.append('<div class="knopfzeile fehler-knoepfe"><button type="button" class="haupt" data-fehler-kopieren>Alles kopieren</button>'
                  '<button type="button" data-fehler-speichern>Als Datei speichern</button>'
-                 + formular("fehler_leeren", "", "Leeren", danach="neu-laden", klasse="klein-form", frage=FEHLER_LEEREN_FRAGE)
+                 + formular("fehler_leeren", "", "Leeren", danach="neu-laden", klasse="klein-form", frage=FEHLER_LEEREN_FRAGE, gefahr=True)
                  + '<span class="klein" data-fehler-meldung role="status" aria-live="polite"></span></div>'
                  '<p class="fehler-durchsehen"><b>Vor dem Weitergeben durchsehen.</b> Schlüssel, Pfade und erkannte Angaben (Rufnummer, IBAN …) sind ersetzt. '
                  "Namen erkennt die Bereinigung nicht, und technische Angaben aus einem Fall (IP-Adresse, Domain) bleiben stehen.</p>"
@@ -761,28 +766,68 @@ def fehler_seite(bedienung) -> str:
     return "\n".join(h)
 
 
-def quellen_bedienung(bedienung) -> str:
-    """Testabfragen je Quelle, Kontingent, Stand der lokalen Listen. Von Schlüsseln nur die Namen der Variablen."""
+QUELLEN_VERWALTEN = ("<details class='hinweis-vertrauen quellen-hinweis'><summary><b>Schlüssel und Schalter.</b> Was hier eingetragen oder umgestellt wird, "
+                     "steht in der Schlüsseldatei des Projekts.</summary>"
+                     "<ul><li>Einen Schlüssel einfügen und speichern: Er geht von diesem Fenster an den lokalen Server und in die Schlüsseldatei, sonst nirgends hin. "
+                     "Die Oberfläche zeigt ihn danach nie wieder an.</li>"
+                     "<li>Ob ein Schlüssel gilt, zeigt die <b>Testabfrage</b>: eine harmlose Abfrage mit einem öffentlich bekannten Wert, über das Gateway und in der "
+                     "Fallakte SELBSTTEST.</li>"
+                     "<li><b>Ausschalten</b> nimmt eine Quelle aus dem Spiel, ohne ihren Schlüssel zu entfernen: Das Gateway fragt sie dann nicht, "
+                     "und die Ermittlung erfährt, dass sie ausgeschaltet ist.</li>"
+                     f"<li>{AB_WANN}</li></ul></details>")
+
+
+def quellen_knoepfe(q: dict) -> str:
+    """Was sich mit einer Quelle gleich tun lässt: testen, aus- oder einschalten."""
+    test = next((x.test for x in daten.QUELLEN if x.name == q["name"]), None)
+    knoepfe = ""
+    if q["eingerichtet"] and test:
+        knoepfe += formular("quelle_testen", "", "Testabfrage", verborgen={"quelle": q["name"]}, klasse="klein-form")
+        if q["name"] == "urlscan.io":
+            knoepfe += formular("quelle_testen", "", "Kontingent", verborgen={"quelle": q["name"], "kontingent": "1"}, klasse="klein-form")
+    if q["schluessel"] and not q["gesetzt"] and not q["aus_umgebung"]:        # der Weg zum Feld für den Schlüssel, ohne erst aufklappen zu müssen
+        knoepfe += '<button type="button" data-schluessel-oeffnen>Schlüssel eintragen</button>'
+    if q["schaltbar"] and (q["aus"] or q["eingerichtet"]):      # ausschalten lässt sich, was bereit ist. Was ausgeschaltet ist, lässt sich einschalten
+        knoepfe += (formular("quelle_schalten", "", "Einschalten", verborgen={"quelle": q["name"]}, danach="neu-laden", klasse="klein-form") if q["aus"] else
+                    formular("quelle_schalten", "", "Ausschalten", verborgen={"quelle": q["name"], "aus": "1"}, danach="neu-laden", klasse="klein-form still"))
+    return knoepfe
+
+
+def quellen_verwalten(q: dict) -> str:
+    """Der Schlüssel einer Quelle: eintragen, ersetzen, entfernen. Das Feld zeigt nie einen eingetragenen Wert."""
+    if not q["schluessel"]:
+        return ""
+    if q["aus_umgebung"]:
+        return (f'<p class="klein">Der Schlüssel <span class="mono">{esc(q["schluessel"])}</span> ist in der Umgebung des Terminals gesetzt, in dem die Oberfläche '
+                "läuft. Er gilt vor der Schlüsseldatei und lässt sich hier nicht ändern.</p>")
+    kennung = "schluessel-" + "".join(z if z.isalnum() else "-" for z in q["name"].lower())
+    eingabe = (f'<div class="feld"><label for="{kennung}">{"Neuer Schlüssel" if q["gesetzt"] else "Schlüssel"} für {esc(q["name"])} '
+               f'<span class="klein">(<span class="mono">{esc(q["schluessel"])}</span>)</span></label>'
+               f'<input id="{kennung}" name="wert" type="password" required autocomplete="off" spellcheck="false" autocapitalize="off" data-1p-ignore data-lpignore="true" '
+               'placeholder="hier einfügen"></div>')
+    return ('<div class="quelle-verwalten">'
+            + formular("quelle_schluessel", eingabe, "Schlüssel ersetzen" if q["gesetzt"] else "Schlüssel eintragen", verborgen={"quelle": q["name"]}, danach="neu-laden", klasse="schluessel-form")
+            + (formular("quelle_schluessel", "", "Schlüssel entfernen", verborgen={"quelle": q["name"], "entfernen": "1"}, danach="neu-laden", klasse="klein-form still",
+                        frage=f"Den Schlüssel für {q['name']} aus der Schlüsseldatei entfernen? " + (
+                            "Die Quelle läuft danach ohne Schlüssel weiter, gedrosselt." if q["auch_ohne"] else "Die Quelle ist danach nicht mehr eingerichtet."), gefahr=True)
+               if q["gesetzt"] else "")
+            + '<p class="klein quelle-schluessel-hilfe">Nur den Schlüssel selbst einfügen, ohne Namen und Gleichheitszeichen. Die Oberfläche zeigt ihn nicht an, '
+              "auch später nicht.</p></div>")
+
+
+def quellen_seite(bedienung) -> str:
+    """Die Seite «Quellen». Bedienbar lässt sich jede Quelle testen, aus- und einschalten, und ihr Schlüssel eintragen, ersetzen oder
+    entfernen. Im Modus «nur lesen» zeigt die Seite den Stand. Von Schlüsseln nie den Wert, nur den Namen der Variablen."""
     from gateway import krypto_listen as kl
-    zeilen = []
-    for q in daten.quellen():
-        test = next((x.test for x in daten.QUELLEN if x.name == q["name"]), None)
-        knopf = ""
-        if bedienung is not None and q["eingerichtet"] and test:
-            knopf = formular("quelle_testen", "", "Testabfrage", verborgen={"quelle": q["name"]}, klasse="klein-form")
-            if q["name"] == "urlscan.io":
-                knopf += formular("quelle_testen", "", "Kontingent", verborgen={"quelle": q["name"], "kontingent": "1"}, klasse="klein-form")
-        zeilen.append([esc(q["name"]), f'<span class="marke z-{"gut" if q["eingerichtet"] else "leer"}">{esc(q["stand"])}</span>',
-                       f'<span class="mono">{esc(q["schluessel"])}</span>' if q["schluessel"] else "–",
-                       f'<span class="mono">{esc(test[0])}</span>' if test else '<span class="klein">keine Testabfrage</span>', knopf or '<span class="klein">–</span>'])
     try:
         liste = kl.laden()
         stand = (f"Stand {esc(liste.stand['stand'])} vom {esc(liste.stand['datum'])}, {daten.ds.zahl(liste.stand['eintraege'])} Einträge ({esc(liste.stand['umfang'])}), "
                  f"Prüfsumme <span class='mono'>{esc(liste.stand['sha256'])}</span>." + (f" {esc(liste.hinweis)}" if liste.hinweis else ""))
     except kl.Listenfehler as e:
         stand = f'<span class="marke z-kritisch">nicht verwendbar</span> {esc(e)}'
-    return ("<h2>Bereitschaft und Testabfragen</h2><p class='klein'>Eine Testabfrage fragt die Quelle mit einem harmlosen, öffentlich bekannten Wert, über das Gateway und in der "
-            "Fallakte SELBSTTEST. Schlüssel zeigt die Seite nie, nur den Namen der Variablen. Eintragen bleibt bei der Einrichtung (<code>./setup.sh</code>)."
-            + ("" if bedienung is not None else " Testabfragen gibt es nur, wenn die Oberfläche bedienbar gestartet ist.") + "</p>"
-            + tabelle(["Quelle", "Stand", "Variable des Schlüssels", "Testabfrage mit", ""], zeilen, "Bereitschaft der Quellen")
-            + f"<h2>Lokale Listen</h2><p>Etikettenliste für Krypto-Adressen: {stand}</p>")
+    if bedienung is None:
+        seite = quellen_ansicht(hinweis="<p class='klein'>Schlüssel eintragen, Quellen ein- und ausschalten und Testabfragen gibt es, wenn die Oberfläche bedienbar "
+                                        "gestartet ist. Am Terminal: <code>./setup.sh</code> und «Einstellungen ändern».</p>")
+    else:
+        seite = quellen_ansicht(quellen_knoepfe, quellen_verwalten, QUELLEN_VERWALTEN)
+    return seite + f"<h2>Lokale Listen</h2><p>Etikettenliste für Krypto-Adressen: {stand}</p>"

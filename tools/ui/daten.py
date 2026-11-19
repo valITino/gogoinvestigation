@@ -16,6 +16,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import re
 import sys
 import time
@@ -26,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from gateway import pflichtquellen as pq, plattform  # noqa: E402
 from gateway.akte import FAELLE, FREIGABEN, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
-from gateway.quellen import QUELLEN  # noqa: E402
+from gateway.quellen import EINSTELLUNG_AUS, NICHT_SCHALTBAR, QUELLEN, aus_namen, schaltbar  # noqa: E402
 from tools import protokoll as protokollwerkzeug, rapport  # noqa: E402
 from tools.ui import blaetter, darsteller as ds  # noqa: E402
 
@@ -89,12 +90,18 @@ def faelle() -> list[dict]:
 def quellen() -> list[dict]:
     """Das Verzeichnis der Quellen mit dem Stand der Einrichtung. Von Schlüsseln zeigt die Oberfläche nur, ob einer gesetzt ist."""
     aus = []
+    abgeschaltet = aus_namen(plattform.einstellung(EINSTELLUNG_AUS))        # vom Sachbearbeiter ausgeschaltet (Seite «Quellen»)
     for q in QUELLEN:
         gesetzt = bool(plattform.einstellung(q.env)) if q.env else None
-        stand = "kein Schlüssel nötig" if q.env is None else ("eingerichtet" if gesetzt else ("läuft ohne Schlüssel, gedrosselt" if q.auch_ohne else "nicht eingerichtet"))
+        ist_aus = q.name in abgeschaltet
+        stand = "ausgeschaltet" if ist_aus else "kein Schlüssel nötig" if q.env is None else (
+            "eingerichtet" if gesetzt else ("läuft ohne Schlüssel, gedrosselt" if q.auch_ohne else "nicht eingerichtet"))
         aus.append({"name": q.name, "zweck": q.zweck, "werkzeuge": list(q.werkzeuge), "schluessel": q.env or "", "stand": stand,
-                    "eingerichtet": q.env is None or gesetzt or q.auch_ohne, "hinweis": q.hinweis, "woher": q.woher if q.env else "",
-                    "freigabe": dict(q.freigabe)})
+                    "eingerichtet": not ist_aus and bool(q.env is None or gesetzt or q.auch_ohne), "hinweis": q.hinweis, "woher": q.woher if q.env else "",
+                    "freigabe": dict(q.freigabe), "gesetzt": bool(gesetzt), "auch_ohne": q.auch_ohne, "aus": ist_aus,
+                    # Ein Schlüssel aus der Umgebung des Terminals gilt vor der Schlüsseldatei: Die Oberfläche kann ihn nicht ändern
+                    "aus_umgebung": bool(q.env and os.environ.get(q.env, "").strip()),
+                    "schaltbar": schaltbar(q.name), "ohne_schalter": NICHT_SCHALTBAR.get(q.name, "")})
     return aus
 
 
