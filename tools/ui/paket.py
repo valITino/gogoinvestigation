@@ -41,12 +41,16 @@ def dateiname(teile: set[str] | None) -> str:
 
 
 def verlauf_text(verlauf: list[dict]) -> str:
-    """Der Verlauf aus dem Chat als Text: eine Zeile je Eintrag, Nachrichten mit ihrem ganzen Wortlaut."""
+    """Der Verlauf aus dem Chat als Text: eine Zeile je Eintrag, Nachrichten mit ihrem ganzen Wortlaut. Ein Schritt steht in Worten
+    da, wie im Chat. Bei einer Abfrage folgt in Klammern der Name des Werkzeugs, wie er im Protokoll steht, darunter ihr Zweck."""
     zeilen = []
     for z in verlauf:
         zusatz = "".join(f" [{z[k]}]" for k in ("beleg", "ergebnis", "entscheid") if z.get(k))
         text = str(z.get("text", "")).replace("\n", "\n" + " " * 36)
-        zeilen.append(f"{z.get('zeit', ''):<10}{z.get('wer', ''):<26}{text}{zusatz}" + (" [wartet]" if z.get("wartet") else "") + (" [zurückgenommen]" if z.get("zurueck") else ""))
+        werkzeug = f" ({z['technik']})" if z.get("technik") and z.get("quelle") else ""
+        zweck = "\n" + " " * 36 + "Zweck: " + str(z["zweck"]) if z.get("zweck") else ""
+        zeilen.append(f"{z.get('zeit', ''):<10}{z.get('wer', ''):<26}{text}{werkzeug}{zusatz}" + (" [wartet]" if z.get("wartet") else "")
+                      + (" [zurückgenommen]" if z.get("zurueck") else "") + zweck)
     return VERLAUF_KOPF + "\n".join(zeilen) + "\n"
 
 

@@ -15,6 +15,7 @@ from gateway import pflichtquellen as pq
 from gateway.akte import FAELLE, eingang_stand
 from tools import _pseudo as ps
 from tools._html import TYPEN as INDIKATOR_TYPEN
+from tools.pii_pruefung import pruefen as pii_pruefen
 from tools.ui import daten
 from tools.ui.seiten import esc, pfad, pflichtquellen_html, pflichtquellen_kurz, tabelle
 
@@ -32,6 +33,12 @@ RISIKO_FRAGE = ("Das Risiko übernehmen? Die gewählten Dateien gehen dann so in
 STATUS_WORT = {"aus": "nicht gestartet", "laeuft": "läuft", "wartet": "wartet auf eine Antwort", "angehalten": "angehalten", "beendet": "beendet", "fehler": "abgebrochen"}
 STATUS_FARBE = {"laeuft": "gut", "wartet": "warnung", "fehler": "kritisch"}
 PFLICHT_STAND_KOPF = "<h3>Stand laut Protokoll</h3>"
+OHNE_VERTRAUEN = ('<details class="hinweis-vertrauen"><summary><b>Claude Code vertraut diesem Projektordner noch nicht.</b> Es fragt dann bei jedem Werkzeug '
+                  "einzeln nach. So lässt es sich beheben.</summary>"
+                  "<p>Claude Code wendet die Erlaubt-Liste eines Projekts erst an, wenn ihr dem Ordner vertraut habt. Vor dem Start:</p>"
+                  "<ol><li>Im Terminal im Projektordner einmal <code>claude</code> starten und die Frage nach dem Ordner mit Ja bestätigen.</li>"
+                  "<li>Claude Code mit <code>/exit</code> beenden.</li><li>Hier die Ermittlung starten.</li></ol>"
+                  "<p class='klein'>Starten geht auch so: Die Oberfläche erklärt dann jede Frage und kann sie für Werkzeuge der Erlaubt-Liste abstellen.</p></details>")
 
 
 def feld(name: str, text: str, *, art: str = "text", pflicht: bool = False, wert: str = "", hilfe: str = "", platzhalter: str = "", breit: bool = False) -> str:
@@ -129,7 +136,8 @@ def akten_seite(bedienung, ziel: str) -> str:
             rolle = (f'<span class="marke">{esc(e.rolle.capitalize())}</span> '
                      f'<button type="button" class="verweis klein" data-korb="rolle" data-id="{esc(e.id)}" data-rolle="{andere}">zu {andere.capitalize()}</button>')
             name = (f'<span class="mono">{esc(e.name)}</span> <button type="button" class="verweis klein" data-korb="umbenennen" data-id="{esc(e.id)}" '
-                    f'data-name="{esc(e.name)}">umbenennen</button>' + (f'<div class="klein">aus {esc(e.ordner)}</div>' if e.ordner else ""))
+                    f'data-name="{esc(e.name)}">umbenennen</button>' + (f'<div class="klein">aus {esc(e.ordner)}</div>' if e.ordner else "")
+                    + (f'<div class="klein">zum Nachbessern aus dem Fall geholt: ersetzt dort <span class="mono">{esc(e.statt["name"])}</span>, sobald aufgenommen</div>' if e.statt else ""))
             zeilen.append([haken(e.id, e.name, e.stand), name, esc(e.endung or "–"), f'<span data-roh="{e.groesse}">{groesse(e.groesse)}</span>', pruefung, pseudo, rolle])
         andere = ([("", "neuer Fall")] if ziel else []) + [(f, f) for f in andere_faelle(ziel)]
         verschieben = (' <span class="trenner"></span><button type="button" data-korb="verschieben" title="Legt die gewählten Dateien in den Akten-Eingang eines anderen Falls">'
@@ -239,6 +247,11 @@ def eingang_teil(fall_id: str, bedienbar: bool = True) -> str:
              + tabelle([ALLE, "Dokument", "Stand", "Grösse"], zeilen, "Eingang", klasse="daten auswahltabelle")
              + '<p class="klein" data-gewaehlt>nichts gewählt</p>'
              + (formular("eingang_pruefen", "", "Gewählte nachträglich prüfen", verborgen={"fall": fall_id, "namen": ""}, danach="neu-laden", klasse="klein-form mit-auswahl") if ungeprueft else "")
+             + "<details class='nachbessern'><summary>Gewählte nachbessern (nochmals pseudonymisieren)</summary><p class='klein'>Für ein Dokument, in dem noch eine "
+               "geschützte Angabe im Klartext steht. Es kommt in den Akten-Eingang dieses Falls und lässt sich dort auf dem lokalen Bildschirm pseudonymisieren. "
+               "Im Fall bleibt es liegen, bis die nachgebesserte Fassung aufgenommen ist. Dann ersetzt sie die alte, und das Register hält es fest.</p>"
+             + formular("eingang_nachbessern", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + "</div>", "Zum Nachbessern holen",
+                        verborgen={"fall": fall_id, "namen": ""}, danach="neu-laden", klasse="mit-auswahl") + "</details>"
              + "<details><summary>Gewählte entfernen</summary><p class='klein'>Nimmt die Dokumente aus dem Eingang. Das Register der PII-Prüfung hält fest, was wann von wem und warum "
                "entfernt wurde. Was ein Agent schon gelesen hat, bleibt im Protokoll belegt.</p>"
              + formular("eingang_entfernen", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + feld("grund", "Grund", pflicht=True, platzhalter="falsches Dokument")
@@ -347,9 +360,31 @@ def klartext_seite(pseudo, kennung: str) -> str:
 
 # --------------------------------------------------------------------------- Ermittlung: Stand, Rückfrage, Chat
 
-def ermittlung_feld(fall_id: str, stand: dict | None, verfuegbar: str = "") -> str:
+def klartext_meldung(fall_id: str, stellen: list[dict]) -> str:
+    """Was die Ermittlung gemeldet hat: Stellen, an denen eine geschützte Angabe noch im Klartext steht. Genannt sind Dokument, Zeile
+    und die Art der Angabe, nie die Angabe selbst. Schreibt ein Agent sie doch in seine Beschreibung, zeigt die Seite die
+    Beschreibung nicht: Sie geht durch dieselbe Prüfung wie eine Nachricht."""
+    if not stellen:
+        return ""
+    punkte = []
+    for s in stellen[:20]:
+        was = s.get("was") or ""
+        if was and any(f.stufe == "sperre" for f in pii_pruefen(was, "streng")[0]):
+            was = "(Beschreibung nicht gezeigt: Sie nennt selbst eine Angabe)"
+        punkte.append(f'<li><span class="mono">{esc(s.get("dokument") or "")}</span>' + (f', Zeile {int(s["zeile"])}' if s.get("zeile") else "") + (f": {esc(was)}" if was else "") + "</li>")
+    n = len(stellen)
+    return (f'<details class="klartext-meldung" open><summary><b>{n} {"Stelle" if n == 1 else "Stellen"} mit einer geschützten Angabe im Klartext</b> '
+            '<span class="klein">gemeldet von der Ermittlung</span></summary>'
+            "<p class='klein'>Die Ermittlung verwendet diese Angaben nicht und arbeitet weiter. Nachbessern: unter «Akten» das Dokument wählen und "
+            "«Gewählte nachbessern». Es öffnet sich danach auf dem lokalen Bildschirm, und die nachgebesserte Fassung ersetzt die alte.</p>"
+            f'<ul>{"".join(punkte)}</ul>' + (f"<p class='klein'>und {n - 20} weitere</p>" if n > 20 else "")
+            + f'<p><a class="knopf" href="{pfad(fall_id, "akten")}">Zu den Akten</a></p></details>')
+
+
+def ermittlung_feld(fall_id: str, stand: dict | None, verfuegbar: str = "", klartext: list[dict] | None = None) -> str:
     """Stand der gesteuerten Sitzung von Claude Code: läuft sie, mit welcher Sitzung und welchem Modell, dazu die Knöpfe.
-    Den Verlauf zeigt der Chat, wer woran arbeitet die Tafel darunter."""
+    Den Verlauf zeigt der Chat, wer woran arbeitet die Tafel darunter. Dazu, was vor dem Start zu wissen ist (Claude Code
+    vertraut dem Projektordner noch nicht) und was die Ermittlung zu den Dokumenten gemeldet hat."""
     stand = stand or {"status": "aus"}
     status = stand.get("status")
     h = [f'<div class="ermittlung" data-status="{esc(status)}"><p class="stand"><span class="marke z-{STATUS_FARBE.get(status, "leer")}">Ermittlung: {esc(STATUS_WORT.get(status, status))}</span>'
@@ -357,6 +392,10 @@ def ermittlung_feld(fall_id: str, stand: dict | None, verfuegbar: str = "") -> s
          + (f' <span class="klein">Modell laut Claude Code: <span class="mono">{esc(stand.get("modell"))}</span></span>' if stand.get("modell") else "") + "</p>"]
     if verfuegbar:
         h.append(f'<p class="banner">{esc(verfuegbar)}</p>')
+    elif stand.get("ordner") is False and status not in ("laeuft", "wartet"):
+        h.append(OHNE_VERTRAUEN)
+    if klartext:
+        h.append(klartext_meldung(fall_id, klartext))
     if stand.get("meldung") and status == "fehler":
         h.append(f'<p class="banner">{esc(stand["meldung"])}</p>')
     knoepfe = []        # starten, senden, anhalten und fortsetzen stehen im Chat. Hier nur der Weg zu den Ergebnissen
@@ -379,22 +418,78 @@ def wer_tafel(stand: dict | None) -> str:
         "Analysten", klasse="schlicht")
 
 
+ZUSTIMMUNG_TITEL = {"aktiv": "Aktive Massnahme: Zustimmung nötig", "aussen": "Abruf am Gateway vorbei: Zustimmung nötig", "erlaubt": "Claude Code fragt nach",
+                    "befehl": "Befehl: Zustimmung nötig", "datei": "Datei ändern: Zustimmung nötig", "sonst": "Zustimmung nötig"}
+
+
+def _frage_felder(fragen: list[dict]) -> str:
+    """Die Fragen der Ermittlung als Felder: je Frage die Auswahl und eine eigene Antwort. Die Namen der Felder zählen mit,
+    die Antwort setzt der Server aus der gespeicherten Frage zusammen: Aus dem Browser kommt nur, was gewählt wurde."""
+    h = []
+    for i, f in enumerate(fragen):
+        wahl = []
+        for j, w in enumerate(f.get("wahl") or []):
+            eingabe = (f'<input type="checkbox" name="wahl_{i}_{j}" value="1">' if f.get("mehrere") else f'<input type="radio" name="wahl_{i}" value="{j}">')
+            wahl.append(f'<label class="wahl">{eingabe} <span><b>{esc(w.get("name") or "")}</b>'
+                        + (f'<span class="klein">{esc(w["text"])}</span>' if w.get("text") else "") + "</span></label>")
+        h.append(f'<div class="frage-feld" role="group" aria-labelledby="frage-{i}"><p class="frage-titel" id="frage-{i}">'
+                 + (f'<span class="marke z-leer">{esc(f["kopf"])}</span> ' if f.get("kopf") else "") + f'{esc(f.get("frage") or "")}</p>'
+                 + (f'<p class="klein">{"Mehrere Antworten sind möglich." if f.get("mehrere") else "Eine Antwort wählen, oder eine eigene schreiben."}</p>' if wahl else "")
+                 + "".join(wahl)
+                 + f'<label class="eigen" for="frei-{i}">Eigene Antwort{"" if not wahl else (" (zusätzlich)" if f.get("mehrere") else " (ersetzt die Auswahl)")}</label>'
+                 f'<input type="text" id="frei-{i}" name="frei_{i}" autocomplete="off" maxlength="2000"></div>')
+    return "".join(h)
+
+
 def rueckfrage_dialog(fragen: list[dict]) -> str:
-    """Die Rückfrage, die als nächste zu beantworten ist, als Dialog. Er erscheint in jeder Ansicht, über allem anderen."""
+    """Die Rückfrage, die als nächste zu beantworten ist, als Dialog. Er erscheint in jeder Ansicht, über allem anderen.
+    Zwei Arten: Die Ermittlung stellt dem Sachbearbeiter eine Frage, oder ein Schritt braucht seine Zustimmung. Was getan
+    werden soll und warum gefragt wird, steht in Worten da (tools/ui/worte.py). Die Eingabe im Wortlaut steht unter «Einzelheiten»."""
     if not fragen:
         return ""
+    from tools.ui import worte as wo
     frage = fragen[0]
     weitere = len(fragen) - 1 + int(frage.get("weitere") or 0)
-    fall = str(frage.get("fall") or "")
-    return ('<div class="rueckfrage" role="alertdialog" aria-modal="true" aria-labelledby="rueckfrage-titel"><h3 id="rueckfrage-titel">Claude Code fragt nach</h3>'
-            f'<p>Fall <span class="mono">{esc(fall)}</span>: Claude Code möchte <span class="mono">{esc(frage.get("werkzeug") or "")}</span> ausführen und braucht dafür eine Zustimmung.</p>'
-            f'<pre class="rohtext">{esc(frage.get("eingabe") or "")}</pre>'
-            + (f'<p class="klein">{esc(frage["hinweis"])}</p>' if frage.get("hinweis") else "")
-            + '<div class="knopfzeile">'
-            + formular("ermittlung_antworten", "", "Erlauben", verborgen={"fall": fall, "frage": frage.get("id") or "", "erlauben": "1"}, danach="rueckfrage", klasse="klein-form")
-            + formular("ermittlung_antworten", "", "Ablehnen", verborgen={"fall": fall, "frage": frage.get("id") or "", "erlauben": ""}, danach="rueckfrage", klasse="klein-form")
-            + "</div><p class='klein'>Die Antwort steht im Sitzungsprotokoll, mit Zeit und dem Vermerk, dass sie über die Oberfläche kam."
-            + (f" Danach {'folgt eine weitere Rückfrage' if weitere == 1 else f'folgen {weitere} weitere Rückfragen'}." if weitere > 0 else "") + "</p></div>")
+    fall, kennung = str(frage.get("fall") or ""), str(frage.get("id") or "")
+    danach = (f" Danach {'folgt eine weitere Rückfrage' if weitere == 1 else f'folgen {weitere} weitere Rückfragen'}." if weitere > 0 else "")
+    wer = f' · {esc(wo.team(str(frage["wer"])))}' if frage.get("wer") else ""
+    kopfzeile = f'<p class="klein">Fall <span class="mono">{esc(fall)}</span>{wer}</p>'
+    einzelheiten = (f'<details class="einzelheiten"><summary>Einzelheiten: die Eingabe im Wortlaut</summary><p class="klein">Werkzeug <span class="mono">{esc(frage.get("werkzeug") or "")}</span></p>'
+                    f'<pre class="rohtext">{esc(frage.get("eingabe") or "")}</pre></details>')
+    if frage.get("art") == "frage":
+        return ('<div class="rueckfrage art-frage" role="alertdialog" aria-modal="true" aria-labelledby="rueckfrage-titel"><h3 id="rueckfrage-titel">Die Ermittlung fragt dich</h3>'
+                + kopfzeile
+                + formular("ermittlung_antworten", _frage_felder(frage.get("fragen") or [])
+                           + '<label class="klein trotzdem"><input type="checkbox" name="trotzdem" value="1"> Meine eigene Antwort nennt bewusst eine Angabe der '
+                             "Täterseite (zum Beispiel eine Rufnummer). Trotz Prüfung senden.</label>",
+                           "Antworten", verborgen={"fall": fall, "frage": kennung, "erlauben": "1"}, danach="rueckfrage", klasse="antwort haupt-form")
+                + formular("ermittlung_antworten", "", "Nicht beantworten", verborgen={"fall": fall, "frage": kennung, "erlauben": ""}, danach="rueckfrage", klasse="klein-form still")
+                + "<p class='klein'>Deine Antwort liest das Sprachmodell. Angaben zu Geschädigten, zur Verfasserin oder zum Verfasser und zur Dienststelle gehören nicht "
+                  "hinein: Platzhalter wie im Dokument. Ohne Antwort trifft die Ermittlung selbst eine Annahme und nennt sie. Frage und Antwort stehen im "
+                  "Sitzungsprotokoll." + danach + "</p>" + einzelheiten + "</div>")
+    z = frage.get("worte") or {}
+    art = str(z.get("art") or "sonst")
+    angaben = "".join(f"<dt>{esc(name)}</dt><dd{klasse}>{esc(wert)}</dd>" for name, wert, klasse in (
+        ("Ziel", z.get("ziel") or "", ' class="mono"'), ("Zweck laut Ermittlung", z.get("zweck") or "", "")) if wert)
+
+    def knopf(text: str, klasse: str, **mehr) -> str:
+        return formular("ermittlung_antworten", "", text, verborgen={"fall": fall, "frage": kennung, **mehr}, danach="rueckfrage", klasse="klein-form " + klasse)
+    knoepfe = (knopf("Ablehnen", "haupt-form", erlauben="") + knopf("Trotzdem erlauben", "still", erlauben="1") if art == "aussen" else
+               knopf("Erlauben", "haupt-form", erlauben="1")
+               + (knopf("Erlauben und nicht mehr fragen", "", erlauben="1", merken="1") if z.get("merkbar") else "")
+               + knopf("Ablehnen", "still", erlauben=""))
+    return (f'<div class="rueckfrage art-{esc(art)}" role="alertdialog" aria-modal="true" aria-labelledby="rueckfrage-titel">'
+            f'<h3 id="rueckfrage-titel">{esc(ZUSTIMMUNG_TITEL.get(art, ZUSTIMMUNG_TITEL["sonst"]))}</h3>' + kopfzeile
+            + f'<p class="satz">{esc(z.get("satz") or frage.get("werkzeug") or "")}</p>'
+            + (f'<dl class="angaben">{angaben}</dl>' if angaben else "")
+            + (f'<p><b>Warum die Frage kommt:</b> {esc(z["grund"])}</p>' if z.get("grund") else "")
+            + ('<details class="beheben"><summary>So entfällt die Frage künftig</summary><ol>' + "".join(f"<li>{esc(s)}</li>" for s in z["beheben"]) + "</ol></details>"
+               if z.get("beheben") else "")
+            + (f'<p class="banner">{esc(z["rat"])}</p>' if z.get("rat") else "")
+            + f'<div class="knopfzeile">{knoepfe}</div>'
+            + (f'<p class="klein">{esc(z["folge"])}</p>' if z.get("folge") else "")
+            + "<p class='klein'>Die Antwort steht im Sitzungsprotokoll, mit Zeit und dem Vermerk, dass sie über die Oberfläche kam." + danach + "</p>"
+            + einzelheiten + "</div>")
 
 
 def pflicht_feld(fall: daten.Fall, arbeitet: bool = False) -> str:
@@ -447,11 +542,12 @@ def ermittlung_seite(fall: daten.Fall, bedienung, stand: dict | None, verfuegbar
         return kopf + NUR_LESEN
     fid = fall.id
     return "\n".join([
-        kopf, f'<div id="ermittlung" data-fall="{esc(fid)}">{ermittlung_feld(fid, stand, verfuegbar)}</div>',
+        kopf, f'<div id="ermittlung" data-fall="{esc(fid)}">{ermittlung_feld(fid, stand, verfuegbar, fall.klartext_stellen())}</div>',
         pflicht_feld(fall, (stand or {}).get("status") in ("laeuft", "wartet")), chat_feld(fid),
         f'<div id="ermittlung-wer" data-ohne-leiste>{wer_tafel(stand)}</div>',
-        "<p class='klein'>Was du hier schreibst, liest das Sprachmodell: keine Namen, keine Telefonnummern, Platzhalter wie im Dokument. Die Oberfläche prüft jede Eingabe "
-        "wie ein Dokument. Arbeitet die Ermittlung gerade, wartet eine Nachricht auf das Ende des laufenden Auftrags, oder sie unterbricht ihn.</p>"
+        "<p class='klein'>Was du hier schreibst, liest das Sprachmodell. Angaben zu Geschädigten, zur Verfasserin oder zum Verfasser und zur Dienststelle gehören nicht "
+        "hierher: Platzhalter wie im Dokument. Die Oberfläche prüft jede Eingabe. Sperrt sie eine Angabe der Täterseite (eine Rufnummer, ein Konto), lässt sich die "
+        "Nachricht bewusst doch senden. Arbeitet die Ermittlung gerade, wartet eine Nachricht auf das Ende des laufenden Auftrags, oder sie unterbricht ihn.</p>"
         f"<p class='klein'>Die Oberfläche startet Claude Code im Projektordner mit <code>/ermittlung {esc(fid)}</code>. Berechtigungen, das Gateway und die Protokoll-Hooks "
         "gelten wie am Terminal. Die Modelle bleiben, wie das Projekt sie festlegt.</p>"
         + (f"<p class='klein' id='abrechnung'>{esc(abrechnung)}</p>" if abrechnung else "")])

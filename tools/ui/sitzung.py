@@ -16,6 +16,13 @@ Der Weg: die Kommandozeile von Claude Code im Skriptbetrieb, mit fortlaufender J
     über einen kleinen MCP-Server (tools/ui/rueckfrage.py) an diesen Server und erscheint im Browser als Dialog. Erlauben
     oder ablehnen kann nur, wer das Geheimnis der Oberfläche hat. Die Karte, mit der der MCP-Server fragt, taugt nur zum Fragen.
     Über Aufrufe von Robin (Dark Web) entscheidet die Freigabe «darkweb» des Falls, ohne Dialog.
+  - Der Dialog sagt in Worten, was Claude Code tun will und warum es fragt (tools/ui/worte.py). Stellt die Ermittlung dem
+    Sachbearbeiter eine Frage (Werkzeug AskUserQuestion), kommt sie auf demselben Weg an und lässt sich im Dialog beantworten:
+    mit einer Auswahl oder einer eigenen Antwort. Die Antwort geht als «answers» in der Eingabe des Werkzeugs zurück.
+  - Fragt Claude Code bei einem Werkzeug, das beim Namen auf der Erlaubt-Liste des Projekts steht, wendet es die Liste nicht
+    an (es vertraut dem Projektordner noch nicht). Die Oberfläche sagt das und bietet an, für den Rest dieser Ermittlung bei
+    Werkzeugen der Erlaubt-Liste nicht mehr zu fragen. Das entscheidet der Sachbearbeiter, mit dem Geheimnis. Aktive
+    Massnahmen und alles ausserhalb der Liste fragen weiter einzeln.
   - Das Geheimnis der Oberfläche steht nie in der Umgebung der Sitzung.
   - Anhalten beendet den Prozess (SIGTERM: Claude Code bricht den laufenden Schritt ab und beendet laufende Befehle).
     Fortsetzen nimmt dieselbe Sitzung wieder auf (--resume), auch nach einem Neustart der Oberfläche.
@@ -24,8 +31,11 @@ Der Weg: die Kommandozeile von Claude Code im Skriptbetrieb, mit fortlaufender J
     kündigt an, dass der Skriptbetrieb sie künftig von sich aus weglässt («--bare» als Vorgabe für «-p»).
 
 Stand der Dokumentation: code.claude.com/docs, Seiten «Run Claude Code programmatically», «CLI reference»,
-«Authentication» und «Error reference», gelesen am 16.11.2026. Mit dem echten Claude Code geprüft ist der Weg nicht,
-siehe README unter «Stand der Prüfung und Grenzen».
+«Authentication» und «Error reference», gelesen am 16.11.2026. Zur Frage an den Sachbearbeiter (AskUserQuestion) und zum
+Vertrauen in den Projektordner: dieselbe Dokumentation, nachgelesen am 19.11.2026. Sie beschreibt die Form der Antwort auf
+AskUserQuestion für Programme, die Zustimmungen selbst behandeln. Dass Claude Code sie über --permission-prompt-tool
+ebenso annimmt, ist daraus geschlossen. Mit dem echten Claude Code geprüft ist der Weg nicht, siehe README unter «Stand
+der Prüfung und Grenzen».
 """
 from __future__ import annotations
 
@@ -44,13 +54,19 @@ from pathlib import Path
 
 from gateway import pflichtquellen, plattform
 from gateway.akte import PROJEKT, SITZUNGEN, fall_daten, fall_pfad, freigabe_erteilt, jsonl_lesen
+from tools import schutzumfang
 from tools.pii_pruefung import bericht as pii_bericht, pruefen as pii_pruefen
-from tools.ui import bedienung as bedienung_modul
+from tools.ui import bedienung as bedienung_modul, worte
 
 AKTIONEN = ("ermittlung_starten", "ermittlung_anhalten", "ermittlung_fortsetzen", "ermittlung_antworten", "ermittlung_nachricht",
             "ermittlung_nachricht_zurueck")
 RUECKFRAGE_WERKZEUG = "mcp__oberflaeche__rueckfrage"
-ROBIN = "mcp__robin__"
+ROBIN = worte.ROBIN
+# So meldet Claude Code am Fehlerkanal, dass es die Erlaubt-Liste des Projekts übergeht, weil es dem Ordner nicht vertraut
+LISTE_RUHT = re.compile(r"permissions\.allow.{0,200}trust|trust.{0,200}permissions\.allow|has not been trusted|workspace trust", re.I | re.S)
+OHNE_ANTWORT = ("Der Sachbearbeiter hat die Frage nicht beantwortet. Frag nicht noch einmal dasselbe. Triff eine vertretbare Annahme, "
+                "nenne sie in deiner Antwort und im Rapport als Annahme, und fahre fort.")
+VON_SELBST = "steht auf der Erlaubt-Liste des Projekts"
 WARTEZEIT = 30 * 60             # so lange wartet eine Rückfrage auf den Sachbearbeiter, dann gilt sie als abgelehnt
 AUFTRAG_WEITER = "Bitte fahre mit der Ermittlung fort, wo sie angehalten wurde."
 VORGABEN_KOPF = "Vorgaben des Sachbearbeiters für diese Ermittlung (über die Oberfläche eingegeben):"
@@ -63,8 +79,6 @@ PFLICHT_SERVER = ("osint",)     # ohne das Gateway des Projekts läuft keine ges
 CLOUD = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
 OHNE_PROJEKT = ("Claude Code hat die Einstellungen des Projekts nicht geladen (es fehlt: {fehlt}). Ohne sie gelten Berechtigungen, Gateway und "
                 "Protokoll nicht. Die Oberfläche hat die Sitzung deshalb beendet, bevor sie etwas tun konnte. Die Ermittlung bitte am Terminal starten.")
-ZIELE = ("ip", "domain", "url", "hashwert", "adresse", "tx", "wert", "suchtext", "ziel", "gruppe", "kanal", "konto", "instanz", "query", "file_path", "command",
-         "skill", "pattern", "description")
 
 
 def programm() -> list[str] | None:
@@ -134,17 +148,43 @@ def kurz(wert: object, n: int = 160) -> str:
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
-def eingabe_pruefen(text: object, was: str) -> str:
+def sperrfunde(text: str) -> int:
+    """Wie viele Stellen eines Textes die strenge PII-Prüfung sperrt. Eine Nachricht hat keine Abschnitte: Jede Angabe, die nach
+    Personendaten aussieht, zählt."""
+    return sum(1 for f in pii_pruefen(text, "streng")[0] if f.stufe == "sperre")
+
+
+def eingabe_pruefen(text: object, was: str, trotzdem: bool = False) -> str:
     """Was der Sachbearbeiter in den Chat schreibt, liest das Sprachmodell. Deshalb gilt dieselbe PII-Prüfung wie für Dokumente:
-    Bei einem Sperrfund geht nichts hinaus, und die Meldung zeigt die Stelle maskiert."""
+    Bei einem Sperrfund geht nichts hinaus, und die Meldung zeigt die Stelle maskiert. Die Prüfung kann einer Nachricht nicht
+    ansehen, zu wem eine Angabe gehört. Gehört sie zur Täterseite, kann der Sachbearbeiter die Nachricht bewusst doch senden
+    (`trotzdem`): Angaben der Täterseite braucht die Ermittlung. Wer das tut, steht mit der Zahl der Fundstellen im Sitzungsprotokoll."""
     text = str(text or "").strip()
     if len(text) > NACHRICHT_LAENGE:
         raise bedienung_modul.Fehler(f"{was} ist länger als {NACHRICHT_LAENGE} Zeichen. Längeres gehört als Dokument in den Fall.")
-    funde, platzhalter = pii_pruefen(text, "streng")       # eine Nachricht hat keine Abschnitte: Jede Angabe, die nach Personendaten aussieht, zählt
-    if any(f.stufe == "sperre" for f in funde):
-        raise bedienung_modul.Fehler(f"{was} wurde nicht gesendet: Darin steht etwas, das nach Personendaten aussieht. Bitte Platzhalter verwenden.\n"
-                                     + "\n".join(z for z in pii_bericht(was, funde, platzhalter).splitlines() if "SPERRE" in z))
+    funde, platzhalter = pii_pruefen(text, "streng")
+    streng = schutzumfang.modus() == "streng"       # OSINT_SCHUTZ=streng: Dann gibt es kein «trotzdem», wie bis zum 19.11.2026
+    if any(f.stufe == "sperre" for f in funde) and (streng or not trotzdem):
+        fehler = bedienung_modul.Fehler(f"{was} wurde nicht gesendet: Darin steht etwas, das nach Personendaten aussieht.\n"
+                                        + "\n".join(z for z in pii_bericht(was, funde, platzhalter).splitlines() if "SPERRE" in z)
+                                        + ("\nBitte Platzhalter verwenden." if streng else
+                                           "\nGehört die Angabe zu einer geschädigten Person, zur Verfasserin oder zum Verfasser oder zur Dienststelle: bitte den "
+                                           "Platzhalter verwenden. Gehört sie zur Täterseite, lässt sich der Text trotzdem senden."))
+        fehler.mehr = {} if streng else {"sperrfund": True}
+        raise fehler
     return text
+
+
+_ORDNER: dict = {"zeit": 0.0, "wert": None}
+
+
+def ordner_stand() -> bool | None:
+    """Vertraut Claude Code dem Projektordner? True, False oder None (nicht feststellbar). Höchstens alle zehn Sekunden neu
+    gelesen: Der Chat fragt jede Sekunde nach dem Stand, und die Datei von Claude Code kann gross sein."""
+    jetzt = time.monotonic()
+    if not _ORDNER["zeit"] or jetzt - _ORDNER["zeit"] > 10:
+        _ORDNER.update(zeit=jetzt, wert=plattform.ordner_vertraut(PROJEKT))
+    return _ORDNER["wert"]
 
 
 def auftrag_text(fall: str, vorgaben: str = "") -> str:
@@ -202,6 +242,10 @@ class Sitzung:
         self.robin_gemeldet = False             # die Ablehnung eines Dark-Web-Aufrufs steht einmal je Sitzung im Protokoll
         self.letzte_antwort = ""
         self.unterlagen = ""                    # Stand des Abschlusses: "", "laeuft", "bereit", "fehler"
+        self.liste_ruht = False                 # Claude Code fragt bei Werkzeugen der Erlaubt-Liste: Es wendet sie nicht an
+        self.ohne_nachfrage = False             # der Sachbearbeiter hat entschieden: bei Werkzeugen der Erlaubt-Liste nicht mehr fragen
+        self.von_selbst: dict | None = None     # der eine Eintrag im Verlauf, der zählt, was danach von selbst erlaubt wurde
+        self.schritte = 0                       # Werkzeugaufrufe seit dem Start dieser Sitzung, über alle Analysten
 
     @property
     def frage(self) -> dict | None:
@@ -363,6 +407,17 @@ class Sitzung:
                     if not self.abbruch:
                         self.meldung = kurz(zeile, 400)
                         self.version += 1
+                if LISTE_RUHT.search(zeile):
+                    self._liste_ruht_melden()
+
+    def _liste_ruht_melden(self) -> None:
+        """Einmal je Sitzung: Claude Code wendet die Erlaubt-Liste des Projekts nicht an. Was das heisst und wie es sich beheben lässt."""
+        with self.sperre:
+            if self.liste_ruht:
+                return
+            self.liste_ruht = True
+        self.notieren("oberfläche", worte.OHNE_VERTRAUEN, "oberflaeche", wichtig=True)
+        self.bedienung.vermerken(self.fall, "Erlaubt-Liste nicht angewendet", "Claude Code fragt bei Werkzeugen der Erlaubt-Liste des Projekts nach", sitzung=self.kennung)
 
     def ereignis(self, e: dict) -> None:
         art = e.get("type")
@@ -407,13 +462,13 @@ class Sitzung:
                             self.wer.setdefault(analyst, {"name": analyst, "stand": "beauftragt", "zuletzt": kurz(eingabe.get("description") or "", 80), "schritte": 0})
                             self.notieren(wer, f"beauftragt {analyst}: {kurz(eingabe.get('description') or '', 200)}", "auftrag")
                             continue
-                        ziel = ""
-                        if isinstance(eingabe, dict):
-                            ziel = next((str(eingabe[k]) for k in ZIELE if eingabe.get(k)), "")
-                        werkzeug = name.replace("mcp__osint__", "").replace(ROBIN, "robin: ")
-                        stand["zuletzt"], stand["stand"] = kurz(f"{werkzeug} {ziel}", 90), "arbeitet"
+                        # Der Schritt in Worten: welche Quelle, was sie gefragt wird, zu welchem Ziel. Der Name des Werkzeugs steht daneben
+                        w = worte.schritt(name, eingabe)
+                        stand["zuletzt"], stand["stand"] = kurz(w["text"], 110), "arbeitet"
                         stand["schritte"] += 1
-                        eintrag = self.notieren(wer, f"{werkzeug} {kurz(ziel, 200)}".strip(), "schritt", quelle=name.startswith(("mcp__osint__", ROBIN)))
+                        self.schritte += 1
+                        eintrag = self.notieren(wer, w["text"], "schritt", quelle=w["art"] in ("quelle", "robin"), technik=w["technik"],
+                                                **({"zweck": w["zweck"]} if w["zweck"] else {}))
                         self.aufrufe[str(block.get("id") or "")] = eintrag
                     elif block.get("type") == "text" and str(block.get("text") or "").strip():
                         self.letzte_antwort = str(block["text"]).strip()
@@ -491,12 +546,46 @@ class Sitzung:
                 self.bedienung.vermerken(self.fall, "Dark-Web-Aufruf abgelehnt", f"{werkzeug}: keine Freigabe darkweb", sitzung=self.kennung)
             return {"erlauben": False, "grund": f"Fall {self.fall} hat keine Freigabe «darkweb». Robin wird nicht ausgeführt. Der Sachbearbeiter erteilt sie "
                                                 "in der Oberfläche unter «Bedienen». Bis dahin nicht erneut versuchen, sondern als Lücke melden."}
-        frage = {"id": secrets.token_urlsafe(8), "werkzeug": werkzeug, "eingabe": json.dumps(eingabe, ensure_ascii=False, indent=1)[:6000],
-                 "hinweis": "Erlauben gilt für diesen einen Aufruf. Aktive Massnahmen kann das Ziel bemerken.", "ereignis": threading.Event(), "erlaubt": None}
+        # Eine Frage der Ermittlung an den Sachbearbeiter: Sie braucht eine Antwort, keine Zustimmung
+        gestellt = worte.fragen_lesen(eingabe) if werkzeug == worte.FRAGE_WERKZEUG else []
+
+        def wer_fragt() -> str:
+            """Welcher Analyst den Aufruf macht. Das steht im Ereignis, mit dem Claude Code den Aufruf ankündigt. Es kommt über einen
+            anderen Kanal als die Rückfrage und kann einen Augenblick später eintreffen: Der Dialog wartet kurz darauf."""
+            ende = time.monotonic() + 0.6
+            while True:
+                with self.sperre:
+                    eintrag = self.aufrufe.get(tool_use_id)
+                if eintrag is not None or not tool_use_id or time.monotonic() >= ende:
+                    return (eintrag or {}).get("wer") or ""
+                time.sleep(0.03)
+        if gestellt:
+            wer = wer_fragt()
+            frage = {"id": secrets.token_urlsafe(8), "art": "frage", "werkzeug": werkzeug, "eingabe": json.dumps(eingabe, ensure_ascii=False, indent=1)[:6000],
+                     "fragen": gestellt, "wer": wer, "ereignis": threading.Event(), "erlaubt": None, "antworten": None}
+            text = "Die Ermittlung fragt: " + kurz(gestellt[0]["frage"], 300) + (f" (und {len(gestellt) - 1} weitere)" if len(gestellt) > 1 else "")
+        else:
+            z = worte.zustimmung(werkzeug, eingabe)
+            if z["art"] == "erlaubt":
+                # Claude Code fragt bei einem Werkzeug der Erlaubt-Liste: Es wendet sie nicht an. Hat der Sachbearbeiter für diese
+                # Ermittlung entschieden, dabei nicht mehr gefragt zu werden, gilt die Liste des Projekts.
+                self._liste_ruht_melden()
+                with self.sperre:
+                    if self.ohne_nachfrage:
+                        if self.von_selbst is None:
+                            self.von_selbst = self.notieren("oberfläche", "", "oberflaeche", zahl=0)
+                        zahl = int(self.von_selbst.get("zahl") or 0) + 1
+                        self.aendern(self.von_selbst, zahl=zahl, text=f"Ohne Rückfrage erlaubt, weil auf der Erlaubt-Liste des Projekts: {zahl} "
+                                                                       f"{'Aufruf' if zahl == 1 else 'Aufrufe'}. Jeder steht als Schritt im Verlauf.")
+                        return {"erlauben": True, "grund": "", "von_selbst": VON_SELBST}
+            wer = wer_fragt()
+            frage = {"id": secrets.token_urlsafe(8), "art": "zustimmung", "werkzeug": werkzeug, "eingabe": json.dumps(eingabe, ensure_ascii=False, indent=1)[:6000],
+                     "worte": z, "wer": wer, "ereignis": threading.Event(), "erlaubt": None}
+            text = "Zustimmung nötig: " + kurz(z["satz"], 300)
         with self.sperre:
             self.fragen_offen.append(frage)
             self.status = "wartet"
-            frage["eintrag"] = self.notieren("oberfläche", f"Rückfrage: {werkzeug} {kurz(eingabe, 200)}", "rueckfrage", entscheid="offen")
+            frage["eintrag"] = self.notieren("oberfläche", text, "rueckfrage", entscheid="offen")
         beantwortet = frage["ereignis"].wait(WARTEZEIT)
         with self.sperre:
             if frage in self.fragen_offen:
@@ -504,32 +593,81 @@ class Sitzung:
             erlaubt = bool(beantwortet and frage["erlaubt"])
             if self.status == "wartet" and not self.fragen_offen:
                 self.status = "laeuft"
-            entscheid = "erlaubt" if erlaubt else "abgelehnt" if frage["erlaubt"] is False else "nicht beantwortet"
+            if frage["art"] == "frage":
+                entscheid = "beantwortet" if erlaubt else "nicht beantwortet"
+            else:
+                entscheid = "erlaubt" if erlaubt else "abgelehnt" if frage["erlaubt"] is False else "nicht beantwortet"
         self.aendern(frage["eintrag"], entscheid=entscheid)
+        if frage["art"] == "frage":
+            if erlaubt and frage["antworten"]:
+                return {"erlauben": True, "grund": "", "antworten": frage["antworten"], "frage": frage["id"]}
+            return {"erlauben": False, "grund": OHNE_ANTWORT if frage["erlaubt"] is False or not beantwortet else
+                    "Die Ermittlung wurde angehalten, bevor die Frage beantwortet war."}
         if frage["erlaubt"] is None:
             return {"erlauben": False, "grund": "Der Sachbearbeiter hat die Rückfrage nicht rechtzeitig beantwortet." if not beantwortet else
                     "Die Ermittlung wurde angehalten, bevor die Rückfrage beantwortet war."}
         return {"erlauben": erlaubt, "grund": "" if erlaubt else "Der Sachbearbeiter hat den Aufruf in der Oberfläche abgelehnt.", "frage": frage["id"]}
 
-    def antworten(self, frage_id: str, erlauben: bool) -> dict:
+    def offene_frage(self, frage_id: str) -> dict:
+        with self.sperre:
+            frage = next((f for f in self.fragen_offen if f["id"] == frage_id), None)
+        if frage is None:
+            raise bedienung_modul.Fehler("Diese Rückfrage ist nicht mehr offen.", 404)
+        return frage
+
+    def antworten(self, frage_id: str, erlauben: bool, antworten: dict | None = None, merken: bool = False) -> dict:
+        """Die Entscheidung des Sachbearbeiters. `antworten`: bei einer Frage der Ermittlung, je Frage die Antwort.
+        `merken`: bei Werkzeugen der Erlaubt-Liste für den Rest dieser Ermittlung nicht mehr fragen. Das gilt nur,
+        wenn die beantwortete Rückfrage selbst ein solches Werkzeug betraf."""
         with self.sperre:
             frage = next((f for f in self.fragen_offen if f["id"] == frage_id), None)
             if frage is None:
                 raise bedienung_modul.Fehler("Diese Rückfrage ist nicht mehr offen.", 404)
+            gemerkt = bool(merken and erlauben and frage["art"] == "zustimmung" and frage["worte"].get("merkbar"))
+            if gemerkt:
+                self.ohne_nachfrage = True
+            if frage["art"] == "frage":
+                frage["antworten"] = dict(antworten or {}) if erlauben else None
             frage["erlaubt"] = bool(erlauben)
             frage["ereignis"].set()
-        return {"werkzeug": frage["werkzeug"], "eingabe": frage["eingabe"]}
+        return {"art": frage["art"], "werkzeug": frage["werkzeug"], "eingabe": frage["eingabe"], "gemerkt": gemerkt,
+                "satz": frage["worte"]["satz"] if frage["art"] == "zustimmung" else frage["fragen"][0]["frage"]}
 
     # ---- Stand, für die Ansicht «Ermittlung» und für den Chat
     def _frage_dict(self) -> dict | None:
         frage = self.frage
-        return {k: frage[k] for k in ("id", "werkzeug", "eingabe", "hinweis")} | {"weitere": len(self.fragen_offen) - 1} if frage else None
+        if not frage:
+            return None
+        return ({k: frage[k] for k in ("id", "art", "werkzeug", "eingabe", "wer")} | {k: frage[k] for k in ("worte", "fragen") if k in frage}
+                | {"weitere": len(self.fragen_offen) - 1})
+
+    def lage(self, status: str) -> str:
+        """Der Stand der Ermittlung in einem Satz, für die Zeile über dem Chat."""
+        if status == "wartet":
+            frage = self.frage
+            return ("Die Ermittlung wartet auf dich: Sie hat eine Frage." if frage and frage["art"] == "frage" else
+                    "Die Ermittlung wartet auf dich: Ein Schritt braucht deine Zustimmung.")
+        if status == "laeuft":
+            aktiv = [w for w in self.wer.values() if w["stand"] == "arbeitet" and w["zuletzt"]]
+            gerade = f" Gerade: {worte.team(aktiv[-1]['name'])}, {aktiv[-1]['zuletzt']}." if aktiv else ""
+            return f"Die Ermittlung läuft. {self.schritte} {'Schritt' if self.schritte == 1 else 'Schritte'} bisher.{gerade}"
+        if status == "angehalten":
+            return "Die Ermittlung ist angehalten. «Fortsetzen» nimmt sie wieder auf, eine Nachricht auch."
+        if status == "beendet":
+            return {"laeuft": "Der Auftrag ist zu Ende. Die Unterlagen werden erzeugt.", "bereit": "Die Ermittlung ist abgeschlossen. Die Unterlagen liegen unter «Ergebnisse».",
+                    "fehler": "Die Ermittlung ist abgeschlossen. Nicht alle Unterlagen liessen sich erzeugen: unter «Ergebnisse» wiederholen."}.get(
+                        self.unterlagen, "Der Auftrag ist zu Ende. Eine Nachricht setzt die Ermittlung fort.")
+        if status == "fehler":
+            return "Die Ermittlung ist abgebrochen. " + (self.meldung or "Der Grund steht im Verlauf.")
+        return ""
 
     def als_dict(self) -> dict:
         with self.sperre:
-            return {"status": self.status if self.laeuft() or self.status != "laeuft" else "beendet", "sitzung": self.kennung, "modell": self.modell, "meldung": self.meldung,
+            status = self.status if self.laeuft() or self.status != "laeuft" else "beendet"
+            return {"status": status, "sitzung": self.kennung, "modell": self.modell, "meldung": self.meldung, "lage": self.lage(status),
                     "frage": self._frage_dict(), "wer": [dict(w) for w in self.wer.values()], "verlauf": [dict(z) for z in self.verlauf[-60:]],
-                    "wartend": [{"id": w["id"], "text": w["text"]} for w in self.wartend], "unterlagen": self.unterlagen, "v": self.version}
+                    "wartend": [{"id": w["id"], "text": w["text"]} for w in self.wartend], "unterlagen": self.unterlagen, "v": self.version,
+                    "liste_ruht": self.liste_ruht, "ohne_nachfrage": self.ohne_nachfrage}
 
     def seit(self, version: int) -> dict:
         """Was sich am Verlauf seit einer Version geändert hat: neue und geänderte Einträge, dazu der Stand."""
@@ -555,11 +693,12 @@ def stand(b: "bedienung_modul.Bedienung | None", fall: str) -> dict | None:
 def verlauf(b: "bedienung_modul.Bedienung | None", fall: str, version: int = 0) -> dict:
     """Der Stand des Chats für den Browser. Ohne laufende Sitzung sagt er, ob sich eine frühere fortsetzen lässt."""
     s = _sitzung(b, fall) if b is not None else None
+    ordner = ordner_stand() if b is not None else None
     if s is not None:
-        return s.seit(version)
+        return {**s.seit(version), "ordner": ordner}
     frueher = letzte_sitzung(fall) if b is not None else ""
-    return {"status": "aus", "sitzung": "", "modell": "", "meldung": "", "frage": None, "wer": [], "verlauf": [], "wartend": [], "unterlagen": "", "v": 0,
-            "neu_beginnen": version > 0, "frueher": frueher}
+    return {"status": "aus", "sitzung": "", "modell": "", "meldung": "", "lage": "", "frage": None, "wer": [], "verlauf": [], "wartend": [], "unterlagen": "", "v": 0,
+            "neu_beginnen": version > 0, "frueher": frueher, "ordner": ordner, "liste_ruht": False, "ohne_nachfrage": False}
 
 
 def offene_fragen(b: "bedienung_modul.Bedienung | None") -> list[dict]:
@@ -580,7 +719,8 @@ def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     alt = _sitzung(b, fall)
     if alt is not None and alt.als_dict()["status"] in ("laeuft", "wartet"):
         raise bedienung_modul.Fehler("Die Ermittlung läuft schon.")
-    vorgaben = eingabe_pruefen(d.get("vorgaben"), "Die Vorgabe")
+    trotzdem = bool(d.get("trotzdem"))
+    vorgaben = eingabe_pruefen(d.get("vorgaben"), "Die Vorgabe", trotzdem)
     s = Sitzung(b, fall, int(d.get("_port") or 0))
     if alt is not None:         # der Chat bleibt stehen, die Ermittlung beginnt neu
         with alt.sperre:        # was noch auf die alte Sitzung wartete, geht nicht an die neue: Es gilt als zurückgenommen
@@ -596,7 +736,19 @@ def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     s.starten(auftrag_text(fall, vorgaben))
     b.vermerken(fall, "Ermittlung gestartet", f"/ermittlung {fall}" + (f" · Vorgaben: {kurz(vorgaben, 1500)}" if vorgaben else "")
                 + (f" · Pflichtquellen: {', '.join(pflicht)}" if pflicht else ""))
+    _trotzdem_vermerken(b, s, fall, vorgaben, trotzdem, "Vorgabe")
     return {"meldung": "Die Ermittlung ist gestartet. Jeder Schritt erscheint im Chat, neue Ergebnisse in der Arbeitsspur und in den Ansichten."}
+
+
+def _trotzdem_vermerken(b: "bedienung_modul.Bedienung", s: Sitzung, fall: str, text: str, trotzdem: bool, was: str) -> None:
+    """Hat der Sachbearbeiter einen Text bewusst gesendet, obwohl die Prüfung darin etwas sperrt, steht das im Sitzungsprotokoll
+    und im Verlauf: wer es war, weiss die Oberfläche nicht, aber dass es so entschieden wurde und wie viele Stellen es betraf."""
+    zahl = sperrfunde(text) if trotzdem else 0
+    if zahl:
+        b.vermerken(fall, f"{was} trotz Sperrfund gesendet", f"{zahl} Fundstelle(n) der PII-Prüfung. Der Sachbearbeiter hat entschieden: Die Angabe gehört zur Täterseite.",
+                    sitzung=s.kennung)
+        s.notieren("oberfläche", f"{was} bewusst gesendet, obwohl die Prüfung {zahl} {'Stelle' if zahl == 1 else 'Stellen'} sperrt (Angabe der Täterseite). "
+                                 "Das steht im Sitzungsprotokoll.")
 
 
 def ermittlung_anhalten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
@@ -641,7 +793,8 @@ def ermittlung_nachricht(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     sie, wartet die Nachricht auf das Ende des laufenden Auftrags, oder sie unterbricht ihn (`jetzt`)."""
     fall = b._fall_id(str(d.get("fall") or ""))
     fall_daten(fall)
-    text = eingabe_pruefen(d.get("text"), "Die Nachricht")
+    trotzdem = bool(d.get("trotzdem"))
+    text = eingabe_pruefen(d.get("text"), "Die Nachricht", trotzdem)
     if not text:
         raise bedienung_modul.Fehler("Die Nachricht ist leer.")
     s = _sitzung(b, fall)
@@ -652,6 +805,7 @@ def ermittlung_nachricht(b: "bedienung_modul.Bedienung", d: dict) -> dict:
                 s.wartend.append({"id": secrets.token_urlsafe(6), "text": text, "eintrag": eintrag})
                 s.version += 1
             b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500) + " (wartet auf das Ende des laufenden Auftrags)", sitzung=s.kennung)
+            _trotzdem_vermerken(b, s, fall, text, trotzdem, "Nachricht")
             return {"meldung": "Die Nachricht wartet. Sie geht an die Ermittlung, sobald der laufende Auftrag zu Ende ist.", "wartet": True}
         if not s.kennung:
             raise bedienung_modul.Fehler("Claude Code hat seine Sitzung noch nicht genannt. Bitte in ein paar Sekunden noch einmal senden.")
@@ -659,11 +813,13 @@ def ermittlung_nachricht(b: "bedienung_modul.Bedienung", d: dict) -> dict:
         s.notieren("sachbearbeiter", text, "sachbearbeiter")
         s.starten(UNTERBRECHUNG.format(text=text), fortsetzen=True)
         b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500) + " (laufender Auftrag unterbrochen)", sitzung=s.kennung)
+        _trotzdem_vermerken(b, s, fall, text, trotzdem, "Nachricht")
         return {"meldung": "Der laufende Auftrag ist unterbrochen. Die Ermittlung arbeitet mit der Nachricht weiter."}
     s = _fortsetzbar(b, fall, int(d.get("_port") or 0))
     s.notieren("sachbearbeiter", text, "sachbearbeiter")
     s.starten(text, fortsetzen=True)
     b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500), sitzung=s.kennung)
+    _trotzdem_vermerken(b, s, fall, text, trotzdem, "Nachricht")
     return {"meldung": "Die Nachricht ist bei der Ermittlung."}
 
 
@@ -689,8 +845,40 @@ def ermittlung_antworten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     if s is None:
         raise bedienung_modul.Fehler("Zu diesem Fall läuft keine Ermittlung.")
     erlauben = bool(d.get("erlauben"))
-    frage = s.antworten(str(d.get("frage") or ""), erlauben)
-    b.vermerken(fall, f"Rückfrage {'erlaubt' if erlauben else 'abgelehnt'}", f"{frage['werkzeug']} {kurz(frage['eingabe'], 240)}", sitzung=s.kennung)
+    kennung = str(d.get("frage") or "")
+    offen = s.offene_frage(kennung)
+    if offen["art"] == "frage":
+        # Eine Frage der Ermittlung. Die Antwort liest das Sprachmodell: Eigene Antworten gehen durch dieselbe Prüfung wie eine Nachricht
+        antworten: dict[str, str] = {}
+        trotzdem = bool(d.get("trotzdem"))
+        if erlauben:
+            for i, f in enumerate(offen["fragen"]):
+                eigen = eingabe_pruefen(d.get(f"frei_{i}"), "Die Antwort", trotzdem)
+                if f["mehrere"]:
+                    wert = ", ".join([w["name"] for j, w in enumerate(f["wahl"]) if d.get(f"wahl_{i}_{j}")] + ([eigen] if eigen else []))
+                else:
+                    nummer = str(d.get(f"wahl_{i}") or "")
+                    wert = eigen or (f["wahl"][int(nummer)]["name"] if nummer.isdigit() and int(nummer) < len(f["wahl"]) else "")
+                if not wert:
+                    raise bedienung_modul.Fehler(f"Frage {i + 1} ist noch offen: bitte eine Auswahl treffen oder eine eigene Antwort schreiben."
+                                                 if len(offen["fragen"]) > 1 else "Bitte eine Auswahl treffen oder eine eigene Antwort schreiben.")
+                antworten[f["frage"]] = wert
+        s.antworten(kennung, erlauben, antworten)
+        if erlauben:
+            text = "\n".join(f"{frage}\n→ {antwort}" for frage, antwort in antworten.items())
+            s.notieren("sachbearbeiter", text, "sachbearbeiter")
+            b.vermerken(fall, "Frage der Ermittlung beantwortet", kurz(text, 1500), sitzung=s.kennung)
+            _trotzdem_vermerken(b, s, fall, "\n".join(antworten.values()), trotzdem, "Antwort")
+            return {"meldung": "Die Antwort ist bei der Ermittlung."}
+        b.vermerken(fall, "Frage der Ermittlung nicht beantwortet", kurz(offen["fragen"][0]["frage"], 300), sitzung=s.kennung)
+        return {"meldung": "Nicht beantwortet: Die Ermittlung trifft selbst eine Annahme und nennt sie."}
+    frage = s.antworten(kennung, erlauben, merken=bool(d.get("merken")))
+    b.vermerken(fall, f"Rückfrage {'erlaubt' if erlauben else 'abgelehnt'}", f"{frage['werkzeug']} {kurz(frage['eingabe'], 240)}"
+                + (" · bei Werkzeugen der Erlaubt-Liste für diese Ermittlung nicht mehr fragen" if frage["gemerkt"] else ""), sitzung=s.kennung)
+    if frage["gemerkt"]:
+        s.notieren("oberfläche", "Entschieden: Bei Werkzeugen, die auf der Erlaubt-Liste des Projekts stehen, fragt die Oberfläche für den Rest dieser Ermittlung "
+                                 "nicht mehr. Aktive Massnahmen und alles, was auf keiner Liste steht, fragen weiter einzeln.")
+        return {"meldung": "Erlaubt. Bei Werkzeugen der Erlaubt-Liste fragt die Oberfläche in dieser Ermittlung nicht mehr."}
     return {"meldung": "Erlaubt: Claude Code führt den Aufruf aus." if erlauben else "Abgelehnt: Claude Code führt den Aufruf nicht aus."}
 
 
@@ -717,7 +905,12 @@ PROBEN = (
                "Antworte danach in zwei kurzen Sätzen, was bei (1) und was bei (2) geschah, und zitiere die Meldung, die du jeweils bekommen hast."),
     ("rueckfrage", "Dies ist eine Prüfung der Rückfrage dieses Arbeitsplatzes. Rufe genau einmal das Werkzeug WebSearch mit der Suche «example.com» auf und versuche "
                    "nichts anderes. Antworte danach in einem Satz, was geschah, und zitiere die Meldung."),
+    ("frage", "Dies ist eine Prüfung der Fragen an den Sachbearbeiter, keine Ermittlung. Rufe genau einmal das Werkzeug AskUserQuestion auf, mit genau einer Frage im "
+              "Wortlaut «{frage}», der Überschrift «Probe» und genau zwei Antworten zur Auswahl: «{erste}» und «{zweite}». Versuche nichts anderes. Antworte danach mit "
+              "genau einem Satz, der mit «" + PROBE_SATZ + ":» beginnt und die Antwort wörtlich nennt, die du bekommen hast."),
 )
+# Die Frage der fünften Probe. Die Probe wählt die zweite Antwort: Ein Modell, das ohne Antwort rät, nennt eher die erste
+PROBE_FRAGE, PROBE_WAHL = "Welche Farbe soll die Probe nennen?", ("Blau", "Rot")
 
 
 def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_unveraendert: bool, protokolliert: bool | None = None) -> list[tuple[bool, str]]:
@@ -777,6 +970,28 @@ def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_u
                 fehler, text = ergebnisse.get(k, (True, "ohne Ergebnis"))
                 punkte.append((fehler or k in abgelehnt, f"{was}: {f'abgelehnt, {wer}' if fehler or k in abgelehnt else 'AUSGEFÜHRT'}. Meldung: {text}"))
         punkte.append((akte_unveraendert, "fall.json des Falls ist unverändert." if akte_unveraendert else "fall.json des Falls wurde VERÄNDERT."))
+    elif art == "frage":
+        # Eine Frage der Ermittlung an den Sachbearbeiter: Kommt sie an, nimmt Claude Code die Antwort an, und erreicht sie das Modell?
+        gestellt = [k for k, a in aufrufe.items() if a.get("name") == worte.FRAGE_WERKZEUG]
+        angekommen = next((f for f in fragen if f.get("art") == "frage"), None)
+        if not gestellt:
+            punkte.append((False, "Claude Code hat keine Frage gestellt: Das Werkzeug AskUserQuestion fehlt in der Ausgabe. Vielleicht bietet diese Fassung von Claude Code "
+                                  "es im Skriptbetrieb nicht an. Die Probe sagt dann nichts darüber, ob sich eine Frage beantworten lässt."))
+            return punkte
+        punkte.append((angekommen is not None, "Die Frage kam bei der Oberfläche an: " + kurz(angekommen["fragen"][0]["frage"], 120) + " ("
+                       + ", ".join(w["name"] for w in angekommen["fragen"][0]["wahl"]) + ")." if angekommen is not None else
+                       "Claude Code hat eine Frage gestellt, aber sie kam bei der Oberfläche nicht als Frage an"
+                       + (f" (angekommen ist: {fragen[0].get('werkzeug')})." if fragen else ": Es kam gar keine Rückfrage an.")))
+        if angekommen is None:
+            return punkte
+        gewaehlt = str(angekommen.get("gewaehlt") or "")
+        for k in gestellt:
+            fehler, text = ergebnisse.get(k, (True, "ohne Ergebnis"))
+            punkte.append((not fehler and k not in abgelehnt, ("Claude Code hat die Antwort der Oberfläche angenommen." if not fehler and k not in abgelehnt else
+                                                             "Claude Code hat die Antwort der Oberfläche NICHT angenommen.") + f" Meldung des Werkzeugs: {text}"))
+        punkte.append((bool(gewaehlt) and gewaehlt in antwort and PROBE_SATZ in antwort,
+                       f"Die Antwort «{gewaehlt}» hat das Modell erreicht: {kurz(antwort, 160)}" if gewaehlt and gewaehlt in antwort and PROBE_SATZ in antwort
+                       else f"Die Antwort «{gewaehlt}» steht nicht in dem, was das Modell danach sagt: {kurz(antwort, 160) or 'nichts'}"))
     else:
         punkte.append((bool(fragen), f"Die Rückfrage kam bei der Oberfläche an: {fragen[0]['werkzeug']}." if fragen else "Bei der Oberfläche kam keine Rückfrage an."))
         for k in [k for k, a in aufrufe.items() if a.get("name") == "WebSearch"]:
@@ -786,8 +1001,9 @@ def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_u
 
 
 def probe(b: "bedienung_modul.Bedienung", port: int, fall: str, ausgabe=print, zeit: int = 300) -> int:
-    """Startet vier kurze Sitzungen des echten Claude Code über denselben Weg wie «Ermittlung starten» und zeigt, ob der Weg trägt:
-    Form der Ausgabe und Hooks des Projekts, Fortsetzen derselben Sitzung, Verbotsregeln, Rückfrage. Die Probe lehnt jede Rückfrage ab.
+    """Startet fünf kurze Sitzungen des echten Claude Code über denselben Weg wie «Ermittlung starten» und zeigt, ob der Weg trägt:
+    Form der Ausgabe und Hooks des Projekts, Fortsetzen derselben Sitzung, Verbotsregeln, Rückfrage, Frage an den Sachbearbeiter.
+    Die Probe lehnt jede Rückfrage ab. Die Frage der fünften Sitzung beantwortet sie selbst, mit der zweiten Antwort zur Auswahl.
     Sie verbraucht etwas Kontingent und ändert nichts am Fall."""
     fall_daten(fall)
     akte = PROJEKT / "faelle" / fall / "fall.json"
@@ -807,12 +1023,18 @@ def probe(b: "bedienung_modul.Bedienung", port: int, fall: str, ausgabe=print, z
                 fehler += 1
                 continue
             s.kennung = erste
-        s.starten(auftrag.replace("{fall}", fall), fortsetzen=art == "fortsetzen")
+        s.starten(auftrag.replace("{fall}", fall).replace("{frage}", PROBE_FRAGE).replace("{erste}", PROBE_WAHL[0]).replace("{zweite}", PROBE_WAHL[1]),
+                  fortsetzen=art == "fortsetzen")
         ende = time.time() + zeit
         while time.time() < ende:
             frage = s._frage_dict()
             if frage:
                 fragen.append(frage)
+                wahl = frage["fragen"][0]["wahl"] if art == "frage" and frage.get("art") == "frage" else []
+                if wahl:        # die Frage der Probe: Die Probe antwortet selbst, mit der letzten Antwort zur Auswahl
+                    frage["gewaehlt"] = wahl[-1]["name"]
+                    s.antworten(frage["id"], True, {frage["fragen"][0]["frage"]: wahl[-1]["name"]})
+                    continue
                 s.antworten(frage["id"], False)
             if s.prozess is not None and s.prozess.poll() is not None:
                 break

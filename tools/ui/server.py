@@ -240,7 +240,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
                 return self.json({"titel": f"Akten · {ziel}" if ziel else "Neuer Fall", "html": seite})
             return self.fehler_json(404, "Diese Aktion gibt es nicht.")
         except bedienung_modul.Fehler as e:
-            return self.fehler_json(e.status, str(e))
+            return self.json({"fehler": str(e), **e.mehr}, e.status)
         except (daten.NichtGefunden, FileNotFoundError) as e:
             return self.fehler_json(404, str(e))
         except (BrokenPipeError, ConnectionResetError):
@@ -375,7 +375,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
                 stand = sitzung_modul.verlauf(self.bedienung, fall.id, version)
                 bereit = sitzung_modul.verfuegbar() if self.bedienung is not None else ""
                 return self.json({**stand, "bedienbar": self.bedienung is not None, "claude": bereit,
-                                  "feld": formulare.ermittlung_feld(fall.id, stand, bereit) if self.bedienung is not None else "",
+                                  "feld": formulare.ermittlung_feld(fall.id, stand, bereit, fall.klartext_stellen()) if self.bedienung is not None else "",
                                   "tafel": formulare.wer_tafel(stand) if self.bedienung is not None else "",
                                   "pflicht": seiten.pflichtquellen_html(fall, formulare.PFLICHT_STAND_KOPF), "pflicht_kurz": seiten.pflichtquellen_kurz(fall)})
             if ansicht == "ergebnisse":

@@ -5403,6 +5403,31 @@ elif os.environ.get("OSINT_FAKE_LANG"):
 elif os.environ.get("OSINT_FAKE_KURZ"):
     text("Das dauert kurz.")
     time.sleep(float(os.environ["OSINT_FAKE_KURZ"]))
+elif os.environ.get("OSINT_FAKE_FRAGE"):
+    # Die Ermittlung stellt dem Sachbearbeiter eine Frage (Werkzeug AskUserQuestion). Sie kommt auf dem Weg der Rueckfrage bei der Oberflaeche an
+    sys.path.insert(0, os.getcwd())
+    os.environ.update(umgebung)
+    from tools.ui import rueckfrage
+    fragen = json.loads(os.environ["OSINT_FAKE_FRAGE"])
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "tool_use", "id": "toolu_frage", "name": "AskUserQuestion", "input": fragen}]}})
+    merk["entscheid"] = rueckfrage.fragen("AskUserQuestion", fragen, "toolu_frage")
+    text("Antwort erhalten." if merk["entscheid"]["behavior"] == "allow" else "Keine Antwort: Ich treffe eine Annahme.")
+elif os.environ.get("OSINT_FAKE_LISTE"):
+    # Claude Code wendet die Erlaubt-Liste des Projekts nicht an: Es sagt das am Fehlerkanal und fragt auch bei Werkzeugen, die dort stehen
+    sys.path.insert(0, os.getcwd())
+    os.environ.update(umgebung)
+    from tools.ui import rueckfrage
+    print("Ignoring 45 permissions.allow entries from project settings: this workspace has not been trusted.", file=sys.stderr, flush=True)
+    merk["entscheide"] = []
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [
+        {"type": "tool_use", "id": "toolu_auftrag_2", "name": "Task", "input": {"subagent_type": "infrastruktur-analyst", "description": "Server klaeren"}}]}})
+    for kennung, eltern, name, eingabe in (("toolu_l1", None, "mcp__osint__fall_status", {"fall": fall}),
+                                           ("toolu_l2", "toolu_auftrag_2", "mcp__osint__shodan_host", {"fall": fall, "ip": "203.0.113.7", "zweck": "IP aus Rapport Ziff. 3"}),
+                                           ("toolu_l3", "toolu_auftrag_2", "mcp__osint__virustotal_ip", {"fall": fall, "ip": "203.0.113.7", "zweck": "IP aus Rapport Ziff. 3"}),
+                                           ("toolu_l4", "toolu_auftrag_2", "mcp__osint__wayback_sichern", {"fall": fall, "url": "https://kundenportal.example/login", "zweck": "Beweissicherung"})):
+        aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": eltern, "message": {"content": [{"type": "tool_use", "id": kennung, "name": name, "input": eingabe}]}})
+        merk["entscheide"].append(rueckfrage.fragen(name, eingabe, kennung))
+    text("Fertig.")
 else:
     aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [
         {"type": "text", "text": "Ich setze das Team ein."},
@@ -6342,7 +6367,10 @@ def _():
     assert status == 200, antwort
     s = warten(lambda x: x["frage"])
     offen, seite = dialog()
-    assert s["status"] == "wartet" and offen["anzahl"] == 1 and "Claude Code fragt nach" in seite.text and "mcp__osint__urlquery_einreichen" in seite.text, seite.text
+    # Der Dialog sagt in Worten, was geschehen soll, warum gefragt wird und was das Ziel davon merkt. Der Name des Werkzeugs und die Eingabe stehen darunter
+    assert s["status"] == "wartet" and offen["anzahl"] == 1 and "Aktive Massnahme: Zustimmung nötig" in seite.text and "mcp__osint__urlquery_einreichen" in seite.text, seite.text
+    assert "urlquery: URL in der Sandbox aufrufen lassen" in seite.text and "Der Betreiber der Zielseite sieht einen Besuch" in seite.text and "Zweck laut Ermittlung" in seite.text
+    assert "nicht mehr fragen" not in seite.text and s["lage"].startswith("Die Ermittlung wartet auf dich") and s["frage"]["art"] == "zustimmung" and s["frage"]["worte"]["art"] == "aktiv"
     assert "kundenportal.example/login" in seite.text and fall in seite.text and not verstoesse(offen["html"], fall) and "a" not in seite.namen(), "Adressen aus dem Fall sind nie anklickbar"
     frage = s["frage"]["id"]
     assert frage == next(a["value"] for t, a in seite.elemente if t == "input" and a.get("name") == "frage")
@@ -6358,16 +6386,19 @@ def _():
     ruhe()
     # Jeder Schritt steht im Verlauf: wer, was, mit Beleg und Ergebnis der Abfrage, die Rückfrage mit ihrem Entscheid
     alle = texte(s)
-    for stueck in (f"Ermittlung starten: /ermittlung {fall}\n\n{vorgabe}", "Ich setze das Team ein.", "beauftragt infrastruktur-analyst: Server klaeren", "shodan_host 203.0.113.7",
+    shodan = "Shodan: offene Dienste, Zertifikate und Betreiber einer IP · 203.0.113.7"       # der Schritt in Worten: Quelle, was gefragt wird, das Ziel
+    for stueck in (f"Ermittlung starten: /ermittlung {fall}\n\n{vorgabe}", "Ich setze das Team ein.", "beauftragt infrastruktur-analyst: Server klaeren", shodan,
                    "Entscheid: allow", "hat seinen Auftrag abgeschlossen.", "Ermittlung abgeschlossen.", "Der Auftrag ist zu Ende."):
         assert stueck in alle, (stueck, alle)
-    schritt = next(z for z in s["verlauf"] if z["text"] == "shodan_host 203.0.113.7")
+    schritt = next(z for z in s["verlauf"] if z["text"] == shodan)
     assert (schritt["art"], schritt["wer"], schritt.get("beleg"), schritt.get("ergebnis"), schritt["quelle"]) == ("schritt", "infrastruktur-analyst", "P-0007", "kein_treffer", True), schritt
+    assert (schritt["technik"], schritt["zweck"]) == ("shodan_host", "Test"), "neben dem Schritt stehen der Name des Werkzeugs, wie im Protokoll, und der Zweck der Abfrage"
     rueck = next(z for z in s["verlauf"] if z["art"] == "rueckfrage")
-    assert rueck["entscheid"] == "erlaubt" and "urlquery_einreichen" in rueck["text"], rueck
+    assert rueck["entscheid"] == "erlaubt" and rueck["text"] == "Zustimmung nötig: urlquery: URL in der Sandbox aufrufen lassen · https://kundenportal.example/login", rueck
     modell = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["model"]
     assert s["modell"] == modell and modell in Seite(s["feld"]).text and not verstoesse(s["feld"], fall), Seite(s["feld"]).text
-    assert "infrastruktur-analyst" in Seite(s["tafel"]).text and "shodan_host 203.0.113.7" in Seite(s["tafel"]).text and not verstoesse(s["tafel"], fall), Seite(s["tafel"]).text
+    assert "infrastruktur-analyst" in Seite(s["tafel"]).text and "Shodan: offene Dienste" in Seite(s["tafel"]).text and not verstoesse(s["tafel"], fall), Seite(s["tafel"]).text
+    assert s["lage"].startswith("Der Auftrag ist zu Ende") and s["liste_ruht"] is False and s["ohne_nachfrage"] is False, s["lage"]
     assert [z["nr"] for z in s["verlauf"]] == sorted(z["nr"] for z in s["verlauf"]) and all(z["zeit"] and z["wer"] for z in s["verlauf"])
     # Der Browser holt nur, was neu ist. Kennt er einen Stand, den es nicht gibt, bekommt er alles
     v = stand()["v"]
@@ -6498,7 +6529,7 @@ def _():
         time.sleep(0.1)
     verlauf_text = lesen(datei)
     assert [p.name for p in (pfad / "arbeitsstand").glob("verlauf-oberflaeche-*.txt")] == [datei.name] and "kein Beleg" in verlauf_text and vorgabe in verlauf_text, verlauf_text[:300]
-    assert "shodan_host 203.0.113.7 [P-0007] [kein_treffer]" in verlauf_text and "[zurückgenommen]" in verlauf_text and "[erlaubt]" in verlauf_text
+    assert shodan + " (shodan_host) [P-0007] [kein_treffer]" in verlauf_text and "Zweck: Test" in verlauf_text and "[zurückgenommen]" in verlauf_text and "[erlaubt]" in verlauf_text
     # Nach einem Neustart der Oberfläche findet sie die letzte Sitzung von Claude Code im Sitzungsprotokoll des Projekts und setzt sie fort
     frueher = "22222222-3333-4444-8555-666666666666"
     assert ui_sitzung.letzte_sitzung("BEDIEN-0003") == ""
@@ -6615,7 +6646,7 @@ def _():
 
     def ergebnis(kennung: str, text: str, fehler: bool) -> dict:
         return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "content": text, "is_error": fehler}]}}
-    assert [art for art, _ in ui_sitzung.PROBEN] == ["ablauf", "fortsetzen", "verbot", "rueckfrage"]
+    assert [art for art, _ in ui_sitzung.PROBEN] == ["ablauf", "fortsetzen", "verbot", "rueckfrage", "frage"]
     anfang = {"type": "system", "subtype": "init", "session_id": "s-1", "model": "modell-x", "mcp_servers": [{"name": "osint", "status": "connected"}, {"name": "oberflaeche", "status": "connected"}]}
     schluss = {"type": "result", "subtype": "success", "is_error": False, "result": f"{ui_sitzung.PROBE_SATZ}: 3 Abfragen."}
     ablauf = [anfang, aufruf("s", "mcp__osint__fall_status", {"fall": fall, "zweck": "Probe"}), ergebnis("s", '{"abfragen": 3}', False), schluss]
@@ -6639,6 +6670,24 @@ def _():
     assert [g for g, _ in ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "abgelehnt", True)], [{"werkzeug": "WebSearch"}], True)] == [True, True]
     assert ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "Treffer …", False)], [], True) == \
         [(False, "Bei der Oberfläche kam keine Rückfrage an."), (False, "Nach der Ablehnung in der Oberfläche: AUSGEFÜHRT. Meldung: Treffer …")]
+    # Die fünfte Probe: Claude Code stellt dem Sachbearbeiter eine Frage, die Probe wählt die zweite Antwort. Kommt die Frage an, nimmt Claude Code die Antwort an, erreicht sie das Modell?
+    probe_frage = next(text for art, text in ui_sitzung.PROBEN if art == "frage")
+    assert "AskUserQuestion" in probe_frage and all(p in probe_frage for p in ("{frage}", "{erste}", "{zweite}")) and len(ui_sitzung.PROBE_WAHL) == 2
+    frage_eingabe = {"questions": [{"question": ui_sitzung.PROBE_FRAGE, "header": "Probe", "multiSelect": False, "options": [{"label": w, "description": ""} for w in ui_sitzung.PROBE_WAHL]}]}
+    zweite = ui_sitzung.PROBE_WAHL[1]
+    gestellt = {"art": "frage", "werkzeug": "AskUserQuestion", "fragen": ui_sitzung.worte.fragen_lesen(frage_eingabe), "gewaehlt": zweite}
+    ende_gut = {"type": "result", "subtype": "success", "is_error": False, "result": f"{ui_sitzung.PROBE_SATZ}: {zweite}."}
+    punkte = ui_sitzung.probe_auswerten("frage", [aufruf("f", "AskUserQuestion", frage_eingabe), ergebnis("f", zweite, False), ende_gut], [gestellt], True)
+    assert [gut for gut, _ in punkte] == [True, True, True] and ", ".join(ui_sitzung.PROBE_WAHL) in punkte[0][1] and "angenommen" in punkte[1][1] and f"«{zweite}»" in punkte[2][1], punkte
+    # Claude Code verwirft die Antwort, oder das Modell nennt die andere Antwort: Die Probe sagt, an welcher Stelle der Weg bricht
+    verworfen = [aufruf("f", "AskUserQuestion", frage_eingabe), ergebnis("f", "Permission prompt tool returned an invalid result", True),
+                 {**ende_gut, "result": f"{ui_sitzung.PROBE_SATZ}: {ui_sitzung.PROBE_WAHL[0]}."}]
+    punkte = ui_sitzung.probe_auswerten("frage", verworfen, [gestellt], True)
+    assert [gut for gut, _ in punkte] == [True, False, False] and "NICHT angenommen" in punkte[1][1] and "invalid result" in punkte[1][1], punkte
+    punkte = ui_sitzung.probe_auswerten("frage", [ende_gut], [], True)
+    assert len(punkte) == 1 and not punkte[0][0] and "hat keine Frage gestellt" in punkte[0][1], "bietet Claude Code das Werkzeug nicht an, sagt die Probe das und behauptet sonst nichts"
+    punkte = ui_sitzung.probe_auswerten("frage", [aufruf("f", "AskUserQuestion", frage_eingabe)], [{"art": "zustimmung", "werkzeug": "AskUserQuestion"}], True)
+    assert len(punkte) == 1 and not punkte[0][0] and "nicht als Frage an" in punkte[0][1], punkte
     ausgabe = io.StringIO()
     with contextlib.redirect_stderr(ausgabe):
         assert oberflaeche_start.sitzungsprobe(MUSTER, "ohne Terminal gestartet", None) == 2 and "nur, wenn ein Mensch" in ausgabe.getvalue()
@@ -6663,6 +6712,222 @@ def _():
     assert "--model" not in lesen(PROJEKT / "tools" / "ui" / "sitzung.py").replace('"--model", "--fallback-model"', "")
     skill = lesen(PROJEKT / ".claude" / "skills" / "ermittlung" / "SKILL.md")
     assert ui_sitzung.VORGABEN_KOPF.split(" (")[0] in skill and "keine Freigabe" in skill, "der Skill /ermittlung muss wissen, was Vorgaben aus der Oberfläche sind und was sie nicht dürfen"
+
+
+@test("Bedienung, Rückfragen in Worten: Eine Frage der Ermittlung lässt sich beantworten. Eine Zustimmung sagt, was geschieht und warum. Wendet Claude Code die Erlaubt-Liste nicht an, "
+      "sagt die Oberfläche das und fragt auf Wunsch nicht mehr")
+def _():
+    from gateway import kern, server as _gateway_server      # noqa: F401  (der Server meldet beim Laden jedes Werkzeug an)
+    from tools.ui import worte
+    u = bedien_vorbereiten()
+    b, port, aktion, merker = u["b"], u["port"], u["aktion"], u["merker"]
+    fall = "BEDIEN-0001"
+
+    def stand() -> dict:
+        return json.loads(ui_anfrage(port, f"/api/fall/{fall}/verlauf?v=0")[2])
+
+    def warten(bedingung, sekunden: float = 30) -> dict:
+        ende = time.time() + sekunden
+        while time.time() < ende:
+            s = stand()
+            if bedingung(s):
+                return s
+            time.sleep(0.1)
+        raise AssertionError(f"Zustand nicht erreicht: {stand()['status']} {[z['text'] for z in stand()['verlauf']][-6:]}")
+
+    def dialog() -> tuple[dict, Seite]:
+        antwort = json.loads(ui_anfrage(port, "/api/rueckfragen")[2])
+        return antwort, Seite(antwort["html"])
+
+    def ruhe() -> None:
+        b.ermittlungen[fall].prozess.wait(timeout=20)
+        b.ermittlungen[fall].leser.join(timeout=30)
+        assert not b.ermittlungen[fall].leser.is_alive(), "der Lauf wurde nicht fertig verarbeitet"
+
+    def vermerke() -> list[tuple[str, str]]:
+        return [(z["schritt"], str(z.get("angabe") or "")) for z in protokollwerkzeug.sitzungen_laden(fall)[0] if z.get("ereignis") == "Oberflaeche"]
+
+    # ---- 1. Die Worte: Jedes Werkzeug des Gateways hat sie, und sie stimmen mit dem überein, was das Gateway über sich sagt
+    gateway = {fn.__name__: " ".join((fn.__doc__ or "").split()) for fn in kern.REGISTER}
+    assert set(gateway) == set(worte.GATEWAY_WORT), f"Werkzeuge ohne Worte oder Worte ohne Werkzeug: {sorted(set(gateway) ^ set(worte.GATEWAY_WORT))}"
+    assert set(worte.AKTIV) == {n for n, doc in gateway.items() if doc.startswith("AKTIV")}, "was das Gateway AKTIV nennt, nennt auch die Oberfläche so"
+    assert set(worte.PERSONENBEZUG) == {n for n, doc in gateway.items() if doc.startswith("PERSONENBEZUG")}
+    alle = worte.regeln()
+    assert alle["allow"] and alle["ask"] and all("(" not in r for liste in alle.values() for r in liste), "gelesen werden nur Regeln, die ein Werkzeug beim Namen nennen"
+    for name in gateway:        # die Einstellungen des Projekts: aktive Massnahmen fragen immer, alles andere aus dem Gateway steht auf der Erlaubt-Liste
+        z = worte.zustimmung(worte.GATEWAY + name, {"fall": fall, "zweck": "Test"})
+        assert (z["art"], z["merkbar"]) == (("aktiv", False) if name in worte.AKTIV else ("erlaubt", True)), (name, z["art"])
+        assert z["satz"].startswith(worte.GATEWAY_WORT[name][0] + ": ") and z["grund"] and z["folge"] and z["zweck"] == "Test", z
+    assert worte.auf_erlaubt_liste("mcp__osint__shodan_host") and not worte.auf_erlaubt_liste("mcp__osint__urlscan_einreichen") and not worte.auf_erlaubt_liste("Bash")
+    assert not worte.auf_erlaubt_liste("mcp__robin__robin_search") and worte.auf_rueckfrage_liste("mcp__robin__robin_search") and worte.auf_rueckfrage_liste("WebSearch")
+    eigene = {"allow": ["mcp__x__*", "mcp__y"], "ask": ["mcp__x__heikel"], "deny": ["mcp__y__nie"]}
+    assert [worte.auf_erlaubt_liste(n, eigene) for n in ("mcp__x__a", "mcp__x__heikel", "mcp__y__b", "mcp__y__nie", "mcp__z__a", "mcp__x")] == [True, False, True, False, False, False]
+    assert worte.schritt("mcp__osint__shodan_host", {"ip": "203.0.113.7", "zweck": "Test"}) == {
+        "text": "Shodan: offene Dienste, Zertifikate und Betreiber einer IP · 203.0.113.7", "technik": "shodan_host", "ziel": "203.0.113.7", "zweck": "Test", "art": "quelle"}
+    assert worte.schritt("mcp__robin__robin_search", {"query": "musterlocker"})["text"] == "Robin (Dark Web): im Dark Web suchen · musterlocker"
+    gelesen = worte.schritt("Read", {"file_path": str(PROJEKT / "faelle" / fall / "eingang" / "rapport-01.txt")})["text"]
+    assert gelesen == f"Datei lesen: faelle/{fall}/eingang/rapport-01.txt", f"eine Datei des Projekts steht mit ihrem Pfad im Projekt da: {gelesen}"
+    # Der Projektordner über einen Verweis erreicht, wie der Ordner für Zwischendateien unter macOS: Verglichen werden die aufgelösten Pfade.
+    # (Am 19.11.2026 scheiterte genau das in der CI unter macOS und Windows, unter Linux nicht.)
+    verweis = Path(tempfile.mkdtemp(prefix="osint-verweis-")) / "projekt"
+    try:
+        verweis.symlink_to(PROJEKT, target_is_directory=True)
+    except OSError:
+        verweis = None          # wo sich kein Verweis anlegen lässt (Windows ohne das Recht dazu), entfällt diese Probe
+    if verweis is not None:
+        echtes_projekt, worte.PROJEKT = worte.PROJEKT, verweis
+        try:
+            ueber_verweis = [worte.datei(str(ort / "faelle" / fall / "eingang" / "rapport-01.txt")) for ort in (verweis, PROJEKT)]
+        finally:
+            worte.PROJEKT = echtes_projekt
+        assert ueber_verweis == [f"faelle/{fall}/eingang/rapport-01.txt"] * 2, f"über einen Verweis erreicht, gilt eine Datei des Projekts als fremd: {ueber_verweis}"
+    fremd = "C:/Users/irgendwer/Dokumente/notiz.txt" if plattform.WINDOWS else "/home/irgendwer/Dokumente/notiz.txt"
+    assert worte.datei(fremd) == "notiz.txt", "von einem Pfad ausserhalb des Projekts steht nur der Name der Datei im Chat, kein Benutzerordner"
+    assert worte.schritt("Bash", {"command": "python3 tools/fall.py status X", "description": "Stand lesen"}) == {
+        "text": "Befehl ausführen: python3 tools/fall.py status X", "technik": "Bash", "ziel": "python3 tools/fall.py status X", "zweck": "Stand lesen", "art": "befehl"}
+    aussen = worte.zustimmung("WebFetch", {"url": "https://example.org/"})
+    assert aussen["art"] == "aussen" and aussen["rat"].startswith("Empfehlung: ablehnen") and "in keinem Protokoll" in aussen["grund"] and not aussen["merkbar"], aussen
+    assert worte.zustimmung("Bash", {"command": "ls"})["art"] == "befehl" and worte.zustimmung("Write", {"file_path": "x.txt"})["art"] == "datei" and worte.zustimmung("Unbekannt", {})["art"] == "sonst"
+    assert worte.team("infrastruktur-analyst") == "Infrastruktur" and worte.team("unbekannt") == "unbekannt" and set(worte.TEAM) >= {p.stem for p in (PROJEKT / ".claude" / "agents").glob("*.md")}
+    assert worte.fragen_lesen({"questions": ["x", {"question": "  "}, {"question": "A?", "options": [{"label": "Ja"}, {"label": ""}, "x"], "multiSelect": 1}]}) == \
+        [{"frage": "A?", "kopf": "", "mehrere": True, "wahl": [{"name": "Ja", "text": ""}]}] and worte.fragen_lesen("x") == [] and worte.fragen_lesen({}) == []
+
+    # ---- 2. Die Ermittlung stellt eine Frage. Der Dialog zeigt sie mit ihrer Auswahl, und die Antwort geht als «answers» zurück
+    erste, zweite = "Soll ich den früheren Stand der Seite aus dem Archiv auswerten?", "Welche Quellen soll ich zusätzlich fragen?"
+    fragen = {"questions": [{"question": erste, "header": "Archiv", "multiSelect": False,
+                             "options": [{"label": "Ja, auswerten", "description": "Passiv: Die Zielseite wird nicht berührt."}, {"label": "Nein", "description": "Nur festhalten."}]},
+                            {"question": zweite, "header": "Quellen", "multiSelect": True, "options": [{"label": "urlscan.io"}, {"label": "Wayback Machine"}, {"label": "VirusTotal"}]}]}
+    os.environ["OSINT_FAKE_FRAGE"] = json.dumps(fragen)
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["frage"])
+        offen, seite = dialog()
+        kennung = s["frage"]["id"]
+        assert s["status"] == "wartet" and s["frage"]["art"] == "frage" and s["lage"] == "Die Ermittlung wartet auf dich: Sie hat eine Frage.", s["lage"]
+        for stueck in ("Die Ermittlung fragt dich", erste, zweite, "Ja, auswerten", "Passiv: Die Zielseite wird nicht berührt.", "Mehrere Antworten sind möglich.", "Eigene Antwort", "Nicht beantworten"):
+            assert stueck in seite.text, (stueck, seite.text)
+        felder = [(a.get("type"), a.get("name"), a.get("value")) for t, a in seite.elemente if t == "input" and a.get("type") in ("radio", "checkbox", "text")]
+        assert felder == [("radio", "wahl_0", "0"), ("radio", "wahl_0", "1"), ("text", "frei_0", None), ("checkbox", "wahl_1_0", "1"), ("checkbox", "wahl_1_1", "1"),
+                          ("checkbox", "wahl_1_2", "1"), ("text", "frei_1", None), ("checkbox", "trotzdem", "1")], felder
+        assert not verstoesse(offen["html"], fall) and "a" not in seite.namen() and "AskUserQuestion" in seite.text, "der Name des Werkzeugs und die Eingabe stehen unter «Einzelheiten»"
+        # Nur mit Geheimnis. Ohne Antwort, mit halber Antwort oder mit Personendaten in der eigenen Antwort geht nichts hinaus
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": kennung, "erlauben": "1", "wahl_0": "0", "wahl_1_0": "1"}, None)[0] == 403
+        for angaben, grund in (({}, "Frage 1 ist noch offen"), ({"wahl_0": "1"}, "Frage 2 ist noch offen"), ({"wahl_0": "7", "wahl_1_0": "1"}, "Frage 1 ist noch offen"),
+                               ({"wahl_0": "0", "frei_1": "Rückruf an 079 555 01 97"}, "nicht gesendet")):
+            status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": kennung, "erlauben": "1", **angaben})
+            assert status == 400 and grund in antwort["fehler"] and "079 555 01 97" not in antwort["fehler"], (grund, antwort)
+        assert antwort.get("sperrfund") is True and "trotzdem senden" in antwort["fehler"], "die Antwort sagt dem Fenster, dass sich die Angabe bewusst doch senden lässt"
+        assert stand()["frage"]["id"] == kennung, "eine abgewiesene Antwort erledigt die Frage nicht"
+        status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": kennung, "erlauben": "1", "wahl_0": "1", "wahl_1_0": "1", "wahl_1_1": "", "wahl_1_2": "1",
+                                                          "frei_1": "Web-Check, nur passiv"})
+        assert status == 200 and "Die Antwort ist bei der Ermittlung" in antwort["meldung"], antwort
+        s = warten(lambda x: x["status"] == "beendet" and "Antwort erhalten." in [z["text"] for z in x["verlauf"]])
+        ruhe()
+        antworten = {erste: "Nein", zweite: "urlscan.io, VirusTotal, Web-Check, nur passiv"}
+        assert json.loads(lesen(merker))["entscheid"] == {"behavior": "allow", "updatedInput": {**fragen, "answers": antworten}}, json.loads(lesen(merker))["entscheid"]
+        gestellt = [z for z in s["verlauf"] if z["art"] == "rueckfrage"][-1]
+        assert gestellt["entscheid"] == "beantwortet" and gestellt["text"] == f"Die Ermittlung fragt: {erste} (und 1 weitere)", gestellt
+        assert f"{erste}\n→ Nein\n{zweite}\n→ urlscan.io, VirusTotal, Web-Check, nur passiv" in [z["text"] for z in s["verlauf"] if z["art"] == "sachbearbeiter"]
+        assert "Frage an dich: " + erste in [z["text"] for z in s["verlauf"] if z["art"] == "schritt"], "die Frage steht auch als Schritt im Verlauf"
+        assert [a for schritt, a in vermerke() if schritt == "Frage der Ermittlung beantwortet"] == [f"{erste} → Nein {zweite} → urlscan.io, VirusTotal, Web-Check, nur passiv"]
+        # Nicht beantworten: Die Ermittlung bekommt eine Absage mit dem Auftrag, selbst eine Annahme zu treffen
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["frage"])
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": ""})[1]["meldung"].startswith("Nicht beantwortet")
+        s = warten(lambda x: x["status"] == "beendet" and "Keine Antwort: Ich treffe eine Annahme." in [z["text"] for z in x["verlauf"]])
+        ruhe()
+        assert json.loads(lesen(merker))["entscheid"] == {"behavior": "deny", "message": ui_sitzung.OHNE_ANTWORT} and "Annahme" in ui_sitzung.OHNE_ANTWORT
+        assert [z for z in s["verlauf"] if z["art"] == "rueckfrage"][-1]["entscheid"] == "nicht beantwortet"
+        # Eine Angabe der Täterseite in der eigenen Antwort: Der Sachbearbeiter sendet sie bewusst doch. Das steht im Sitzungsprotokoll, ohne die Angabe
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["frage"])
+        status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": "1", "wahl_0": "0", "frei_1": "Die Täterschaft rief von 079 555 01 99 an",
+                                                          "trotzdem": "1"})
+        assert status == 200, antwort
+        warten(lambda x: x["status"] == "beendet")
+        ruhe()
+        assert json.loads(lesen(merker))["entscheid"]["updatedInput"]["answers"][zweite] == "Die Täterschaft rief von 079 555 01 99 an"
+        trotz = [a for schritt, a in vermerke() if schritt == "Antwort trotz Sperrfund gesendet"]
+        assert len(trotz) == 1 and trotz[0].startswith("1 Fundstelle(n)") and "079 555 01 99" not in trotz[0], trotz
+    finally:
+        os.environ.pop("OSINT_FAKE_FRAGE")
+
+    # ---- 3. Dasselbe im Chat: Eine Nachricht mit einer Rufnummer geht nicht hinaus, ausser der Sachbearbeiter sendet sie bewusst
+    status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": "Die Täterschaft rief von 079 555 01 99 an."})
+    assert status == 400 and antwort.get("sperrfund") is True and "079 555 01 99" not in antwort["fehler"], antwort
+    status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": "Die Täterschaft rief von 079 555 01 99 an.", "trotzdem": "1"})
+    assert status == 200, antwort
+    s = warten(lambda x: x["status"] == "beendet" and "Ich fahre fort: Die Täterschaft rief von 079 555 01 99 an." in [z["text"] for z in x["verlauf"]])
+    ruhe()
+    assert any(z["text"].startswith("Nachricht bewusst gesendet, obwohl die Prüfung 1 Stelle sperrt") for z in s["verlauf"]), "der Verlauf sagt, dass trotz Fund gesendet wurde"
+    assert len([a for schritt, a in vermerke() if schritt == "Nachricht trotz Sperrfund gesendet"]) == 1
+    status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": "x" * (ui_sitzung.NACHRICHT_LAENGE + 1), "trotzdem": "1"})
+    assert status == 400 and "länger" in antwort["fehler"] and not antwort.get("sperrfund"), "«trotzdem» hebt nur die Sperre der Prüfung auf, keine andere Grenze"
+    # Wer es strenger will, schaltet «trotzdem» mit OSINT_SCHUTZ=streng ab: Dann sperrt der Chat wie bis zum 19.11.2026
+    os.environ["OSINT_SCHUTZ"] = "streng"
+    try:
+        status, antwort = aktion("ermittlung_nachricht", {"fall": fall, "text": "Die Täterschaft rief von 079 555 01 99 an.", "trotzdem": "1"})
+        assert status == 400 and "nicht gesendet" in antwort["fehler"] and "Platzhalter" in antwort["fehler"] and not antwort.get("sperrfund") and "trotzdem" not in antwort["fehler"], antwort
+    finally:
+        os.environ.pop("OSINT_SCHUTZ")
+
+    # ---- 4. Claude Code wendet die Erlaubt-Liste nicht an: Es fragt bei Werkzeugen, die dort stehen. Die Oberfläche sagt, was los ist und was hilft
+    os.environ["OSINT_FAKE_LISTE"] = "1"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["frage"])
+        offen, seite = dialog()
+        assert s["frage"]["werkzeug"] == "mcp__osint__fall_status" and s["frage"]["worte"]["art"] == "erlaubt" and s["liste_ruht"] is True and s["ohne_nachfrage"] is False, s["frage"]
+        for stueck in ("Claude Code fragt nach", "Fallakte: Stand, Freigaben und Pflichtquellen lesen", "steht auf der Erlaubt-Liste des Projekts", "vertraut dem Projektordner noch nicht",
+                       "So entfällt die Frage künftig", "einmal «claude» starten", "Erlauben und nicht mehr fragen"):
+            assert stueck in seite.text, (stueck, seite.text)
+        assert sum(1 for t, a in seite.elemente if t == "input" and a.get("name") == "merken" and a.get("value") == "1") == 1
+        hinweise = [z for z in s["verlauf"] if z["text"] == worte.OHNE_VERTRAUEN]
+        assert len(hinweise) == 1 and hinweise[0].get("wichtig") is True, "der Hinweis steht einmal im Verlauf, hervorgehoben"
+        # «Nicht mehr fragen» kann nur der Sachbearbeiter entscheiden, und nur an einem Werkzeug der Erlaubt-Liste
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": "1", "merken": "1"}, b.ermittlungen[fall].karte)[0] == 403
+        status, antwort = aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": "1", "merken": "1"})
+        assert status == 200 and "fragt die Oberfläche in dieser Ermittlung nicht mehr" in antwort["meldung"], antwort
+        # Die zwei nächsten Werkzeuge der Erlaubt-Liste laufen ohne Dialog. Die aktive Massnahme fragt weiter, und dort lässt sich nichts «merken»
+        s = warten(lambda x: x["frage"] and x["frage"]["werkzeug"] == "mcp__osint__wayback_sichern")
+        offen, seite = dialog()
+        assert s["ohne_nachfrage"] is True and s["frage"]["worte"]["art"] == "aktiv" and s["frage"]["wer"] == "infrastruktur-analyst", s["frage"]
+        assert "Aktive Massnahme: Zustimmung nötig" in seite.text and "Infrastruktur" in seite.text and "öffentlich und dauerhaft" in seite.text and "nicht mehr fragen" not in seite.text, seite.text
+        assert not any(a.get("name") == "merken" for t, a in seite.elemente if t == "input")
+        gezaehlt = [z["text"] for z in s["verlauf"] if z["text"].startswith("Ohne Rückfrage erlaubt")]
+        assert gezaehlt == ["Ohne Rückfrage erlaubt, weil auf der Erlaubt-Liste des Projekts: 2 Aufrufe. Jeder steht als Schritt im Verlauf."], gezaehlt
+        assert aktion("ermittlung_antworten", {"fall": fall, "frage": s["frage"]["id"], "erlauben": "", "merken": "1"})[0] == 200
+        s = warten(lambda x: x["status"] == "beendet")
+        ruhe()
+        entscheide = json.loads(lesen(merker))["entscheide"]
+        assert [e["behavior"] for e in entscheide] == ["allow", "allow", "allow", "deny"] and entscheide[1]["updatedInput"]["ip"] == "203.0.113.7", entscheide
+        assert len([z for z in s["verlauf"] if z["text"] == worte.OHNE_VERTRAUEN]) == 1 and [z["entscheid"] for z in s["verlauf"] if z["art"] == "rueckfrage"][-2:] == ["erlaubt", "abgelehnt"]
+        alles = vermerke()
+        assert len([1 for schritt, _ in alles if schritt == "Erlaubt-Liste nicht angewendet"]) == 1
+        assert any(schritt == "Rückfrage erlaubt" and "mcp__osint__fall_status" in a and "nicht mehr fragen" in a for schritt, a in alles), "wer das Fragen abgestellt hat, steht im Sitzungsprotokoll"
+        assert any(schritt == "Rückfrage abgelehnt" and "wayback_sichern" in a and "nicht mehr fragen" not in a for schritt, a in alles)
+        # Eine neue Ermittlung fragt wieder: Der Entscheid galt für die eine
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = warten(lambda x: x["frage"])
+        assert s["frage"]["werkzeug"] == "mcp__osint__fall_status" and s["ohne_nachfrage"] is False
+        assert aktion("ermittlung_anhalten", {"fall": fall})[0] == 200 and warten(lambda x: x["status"] == "angehalten")
+        ruhe()
+    finally:
+        os.environ.pop("OSINT_FAKE_LISTE")
+
+    # ---- 5. Vor dem Start: Vertraut Claude Code dem Projektordner nicht, sagt die Seite es und wie es sich beheben lässt
+    try:
+        for wert, erwartet in ((False, True), (True, False), (None, False)):
+            ui_sitzung._ORDNER.update(zeit=time.monotonic(), wert=wert)
+            feld = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/verlauf")[2])["feld"]).text
+            assert ("vertraut diesem Projektordner noch nicht" in feld) is erwartet and stand()["ordner"] is wert, (wert, feld)
+    finally:
+        ui_sitzung._ORDNER.update(zeit=0.0, wert=None)
+    # Der MCP-Server der Rückfrage reicht Antworten nur weiter, wenn es welche gibt, und die Dokumentation nennt, was nicht geprüft ist
+    doku, readme = lesen(REPO / "docs" / "OBERFLAECHE.md"), lesen(REPO / "README.md")
+    for stueck in ("AskUserQuestion", "Erlauben und nicht mehr fragen", "Trotzdem senden", "tools/ui/worte.py"):
+        assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
+    assert "AskUserQuestion" in readme and "nicht geprüft" in readme.lower()
 
 
 @contextlib.contextmanager
@@ -7289,6 +7554,84 @@ def _():
         if korb is not None:
             for kennung in [k for k, e in korb.eintraege.items() if e.name in ("rapport mit luecke.txt", "beilage.txt")]:
                 korb.eintraege.pop(kennung, None)
+
+
+@test("Bedienung, nachbessern: Meldet die Ermittlung eine geschützte Angabe im Klartext, zeigt die Oberfläche die Stelle, ohne die Angabe. Das Dokument lässt sich aus dem Fall holen, "
+      "lokal nachbessern und ersetzt dann die alte Fassung")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion, korbseite = u["b"], u["port"], u["aktion"], u["korbseite"]
+    fall = "BEDIEN-0005"        # aus dem Test davor: rapport-01.txt liegt mit der Rufnummer einer geschädigten Person im Fall (Risiko übernommen)
+    pfad = PROJEKT / "faelle" / fall
+    nummer = "079 555 01 97"
+    assert sorted(eingang_stand(pfad)[0]) == ["beilage-01.txt", "rapport-01.txt"] and nummer in lesen(pfad / "eingang" / "rapport-01.txt")
+    # ---- Die Meldung der Ermittlung (arbeitsstand/klartext.json): Dokument, Zeile, Art der Angabe. Die Seite zeigt nie die Angabe selbst
+    meldung = pfad / "arbeitsstand" / "klartext.json"
+    meldung.parent.mkdir(exist_ok=True)
+    assert ui_daten.Fall(fall).klartext_stellen() == [] and "geschützten Angabe im Klartext" not in json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]
+    meldung.write_text(json.dumps({"stellen": [
+        {"dokument": "rapport-01.txt", "zeile": 5, "was": "Telefonnummer im Abschnitt Geschädigte/-r"},
+        {"dokument": "eingang/rapport-01.txt", "zeile": "fünf", "was": f"Rückruf an {nummer}"},      # ein Agent hat die Angabe doch hingeschrieben
+        {"dokument": "gibt-es-nicht.txt", "zeile": 1, "was": "Adresse"}, "unsinn", {"zeile": 3}]}, ensure_ascii=False), encoding="utf-8")
+    assert ui_daten.Fall(fall).klartext_stellen() == [{"dokument": "rapport-01.txt", "zeile": 5, "was": "Telefonnummer im Abschnitt Geschädigte/-r"},
+                                                      {"dokument": "rapport-01.txt", "zeile": None, "was": f"Rückruf an {nummer}"}]
+    for weg in (f"/api/fall/{fall}/ermittlung", f"/api/fall/{fall}/verlauf"):
+        antwort = json.loads(ui_anfrage(port, weg)[2])
+        html = antwort.get("html") or antwort["feld"]
+        seite = Seite(html)
+        assert "2 Stellen mit einer geschützten Angabe im Klartext" in seite.text and "rapport-01.txt, Zeile 5: Telefonnummer im Abschnitt Geschädigte/-r" in seite.text, seite.text
+        assert nummer not in html and "Beschreibung nicht gezeigt" in seite.text and "gibt-es-nicht" not in seite.text and not verstoesse(html, fall), weg
+        assert any(t == "a" and a.get("href") == f"#/fall/{fall}/akten" for t, a in seite.elemente), "von der Meldung führt ein Verweis zu den Akten"
+    # ---- Aus dem Fall holen: nur mit Geheimnis, mit Kürzel, nur was im Fall liegt. Im Fall bleibt das Dokument vorerst liegen
+    for angaben, grund in (({"namen": ["rapport-01.txt"], "durch": ""}, "Durch"), ({"namen": [], "durch": "MUS"}, "auswählen"),
+                           ({"namen": ["gibt-es-nicht.txt", "../fall.json"], "durch": "MUS"}, "Keines der gewählten")):
+        status, antwort = aktion("eingang_nachbessern", {"fall": fall, **angaben})
+        assert status == 400 and grund in antwort["fehler"], (grund, antwort)
+    assert ui_anfrage(port, "/api/aktion/eingang_nachbessern", "POST", {"fall": fall, "namen": ["rapport-01.txt"], "durch": "x"})[0] == 403 and fall not in b.koerbe
+    status, antwort = aktion("eingang_nachbessern", {"fall": fall, "namen": ["rapport-01.txt"], "durch": "MUS"})
+    assert status == 200 and antwort["ziel"] == fall and len(antwort["eintraege"]) == 1 and "ersetzt dann die alte" in antwort["meldung"], antwort
+    eintrag = antwort["eintraege"][0]
+    assert (eintrag["name"], eintrag["stand"], eintrag["sperren"], eintrag["statt"], eintrag["rolle"]) == ("rapport-01.txt", "personendaten", 1, "rapport-01.txt", "rapport"), eintrag
+    status, antwort = aktion("eingang_nachbessern", {"fall": fall, "namen": ["rapport-01.txt"], "durch": "MUS"})
+    assert status == 400 and "liegt schon zum Nachbessern" in antwort["fehler"], antwort
+    assert "rapport-01.txt" in eingang_stand(pfad)[0] and len(b.korb(fall).eintraege) == 1
+    seite = Seite(korbseite(fall)[1])
+    assert "zum Nachbessern aus dem Fall geholt" in seite.text and "Gewählte nachbessern" in seite.text and nummer not in seite.text, seite.text[:400]
+    assert any(t == "form" and a.get("data-aktion") == "eingang_nachbessern" and "mit-auswahl" in a.get("class", "") for t, a in seite.elemente)
+    # Solange die geschützte Angabe noch dasteht, ersetzt die Fassung aus dem Akten-Eingang nichts
+    status, antwort = aktion("korb_aufnehmen", {"ziel": fall, "ids": [eintrag["id"]]})
+    assert status == 200 and antwort["aufgenommen"] is False and sorted(eingang_stand(pfad)[0]) == ["beilage-01.txt", "rapport-01.txt"], antwort
+    # ---- Auf dem lokalen Bildschirm nachbessern, dann aufnehmen: Die neue Fassung liegt im Fall, die alte ist entfernt
+    vorgang = aktion("korb_pseudo", {"ziel": fall, "id": eintrag["id"]})[1]["vorgang"]
+    for offen in b.pseudo_holen(vorgang).vorgang.kandidaten():
+        aktion("pseudo_entscheid", {"vorgang": vorgang, "art": "annehmen", "fund": offen.id})
+    status, antwort = aktion("pseudo_uebernehmen", {"vorgang": vorgang})
+    assert status == 200 and antwort["uebernommen"] is True and antwort["ersetzt"] == 1, antwort
+    e = b.korb(fall).eintraege[eintrag["id"]]
+    assert e.stand == "sauber" and e.statt == {"name": "rapport-01.txt", "durch": "MUS"} and nummer not in e.text
+    status, antwort = aktion("korb_aufnehmen", {"ziel": fall, "ids": [eintrag["id"]]})
+    assert status == 200 and antwort["aufgenommen"] is True and antwort["namen"] == ["rapport-02.txt"], antwort
+    assert "Ersetzt im Fall: rapport-01.txt durch rapport-02.txt" in antwort["meldung"] and "neu lesen" in antwort["meldung"], antwort["meldung"]
+    assert sorted(eingang_stand(pfad)[0]) == ["beilage-01.txt", "rapport-02.txt"] and eingang_stand(pfad)[1] == [] and not (pfad / "eingang" / "rapport-01.txt").exists()
+    neu = lesen(pfad / "eingang" / "rapport-02.txt")
+    assert nummer not in neu and re.search(r"Telefon: \[[A-Z]+_\d+\]", neu) and "203.0.113.7" in neu and "[PERSON_01]" in neu, neu
+    assert not projekt_enthaelt(nummer, ordner=(f"faelle/{fall}/eingang",)), "im Eingang des Falls steht die Angabe nirgends mehr"
+    register = json.loads(lesen(pfad / "eingang" / ".freigabe.json"))
+    assert register["dateien"]["rapport-02.txt"]["ergebnis"] == "sauber" and "rapport-01.txt" not in register["dateien"]
+    entfernt = register["entfernt"][-1]
+    assert (entfernt["name"], entfernt["durch"], entfernt["grund"], entfernt["weg"]) == ("rapport-01.txt", "MUS", "ersetzt durch die nachgebesserte Fassung rapport-02.txt", "Oberfläche"), entfernt
+    # Die Meldung der Ermittlung nannte das alte Dokument: Es gibt es nicht mehr, also ist sie erledigt
+    assert ui_daten.Fall(fall).klartext_stellen() == [] and "geschützten Angabe im Klartext" not in json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]
+    schritte = [(z["schritt"], str(z.get("angabe") or "")) for z in protokollwerkzeug.sitzungen_laden(fall)[0] if z.get("ereignis") == "Oberflaeche"]
+    assert ("Dokumente zum Nachbessern geholt", "1 Datei(en), durch MUS: rapport-01.txt") in schritte and ("Dokument nachgebessert", "rapport-01.txt ersetzt durch rapport-02.txt, durch MUS") in schritte, schritte
+    assert nummer not in json.dumps(schritte), "im Sitzungsprotokoll steht die Angabe nicht"
+    # Eine Meldung, die sich nicht lesen lässt, ist keine: Die Seite scheitert daran nicht
+    meldung.write_text("{kaputt", encoding="utf-8")
+    assert ui_daten.Fall(fall).klartext_stellen() == [] and ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[0] == 200
+    meldung.unlink()
+    doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
+    for stueck in ("eingang_nachbessern", "klartext.json", "Gewählte nachbessern"):
+        assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
 
 
 @test("Bedienung, Arbeitsplatz: Die Seite zeigt, was läuft. «Alles abschalten» verlangt das Geheimnis, hält die Ermittlung an, stoppt die Dienste und beendet die Oberfläche. Gelöscht wird nichts")

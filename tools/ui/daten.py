@@ -156,6 +156,28 @@ class Fall:
             return b
         return self._gemerkt("befunde", [datei], lesen)
 
+    def klartext_stellen(self) -> list[dict]:
+        """Stellen, an denen laut der Ermittlung eine geschützte Angabe noch im Klartext steht (arbeitsstand/klartext.json): je Stelle
+        Dokument, Zeile und die Art der Angabe. Die Angabe selbst steht dort nie. Genannt werden nur Dokumente, die noch im Eingang
+        des Falls liegen: Ist ein Dokument nachgebessert und ersetzt, entfällt seine Meldung."""
+        datei = self.pfad / "arbeitsstand" / "klartext.json"
+        eingang = self.pfad / "eingang"
+
+        def lesen():
+            try:
+                roh = json.loads(datei.read_text(encoding="utf-8")) if datei.is_file() else {}
+            except (OSError, ValueError):
+                return []
+            aus = []
+            for s in (roh.get("stellen") if isinstance(roh, dict) else None) or []:
+                name = Path(str(s.get("dokument") or "")).name if isinstance(s, dict) else ""
+                if name:
+                    zeile = s.get("zeile")
+                    aus.append({"dokument": name, "zeile": zeile if isinstance(zeile, int) and not isinstance(zeile, bool) and zeile > 0 else None,
+                                "was": " ".join(str(s.get("was") or "").split())[:200]})
+            return aus[:200]
+        return [s for s in self._gemerkt("klartext", [datei], lesen) if (eingang / s["dokument"]).is_file()]
+
     def indikatoren(self) -> list[dict]:
         """Die Indikatoren des Falls: aus befunde.json, sonst aus der Indikatorliste des Arbeitsstands."""
         b = self.befunde() or {}
