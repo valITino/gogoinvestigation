@@ -258,6 +258,51 @@ def windows_administrator() -> bool | None:
     return False if "S-1-16-8192" in text or "S-1-16-4096" in text else None
 
 
+def _wslpath(schalter: str, pfad: str) -> str | None:
+    """Fragt wslpath: -w übersetzt einen Ort von Linux in die Schreibweise von Windows, -u umgekehrt. None, wenn es nicht geht."""
+    try:
+        antwort = subprocess.run([shutil.which("wslpath") or "/usr/bin/wslpath", schalter, pfad], capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=15, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    ort = antwort.stdout.strip()
+    return ort if antwort.returncode == 0 and ort else None
+
+
+def windows_laufwerk() -> Path | None:
+    """Unter WSL: der Ort, an dem das Laufwerk C: von Windows eingehängt ist, meist /mnt/c. None ausserhalb von WSL und wenn
+    das Laufwerk nicht eingehängt ist."""
+    if not wsl():
+        return None
+    laufwerk = Path(_wslpath("-u", "C:\\") or "/mnt/c")
+    return laufwerk if laufwerk.is_dir() else None
+
+
+def windows_pfad(pfad: Path | str) -> str | None:
+    """Unter WSL: derselbe Ort in der Schreibweise von Windows. Ein Ort auf einem Laufwerk von Windows heisst dann C:\\…, einer
+    im Dateisystem von WSL \\\\wsl.localhost\\<Distribution>\\…. Der Ort muss bestehen. None, wenn es sich nicht übersetzen lässt."""
+    return _wslpath("-w", str(pfad)) if wsl() else None
+
+
+def windows_ordner(variable: str = "TEMP") -> Path | None:
+    """Unter WSL: ein Ordner aus der Umgebung von Windows, etwa TEMP, so wie Linux ihn erreicht (/mnt/c/…). None, wenn sich
+    Programme von Windows von hier nicht starten lassen oder der Ordner nicht zu erreichen ist.
+    Gefragt wird cmd.exe mit /u: Die Antwort kommt dann in UTF-16, und ein Name mit Umlaut übersteht den Weg."""
+    laufwerk = windows_laufwerk()
+    if laufwerk is None:
+        return None
+    try:
+        antwort = subprocess.run([shutil.which("cmd.exe") or str(laufwerk / "Windows" / "System32" / "cmd.exe"), "/u", "/c", "echo",
+                                  f"%{variable}%"], capture_output=True, timeout=15, stdin=subprocess.DEVNULL, cwd=str(laufwerk))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    zeilen = (antwort.stdout or b"").decode("utf-16-le", errors="replace").lstrip("\ufeff").strip().splitlines()
+    if not zeilen or zeilen[-1].strip().startswith("%"):      # eine Variable, die es nicht gibt, lässt cmd unverändert stehen
+        return None
+    ort = _wslpath("-u", zeilen[-1].strip())
+    return Path(ort) if ort and Path(ort).is_dir() else None
+
+
 def schritt_terminal(neues_terminal: tuple[str, ...] | list[str]) -> str:
     """Der Schritt «neues Terminal», mit dem, was erst dort gilt. Derselbe Wortlaut, ob der Arbeitsplatz schon einsatzbereit
     ist oder noch etwas fehlt."""

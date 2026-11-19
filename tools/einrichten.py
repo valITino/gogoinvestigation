@@ -554,14 +554,37 @@ def snap_unsichtbar(name: str, unter_wsl: bool, neu: bool = False) -> str:
 def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None:
     """Zeile «Browser für PDF»: finden, sonst installieren, dann mit einer kleinen Seite wirklich ein PDF erzeugen.
     «Gefunden» allein sagt wenig: Ob der Browser hier ohne Fenster druckt, zeigt erst die Probe. Als «neu eingerichtet»
-    gilt Chromium erst, wenn es gedruckt hat."""
+    gilt Chromium erst, wenn es gedruckt hat.
+    Unter WSL druckt auch der Browser von Windows: Steht in WSL selbst keiner bereit, kommt er zuerst dran, und installiert
+    wird dann nichts. Druckt ein Browser in WSL nicht, ist er der zweite Versuch. So hält es auch tools/pdf.py."""
     from tools import pdf
+
+    def hiesiger() -> str | None:       # ein Browser dieses Systems, keiner von Windows
+        return next((b for b in pdf.browser_alle() if not pdf.von_windows(b)), None)
+
+    def probe(welcher: str) -> str | None:
+        von = " von Windows" if pdf.von_windows(welcher) else ""
+        with ui.arbeit(f"Browser für PDF wird geprüft ({Path(welcher).name}{von} druckt eine kleine Seite)"):
+            return pdf.probe(welcher, PROJEKT / "faelle")
+
     browser = pdf.browser_finden()
+    fremder = next((b for b in pdf.browser_alle() if pdf.von_windows(b)), None)
+    if a.nur_pruefen and browser:
+        zeile(GUT, "Browser für PDF", Path(browser).name + (" (Browser von Windows)" if pdf.von_windows(browser) else ""))
+        return
+    auch = ""       # was der Browser von Windows gemeldet hat, falls er von hier nicht druckt
+    if browser and browser == fremder:
+        fehler = probe(fremder)
+        if not fehler:
+            zeile(GUT, "Browser für PDF", f"{Path(fremder).name}, der Browser von Windows, Probe-PDF erzeugt")
+            return
+        auch = f" Auch der Browser von Windows ({Path(fremder).name}) druckt von hier nicht: {fehler}"
+        browser, fremder = hiesiger(), None     # dann bleibt der Weg über einen Browser in WSL selbst
     neu = versucht = False
     von_hand = ""
     if not browser and darf and browser_weg(sysinfo)[0]:
         versucht, von_hand = browser_installieren(sysinfo)
-        browser = pdf.browser_finden()
+        browser = hiesiger()
         neu = bool(browser)
     wo = "im Browser" + (" von Windows" if sysinfo.get("wsl") else "")
     ohne = f"Rapport und Protokoll gibt es trotzdem, als HTML: {wo} öffnen und über «Drucken» als PDF speichern."
@@ -579,39 +602,41 @@ def browser_einrichten(a: argparse.Namespace, sysinfo: dict, darf: bool) -> None
             grund = f"Die Einrichtung installiert Chromium, wenn sie darf: {SETUP}  "
         else:
             grund = "Chrome, Chromium, Edge oder Brave installieren, oder den Pfad in OSINT_BROWSER nennen."
-        zeile(AUS, "Browser für PDF", f"keiner gefunden. {grund} {ohne}")
+        zeile(AUS, "Browser für PDF", f"{'keiner druckt' if auch else 'keiner gefunden'}. {grund} {ohne}{auch}")
         if versucht:
             ursache_zeigen("browser")
         return
     name = Path(browser).name
-    if a.nur_pruefen:
-        zeile(GUT, "Browser für PDF", name)
-        return
-    with ui.arbeit(f"Browser für PDF wird geprüft ({name} druckt eine kleine Seite)"):
-        fehler = pdf.probe(browser, PROJEKT / "faelle")
+    fehler = probe(browser)
     if not fehler:
         if neu:
             stand.neu.append("Chromium (Browser für PDF)")
         zeile(NEU if neu else GUT, "Browser für PDF", f"{name}{' installiert' if neu else ''}, Probe-PDF erzeugt")
         return
+    if fremder:     # der Browser in WSL druckt nicht: Dann versucht es der von Windows, so wie tools/pdf.py es auch täte
+        fehler_fremd = probe(fremder)
+        if not fehler_fremd:
+            zeile(GUT, "Browser für PDF", f"{Path(fremder).name}, der Browser von Windows, Probe-PDF erzeugt. {name} druckt hier nicht.")
+            return
+        auch = f" Auch der Browser von Windows ({Path(fremder).name}) druckt von hier nicht: {fehler_fremd}"
     # Der Browser ist da, druckt hier aber nicht. Die Zeile sagt in einfachen Worten warum, und was zu versuchen ist, steht am Schluss.
     lage = "installiert" if neu else "gefunden"
     fenster = "WSL-Fenster" if sysinfo.get("wsl") else "Terminal"
     if snap_nicht_eingehaengt(fehler) and snap_lage(name) == "anderswo":
         # Der Snap ist da und eingehängt, nur dieses Terminal sieht ihn nicht. Ein neues Fenster braucht es unter WSL nach der
         # Einrichtung ohnehin: Der Grund kommt deshalb zu den übrigen, und die Probe folgt dort.
-        zeile(AUS, "Browser für PDF", f"{snap_unsichtbar(name, bool(sysinfo.get('wsl')), neu)} Bis dahin: PDF über «Drucken» {wo}.")
+        zeile(AUS, "Browser für PDF", f"{snap_unsichtbar(name, bool(sysinfo.get('wsl')), neu)} Bis dahin: PDF über «Drucken» {wo}.{auch}")
         if SNAP_GRUND not in stand.neues_terminal:
             stand.neues_terminal.append(SNAP_GRUND)
         stand.offen.append(f"Ob Chromium druckt, zeigt die Zeile «Browser für PDF», sobald ihr {SETUP} im neuen {fenster} noch einmal ausführt.")
     elif snap_nicht_eingehaengt(fehler):
-        zeile(AUS, "Browser für PDF", f"{name} ist als Snap installiert, startet aber nicht: Sein Inhalt ist unter /snap nicht eingehängt. {ohne}")
+        zeile(AUS, "Browser für PDF", f"{name} ist als Snap installiert, startet aber nicht: Sein Inhalt ist unter /snap nicht eingehängt. {ohne}{auch}")
         neustart = ("WSL neu starten (in PowerShell wsl --shutdown ausführen, das beendet alle offenen WSL-Fenster, dann WSL neu öffnen)"
                     if sysinfo.get("wsl") else "den Rechner neu starten")
         stand.offen.append(f"Chromium startet noch nicht, sein Snap ist nicht eingehängt. Versuch: {neustart} und {SETUP} erneut "
                            f"ausführen. Die Zeile «Browser für PDF» zeigt dann, ob er druckt. Bis dahin: PDF über «Drucken» {wo}.")
     else:
-        zeile(AUS, "Browser für PDF", f"{name} {lage}, aber die Probe ergab kein PDF: {fehler} {ohne}")
+        zeile(AUS, "Browser für PDF", f"{name} {lage}, aber die Probe ergab kein PDF: {fehler} {ohne}{auch}")
     if neu:
         ursache_zeigen("browser")
 

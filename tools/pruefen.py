@@ -165,7 +165,7 @@ def umgebung(env: dict[str, str]) -> None:
         zeile(GUT, "Web-Check", f"erreichbar unter {adresse}")
     else:
         zeile(AUS, "Web-Check", f"nicht erreichbar unter {adresse} (Start: docker compose up -d webcheck)")
-    from tools.pdf import browser_finden
+    from tools.pdf import browser_finden, von_windows
     browser = browser_finden()
     # Ein Browser aus einem Snap kann installiert sein und in diesem Terminal trotzdem fehlen: Sein Inhalt ist dann hier nicht zu sehen
     lage_snap = snap_lage(Path(browser).name) if browser and browser.startswith("/snap/") else ""
@@ -176,7 +176,7 @@ def umgebung(env: dict[str, str]) -> None:
         zeile(AUS, "Browser für PDF", f"{Path(browser).name} ist als Snap installiert, aber nicht eingehängt. {SETUP} sagt, was zu versuchen ist. "
                                       "PDF bis dahin über 'Drucken' im Browser.")
     elif browser:
-        zeile(GUT, "Browser für PDF", Path(browser).name)
+        zeile(GUT, "Browser für PDF", Path(browser).name + (" (Browser von Windows)" if von_windows(browser) else ""))
     else:
         zeile(AUS, "Browser für PDF", f"kein Chrome, Chromium, Edge oder Brave: PDF dann über 'Drucken' im Browser. {SETUP} installiert "
                                       "Chromium, wo die Paketverwaltung es anbietet.")

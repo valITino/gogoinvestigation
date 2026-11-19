@@ -155,7 +155,7 @@ Zeichen und ein Wort.
 | Git for Windows, nur unter Windows | Git Bash. Darin führt Claude Code das Sitzungsprotokoll aus. | ja | wird über winget installiert |
 | `pdftotext` (Poppler) | Rapporte als PDF aufnehmen | nein, `.txt` `.md` `.docx` gehen ohne | wird installiert |
 | Docker | Web-Check und Robin (Dark Web) | nein, beides bleibt sonst aus | wird gemeldet. Debian, Ubuntu, Kali: `./setup.sh --docker-installieren` holt es nach |
-| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken | Linux und WSL: Chromium wird installiert, über die Paketverwaltung, unter Ubuntu als Snap. Danach druckt die Einrichtung zur Probe eine kleine Seite und sagt, ob es geklappt hat. macOS: wird gemeldet. Windows: Edge gehört zum System. |
+| Chrome, Chromium, Edge oder Brave | Rapport und Protokoll als PDF erzeugen | nein, sonst im Browser als PDF drucken | WSL: Es druckt der Browser von Windows (Edge gehört zum System), installiert wird nichts. Linux: Chromium wird installiert, über die Paketverwaltung, unter Ubuntu als Snap. In beiden Fällen druckt die Einrichtung zur Probe eine kleine Seite und sagt, ob es geklappt hat. macOS: wird gemeldet. Windows: Edge gehört zum System. |
 | Tor | Proxy für die Abfragen an die Quellen, nur wenn ihr «Tor auf diesem Rechner» wählt | nein | wird installiert und gestartet (Paket `tor`). Unter Windows direkt nicht: dort einen eigenen Proxy nennen oder WSL nehmen. |
 | Konto für Claude Code | Anmeldung, Zugang zu Fable 5.2 | ja | bleibt bei euch |
 
@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 96 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 97 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code, die Testabfragen und der Start: Claude Code einmal im Projektordner,
 danach die Oberfläche. Während längerer Arbeiten läuft eine Zeile mit, die sagt, was gerade geschieht. Am Ende steht,
@@ -428,6 +428,10 @@ Oberfläche, die Berechtigungen verbieten es für Agenten, und die PII-Prüfung 
 ```bash
 python3 tools/pdf.py 2026-0412
 ```
+
+Unter WSL druckt dafür der Browser von Windows (`msedge.exe`), wenn in WSL selbst keiner druckt. Rapport und PDF bleiben
+im Projektordner. Nur das leere Wegwerf-Profil des Browsers liegt für die Dauer des Drucks im Ordner TEMP von Windows und
+wird danach entfernt.
 
 Alles an einem Ort, vom Rapport bis zur Rohdatei, zeigt die [Oberfläche](#oberfläche): `python3 tools/oberflaeche.py 2026-0412`.
 
@@ -1105,7 +1109,8 @@ Was ihr wissen müsst:
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
 | WSL: Beim Start der Oberfläche öffnet sich kein Browser | WSL hat keinen eigenen Browser, und der von Windows liess sich nicht starten | die Adresse aus dem Terminal im Browser von Windows öffnen. Sie steht da, sobald die Oberfläche läuft |
 | «Browser für PDF: … die Probe ergab kein PDF» | Der Browser startet ohne Fenster nicht, oder er darf im Projektordner nicht schreiben (ein Snap darf nur in den Benutzerordner) | Projekt im Benutzerordner ablegen oder einen anderen Browser in `OSINT_BROWSER` nennen. Sonst den Rapport im Browser öffnen und als PDF drucken |
-| «Browser für PDF: chromium ist installiert, in diesem WSL-Fenster aber nicht zu sehen» (oder «noch nicht zu sehen») | Der Snap ist installiert und für das System eingehängt, dieses Fenster sieht seinen Inhalt aber nicht. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL. Bekannt ist das von WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden (ein Fehler von WSL, microsoft/WSL#9097). Erkennt die Einrichtung ein solches Fenster, steht es in der Zeile | Der Schritt steht am Schluss: Fenster schliessen, WSL gewöhnlich öffnen (nicht «Als Administrator ausführen»), `./setup.sh` erneut. Meldet die Zeile dort dasselbe: in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen, `./setup.sh` erneut. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
+| «Browser für PDF: chromium ist installiert, in diesem WSL-Fenster aber nicht zu sehen» (oder «noch nicht zu sehen») | Der Snap ist installiert und für das System eingehängt, dieses Fenster sieht seinen Inhalt aber nicht. Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL. Bekannt ist das von WSL-Fenstern, die unter Windows «Als Administrator» gestartet wurden (ein Fehler von WSL, microsoft/WSL#9097). Erkennt die Einrichtung ein solches Fenster, steht es in der Zeile. Auf dem Rechner, auf dem es zuerst auffiel, lag es nicht daran: Der Snap blieb auch im gewöhnlichen neuen Fenster unsichtbar (19.11.2026). Die Zeile erscheint unter WSL deshalb nur noch, wenn auch der Browser von Windows nicht druckt | Der Schritt steht am Schluss: Fenster schliessen, WSL gewöhnlich öffnen (nicht «Als Administrator ausführen»), `./setup.sh` erneut. Meldet die Zeile dort dasselbe: in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen, `./setup.sh` erneut. Hilft auch das nicht, bleibt es beim Drucken im Browser von Windows |
+| «Browser für PDF: … Auch der Browser von Windows (msedge.exe) druckt von hier nicht» | Unter WSL druckt sonst der Browser von Windows. Hier geht es nicht: Programme von Windows lassen sich aus WSL nicht starten, oder der Browser erreicht den Projektordner nicht. Der Grund steht hinter dem Doppelpunkt | Den Rapport im Browser von Windows öffnen und als PDF drucken. Oder einen Browser in WSL nennen, der druckt: `OSINT_BROWSER` |
 | «Browser für PDF: chromium ist als Snap installiert, startet aber nicht» | Der Snap ist installiert, sein Inhalt aber auch für das System nicht eingehängt | Versuch: WSL neu starten (in PowerShell `wsl --shutdown`, dann WSL neu öffnen) und `./setup.sh` erneut. Die Zeile zeigt dann, ob er druckt. Bis dahin den Rapport im Browser von Windows öffnen und als PDF drucken |
 | Vor einer Installation steht «Die Paketverwaltung ist gerade belegt», oder danach «Tor liess sich noch nicht installieren, die Paketverwaltung war belegt» | Ein anderer Vorgang hält die Paketverwaltung besetzt. Kurz nach dem Start sind das meist die automatischen Aktualisierungen des Systems (`unattended-upgr`). Gesehen am 18.11.2026 unter Ubuntu 26.04 in WSL | Die Einrichtung wartet von selbst, höchstens zehn Minuten. Reicht das nicht: in ein paar Minuten `./setup.sh` erneut ausführen. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor liess sich nicht installieren» oder «Chromium liess sich nicht installieren» | Die Paketverwaltung hat die Installation abgelehnt | Der Grund steht eingerückt unter der Zeile («Die Paketverwaltung meldet: …»), vollständig in `/tmp/osint-setup/pakete.log`. Beheben, dann `./setup.sh` erneut. Für Tor geht es auch ohne: «Einstellungen ändern», «Proxy», «Kein Proxy» |
@@ -1138,7 +1143,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 96 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 97 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1242,12 +1247,31 @@ PowerShell 7:
   wird, steht in `/proc/locks`. Der Name eines Prozesses sagt es nicht, denn auch ein Skript namens
   `unattended-upgrade-shutdown` heisst in der Prozessliste `unattended-upgr`. Und die Zeilen «Waiting for cache lock»
   schreibt apt auch, wenn es danach weiterkommt: Als Grund zählt deshalb nur die Fehlerzeile.
-  **Nicht geprüft:** die neuen Meldungen auf einem echten WSL. Ob das Fenster auf jenem Rechner als Administrator
-  lief, also ob die bekannte Ursache dort zutrifft. Ob ein gewöhnliches neues WSL-Fenster den Snap sieht oder erst
-  `wsl --shutdown` hilft. Die Abfrage von `whoami` aus WSL (hier nur mit einer Attrappe). Ob Chromium aus dem Snap
-  unter WSL ohne Fenster druckt. Wie lange die automatischen Aktualisierungen die Paketverwaltung belegen: Dauern sie
-  länger als zehn Minuten, braucht es einen zweiten Lauf. Weiterhin offen: das Öffnen des Browsers von Windows aus
-  WSL, der Start von Claude Code aus der Einrichtung, und ab wann die Gruppe `docker` unter WSL gilt.
+  **Nicht geprüft:** die Meldung zur belegten Paketverwaltung auf einem echten WSL (beim zweiten Lauf war sie frei). Wie
+  lange die automatischen Aktualisierungen die Paketverwaltung belegen: Dauern sie länger als zehn Minuten, braucht es
+  einen zweiten Lauf. Weiterhin offen: das Öffnen des Browsers von Windows aus WSL und der Start von Claude Code aus
+  der Einrichtung.
+- Einer gilt dem, was der zweite echte Lauf unter WSL gezeigt hat (19.11.2026, derselbe Rechner, Stand nach dem
+  vorigen Punkt). **Gesehen:** Die Einrichtung endete mit «Einsatzbereit mit 25 von 28 Quellen», alle 96 Selbsttests
+  bestanden dort. Tor liess sich installieren, startete und baute Verbindungen auf. Docker war im neuen Fenster ohne
+  sudo erreichbar, die Gruppe `docker` galt also. Die Abfrage von `whoami` aus WSL ging, und sie zeigte: Das Fenster
+  lief nicht als Administrator (`S-1-16-8192`). Trotzdem sah es keinen einzigen Snap, während systemd den Snap von
+  Chromium als eingehängt führte. Die bekannte Ursache trifft dort also nicht zu, und der Schritt «neues Fenster»
+  half nicht: Die Einrichtung hätte im Kreis geführt.
+  **Geändert:** Unter WSL druckt jetzt der Browser von Windows, wenn in WSL selbst keiner druckt. Edge gehört zu
+  Windows, installiert wird dafür nichts. `tools/pdf.py` gibt ihm Dokument und Ziel unter dem Namen, unter dem Windows
+  das Dateisystem von WSL zeigt (`\\wsl.localhost\…`, übersetzt mit `wslpath`). Rapport und PDF bleiben im
+  Projektordner. Sein leeres Wegwerf-Profil liegt für die Dauer des Drucks im Ordner TEMP von Windows und wird danach
+  entfernt. Ein Snap ohne sichtbaren Inhalt steht in der Reihenfolge der Versuche zuletzt. Die Einrichtung prüft den
+  Browser von Windows mit derselben Probe wie jeden anderen und nennt ihn nur dann, wenn er wirklich gedruckt hat.
+  **Nachgestellt** in der Prüfumgebung (19.11.2026): Stellvertreter für `wslpath`, `cmd.exe` und `msedge.exe`, die die
+  Schreibweise von Windows verlangen und dahinter einen echten Browser drucken lassen. `tools/pdf.py` druckte so die
+  Probe und beide Dokumente des Musterfalls, aus einem Ordner mit Leerzeichen im Namen. Im nachgebauten TEMP blieb kein
+  Profil liegen, auch nicht nach einem Browser, der nie antwortete.
+  **Nicht geprüft:** der ganze Weg auf einem echten WSL. Offen ist damit, ob Edge das Dokument über `\\wsl.localhost`
+  liest und das PDF dorthin schreibt, ob es sich aus WSL ohne Fenster starten lässt und sich danach beendet, und ob ein
+  Edge, der nicht antwortet, sich über PowerShell beenden lässt. Unter Windows selbst druckt Edge mit denselben
+  Schaltern in der CI. Warum das Fenster den Snap nicht sieht, ist weiterhin nicht geklärt.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
