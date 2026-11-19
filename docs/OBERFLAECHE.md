@@ -632,11 +632,76 @@ lesen soll. Solange die geschützte Angabe im Akten-Eingang noch dasteht, ersetz
 | **Dokumente** | Abschlussrapport, Ermittlungsprotokoll, Datenblätter und PDF einzeln neu erzeugen, Kette prüfen. Die Seite zeigt die Ausgabe des Werkzeugs. | `tools/rapport.py`, `protokoll.py`, `anhang.py`, `pdf.py`, `audit_pruefen.py` |
 | **Zurückführen** | Der fertige Rapport mit echten Angaben, lokal, mit der Zuordnungstabelle. | `tools/reidentifizieren.py` |
 | **Fall löschen** | Nur, solange nichts abgefragt wurde: keine Protokolleinträge, keine Rohdaten, keine Befunde. Nie der Musterfall. Für eine falsche Fall-ID. | `tools/fall.py` (Funktion `loeschen`) |
-| **Quellen** | Welche bereit sind und welche fehlen, eine Testabfrage je Quelle, das Kontingent von urlscan.io, Stand der lokalen Listen. Von Schlüsseln nur der Name der Variablen. | wie `tools/pruefen.py --live` |
+| **Quellen** | Stand je Quelle, Schlüssel eintragen, ersetzen und entfernen, Quelle aus- und einschalten, Testabfrage, Kontingent von urlscan.io, Stand der lokalen Listen. Siehe «Quellen verwalten». | `tools/einrichten.py` (Funktion `env_setzen`), Testabfrage wie `tools/pruefen.py --live` |
 
-Jeder dieser Schritte steht im Sitzungsprotokoll des Falls (`protokoll/sitzungen/`), mit Zeit und dem Vermerk
-«Oberfläche», und erscheint im Ermittlungsprotokoll unter «Sitzungsverlauf». Eine Freigabe trägt den Vermerk zusätzlich
-in `fall.json` (`"weg": "Oberfläche"`).
+Jeder dieser Schritte an einem Fall steht im Sitzungsprotokoll des Falls (`protokoll/sitzungen/`), mit Zeit und dem
+Vermerk «Oberfläche», und erscheint im Ermittlungsprotokoll unter «Sitzungsverlauf». Eine Freigabe trägt den Vermerk
+zusätzlich in `fall.json` (`"weg": "Oberfläche"`). Die Verwaltung der Quellen gehört zu keinem Fall: Sie steht in
+keinem Sitzungsprotokoll, ihr Ergebnis steht in `.env`.
+
+### Quellen verwalten
+
+Die Seite **«Quellen»** zeigt jede Quelle des Gateways mit ihrem Stand: bereit, bereit und gedrosselt, Schlüssel fehlt
+oder ausgeschaltet. Darüber stehen drei Zahlen, eine Suche (Name der Quelle, Variable oder Werkzeug) und ein Filter
+nach Stand. Unter «Einzelheiten» stehen je Quelle ihre Werkzeuge, nötige Freigaben, Hinweise und woher der Schlüssel
+kommt. Im Modus «nur lesen» ist das alles.
+
+Bedienbar kommt dazu:
+
+| Schritt | Was geschieht |
+|---|---|
+| **Schlüssel eintragen** | Einfügen und speichern. Der Schlüssel geht vom Fenster an den lokalen Server und in `.env`, an die Stelle, an der die Vorlage die Variable führt. Die Datei bleibt nur für das eigene Konto lesbar. |
+| **Schlüssel ersetzen** | Wie eintragen. Den bisherigen Schlüssel zeigt die Seite nicht. |
+| **Schlüssel entfernen** | Nach einer Rückfrage. Die Zeile in `.env` steht danach wieder leer da. |
+| **Testabfrage** | Eine harmlose Abfrage mit einem öffentlich bekannten Wert, über das Gateway und in der Fallakte `SELBSTTEST`, wie `tools/pruefen.py --live`. Sie zeigt, ob der Schlüssel gilt. |
+| **Ausschalten, einschalten** | Trägt die Quelle in `OSINT_QUELLEN_AUS` ein oder nimmt sie heraus. Ihr Schlüssel bleibt stehen. |
+
+**Was für Schlüssel gilt**
+
+- Die Oberfläche zeigt nie den Wert eines Schlüssels, auch nicht verdeckt oder gekürzt. Sie zeigt den Namen der
+  Variablen und ob ein Schlüssel eingetragen ist. Das Feld ist nach dem Speichern leer.
+- Keine Antwort des Servers, keine Meldung und kein Protokoll nennt den Wert. Stünde er einmal in einer Fehlermeldung,
+  ersetzte ihn das Fehlerprotokoll durch den Namen der Variablen.
+- Beim Speichern fängt die Seite ab, was beim Einfügen schiefgeht: Leerzeichen, der Name der Variablen davor, zu kurz.
+  Ob der Schlüssel gilt, zeigt erst die Testabfrage.
+- Ein Schlüssel, der im Terminal als Umgebungsvariable gesetzt ist, gilt vor der Datei. Die Seite sagt das und bietet
+  für ihn kein Feld an.
+- Gibt es `.env` noch nicht, legt die Oberfläche sie nicht an. Das tut die Einrichtung (`./setup.sh`).
+- Der Server der Oberfläche lädt `.env` nie in seine eigene Umgebung. Er liest daraus, was er anzeigen muss: ob ein
+  Schlüssel da ist und welche Quellen ausgeschaltet sind.
+
+**Was «ausgeschaltet» heisst**
+
+- Das Gateway führt die Werkzeuge der Quelle nicht aus. Der Aufruf endet mit `nicht_ausgefuehrt` und dem Grund. Es geht
+  nichts hinaus, und im Protokoll des Falls entsteht kein Eintrag.
+- Ein Werkzeug, das mehrere Quellen bündelt (`ip_einordnung`, `krypto_zuordnung`), lässt die Quelle aus und nennt sie
+  in seinem Ergebnis «vom Sachbearbeiter ausgeschaltet».
+- `fall_status` meldet die Quelle der Ermittlung als ausgeschaltet. Das Team fragt sie nicht, auch auf keinem anderen
+  Weg, arbeitet mit den übrigen Quellen weiter und meldet sie unter Lücken.
+- Als Pflichtquelle lässt sie sich nicht vorgeben. War sie schon vorgegeben, bleibt sie «offen», und der Rapport meldet
+  die Lücke, bis die Quelle wieder eingeschaltet oder aus der Vorgabe genommen ist.
+- `tools/pruefen.py` führt sie als «ausgeschaltet»: weder bereit noch ein fehlender Schlüssel.
+
+**Ab wann es gilt.** Schlüssel und Schalter liest das Gateway bei seinem Start. Sie gelten für Ermittlungen, die danach
+starten oder fortgesetzt werden. Eine laufende Ermittlung arbeitet mit dem Stand von ihrem Start.
+
+**Quellen ohne Schalter.** Einen Schalter gibt es nur, wo er sich durchsetzen lässt: bei Quellen mit eigenen Werkzeugen
+und bei Quellen, die nur mit Schlüssel laufen. Acht Quellen haben keinen. Die Seite nennt den Grund unter «Einzelheiten».
+
+| Quelle | Warum kein Schalter |
+|---|---|
+| Ahmia | Das ist die Sperrliste, gegen die jede Onion-Adresse vor dem Öffnen geprüft wird. |
+| RIPEstat | Sie trägt das Werkzeug `ip_einordnung`, das auch proxycheck.io und ipapi.is fragt. |
+| Bitcoin (mempool.space) | Sie trägt die Blockchain-Werkzeuge aller Ketten. |
+| Ethereum (Blockscout), TRON (TronGrid) | Sie gehören zu den Blockchain-Werkzeugen und laufen auch ohne Schlüssel. |
+| Krypto-Zuordnung | Sie trägt das Werkzeug `krypto_zuordnung`, das mehrere Listen und Dienste fragt. |
+| Krypto-Kurse | Die Blockchain-Werkzeuge rechnen mit ihr den Gegenwert einer Zahlung am Stichtag. |
+| GraphSense TagPacks | Das ist eine Liste im Projekt, keine Abfrage. |
+
+**Rückfragen im eigenen Fenster.** Schritte, die etwas entfernen, löschen oder beenden, fragen in einem Fenster der
+Oberfläche nach, nicht mehr im Dialog des Browsers. Die Überschrift ist die Frage, der Knopf zum Bestätigen heisst wie
+der Schritt und ist rot. Der Fokus steht auf «Abbrechen», die Tabulatortaste bleibt im Fenster, Esc und ein Klick
+daneben brechen ab. Auch das Umbenennen einer Datei im Akten-Eingang geschieht in einem solchen Fenster.
 
 ### Arbeitsplatz: alles abschalten
 
@@ -881,6 +946,7 @@ Projektordner (siehe «Rückfragen»).
 | Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Entfernen, Löschen, Pseudonymisieren, Zurückführen und das Aufnehmen trotz Sperrfund («Risiko übernehmen») verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
 | Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
+| Schlüssel bleiben in ihrer Datei | Einen Schlüssel eintragen, ersetzen oder entfernen und eine Quelle schalten verlangt das Geheimnis wie jede Änderung. Geschrieben wird `.env` mit derselben Funktion wie in der Einrichtung, die Datei bleibt nur für das eigene Konto lesbar. Den Wert eines Schlüssels gibt der Server nie heraus: Die Seite «Quellen» nennt den Namen der Variablen und ob ein Schlüssel eingetragen ist. Für Agenten bleibt `.env` durch die Berechtigungen des Projekts gesperrt, und die Seite hat für sie keine Knöpfe: Ohne Geheimnis antwortet der Server mit 403. |
 | Abschalten entscheidet ein Mensch | «Alles abschalten» verlangt das Geheimnis wie jede Änderung. `tools/dienste.py aus` und `ein` verlangen ein Terminal und laufen nicht aus Claude Code, die Berechtigungen des Projekts verbieten beide Befehle für Agenten. Den Stand zeigen darf jeder. |
 
 **Grenzen dieses Schutzes.** Einen Wächter, der jeden Werkzeugaufruf vorab prüft, gibt es seit dem 17.11.2026 nicht
@@ -935,6 +1001,12 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Auswertung das erst, wenn der Beleg beim Indikator eingetragen ist. Die Pflicht hängt an der Indikatorliste, und die
   erstellt das Team aus den Dokumenten: Übersieht die Extraktion einen Indikator, entsteht für ihn keine Pflicht. Bei
   Suchquellen und bei Quellen für Gruppen und Konten prüft die Auswertung nur, dass im Fall gefragt wurde, nicht womit.
+- **Quellen verwalten.** Geprüft am 19.11.2026 unter Linux, im Browser (Chromium) und mit erfundenen Schlüsseln:
+  eintragen, ersetzen, entfernen, aus- und einschalten, die Rückfrage im eigenen Fenster. Nicht geprüft: eine
+  Testabfrage mit einem Schlüssel, der in der Oberfläche eingetragen wurde, gegen die echte Quelle. Ebenso nicht geprüft
+  ist, wie das Team in einer echten Ermittlung mit einer ausgeschalteten Quelle umgeht: Das Gateway lehnt ihre Werkzeuge
+  ab und sagt, was zu tun ist. Ob das Team sie unter Lücken meldet, hängt an der Steuerung mit dem echten Claude Code.
+  Unter Windows schränkt `icacls` die Rechte an `.env` ein, wie in der Einrichtung. Gesehen ist das dort nicht.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
 - **Alles abschalten.** Geprüft am 19.11.2026 unter Linux, an einem echten Docker: Der Container von Web-Check wurde

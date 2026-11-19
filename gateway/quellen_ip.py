@@ -166,7 +166,7 @@ def pc_lesen(ip: str, daten: dict, s: dict, tat: datetime | None, im_fenster: bo
 async def _proxycheck(v: Vorgang, ip: str, tat: datetime | None) -> dict:
     key = einstellung("PROXYCHECK_API_KEY")
     if not key:
-        return _stimme("proxycheck.io", grund="PROXYCHECK_API_KEY fehlt")
+        return _stimme("proxycheck.io", grund=kern.ohne_grund("PROXYCHECK_API_KEY"))
     # tag=0: Die Quelle soll die Abfrage nicht in ihrem Erkennungslog des Kontos ablegen. Ohne das bliebe eine Adresse mit
     # Treffer dort 180 Tage lang stehen. Mit Tatzeit im Fenster: days und history, damit auch gelöschte Einträge erscheinen.
     params: dict[str, Any] = {"key": key, "tag": "0"}
@@ -242,7 +242,7 @@ async def _ipapi(v: Vorgang, ip: str) -> dict:
     if not key:
         # Ohne Schlüssel antwortet der Dienst seit dem 1.9.2026 nur noch gekürzt (30 Abfragen am Tag, keine Merkmale für VPN,
         # Proxy und Tor) und sperrt einen Anschluss, der nach einer Abweisung weiterfragt, für 24 Stunden. Das lohnt die Abfrage nicht.
-        return _stimme("ipapi.is", grund="IPAPI_API_KEY fehlt (ohne Schlüssel liefert der Dienst keine Merkmale für VPN, Proxy und Tor)")
+        return _stimme("ipapi.is", grund=kern.ohne_grund("IPAPI_API_KEY", "IPAPI_API_KEY fehlt (ohne Schlüssel liefert der Dienst keine Merkmale für VPN, Proxy und Tor)"))
     # Als POST: So steht der Schlüssel im Körper der Anfrage und nicht in der Adresse. Nach einer Abweisung nicht wiederholen.
     a = await v.hole("ipapi.is", ip, "ip", "https://api.ipapi.is", schritt="Art des Anschlusses, zweite Stimme", methode="POST",
                      json_koerper={"q": ip, "key": key}, geheim=("key",), deutung=_ipapi_deutung, cache_h=1, nochmal=False)
@@ -255,7 +255,7 @@ async def _ipapi(v: Vorgang, ip: str) -> dict:
 async def _abuseipdb(v: Vorgang, ip: str) -> dict:
     key = einstellung("ABUSEIPDB_API_KEY")
     if not key:
-        return _stimme("AbuseIPDB", grund="ABUSEIPDB_API_KEY fehlt")
+        return _stimme("AbuseIPDB", grund=kern.ohne_grund("ABUSEIPDB_API_KEY"))
     a = await v.hole("AbuseIPDB", ip, "ip", "https://api.abuseipdb.com/api/v2/check", schritt="Nutzungsart des Anschlusses",
                      params={"ipAddress": ip, "maxAgeInDays": 90}, kopf={"Key": key})
     s = _stimme("AbuseIPDB", a)
@@ -273,7 +273,7 @@ async def _abuseipdb(v: Vorgang, ip: str) -> dict:
 async def _spur(v: Vorgang, ip: str, tat: datetime | None) -> dict:
     token = einstellung("SPUR_TOKEN")
     if not token:
-        return _stimme("Spur", grund="SPUR_TOKEN fehlt")
+        return _stimme("Spur", grund=kern.ohne_grund("SPUR_TOKEN"))
     a = await v.hole("Spur", ip, "ip", f"https://api.spur.us/v2/context/{ip}", schritt="Anonymisierungsdienst und Nutzerverhalten",
                      params={"dt": tat.strftime("%Y%m%d") if tat else None}, kopf={"Token": token})
     s = _stimme("Spur", a)
@@ -586,7 +586,7 @@ async def ip_einordnung(fall: Fall, zweck: Zweck, ip: str,
         "erklaerung": erklaerung(ip, u, stimmen, tat, jetzt),
         "ansatzpunkt": ansatz(ip, u, netz, [{"art": s["anschlussart"]} for s in stimmen if s.get("anschlussart")]),
         "quellenstand": {s["quelle"]: ({"ergebnis": "ok", "beleg": s["beleg"]} if s["geantwortet"]
-                                       else {"ergebnis": "aus" if "fehlt" in str(s.get("grund")) else "fehler", "hinweis": s.get("grund"),
+                                       else {"ergebnis": "aus" if "fehlt" in str(s.get("grund")) or s.get("grund") == kern.AUSGESCHALTET else "fehler", "hinweis": s.get("grund"),
                                              **({"beleg": s["beleg"]} if s.get("beleg") else {})}) for s in stimmen},
     }
     hinweise = [f"{s['quelle']}: {h}" for s in stimmen for h in s.get("hinweise") or []]

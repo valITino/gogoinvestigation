@@ -38,7 +38,7 @@ from urllib.parse import quote, quote_plus, urlencode, urlsplit, urlunsplit
 import httpx
 from pydantic import Field
 
-from . import plattform
+from . import plattform, quellen
 from .akte import (FAELLE, FALL_RE, FREIGABEN, PROJEKT, freigabe_erteilt, kanonisch, kette,  # noqa: F401
                    protokoll_lesen, ursprung)
 
@@ -84,13 +84,43 @@ for _logger in ("httpx", "httpcore"):
     logging.getLogger(_logger).setLevel(logging.WARNING)
 
 
+def ausgeschaltet() -> set[str]:
+    """Die Quellen, die der Sachbearbeiter ausgeschaltet hat (Einstellung OSINT_QUELLEN_AUS, Seite «Quellen» der Oberfläche).
+    Wie jeder Schlüssel gilt das ab dem Start des Gateways: Eine laufende Sitzung arbeitet mit dem Stand von ihrem Start."""
+    return quellen.aus_namen(os.environ.get(quellen.EINSTELLUNG_AUS))
+
+
+def aus_meldung(quelle: str) -> str:
+    return (f"{quelle} ist an diesem Arbeitsplatz ausgeschaltet. Abfrage nicht ausgeführt. Der Sachbearbeiter schaltet Quellen in der "
+            "Oberfläche unter «Quellen» ein und aus. Nicht umgehen: diese Quelle auch auf keinem anderen Weg abrufen. Mit den übrigen "
+            "Quellen weiterarbeiten und die fehlende als Lücke melden.")
+
+
+AUSGESCHALTET = "vom Sachbearbeiter ausgeschaltet"
+
+
+def schluessel_aus(name: str) -> bool:
+    """Gehört diese Variable zu einer Quelle, die der Sachbearbeiter ausgeschaltet hat?"""
+    return name in quellen.aus_schluessel(ausgeschaltet())
+
+
+def ohne_grund(name: str, fehlt: str = "") -> str:
+    """Warum ein gebündeltes Werkzeug eine Quelle auslässt. `fehlt`: der Wortlaut, wenn bloss der Schlüssel fehlt (sonst «NAME fehlt»).
+    Hat der Sachbearbeiter die Quelle ausgeschaltet, steht das da: Dann fehlt kein Schlüssel, und niemand soll einen suchen."""
+    return AUSGESCHALTET if schluessel_aus(name) else fehlt or f"{name} fehlt"
+
+
 def einstellung(name: str, standard: str = "") -> str:
+    if schluessel_aus(name):        # der Schlüssel einer ausgeschalteten Quelle gilt als nicht vorhanden:
+        return ""                   # Ein gebündeltes Werkzeug lässt sie aus, wie eine Quelle ohne Schlüssel
     return os.environ.get(name, standard).strip()
 
 
 def schluessel(name: str, quelle: str) -> str:
     wert = einstellung(name)
     if not wert:
+        if schluessel_aus(name):
+            raise Abbruch(aus_meldung(quelle))
         raise Abbruch(f"{quelle}: Schlüssel {name} fehlt in .env. Abfrage nicht ausgeführt.")
     return wert
 
@@ -698,6 +728,9 @@ def werkzeug(fn: Callable) -> Callable:
     """Registriert eine Funktion als MCP-Werkzeug und wandelt Abbruch in eine Fehlermeldung."""
     @functools.wraps(fn)
     async def huelle(*args: Any, **kwargs: Any) -> dict:
+        aus = quellen.aus_werkzeuge(ausgeschaltet()).get(fn.__name__)
+        if aus:         # die Quelle dieses Werkzeugs ist ausgeschaltet: Es wird nicht ausgeführt, und nichts geht hinaus
+            return {"ergebnis": "nicht_ausgefuehrt", "fehler": aus_meldung(aus), "ausgeschaltet": aus}
         try:
             return await fn(*args, **kwargs)
         except Abbruch as e:

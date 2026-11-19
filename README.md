@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 107 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 109 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -304,7 +304,8 @@ Für Windows direkt gilt:
 ## Schlüssel
 
 Alle Schlüssel stehen in `.env`. Eintragen kann sie der Assistent der Einrichtung (`./setup.sh`, auf einem
-eingerichteten Arbeitsplatz «Einstellungen ändern»), von Hand in der Datei geht es genauso. Jede Quelle ist für
+eingerichteten Arbeitsplatz «Einstellungen ändern») oder die bedienbare [Oberfläche](#oberfläche) auf der Seite
+«Quellen». Von Hand in der Datei geht es genauso. Jede Quelle ist für
 sich optional: Was keinen Schlüssel hat, bleibt aus, der Rest läuft. Dreizehn Quellen brauchen gar keinen, eine
 davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Ethereum und TRON ohne Schlüssel.
 
@@ -335,6 +336,15 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
 Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, und für eigene Instanzen der
 Block-Explorer `KRYPTO_BITCOIN_API`, `KRYPTO_ETHEREUM_API` (je Kette), `KRYPTO_TRON_API`.
+
+**Quellen ausschalten.** `OSINT_QUELLEN_AUS` nennt die Quellen, die an diesem Arbeitsplatz nicht gefragt werden sollen:
+ihre Namen aus der Tabelle, durch Komma getrennt. Die Oberfläche setzt den Eintrag auf der Seite «Quellen». Das Gateway
+führt die Werkzeuge einer ausgeschalteten Quelle nicht aus und sagt der Ermittlung, warum. Ein Werkzeug, das mehrere
+Quellen bündelt (`ip_einordnung`, `krypto_zuordnung`), lässt sie aus und nennt sie «ausgeschaltet». Ihr Schlüssel bleibt
+in `.env` stehen. `fall_status` und `tools/pruefen.py` zeigen den Stand. Es gilt für Ermittlungen, die danach starten
+oder fortgesetzt werden. Acht Quellen haben keinen Schalter, weil er sich nicht durchsetzen liesse oder weil sie
+schützen: die Sperrliste für Onion-Adressen (Ahmia), RIPEstat, Bitcoin, Ethereum und TRON, die Krypto-Zuordnung, die
+Kurse und die Etikettenliste. Die Seite «Quellen» nennt je Quelle den Grund.
 
 **Proxy.** Mit `OSINT_PROXY` geht jede Abfrage des Gateways über den Proxy, keine an ihm vorbei. Antwortet er nicht,
 kommt deshalb keine einzige durch. Das System sagt es dann an jeder Stelle mit denselben Worten: Die Einrichtung und
@@ -618,6 +628,20 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 ![Bedienen: Freigaben, Abklärung von Hand, Dokumente](docs/bilder/oberflaeche-bedienen.png)
 
 ![Zurückführen: der Rapport mit echten Angaben, nur auf diesem Bildschirm (erfundene Angaben)](docs/bilder/oberflaeche-zurueck.png)
+
+- **Quellen verwalten.** Die Seite «Quellen» zeigt je Quelle, ob sie bereit ist, wofür sie taugt und welche Werkzeuge
+  sie trägt, mit Suche und Filter. Dort lässt sich ein Schlüssel eintragen, ersetzen oder entfernen und eine Quelle
+  aus- und wieder einschalten. Der Schlüssel geht vom Fenster an den lokalen Server und in `.env`, sonst nirgends hin.
+  Die Oberfläche zeigt ihn danach nie wieder an. Ob er gilt, zeigt die Testabfrage daneben. Eine ausgeschaltete Quelle
+  fragt das Gateway nicht, ihr Schlüssel bleibt stehen. Beides gilt für Ermittlungen, die danach starten oder
+  fortgesetzt werden.
+
+![Quellen: Stand je Quelle, Filter, Schlüssel eintragen, Quelle ausschalten](docs/bilder/oberflaeche-quellen.png)
+
+- **Rückfragen vor heiklen Schritten.** Entfernen, Löschen und Abschalten fragen in einem eigenen Fenster nach. Der Knopf
+  zum Bestätigen heisst wie der Schritt, der Fokus steht auf «Abbrechen», und die Taste Esc bricht ab.
+
+![Rückfrage vor dem Entfernen eines Schlüssels: eigenes Fenster, der Fokus steht auf «Abbrechen»](docs/bilder/oberflaeche-dialog.png)
 
 - **Fehlerprotokoll.** Was bei der Oberfläche schiefgeht, steht an einem Ort: eine Ansicht, die sich nicht aufbauen
   liess, eine Ermittlung, die mit einem Fehler endet, eine Abfrage mit Fehlschlag, ein Werkzeug, das abstürzt. Die
@@ -1164,6 +1188,9 @@ Was ihr wissen müsst:
 | Der Chat nimmt eine Nachricht nicht an: «sieht nach Personendaten aus» | Die PII-Prüfung sperrt jede Rufnummer und jedes Konto, sie sieht nicht, wem die Angabe gehört | Gehört sie zur Täterseite: «Trotzdem senden». Gehört sie zu Geschädigten: den Platzhalter verwenden |
 | Die Ermittlung meldet eine Angabe im Klartext | Im Dokument steht noch eine geschützte Angabe | Unter «Akten»: Dokument wählen, «Gewählte nachbessern», auf dem lokalen Bildschirm ersetzen, wieder aufnehmen |
 | In der Oberfläche steht «abgebrochen», «Das hat nicht geklappt» oder eine Zahl neben «Fehlerprotokoll» | Eine Ermittlung, eine Ansicht oder ein Werkzeug ist gescheitert | Seite «Fehlerprotokoll» öffnen: Der Eintrag nennt Zeit, Bereich und Wortlaut. Für eine Rückfrage: «Alles kopieren» oder «Als Datei speichern», vor dem Weitergeben durchsehen |
+| Ein Werkzeug meldet «… ist an diesem Arbeitsplatz ausgeschaltet», oder `pruefen.py` führt eine Quelle als «ausgeschaltet» | Die Quelle steht in `OSINT_QUELLEN_AUS` | Oberfläche, Seite «Quellen»: «Einschalten». Es gilt für Ermittlungen, die danach starten oder fortgesetzt werden |
+| Auf der Seite «Quellen» fehlt bei einer Quelle das Feld für den Schlüssel, es steht «aus der Umgebung des Terminals» | Der Schlüssel ist im Terminal als Umgebungsvariable gesetzt und gilt vor `.env` | Die Variable im Terminal entfernen und die Oberfläche neu starten, oder den Schlüssel dort ändern, wo er gesetzt wird |
+| Ein neu eingetragener Schlüssel wirkt in der laufenden Ermittlung nicht | Das Gateway liest Schlüssel und Schalter bei seinem Start | Die Ermittlung anhalten und fortsetzen, oder die nächste starten |
 | Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
@@ -1208,7 +1235,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 107 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 109 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1383,6 +1410,26 @@ PowerShell 7:
   Geheimnis bekam keinen Eintrag zu sehen. «Leeren» entfernte die Einträge im Fenster und die Datei in der Ablage.
   **Nicht geprüft:** was das echte Claude Code am Fehlerkanal meldet und ob darin etwas steht, das die Bereinigung
   nicht erkennt. Namen erkennt sie nie. Die Zwischenablage in anderen Browsern als Chromium.
+- Quellen lassen sich seit dem 19.11.2026 in der Oberfläche verwalten: Schlüssel eintragen, ersetzen und entfernen, eine
+  Quelle aus- und wieder einschalten. Anlass war die Rückmeldung des Eigentümers vom selben Tag. Im Gateway ist dafür die
+  Einstellung `OSINT_QUELLEN_AUS` neu. Zwei Selbsttests gelten dem. Der eine prüft das Gateway: Die Werkzeuge einer
+  ausgeschalteten Quelle werden nicht ausgeführt, es geht nichts hinaus und nichts ins Protokoll. `ip_einordnung` lässt
+  die Quelle aus und nennt den Grund. `fall_status`, Pflichtquellen und `tools/pruefen.py` führen sie als ausgeschaltet.
+  Die Sperrliste für Onion-Adressen lässt sich so nicht abstellen. Und ein Gateway, das mit der Einstellung in `.env`
+  startet, lehnt über echtes MCP-stdio ab. Der andere prüft die Oberfläche mit erfundenen Schlüsseln: ohne Geheimnis
+  403, die Prüfung beim Einfügen, der Schlüssel in `.env` an der Stelle der Vorlage und sonst in keiner Antwort, auf
+  keiner Seite, in keiner anderen Datei und nicht im Fehlerprotokoll, die Rechte der Datei, und dass sie nach Eintragen,
+  Ersetzen, Schalten und Entfernen wieder dasteht wie die Vorlage. Dabei angeglichen: `tools/pruefen.py` liess bisher
+  einen Wert aus der Datei vor einem aus der Umgebung gelten, das Gateway umgekehrt. Jetzt gilt in beiden die Umgebung
+  zuerst.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux, Chromium), in einem Wegwerf-Projekt mit einem erfundenen
+  Schlüssel: Suche und Filter, der Knopf «Schlüssel eintragen» mit dem Fokus im Feld, die Datei danach mit den Rechten
+  600, der Schlüssel nirgends auf der Seite, Aus- und Einschalten zweier Quellen, die Rückfrage im eigenen Fenster mit
+  dem Fokus auf «Abbrechen», Abbruch mit Esc und mit einem Klick daneben, und ein Fenster ohne Geheimnis, das nichts
+  ändern konnte. Kein Dialog des Browsers, kein Fehler in der Konsole, keine Anfrage nach aussen.
+  **Nicht geprüft:** eine Testabfrage gegen die echte Quelle mit einem Schlüssel, der in der Oberfläche eingetragen
+  wurde. Wie das Team in einer echten Ermittlung mit einer ausgeschalteten Quelle umgeht. Die Rechte der Datei unter
+  Windows. Andere Browser als Chromium.
 - Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
   Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
   Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
@@ -1472,7 +1519,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen», «nachbessern» und dem Fehlerprotokoll: Jede der 30 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen», «nachbessern», dem Fehlerprotokoll und der Verwaltung der Quellen: Jede der 32 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,

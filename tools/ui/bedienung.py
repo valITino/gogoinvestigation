@@ -38,10 +38,11 @@ from pathlib import Path
 
 from gateway import plattform
 from gateway.akte import FALL_RE, FREIGABE_TEXT, FREIGABEN, PROJEKT, eingang_stand, fall_daten, fall_pfad
-from gateway.quellen import QUELLEN
+from gateway.quellen import EINSTELLUNG_AUS, NICHT_SCHALTBAR, QUELLEN, aus_namen, aus_wert, schaltbar
 from tools import _pseudo as ps, beleg as belegwerkzeug, fall as fallwerkzeug, reidentifizieren as rueck
 from tools.pii_pruefung import GEWANDELT, NichtLesbar, bericht as pii_bericht, mail_lesen, pruefen as pii_pruefen, text_aus, text_lesen
 from tools.ui import fehlerbuch
+from tools.ui.worte import AB_WANN
 
 DATEI_GROESSE = 60 * 1024 * 1024        # grösste einzelne Datei im Akten-Eingang
 KORB_GROESSE = 600 * 1024 * 1024        # alles zusammen, was ein Akten-Eingang im Speicher hält
@@ -1043,7 +1044,9 @@ class Bedienung:
         q = next((q for q in QUELLEN if q.name == d.get("quelle")), None)
         if q is None or not (q.test or d.get("kontingent")):
             raise Fehler("Für diese Quelle gibt es keine Testabfrage.")
-        plan = [{"quelle": q.name, "werkzeug": "urlscan_kontingent", "argumente": {}}] if d.get("kontingent") else \
+        if q.name in aus_namen(plattform.einstellung(EINSTELLUNG_AUS)):      # das Gateway führte das Werkzeug ohnehin nicht aus
+            raise Fehler(f"{q.name} ist ausgeschaltet. Für eine Testabfrage zuerst wieder einschalten.")
+        plan =[{"quelle": q.name, "werkzeug": "urlscan_kontingent", "argumente": {}}] if d.get("kontingent") else \
             [{"quelle": q.name, "werkzeug": q.test[0], "argumente": q.test[1]}]
         r = subprocess.run([python(), "-X", "utf8", "-c", pruefen.LIVE_SKRIPT, str(PROJEKT), json.dumps(plan)], cwd=str(PROJEKT), env=umgebung(),
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, stdin=subprocess.DEVNULL)
@@ -1061,6 +1064,75 @@ class Bedienung:
                 "meldung": (f"{q.name} antwortet ({e.get('ergebnis')}, {e.get('id')} in der Fallakte SELBSTTEST)." + (f" {e['kurz']}" if e.get("kurz") else ""))
                 if gut else f"{q.name}: {e.get('fehler') or 'keine verwertbare Antwort'}"}
 
+
+    # ---- 7b. Quellen verwalten: Schlüssel eintragen, ersetzen, entfernen. Eine Quelle aus- und wieder einschalten
+    def _quelle(self, d: dict):
+        q = next((q for q in QUELLEN if q.name == d.get("quelle")), None)
+        if q is None:
+            raise Fehler("Diese Quelle gibt es nicht.")
+        return q
+
+    def _einstellungen_setzen(self, werte: dict[str, str]) -> list[str]:
+        """Schreibt Einstellungen in die Schlüsseldatei des Projekts, mit derselben Funktion wie die Einrichtung (tools/einrichten.py):
+        an der Stelle, an der der Name schon steht, die Datei bleibt nur für den eigenen Benutzer lesbar. Ein leerer Wert nimmt die
+        Einstellung zurück. Was in der Umgebung dieses Terminals gesetzt ist, gilt vor der Datei und lässt sich hier nicht ändern."""
+        from tools import einrichten
+        fest = [n for n in werte if os.environ.get(n, "").strip()]
+        if fest:
+            raise Fehler(f"{', '.join(fest)} ist in der Umgebung dieses Terminals gesetzt und gilt vor der Schlüsseldatei. Hier lässt sich das nicht ändern: "
+                         "die Variable im Terminal entfernen und die Oberfläche neu starten.")
+        datei = PROJEKT / fehlerbuch.SCHLUESSELDATEI
+        if not datei.is_file():
+            raise Fehler(f"Die Schlüsseldatei gibt es an diesem Arbeitsplatz noch nicht. Sie entsteht bei der Einrichtung: {plattform.SETUP}")
+        with self.sperre:
+            if not plattform.WINDOWS:
+                os.chmod(datei, 0o600)      # erst die Rechte, dann der Schlüssel: Er steht nie in einer Datei, die andere lesen können
+            geaendert = einrichten.env_setzen(datei, werte)
+            if geaendert:
+                einrichten.nur_fuer_mich(datei)
+        fehlerbuch._GEMERKT["zeit"] = 0.0        # das Fehlerprotokoll kennt den neuen Schlüssel sofort und ersetzt ihn, sollte er in einer Meldung stehen
+        return geaendert
+
+    def quelle_schluessel(self, d: dict) -> dict:
+        """Trägt den Schlüssel einer Quelle ein, ersetzt ihn oder entfernt ihn. Der Wert geht vom Fenster an diesen Server und in die
+        Schlüsseldatei, sonst nirgends hin: Keine Antwort, keine Meldung und kein Protokoll nennt ihn. Ob er gilt, zeigt die Testabfrage."""
+        from tools import einrichten
+        q = self._quelle(d)
+        if not q.env:
+            raise Fehler(f"{q.name} braucht keinen Schlüssel.")
+        if d.get("entfernen"):
+            if not self._einstellungen_setzen({q.env: ""}):
+                raise Fehler(f"Für {q.name} ist kein Schlüssel eingetragen.")
+            return {"quelle": q.name, "meldung": f"Der Schlüssel für {q.name} ist entfernt ({q.env}). " + (
+                "Die Quelle läuft ohne Schlüssel weiter, gedrosselt." if q.auch_ohne else "Die Quelle ist damit nicht mehr eingerichtet.") + " " + AB_WANN}
+        wert = str(d.get("wert") or "").strip()
+        if not wert:
+            raise Fehler("Bitte den Schlüssel einfügen.")
+        grund = einrichten.schluessel_pruefen(wert)
+        if grund:
+            raise Fehler(grund)
+        vorher = bool(plattform.einstellung(q.env))
+        if not self._einstellungen_setzen({q.env: wert}):
+            raise Fehler(f"Dieser Schlüssel ist für {q.name} schon eingetragen.")
+        return {"quelle": q.name, "meldung": f"Der Schlüssel für {q.name} ist {'ersetzt' if vorher else 'eingetragen'} ({q.env}). "
+                                             f"Ob er gilt, zeigt die Testabfrage. {AB_WANN}"}
+
+    def quelle_schalten(self, d: dict) -> dict:
+        """Schaltet eine Quelle aus oder wieder ein (Einstellung OSINT_QUELLEN_AUS). Eine ausgeschaltete Quelle fragt das Gateway
+        nicht: Ihre Werkzeuge führt es nicht aus, ein gebündeltes Werkzeug lässt sie aus. Ein eingetragener Schlüssel bleibt stehen.
+        Was sich nicht durchsetzen liesse, hat keinen Schalter."""
+        q = self._quelle(d)
+        if not schaltbar(q.name):
+            raise Fehler(f"{q.name} lässt sich nicht ausschalten. {NICHT_SCHALTBAR[q.name]}")
+        aus = bool(d.get("aus"))
+        with self.sperre:
+            namen = aus_namen(plattform.einstellung(EINSTELLUNG_AUS))
+            if (q.name in namen) == aus:
+                raise Fehler(f"{q.name} ist schon {'ausgeschaltet' if aus else 'eingeschaltet'}.")
+            self._einstellungen_setzen({EINSTELLUNG_AUS: aus_wert((namen | {q.name}) if aus else (namen - {q.name}))})
+        return {"quelle": q.name, "meldung": (f"{q.name} ist ausgeschaltet: Das Gateway fragt diese Quelle nicht"
+                                              + (", ihr Schlüssel bleibt eingetragen" if q.env and plattform.einstellung(q.env) else "") + ". "
+                                              if aus else f"{q.name} ist wieder eingeschaltet. ") + AB_WANN}
 
     # ---- 8. Fehlerprotokoll
     def werkzeug(self, argumente: list[str], zeit: int = 600) -> tuple[int, str]:
@@ -1131,4 +1203,4 @@ class Bedienung:
 
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_risiko", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
             "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "eingang_nachbessern", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente",
-            "zurueckfuehren", "quelle_testen", "fehler_melden", "fehler_leeren", "abschalten")
+            "zurueckfuehren", "quelle_testen", "quelle_schluessel", "quelle_schalten", "fehler_melden", "fehler_leeren", "abschalten")

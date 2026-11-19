@@ -8001,6 +8001,365 @@ def _():
     assert "Fehlerprotokoll" in readme and '"/api/fehler"' in lesen(PROJEKT / "tools" / "oberflaeche.py"), "das README nennt das Fehlerprotokoll, und die Selbstprüfung ruft die Seite ab"
 
 
+@test("Quellen ausschalten: Was der Sachbearbeiter ausschaltet, fragt das Gateway nicht. Die Werkzeuge der Quelle werden nicht ausgeführt, ein gebündeltes "
+      "Werkzeug lässt sie aus und sagt es, fall_status, Pflichtquellen und die Prüfung nennen sie «ausgeschaltet». Was sich nicht durchsetzen liesse, hat keinen Schalter")
+def _():
+    from gateway import pflichtquellen as pq, quellen as qv, server as gateway_server
+    from tools import pruefen
+    # ---- Das Verzeichnis: Einen Schalter gibt es nur, wo er sich durchsetzen lässt. Kein Werkzeug und keine Variable gehört zwei Quellen
+    for q in qv.QUELLEN:
+        hebel = bool(q.werkzeuge) or bool(q.env and not q.auch_ohne)
+        assert qv.schaltbar(q.name) is (q.name not in qv.NICHT_SCHALTBAR) and (hebel or not qv.schaltbar(q.name)), f"{q.name}: ein Schalter, der nichts durchsetzen könnte"
+    assert set(qv.NICHT_SCHALTBAR) <= {q.name for q in qv.QUELLEN} and all(len(grund) > 20 for grund in qv.NICHT_SCHALTBAR.values())
+    assert {"Ahmia", "RIPEstat", "Krypto-Kurse", "Krypto-Zuordnung", "Bitcoin (mempool.space)"} <= set(qv.NICHT_SCHALTBAR), "Sperrliste, Register, Kurse und Ketten tragen andere Werkzeuge"
+    werkzeuge, variablen = [w for q in qv.QUELLEN for w in q.werkzeuge], [q.env for q in qv.QUELLEN if q.env]
+    assert len(set(werkzeuge)) == len(werkzeuge) and len(set(variablen)) == len(variablen), "ein Werkzeug oder eine Variable gehört zwei Quellen: Der Schalter träfe beide"
+    # Die Kurse fragen auch andere Blockchain-Werkzeuge ab. Hätte die Quelle einen Schalter, fragte das Gateway sie trotzdem
+    assert "from .krypto_kurse import" in lesen(PROJEKT / "gateway" / "quellen_krypto.py") and not qv.schaltbar("Krypto-Kurse")
+    # Was keine Quelle ist oder keinen Schalter hat, schaltet nichts aus: ein Tippfehler nicht, und die Sperrliste für Onion-Adressen nie
+    assert qv.aus_namen(" shodan internetdb , Ahmia,Gibt es nicht,ABUSEIPDB,, ") == {"Shodan InternetDB", "AbuseIPDB"} and qv.aus_namen(None) == set() == qv.aus_namen(" , ")
+    assert qv.aus_wert({"4chan", "Shodan", "Ahmia", "Unsinn"}) == "Shodan,4chan", "in der Reihenfolge des Verzeichnisses, und nur was einen Schalter hat"
+    assert qv.aus_werkzeuge({"Shodan"}) == {w: "Shodan" for w in ("shodan_host", "shodan_dns", "shodan_suche")} and qv.aus_schluessel({"Shodan", "4chan"}) == {"SHODAN_API_KEY": "Shodan"}
+
+    protokoll, alt_transport, gesehen = pfad / "protokoll" / "abfragen.jsonl", kern.transport, []
+
+    def eintragszahl() -> int:
+        return len(lesen(protokoll).splitlines()) if protokoll.is_file() else 0
+
+    def mitzaehlen() -> None:           # die Gegenstelle merkt sich, welcher Host gefragt wurde
+        innen = kern.transport
+        kern.transport = httpx.MockTransport(lambda anfrage: (gesehen.append(anfrage.url.host), innen.handler(anfrage))[1])
+    assert qv.EINSTELLUNG_AUS not in os.environ and kern.ausgeschaltet() == set()
+    try:
+        os.environ[qv.EINSTELLUNG_AUS] = "shodan internetdb, Ahmia, AbuseIPDB, Gibt es nicht"
+        assert kern.ausgeschaltet() == {"Shodan InternetDB", "AbuseIPDB"}
+        vorlagen_welt()
+        mitzaehlen()
+        vorher = eintragszahl()
+        # 1. Die eigenen Werkzeuge der Quelle: nicht ausgeführt, nichts geht hinaus, nichts steht im Protokoll. Die Meldung sagt, was zu tun ist
+        for fn, quelle in ((infra.shodan_internetdb, "Shodan InternetDB"), (infra.abuseipdb_pruefen, "AbuseIPDB"), (infra.abuseipdb_meldungen, "AbuseIPDB")):
+            r = aufruf(fn, zweck=ZWECK, ip="8.8.4.4")
+            assert r["ergebnis"] == "nicht_ausgefuehrt" and r["ausgeschaltet"] == quelle and "protokoll_id" not in r, r
+            assert r["fehler"].startswith(f"{quelle} ist an diesem Arbeitsplatz ausgeschaltet. Abfrage nicht ausgeführt.") and "als Lücke melden" in r["fehler"], r["fehler"]
+        assert not gesehen and eintragszahl() == vorher, f"eine ausgeschaltete Quelle wurde gefragt oder protokolliert: {gesehen}"
+        # 2. Der Schlüssel einer ausgeschalteten Quelle gilt dem Gateway als nicht vorhanden, obwohl er gesetzt ist. Die Meldung nennt den wahren Grund
+        assert os.environ["ABUSEIPDB_API_KEY"] and kern.einstellung("ABUSEIPDB_API_KEY") == "" and kern.einstellung("SHODAN_API_KEY") == os.environ["SHODAN_API_KEY"]
+        assert kern.schluessel_aus("ABUSEIPDB_API_KEY") and not kern.schluessel_aus("SHODAN_API_KEY") and not kern.schluessel_aus("OSINT_PROXY")
+        try:
+            kern.schluessel("ABUSEIPDB_API_KEY", "AbuseIPDB")
+            raise AssertionError("der Schlüssel einer ausgeschalteten Quelle wurde herausgegeben")
+        except kern.Abbruch as e:
+            assert "ausgeschaltet" in str(e) and "fehlt" not in str(e), str(e)
+        assert kern.ohne_grund("ABUSEIPDB_API_KEY") == kern.AUSGESCHALTET and kern.ohne_grund("SPUR_TOKEN") == "SPUR_TOKEN fehlt" and kern.ohne_grund("SPUR_TOKEN", "anders") == "anders"
+        # 3. Was keinen Schalter hat, läuft weiter: Die Sperrliste für Onion-Adressen lässt sich so nicht abstellen
+        r = aufruf(szene.onion_sperrliste, zweck=ZWECK, onion_adresse="a" * 56 + ".onion")
+        assert "ausgeschaltet" not in r and r.get("protokoll_id") and gesehen, (r, gesehen)
+        # 4. Ein gebündeltes Werkzeug lässt die ausgeschaltete Quelle aus und sagt, warum. Die übrigen fragt es wie immer
+        gesehen.clear()
+        with ip_welt():
+            mitzaehlen()
+            r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_VPN)
+            eintraege = {e["id"]: e for e in jsonl_lesen(protokoll)}
+        stand = r["befund"]["quellenstand"]
+        assert r["ergebnis"] == "ok" and stand["AbuseIPDB"] == {"ergebnis": "aus", "hinweis": kern.AUSGESCHALTET}, stand
+        assert stand["proxycheck.io"]["ergebnis"] == stand["RIPEstat"]["ergebnis"] == "ok" and stand["Spur"] == {"ergebnis": "aus", "hinweis": "SPUR_TOKEN fehlt"}, stand
+        assert {eintraege[x]["quelle"] for x in r["belege"]} == {"proxycheck.io", "ipapi.is", "RIPEstat"} and "api.abuseipdb.com" not in gesehen, (r["belege"], gesehen)
+        # 5. Die Agenten erfahren es aus fall_status: nicht bereit, ausgeschaltet, und es fehlt kein Schlüssel
+        status = {q["quelle"]: q for q in asyncio.run(gateway_server.fall_status(FALL))["quellen"]}
+        assert status["AbuseIPDB"] == {"quelle": "AbuseIPDB", "bereit": False, "ausgeschaltet": True, "werkzeuge": ["abuseipdb_pruefen", "abuseipdb_meldungen"]}, status["AbuseIPDB"]
+        assert status["Shodan InternetDB"]["ausgeschaltet"] is True and status["Shodan"]["bereit"] is True and "ausgeschaltet" not in status["Shodan"] and status["Ahmia"]["bereit"] is True
+        # 6. Pflichtquellen: Eine ausgeschaltete Quelle lässt sich nicht vorgeben. War sie vorgegeben, bleibt sie offen, und der Stand sagt, warum
+        with pflicht_umgebung():
+            os.environ[qv.EINSTELLUNG_AUS] = "Shodan"
+            w = {x["name"]: x for x in pq.waehlbar(nur={"Shodan", "VirusTotal"})}
+            assert (w["Shodan"]["bereit"], w["Shodan"]["grund"], w["VirusTotal"]["bereit"]) == (False, "sie ist ausgeschaltet", True), w
+            s = pq.stand({"pflichtquellen": {"quellen": ["Shodan"]}}, [{"id": "I-01", "typ": "ip", "wert": "203.0.113.7", "herkunft": "Rapport Ziff. 1"}], [])
+            assert s["zeilen"][0]["stand"] == "offen" and s["zeilen"][0]["grund"] == "Die Quelle ist nicht bereit: sie ist ausgeschaltet.", s["zeilen"][0]
+            assert len(pq.maengel(s)) == 1 and "sie ist ausgeschaltet" in pq.maengel(s)[0], pq.maengel(s)
+        # 7. Die Prüfung der Einrichtung: «ausgeschaltet» ist weder bereit noch ein fehlender Schlüssel
+        merker = (pruefen.still, list(pruefen.noetig_fehlt), list(pruefen.schritte), list(pruefen.gemeldet), pruefen.erreichbar)
+        pruefen.still, pruefen.erreichbar = True, lambda url: False
+        try:
+            pruefen.gemeldet.clear()
+            pruefen.schritte.clear()
+            bereit = pruefen.quellen({"SHODAN_API_KEY": "x" * 12, "ABUSEIPDB_API_KEY": "x" * 12, qv.EINSTELLUNG_AUS: "AbuseIPDB,4chan"})
+            je = {was: (art, wie) for _abschnitt, art, was, wie in pruefen.gemeldet}
+            assert je["AbuseIPDB"] == ("aus", "ausgeschaltet (einschalten: Oberfläche, Seite «Quellen»)") and je["4chan"] == je["AbuseIPDB"] and je["Shodan"][0] == "gut", je
+            assert not {"AbuseIPDB", "4chan"} & {q.name for q in bereit}
+            fehlend = len(qv.QUELLEN) - len(bereit) - 2
+            assert fehlend > 0 and [s for s in pruefen.schritte if s.startswith("Schlüssel für ")] == [s for s in pruefen.schritte if s.startswith(f"Schlüssel für {fehlend} Quelle(n) eintragen")] != []
+            os.environ[qv.EINSTELLUNG_AUS] = "AbuseIPDB,4chan"
+            kurz = pruefen.kurzfassung(bereit, (1, 1))
+            assert ["aus", "Ausgeschaltet", "AbuseIPDB, 4chan"] in kurz and not any("AbuseIPDB" in z[2] for z in kurz if z[1] == "Ohne Schlüssel"), kurz
+        finally:
+            pruefen.still, pruefen.erreichbar = merker[0], merker[4]
+            pruefen.noetig_fehlt[:], pruefen.schritte[:], pruefen.gemeldet[:] = merker[1], merker[2], merker[3]
+    finally:
+        os.environ.pop(qv.EINSTELLUNG_AUS, None)
+        kern.transport = alt_transport
+    # Wieder eingeschaltet, läuft das Werkzeug wie zuvor
+    vorlagen_welt()
+    try:
+        r = aufruf(infra.shodan_internetdb, zweck=ZWECK, ip="8.8.4.4")
+        assert r["ergebnis"] in ("ok", "kein_treffer") and r["protokoll_id"] and "ausgeschaltet" not in r, r
+    finally:
+        kern.transport = alt_transport
+
+    # ---- Der Weg des Sachbearbeiters: Die Einstellung steht in der Schlüsseldatei, und das Gateway liest sie beim Start (echtes MCP-stdio)
+    datei = PROJEKT / ".env"
+    assert not datei.exists(), "die Schlüsseldatei eines früheren Tests liegt noch im Wegwerf-Projekt"
+    datei.write_text("# Selbsttest\nOSINT_QUELLEN_AUS=Shodan InternetDB,Telegram (Web-Vorschau)\n", encoding="utf-8")
+    p = subprocess.Popen([sys.executable, str(PROJEKT / "gateway" / "start.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    try:
+        def senden(nachricht: dict) -> None:
+            p.stdin.write(json.dumps(nachricht) + "\n")
+            p.stdin.flush()
+
+        def empfangen(kennung: int) -> str:
+            while True:
+                zeile = p.stdout.readline()
+                assert zeile, f"Server hat die Verbindung beendet: {p.stderr.read()[:300]}"
+                nachricht = json.loads(zeile)
+                if nachricht.get("id") == kennung:
+                    return json.dumps(nachricht["result"], ensure_ascii=False)
+        senden({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "selbsttest", "version": "1"}}})
+        empfangen(1)
+        senden({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        vorher = eintragszahl()
+        for kennung, name, argumente, quelle in ((2, "shodan_internetdb", {"ip": "8.8.4.4"}, "Shodan InternetDB"), (3, "telegram_kanal", {"kanal": "breachdetect"}, "Telegram (Web-Vorschau)")):
+            senden({"jsonrpc": "2.0", "id": kennung, "method": "tools/call", "params": {"name": name, "arguments": {"fall": FALL, "zweck": ZWECK, **argumente}}})
+            text = empfangen(kennung)
+            assert "nicht_ausgefuehrt" in text and f"{quelle} ist an diesem Arbeitsplatz ausgeschaltet" in text, text[:400]
+        senden({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "fall_status", "arguments": {"fall": FALL}}})
+        text = empfangen(4)
+        assert text.count("ausgeschaltet") == 2, "fall_status nennt genau die zwei ausgeschalteten Quellen"
+        assert eintragszahl() == vorher, "ein abgelehntes Werkzeug hat einen Eintrag im Protokoll hinterlassen"
+        # Die Werkzeuge bleiben in der Liste: Wer eines aufruft, bekommt die Meldung, statt dass es still fehlt
+        senden({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
+        assert '"shodan_internetdb"' in empfangen(5)
+    finally:
+        p.kill()
+        p.wait(10)
+        for strom in (p.stdin, p.stdout, p.stderr):
+            with contextlib.suppress(OSError):
+                strom.close()
+        datei.unlink()
+    assert kette_pruefen(FALL)["ok"]
+
+
+@test("Bedienung, Quellen verwalten: Schlüssel eintragen, ersetzen und entfernen, eine Quelle aus- und einschalten. Nur mit Geheimnis. Der Schlüssel steht danach in der "
+      "Schlüsseldatei und sonst nirgends: in keiner Antwort, auf keiner Seite, in keinem Protokoll. Was im Terminal gesetzt ist, lässt sich hier nicht ändern")
+def _():
+    from collections import Counter
+
+    from gateway import pflichtquellen as pq, quellen as qv
+    from tools import pruefen
+    from tools.ui import fehlerbuch as ui_fehlerbuch, formulare as ui_formulare, worte as ui_worte
+    u = bedien_vorbereiten()
+    b, port, aktion = u["b"], u["port"], u["aktion"]
+    datei, name = PROJEKT / ".env", "VIRUSTOTAL_API_KEY"
+    # Erfundene Schlüssel. Zusammengesetzt, damit sie in keiner Datei des Projekts im Wortlaut stehen, auch nicht in diesem Test
+    eins, zwei = ("-".join(("ERFUNDENER", "SCHLUESSEL", "VT", nr)) for nr in ("0001", "0002"))
+    alt_umgebung = {n: os.environ.pop(n, None) for n in (name, qv.EINSTELLUNG_AUS)}
+    assert not datei.exists(), "die Schlüsseldatei eines früheren Tests liegt noch im Wegwerf-Projekt"
+
+    def seite() -> str:
+        return json.loads(ui_anfrage(port, "/api/quellen")[2])["html"]
+
+    def zeile(html: str, quelle: str) -> str:
+        """Der Eintrag einer Quelle auf der Seite «Quellen», als HTML. Er beginnt mit den Merkmalen seines Listenpunkts."""
+        stuecke = [s for s in html.split('<li class="quelle ')[1:] if f'data-name="{quelle}"' in s.split(">", 1)[0]]
+        assert len(stuecke) == 1, f"{quelle} steht {len(stuecke)}-mal auf der Seite"
+        return stuecke[0].split("</li>")[0]
+
+    def kopf(eintrag: str) -> str:
+        return eintrag.split(">", 1)[0]
+
+    def felder(html: str) -> list[dict]:
+        return [a for t, a in Seite(html).elemente if t == "input" and a.get("type") == "password"]
+
+    def kacheln(html: str) -> list[str]:
+        return [re.sub(r"<[^>]+>", "", wert).strip() for wert in re.findall(r'<div class="wert">(.*?)</div>', html)][:3]
+
+    def erwartet() -> list[str]:
+        zahl = Counter(ui_seiten.QUELLE_STAND[q["stand"]][0] for q in ui_daten.quellen())
+        return [f"{zahl['bereit']} von {len(qv.QUELLEN)}", str(zahl["fehlt"]), str(zahl["aus"])]
+
+    def eintraege() -> dict:
+        return einrichten.env_lesen(datei)
+
+    try:
+        # ---- 1. Ohne Schlüsseldatei gibt es nichts zu verwalten: Die Oberfläche legt sie nicht an, das tut die Einrichtung
+        status, antwort = aktion("quelle_schluessel", {"quelle": "VirusTotal", "wert": eins})
+        assert status == 400 and "Schlüsseldatei gibt es an diesem Arbeitsplatz noch nicht" in antwort["fehler"] and plattform.SETUP in antwort["fehler"] and not datei.exists(), antwort
+        assert aktion("quelle_schalten", {"quelle": "4chan", "aus": "1"})[0] == 400 and not datei.exists()
+        shutil.copy2(PROJEKT / ".env.example", datei)
+        if not WINDOWS:
+            os.chmod(datei, 0o644)
+        vorlage = lesen(datei).splitlines()
+        assert f"{name}=" in vorlage and name not in eintraege() and qv.EINSTELLUNG_AUS not in eintraege()
+
+        # ---- 2. Die Seite vor dem Eintragen: der Stand je Quelle, ein Feld nur, wo sich ein Schlüssel eintragen lässt, ein Schalter nur, wo er gilt
+        html = seite()
+        vt, shodan, ahmia, chan = (zeile(html, q) for q in ("VirusTotal", "Shodan", "Ahmia", "4chan"))
+        assert 'data-stand="fehlt"' in kopf(vt) and "Schlüssel fehlt" in vt and f"{name}</span> nicht eingetragen" in vt and "data-schluessel-oeffnen" in vt, vt[:700]
+        assert 'data-aktion="quelle_testen"' not in vt and 'data-aktion="quelle_schalten"' not in vt, "ohne Schlüssel gibt es weder Testabfrage noch Schalter"
+        feld = felder(vt)
+        assert len(feld) == 1 and feld[0]["name"] == "wert" and feld[0]["autocomplete"] == "off" and "value" not in feld[0] and "required" in feld[0], feld
+        assert "aus der Umgebung des Terminals" in shodan and "lässt sich hier nicht ändern" in shodan and not felder(shodan) and "data-schluessel-oeffnen" not in shodan
+        assert 'data-aktion="quelle_schalten"' not in ahmia and "lässt sich nicht ausschalten. Das ist die Sperrliste" in Seite(ahmia).text and not felder(ahmia)
+        assert 'data-aktion="quelle_schalten"' in chan and '<input type="hidden" name="aus" value="1">' in chan and ">Ausschalten</button>" in chan and not felder(chan)
+        assert os.environ["SHODAN_API_KEY"] not in html and not verstoesse(html, "x") and kacheln(html) == erwartet(), kacheln(html)
+        assert len(felder(html)) == sum(1 for q in ui_daten.quellen() if q["schluessel"] and not q["aus_umgebung"]) > 5
+        # Im Modus «nur lesen» zeigt dieselbe Seite den Stand, ohne Feld und ohne Knopf
+        nur_lesen = ui_formulare.quellen_seite(None)
+        assert "<form" not in nur_lesen and not felder(nur_lesen) and "data-schluessel-oeffnen" not in nur_lesen and "bedienbar" in Seite(nur_lesen).text
+        assert 'data-stand="fehlt"' in kopf(zeile(nur_lesen, "VirusTotal")) and kacheln(nur_lesen) == erwartet()
+
+        # ---- 3. Ohne Geheimnis ändert niemand etwas. Mit Geheimnis fängt die Prüfung ab, was beim Einfügen schiefgeht. Keine Absage wiederholt die Eingabe
+        for geheimnis in (None, "falsch"):
+            for was, angaben in (("quelle_schluessel", {"quelle": "VirusTotal", "wert": eins}), ("quelle_schluessel", {"quelle": "VirusTotal", "entfernen": "1"}),
+                                 ("quelle_schalten", {"quelle": "4chan", "aus": "1"})):
+                status, antwort = aktion(was, angaben, geheimnis)
+                assert status == 403 and eins not in json.dumps(antwort), (was, status, antwort)
+        for angaben, grund in (({"quelle": "VirusTotal", "wert": "mit leer zeichen"}, "keine Leerzeichen"), ({"quelle": "VirusTotal", "wert": f"{name}={eins}"}, "ohne den Namen"),
+                               ({"quelle": "VirusTotal", "wert": "kurz"}, "zu kurz"), ({"quelle": "VirusTotal", "wert": "schlüssel-mit-ümlaut"}, "Zeichen, die in einem Schlüssel nicht vorkommen"),
+                               ({"quelle": "VirusTotal", "wert": "  "}, "Bitte den Schlüssel einfügen"), ({"quelle": "VirusTotal"}, "Bitte den Schlüssel einfügen"),
+                               ({"quelle": "Gibt es nicht", "wert": eins}, "Diese Quelle gibt es nicht"), ({"quelle": "4chan", "wert": eins}, "4chan braucht keinen Schlüssel"),
+                               ({"quelle": "VirusTotal", "entfernen": "1"}, "Für VirusTotal ist kein Schlüssel eingetragen")):
+            status, antwort = aktion("quelle_schluessel", angaben)
+            assert status == 400 and grund in antwort["fehler"] and eins not in antwort["fehler"], (angaben.get("quelle"), status, antwort)
+        assert lesen(datei).splitlines() == vorlage, "eine Absage hat die Schlüsseldatei verändert"
+
+        # ---- 4. Eintragen: Der Schlüssel steht in der Schlüsseldatei, an der Stelle der Vorlage, und sonst nirgends. Leerraum vom Einfügen fällt weg
+        status, antwort = aktion("quelle_schluessel", {"quelle": "VirusTotal", "wert": f"  {eins}\n"})
+        assert (status, antwort) == (200, {"quelle": "VirusTotal", "meldung": f"Der Schlüssel für VirusTotal ist eingetragen ({name}). Ob er gilt, zeigt die Testabfrage. {ui_worte.AB_WANN}"}), antwort
+        zeilen = lesen(datei).splitlines()
+        assert zeilen.count(f"{name}={eins}") == 1 and [z for z in zeilen if z != f"{name}={eins}"] == [z for z in vorlage if z != f"{name}="], "nur diese eine Zeile hat sich geändert"
+        assert eintraege()[name] == eins and plattform.einstellung(name) == eins and name not in os.environ, "der Server lädt den Schlüssel nicht in seine eigene Umgebung"
+        if not WINDOWS:
+            assert datei.stat().st_mode & 0o777 == 0o600, "die Schlüsseldatei ist nach dem Schreiben nur für den Benutzer lesbar"
+        roh = ui_anfrage(port, "/api/quellen")[2].decode("utf-8")
+        html = json.loads(roh)["html"]
+        vt = zeile(html, "VirusTotal")
+        assert eins not in roh and 'data-stand="bereit"' in kopf(vt) and f"{name}</span> eingetragen" in vt and "data-schluessel-oeffnen" not in vt, vt[:700]
+        assert 'data-aktion="quelle_testen"' in vt and ">Ausschalten</button>" in vt and ">Schlüssel ersetzen</button>" in vt and ">Schlüssel entfernen</button>" in vt and "data-gefahr" in vt
+        assert [f.get("value") for f in felder(vt)] == [None] and kacheln(html) == erwartet(), "das Feld zeigt nie einen eingetragenen Wert"
+        status, antwort = aktion("quelle_schluessel", {"quelle": "VirusTotal", "wert": eins})
+        assert status == 400 and antwort["fehler"] == "Dieser Schlüssel ist für VirusTotal schon eingetragen.", antwort
+        status, antwort = aktion("quelle_schluessel", {"quelle": "VirusTotal", "wert": zwei})
+        assert status == 200 and f"ist ersetzt ({name})" in antwort["meldung"] and zwei not in json.dumps(antwort) and eintraege()[name] == zwei and eins not in lesen(datei), antwort
+        # Das Fehlerprotokoll kennt den neuen Schlüssel sofort: Stünde er in einer Meldung, wäre er durch den Namen der Variablen ersetzt
+        sauber = b.fehlerbuch.sauber(f"Die Quelle wiederholt {zwei} in ihrer Antwort")
+        assert zwei not in sauber and name in sauber, sauber
+        # Die Prüfung der Einrichtung liest dasselbe. Was im Terminal gesetzt ist, gilt wie im Gateway vor der Datei, und die Oberfläche ändert es nicht
+        assert pruefen.env_lesen()[name] == zwei
+        os.environ[name] = "aus-der-umgebung-0001"
+        try:
+            assert pruefen.env_lesen()[name] == plattform.einstellung(name) == "aus-der-umgebung-0001"
+            for angaben in ({"quelle": "VirusTotal", "wert": eins}, {"quelle": "VirusTotal", "entfernen": "1"}):
+                status, antwort = aktion("quelle_schluessel", angaben)
+                assert status == 400 and f"{name} ist in der Umgebung dieses Terminals gesetzt" in antwort["fehler"] and eintraege()[name] == zwei, antwort
+            vt = zeile(seite(), "VirusTotal")
+            assert "aus der Umgebung des Terminals" in vt and not felder(vt) and "aus-der-umgebung-0001" not in vt
+        finally:
+            del os.environ[name]
+
+        # ---- 5. Ausschalten: Der Schlüssel bleibt stehen. Die Einstellung nennt die Quellen in der Reihenfolge des Verzeichnisses
+        status, antwort = aktion("quelle_schalten", {"quelle": "VirusTotal", "aus": "1"})
+        assert (status, antwort["meldung"]) == (200, "VirusTotal ist ausgeschaltet: Das Gateway fragt diese Quelle nicht, ihr Schlüssel bleibt eingetragen. " + ui_worte.AB_WANN), antwort
+        assert eintraege()[qv.EINSTELLUNG_AUS] == "VirusTotal" and eintraege()[name] == zwei
+        status, antwort = aktion("quelle_schalten", {"quelle": "4chan", "aus": "1"})
+        assert status == 200 and antwort["meldung"].startswith("4chan ist ausgeschaltet: Das Gateway fragt diese Quelle nicht. ") and eintraege()[qv.EINSTELLUNG_AUS] == "VirusTotal,4chan", antwort
+        for angaben, grund in (({"quelle": "4chan", "aus": "1"}, "4chan ist schon ausgeschaltet"), ({"quelle": "Mastodon"}, "Mastodon ist schon eingeschaltet"),
+                               ({"quelle": "Ahmia", "aus": "1"}, "Ahmia lässt sich nicht ausschalten. Das ist die Sperrliste"),
+                               ({"quelle": "Krypto-Kurse", "aus": "1"}, "Krypto-Kurse lässt sich nicht ausschalten"), ({"quelle": "Gibt es nicht", "aus": "1"}, "Diese Quelle gibt es nicht")):
+            status, antwort = aktion("quelle_schalten", angaben)
+            assert status == 400 and grund in antwort["fehler"], (angaben, status, antwort)
+        assert eintraege()[qv.EINSTELLUNG_AUS] == "VirusTotal,4chan"
+        html = seite()
+        vt, chan = zeile(html, "VirusTotal"), zeile(html, "4chan")
+        assert 'data-stand="aus"' in kopf(vt) and "ausgeschaltet" in vt and ">Einschalten</button>" in vt and 'data-aktion="quelle_testen"' not in vt and f"{name}</span> eingetragen" in vt, vt[:700]
+        assert 'data-stand="aus"' in kopf(chan) and ">Einschalten</button>" in chan and 'name="aus"' not in chan and kacheln(html) == erwartet() and kacheln(html)[2] == "2", kacheln(html)
+        # Eine Testabfrage bei einer ausgeschalteten Quelle startet gar nicht erst
+        gestartet = []
+        echt_lauf, ui_bedienung.subprocess.run = ui_bedienung.subprocess.run, lambda *a, **k: gestartet.append(a)
+        try:
+            status, antwort = aktion("quelle_testen", {"quelle": "VirusTotal"})
+        finally:
+            ui_bedienung.subprocess.run = echt_lauf
+        assert status == 400 and "zuerst wieder einschalten" in antwort["fehler"] and not gestartet, antwort
+        # Pflichtquellen: Eine ausgeschaltete Quelle lässt sich für einen Fall nicht vorgeben
+        w = {x["name"]: x for x in pq.waehlbar(nur={"VirusTotal", "4chan"})}
+        assert (w["VirusTotal"]["bereit"], w["VirusTotal"]["grund"], w["4chan"]["grund"]) == (False, "sie ist ausgeschaltet", "sie ist ausgeschaltet"), w
+        # Was das Gateway bei seinem nächsten Start liest: die Einstellung aus der Schlüsseldatei. Der Schlüssel der ausgeschalteten Quelle ist geladen und gilt ihm doch nicht
+        umgebung = {**os.environ, "OSINT_PROJEKT": str(PROJEKT), "CLAUDE_PROJECT_DIR": str(PROJEKT)}
+        r = subprocess.run([sys.executable, "-c", "import json, os, sys; sys.path.insert(0, sys.argv[1]); from gateway import kern; "
+                            "print(json.dumps({'aus': sorted(kern.ausgeschaltet()), 'geladen': bool(os.environ.get(sys.argv[2])), 'gilt': bool(kern.einstellung(sys.argv[2]))}))",
+                            str(PROJEKT), name], capture_output=True, text=True, encoding="utf-8", env=umgebung, stdin=subprocess.DEVNULL)
+        assert r.returncode == 0 and json.loads(r.stdout) == {"aus": ["4chan", "VirusTotal"], "geladen": True, "gilt": False}, (r.stdout, r.stderr[-300:])
+        # Der Server der Oberfläche lädt die Schlüsseldatei nie in seine Umgebung. Sonst hielte er jeden Schlüssel für «im Terminal gesetzt», und nichts liesse sich mehr ändern
+        r = subprocess.run([sys.executable, "-c", "import json, os, sys; sys.path.insert(0, sys.argv[1]); "
+                            "from tools.ui import bedienung, daten, fehlerbuch, formulare, paket, rueckfrage, seiten, server, sitzung, worte; "
+                            "from tools import beleg, dienste, einrichten, fall, oberflaeche, pii_pruefung, pruefen; "
+                            "print(json.dumps({'kern': 'gateway.kern' in sys.modules, 'geladen': bool(os.environ.get(sys.argv[2])), 'datei': bool(daten.plattform.einstellung(sys.argv[2]))}))",
+                            str(PROJEKT), name], capture_output=True, text=True, encoding="utf-8", env=umgebung, stdin=subprocess.DEVNULL)
+        assert r.returncode == 0 and json.loads(r.stdout) == {"kern": False, "geladen": False, "datei": True}, (r.stdout, r.stderr[-300:])
+
+        # ---- 6. Wieder einschalten: Die Zeile verschwindet aus der Datei, die Erklärung der Vorlage bleibt stehen
+        assert aktion("quelle_schalten", {"quelle": "4chan"})[0] == 200 and eintraege()[qv.EINSTELLUNG_AUS] == "VirusTotal"
+        status, antwort = aktion("quelle_schalten", {"quelle": "VirusTotal"})
+        assert (status, antwort["meldung"]) == (200, "VirusTotal ist wieder eingeschaltet. " + ui_worte.AB_WANN) and qv.EINSTELLUNG_AUS not in eintraege(), antwort
+        zeilen = lesen(datei).splitlines()
+        assert f"# {qv.EINSTELLUNG_AUS}=4chan,Mastodon" in zeilen and not any(z.startswith(qv.EINSTELLUNG_AUS) for z in zeilen), "die Erklärung der Vorlage bleibt, die Einstellung ist weg"
+        # Steht die Einstellung in der Umgebung des Terminals, gilt sie vor der Datei: Die Oberfläche sagt das, statt etwas zu schreiben, das nicht gälte
+        os.environ[qv.EINSTELLUNG_AUS] = "Mastodon"
+        try:
+            status, antwort = aktion("quelle_schalten", {"quelle": "4chan", "aus": "1"})
+            assert status == 400 and f"{qv.EINSTELLUNG_AUS} ist in der Umgebung dieses Terminals gesetzt" in antwort["fehler"] and qv.EINSTELLUNG_AUS not in eintraege(), antwort
+            assert 'data-stand="aus"' in kopf(zeile(seite(), "Mastodon"))
+        finally:
+            del os.environ[qv.EINSTELLUNG_AUS]
+
+        # ---- 7. Entfernen: Der Schlüssel ist weg. Nach Eintragen, Ersetzen, Schalten und Entfernen steht die Datei wieder da wie die Vorlage
+        status, antwort = aktion("quelle_schluessel", {"quelle": "VirusTotal", "entfernen": "1"})
+        assert (status, antwort["meldung"]) == (200, f"Der Schlüssel für VirusTotal ist entfernt ({name}). Die Quelle ist damit nicht mehr eingerichtet. {ui_worte.AB_WANN}"), antwort
+        assert lesen(datei).splitlines() == vorlage and name not in eintraege()
+        assert aktion("quelle_schluessel", {"quelle": "VirusTotal", "entfernen": "1"})[0] == 400
+        assert 'data-stand="fehlt"' in kopf(zeile(seite(), "VirusTotal"))
+
+        # ---- 8. Nirgends sonst: nicht im Projekt, nicht in der Ablage, nicht im Fehlerprotokoll. Dort steht, dass es die Absagen gab, mit ihrem Wortlaut
+        assert not projekt_enthaelt(eins, zwei), projekt_enthaelt(eins, zwei)
+        assert not [str(d) for d in b.ablage.rglob("*") if d.is_file() and any(s.encode() in d.read_bytes() for s in (eins, zwei))]
+        fehler = json.dumps(b.fehlerbuch.liste(), ensure_ascii=False)
+        assert eins not in fehler and zwei not in fehler and "quelle_schluessel: Absage (400). Dieser Schlüssel ist für VirusTotal schon eingetragen." in fehler, fehler[-900:]
+
+        # ---- 9. Das Fenster: Ein Schlüssel bleibt nie im Feld stehen, und Rückfragen stellt die Oberfläche in ihrem eigenen Fenster
+        js = lesen(PROJEKT / "tools" / "ui" / "app.js")
+        for stueck in ('for (const geheim of $$("input[type=password]", form)) geheim.value = "";', "function quellenEinrichten(wurzel)", "function dialogZeigen(", "[data-schluessel-oeffnen]",
+                       'role: gefahr ? "alertdialog" : "dialog"', "(feld || (gefahr ? knopfNein : knopfJa)).focus();"):
+            assert stueck in js, f"app.js: {stueck} fehlt"
+        assert not re.search(r"\b(confirm|prompt|alert)\(", js), "die Oberfläche benutzt die Dialoge des Browsers nicht mehr"
+
+        # ---- 10. Dokumentation und Vorlage nennen, was der Code tut: die Einstellung, die Zahl der Quellen ohne Schalter und jede davon beim Namen
+        doku, readme, quellen_doku = lesen(REPO / "docs" / "OBERFLAECHE.md"), lesen(REPO / "README.md"), lesen(REPO / "docs" / "QUELLEN.md")
+        for stueck in ("### Quellen verwalten", "**Schlüssel eintragen**", "**Was «ausgeschaltet» heisst**", "**Ab wann es gilt.**", "**Quellen ohne Schalter.**", qv.EINSTELLUNG_AUS,
+                       *qv.NICHT_SCHALTBAR):
+            assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
+        assert len(qv.NICHT_SCHALTBAR) == 8 and "Acht Quellen haben keinen" in doku and "Acht Quellen haben keinen Schalter" in readme, "die Dokumentation nennt eine andere Zahl"
+        assert f"Einen Schalter haben {len(qv.QUELLEN) - len(qv.NICHT_SCHALTBAR)} der {len(qv.QUELLEN)} Quellen" in quellen_doku
+        assert f"`{qv.EINSTELLUNG_AUS}`" in readme and "docs/bilder/oberflaeche-quellen.png" in readme and (REPO / "docs" / "bilder" / "oberflaeche-quellen.png").is_file()
+        assert f"# {qv.EINSTELLUNG_AUS}=" in lesen(REPO / ".env.example"), "die Vorlage der Schlüsseldatei erklärt die Einstellung"
+        skill = lesen(REPO / ".claude" / "skills" / "ermittlungsstandard" / "SKILL.md")
+        assert "`ausgeschaltet`" in skill and "die Quelle ist ausgeschaltet" in skill, "der Standard des Teams sagt, was bei einer ausgeschalteten Quelle gilt"
+    finally:
+        with contextlib.suppress(OSError):
+            datei.unlink()
+        os.environ.update({n: w for n, w in alt_umgebung.items() if w is not None})
+        ui_fehlerbuch._GEMERKT["zeit"] = 0.0
+
+
 @test("Bedienung, Quellen: Bereitschaft, Testabfrage je Quelle und Stand der Listen. Von Schlüsseln zeigt die Seite nur den Namen der Variablen")
 def _():
     u = bedien_vorbereiten()

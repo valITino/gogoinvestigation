@@ -224,6 +224,50 @@ def alle_werkzeuge() -> set[str]:
     return {w for q in QUELLEN for w in q.werkzeuge}
 
 
+# ----- Quellen ausschalten: Der Sachbearbeiter nimmt eine Quelle aus dem Spiel, ohne ihren Schlüssel zu entfernen
+
+EINSTELLUNG_AUS = "OSINT_QUELLEN_AUS"       # in der Schlüsseldatei: die Namen ausgeschalteter Quellen, durch Komma getrennt
+# Ausschalten lässt sich eine Quelle, wenn sich das durchsetzen lässt: Sie hat eigene Werkzeuge, die nur sie fragen (dann lehnt
+# das Gateway diese Werkzeuge ab), oder sie läuft nur mit Schlüssel (dann gilt ihr Schlüssel als nicht vorhanden, und ein
+# gebündeltes Werkzeug lässt sie aus). Für die übrigen steht hier der Grund.
+NICHT_SCHALTBAR: dict[str, str] = {
+    "RIPEstat": "Sie trägt das Werkzeug ip_einordnung, das auch proxycheck.io und ipapi.is fragt.",
+    "Bitcoin (mempool.space)": "Sie trägt die Blockchain-Werkzeuge aller Ketten.",
+    "Ethereum (Blockscout)": "Sie gehört zu den Blockchain-Werkzeugen und läuft auch ohne Schlüssel.",
+    "TRON (TronGrid)": "Sie gehört zu den Blockchain-Werkzeugen und läuft auch ohne Schlüssel.",
+    "Krypto-Zuordnung": "Sie trägt das Werkzeug krypto_zuordnung, das mehrere Listen und Dienste fragt.",
+    "GraphSense TagPacks": "Das ist eine Liste im Projekt, keine Abfrage.",
+    "Krypto-Kurse": "Die Blockchain-Werkzeuge rechnen mit ihr den Gegenwert einer Zahlung am Stichtag.",
+    "Ahmia": "Das ist die Sperrliste, gegen die jede Onion-Adresse vor dem Öffnen geprüft wird.",
+}
+
+
+def schaltbar(name: str) -> bool:
+    return name not in NICHT_SCHALTBAR
+
+
+def aus_namen(wert: str | None) -> set[str]:
+    """Die ausgeschalteten Quellen laut dem Wert der Einstellung. Was keine Quelle ist oder keinen Schalter hat, zählt nicht:
+    Ein Tippfehler in der Schlüsseldatei schaltet nichts aus, und eine Schutzfunktion lässt sich so nicht abstellen."""
+    genannt = {t.strip().casefold() for t in (wert or "").split(",") if t.strip()}
+    return {q.name for q in QUELLEN if q.name.casefold() in genannt and schaltbar(q.name)}
+
+
+def aus_wert(namen: set[str] | list[str]) -> str:
+    """Der Wert der Einstellung für diese Quellen, in der Reihenfolge des Verzeichnisses."""
+    return ",".join(q.name for q in QUELLEN if q.name in set(namen) and schaltbar(q.name))
+
+
+def aus_werkzeuge(namen: set[str]) -> dict[str, str]:
+    """Werkzeug -> Quelle, für die Werkzeuge ausgeschalteter Quellen: Das Gateway führt sie nicht aus."""
+    return {w: q.name for q in QUELLEN if q.name in namen for w in q.werkzeuge}
+
+
+def aus_schluessel(namen: set[str]) -> dict[str, str]:
+    """Variable -> Quelle, für die Schlüssel ausgeschalteter Quellen: Sie gelten dem Gateway als nicht vorhanden."""
+    return {q.env: q.name for q in QUELLEN if q.name in namen and q.env}
+
+
 def freigabe_fuer(werkzeug: str) -> str | None:
     for q in QUELLEN:
         if werkzeug in q.freigabe:

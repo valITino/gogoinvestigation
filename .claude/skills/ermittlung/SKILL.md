@@ -151,8 +151,9 @@ Nur wenn der Sachbearbeiter Pflichtquellen vorgegeben hat. Rufe `fall_status` au
 - Eine fehlgeschlagene Abfrage gilt als gefragt. Sie wird nicht wiederholt und kommt unter Lücken.
 - Ein Versuch, den das Gateway ablehnt (fehlende Freigabe), gilt nicht als gefragt. Er wird nicht unternommen, um eine
   Pflicht abzuhaken.
-- Lässt sich ein Paar nicht erfüllen, weil eine Freigabe oder ein Schlüssel fehlt, meldest du das dem Sachbearbeiter mit
-  dem Namen der Quelle. Er erteilt die Freigabe oder nimmt die Quelle aus der Vorgabe. Bis dahin meldet `rapport.py`
+- Lässt sich ein Paar nicht erfüllen, weil eine Freigabe oder ein Schlüssel fehlt oder die Quelle ausgeschaltet ist,
+  meldest du das dem Sachbearbeiter mit dem Namen der Quelle. Er erteilt die Freigabe, schaltet die Quelle ein oder
+  nimmt sie aus der Vorgabe. Bis dahin meldet `rapport.py`
   das Paar als Mangel, und der Rapport entsteht nur als Entwurf.
 
 Höchstens zwei Durchgänge. Die Vorgabe umgehst du nie: weder durch eine Abfrage ohne Bezug zum Fall noch durch
