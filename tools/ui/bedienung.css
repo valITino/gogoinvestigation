@@ -200,6 +200,44 @@ label.wahl span span.klein{display:block}
 label.eigen{display:block;margin:8px 0 2px;font-size:13px;color:var(--tinte-2)}
 .frage-feld input[type=text]{width:100%;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:5px 8px}
 
+/* Fehlerprotokoll: die Zahl in der Navigation, die Seite mit Zahlen, Knöpfen, Filter und Einträgen */
+#nav a:has(.nav-zahl){display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nav-zahl{min-width:20px;height:20px;border-radius:999px;background:var(--kritisch);color:#fff;font-size:11.5px;font-weight:650;line-height:20px;text-align:center;padding:0 6px;
+  font-variant-numeric:tabular-nums}
+.nav-zahl[hidden]{display:none}
+.kacheln.fehler-zahlen{max-width:640px}
+.kachel.k-kritisch{border-color:var(--kritisch)}
+.kachel.k-kritisch .wert{color:var(--kritisch)}
+.knopfzeile.fehler-knoepfe{gap:8px;align-items:center;margin:14px 0 8px}
+.fehler-knoepfe button{padding:6px 14px;font-weight:600}
+.fehler-knoepfe form.aktion.klein-form{margin:0}
+.fehler-knoepfe form.aktion.klein-form .knoepfe{margin:0}
+.fehler-knoepfe form.aktion.klein-form .knoepfe button{font-weight:400}
+p.fehler-durchsehen{border-left:3px solid var(--warnung);background:var(--marke);border-radius:0 8px 8px 0;padding:8px 12px;margin:8px 0 14px;max-width:104ch;font-size:13.5px}
+.fehler-filter{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0 6px;position:sticky;top:-22px;background:var(--flaeche);padding:8px 0;z-index:2}
+.fehler-filter input[type=search]{flex:0 1 300px;min-width:200px;padding:4px 9px}
+ol.fehlerliste{list-style:none;margin:0;padding:0;border:1px solid var(--rand);border-radius:10px;overflow:hidden}
+ol.fehlerliste li{margin:0}
+ol.fehlerliste li[hidden]{display:none}
+ol.fehlerliste li.lauf-kopf{background:var(--seite);padding:6px 14px;font-size:12.5px;font-weight:600;color:var(--tinte-2);border-bottom:1px solid var(--raster)}
+ol.fehlerliste li.eintrag{padding:10px 14px 10px 11px;border-left:3px solid transparent;border-bottom:1px solid var(--raster)}
+ol.fehlerliste li:last-child{border-bottom:0}
+ol.fehlerliste li.s-fehler{border-left-color:var(--kritisch)}
+.eintrag-kopf{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12.5px;color:var(--tinte-2)}
+.eintrag-kopf time{font-variant-numeric:tabular-nums}
+.eintrag-bereich{font-weight:600;color:var(--tinte)}
+.eintrag-kopf button{margin-left:auto;opacity:.75}
+.eintrag-kopf button:hover,.eintrag-kopf button:focus-visible{opacity:1}
+p.eintrag-meldung{margin:4px 0 0;overflow-wrap:anywhere}
+details.eintrag-mehr{margin-top:4px;font-size:13px}
+details.eintrag-mehr>summary{cursor:pointer;color:var(--tinte-2)}
+details.eintrag-mehr pre.rohtext{margin:6px 0 2px;max-height:44vh}
+p.fehler-leer{border:1px dashed var(--achse);border-radius:10px;padding:18px;text-align:center;color:var(--tinte-2);margin:14px 0}
+p.fehler-leer[hidden]{display:none}
+details.fehler-erklaerung{margin:18px 0 0;max-width:104ch;font-size:13.5px}
+details.fehler-erklaerung>summary{cursor:pointer;font-weight:600}
+details.fehler-erklaerung ul{margin:6px 0;padding-left:22px}
+
 /* Meldung, die einen Wechsel der Ansicht übersteht */
 #hinweis{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(720px,90vw);background:var(--tinte);color:var(--flaeche);border-radius:8px;
   padding:9px 12px 9px 16px;display:flex;gap:12px;align-items:flex-start;z-index:40;box-shadow:0 6px 22px rgba(0,0,0,.3);font-size:14px}

@@ -5412,6 +5412,18 @@ elif os.environ.get("OSINT_FAKE_FRAGE"):
     aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "tool_use", "id": "toolu_frage", "name": "AskUserQuestion", "input": fragen}]}})
     merk["entscheid"] = rueckfrage.fragen("AskUserQuestion", fragen, "toolu_frage")
     text("Antwort erhalten." if merk["entscheid"]["behavior"] == "allow" else "Keine Antwort: Ich treffe eine Annahme.")
+elif os.environ.get("OSINT_FAKE_ABSTURZ"):
+    # Eine Sitzung, die schiefgeht: eine Abfrage mit Fehlschlag, Meldungen am Fehlerkanal (darin ein Schluessel, ein Pfad im Benutzerordner
+    # und eine Rufnummer), dann das Ende mit einem Fehler und einem Rueckgabewert ungleich null
+    aus({"type": "assistant", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [
+        {"type": "tool_use", "id": "toolu_f1", "name": "mcp__osint__shodan_host", "input": {"fall": fall, "ip": "203.0.113.7", "zweck": "Test"}}]}})
+    aus({"type": "user", "session_id": sitzung, "parent_tool_use_id": None, "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_f1", "content": [
+        {"type": "text", "text": json.dumps({"protokoll_id": "P-0009", "ergebnis": "fehler", "fehler": "HTTP 401: Die Quelle nimmt den Schluessel nicht an."})}]}]}})
+    print("Error: request failed, key=" + os.environ.get("SHODAN_API_KEY", "") + ", callback 079 123 45 67\n    at run (" + os.path.join(os.path.expanduser("~"), "claude", "cli.js")
+          + ":1:1)", file=sys.stderr, flush=True)
+    json.dump(merk, open(os.environ["OSINT_FAKE_MERKER"], "w", encoding="utf-8"))
+    aus({"type": "result", "subtype": "error_during_execution", "is_error": True, "session_id": sitzung, "result": "API Error: 529 Overloaded", "num_turns": 1})
+    sys.exit(3)
 elif os.environ.get("OSINT_FAKE_LISTE"):
     # Claude Code wendet die Erlaubt-Liste des Projekts nicht an: Es sagt das am Fehlerkanal und fragt auch bei Werkzeugen, die dort stehen
     sys.path.insert(0, os.getcwd())
@@ -6314,7 +6326,7 @@ def _():
     assert {"Fall angelegt", "Dokumente aufgenommen", "Dokumente nachträglich geprüft", "Dokumente aus dem Eingang entfernt", "Dokumente verschoben", "Protokollkette prüfen"} <= set(schritte), schritte
     # Die Oberfläche selbst schreibt weder Protokoll noch Rohdaten noch fall.json noch in den Eingang: Im Quelltext der Bedienung kommen diese Orte nicht als Ziel vor.
     # Die eine Datei, die sie in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand (eigener Test bei der Ermittlung)
-    for datei in ("bedienung.py", "sitzung.py", "formulare.py", "rueckfrage.py", "paket.py", "server.py", "seiten.py"):
+    for datei in ("bedienung.py", "sitzung.py", "formulare.py", "rueckfrage.py", "paket.py", "server.py", "seiten.py", "fehlerbuch.py"):
         quelltext = lesen(PROJEKT / "tools" / "ui" / datei)
         assert "abfragen.jsonl" not in quelltext and "extern.jsonl" not in quelltext and not re.search(r"schreiben\(\s*[^)]*fall\.json", quelltext), datei
         assert not re.search(r"(write_text|write_bytes|text_schreiben|zeile_anhaengen)\([^\n]*(faelle|FAELLE|fall_pfad|rohdaten|protokoll|eingang)", quelltext), datei
@@ -6354,7 +6366,9 @@ def _():
         b.ermittlungen[welcher].prozess.wait(timeout=20)
         b.ermittlungen[welcher].leser.join(timeout=30)
         assert not b.ermittlungen[welcher].leser.is_alive(), "der Lauf wurde nicht fertig verarbeitet"
-    assert stand()["status"] == "aus" and stand()["verlauf"] == [] and stand()["bedienbar"] is True and ui_sitzung.verfuegbar() == "" and dialog()[0] == {"anzahl": 0, "html": ""}
+    assert stand()["status"] == "aus" and stand()["verlauf"] == [] and stand()["bedienbar"] is True and ui_sitzung.verfuegbar() == ""
+    offen = dialog()[0]         # derselbe Abruf nennt seit dem Fehlerprotokoll auch, wie viele Einträge es in diesem Lauf hat
+    assert (offen["anzahl"], offen["html"]) == (0, "") and set(offen) == {"anzahl", "html", "fehler"} and set(offen["fehler"]) == {"fehler", "hinweise", "lauf"}, offen
     seite_html = json.loads(ui_anfrage(port, f"/api/fall/{fall}/ermittlung")[2])["html"]
     assert any(t == "section" and "data-chat" in a and a.get("data-fall") == fall for t, a in Seite(seite_html).elemente) and "Abrechnung: " in Seite(seite_html).text
     # Vorgaben aus dem Chat gehen mit dem Auftrag mit. Was der Sachbearbeiter schreibt, liest das Sprachmodell: dieselbe PII-Prüfung wie für Dokumente
@@ -7693,7 +7707,7 @@ def _():
     # ---- Das Fenster danach: nichts mehr abfragen, das Geheimnis vergessen, sagen, wie es wieder startet
     js = lesen(PROJEKT / "tools" / "ui" / "app.js")
     for stueck in ("function abgeschaltet(daten)", "if (daten.abgeschaltet) return abgeschaltet(daten);", 'sessionStorage.removeItem("geheimnis")', "clearTimeout(zustand.spurTimer)",
-                   "if (!fall || zustand.aus) return;", '"Arbeitsplatz", "#/arbeitsplatz"', '["quellen", "neu", "arbeitsplatz"].includes(a.ansicht)'):
+                   "if (!fall || zustand.aus) return;", '"Arbeitsplatz", "#/arbeitsplatz"', '["quellen", "neu", "arbeitsplatz", "fehler"].includes(a.ansicht)'):
         assert stueck in js, f"app.js: {stueck} fehlt"
     # ---- Wer die Oberfläche startet, räumt auch auf: Ermittlungen anhalten, Merker entfernen, auf das Signal von aussen hören
     start = lesen(PROJEKT / "tools" / "oberflaeche.py")
@@ -7706,6 +7720,270 @@ def _():
     doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
     for stueck in ("Arbeitsplatz", "Alles abschalten", "tools/dienste.py"):
         assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
+
+
+@test("Bedienung, Fehlerprotokoll: Was schiefgeht, steht an einem Ort, zum Ansehen, Kopieren und Speichern. Schlüssel, Geheimnis, Benutzerordner und erkannte Angaben stehen "
+      "nie darin. Zu sehen ist es nur mit Geheimnis")
+def _():
+    from tools.ui import fehlerbuch as ui_fehlerbuch, formulare as ui_formulare
+    u = bedien_vorbereiten()
+    b, port, aktion, aussen = u["b"], u["port"], u["aktion"], u["aussen"]
+    fall, schluessel, nummer, heim = "BEDIEN-0001", os.environ["SHODAN_API_KEY"], "079 123 45 67", str(Path.home())
+    ui_fehlerbuch._GEMERKT["zeit"] = 0.0        # die Schlüssel neu lesen: Ein früherer Test kann die Umgebung geändert haben
+    vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)}
+
+    def seite() -> dict:
+        status, _kopf, inhalt = ui_anfrage(port, "/api/klartext/fehler", "POST", {}, X_OSINT_Geheimnis=b.geheimnis)
+        assert status == 200, status
+        return json.loads(inhalt)
+
+    def eintraege() -> list[dict]:
+        return b.fehlerbuch.liste()
+
+    def letzter(bereich: str) -> dict:
+        return next(e for e in reversed(eintraege()) if e["bereich"] == bereich)
+
+    def still(tun):
+        """Führt etwas aus, bei dem der Server seine Aufrufliste auch ins Terminal schreibt. Hier soll sie die Ausgabe der Tests nicht füllen."""
+        with contextlib.redirect_stderr(io.StringIO()):
+            return tun()
+
+    # ---- 1. Bereinigen: Schlüssel, Geheimnis, Pfade und erkannte Angaben verschwinden. Technische Indikatoren bleiben
+    roh = (f"Abfrage mit {schluessel} scheiterte in {PROJEKT / 'gateway' / 'kern.py'}. Ablage {b.ablage / 'x.csv'}, Benutzerordner {Path.home() / 'notiz.txt'}. "
+           f"Rückruf {nummer}, Konto CH93 0076 2011 6238 5295 7, IP 203.0.113.7, Domain kundenportal.example, Geheimnis {b.geheimnis}, "
+           "Adresse https://api.example/v1?ip=8.8.8.8&key=ABCDEF123456&seite=2, Authorization: Bearer abcdefghijklmnop123456")
+    sauber = ui_fehlerbuch.bereinigen(roh, (b.geheimnis,), b.ablage)
+    assert schluessel not in sauber and "_API_KEY›" in sauber and b.geheimnis not in sauber and "‹Geheimnis der Oberfläche›" in sauber, sauber
+    assert str(PROJEKT) not in sauber and "<Projekt>" in sauber and "<Ablage>" in sauber and str(Path.home() / "notiz.txt") not in sauber, sauber
+    assert nummer not in sauber and "‹Telefonnummer›" in sauber and "CH93" not in sauber and "‹IBAN›" in sauber, sauber
+    assert "203.0.113.7" in sauber and "kundenportal.example" in sauber, "technische Indikatoren bleiben stehen"
+    assert "ABCDEF123456" not in sauber and "ip=8.8.8.8&key=‹entfernt›&seite=2" in sauber and "abcdefghijklmnop123456" not in sauber, sauber
+    unberuehrt = "KeyError: 'abc' in Zeile 12, Stand 19.11.2026 14:03, Beleg P-0007, Hash 44d88612fea8a8f36de82e1278abb02f"
+    assert ui_fehlerbuch.bereinigen(unberuehrt) == unberuehrt, "ein Wort wie Key ist kein Schlüssel, und Daten, Belege und Hashes bleiben stehen"
+
+    # ---- 2. Das Fehlerbuch: Einträge, Wiederholungen, die Datei in der Ablage, ein späterer Lauf, leeren
+    ablage = aussen / "ablage-fehlerbuch"
+    buch = ui_fehlerbuch.Fehlerbuch(ablage, "oberflaeche-20261119-080000", lambda: ("geheimnis-eins-zwei",))
+    e = buch.eintragen("Aktion", "fehler", f"Erste  Meldung\nmit {schluessel} und geheimnis-eins-zwei", f"Zeile 1\nZeile 2 in {PROJEKT}", "FALL-1")
+    assert e["nr"] == 1 and e["meldung"].startswith("Erste Meldung mit ‹") and "geheimnis-eins-zwei" not in e["meldung"] and e["einzelheiten"] == "Zeile 1\nZeile 2 in <Projekt>", e
+    for _ in range(3):
+        wieder = buch.eintragen("Ermittlung", "hinweis", "Dieselbe Meldung")
+    assert wieder["mal"] == 3 and len(buch.liste()) == 2 and buch.zahl() == {"fehler": 1, "hinweise": 3, "lauf": "oberflaeche-20261119-080000"}, (wieder, buch.zahl())
+    assert buch.eintragen("Unbekannt", "laut", "x")["bereich"] == "Oberfläche" and buch.liste()[-1]["stufe"] == "hinweis", "unbekannte Bereiche und Stufen fallen auf die Vorgabe"
+    try:
+        raise ValueError(f"kaputt mit {schluessel}")
+    except ValueError as fehler:
+        ausnahme = buch.ausnahme("Werkzeug", "Schritt X", fehler)
+    assert ausnahme["meldung"].startswith("Schritt X: ValueError: kaputt mit ‹") and "Traceback (most recent call last)" in ausnahme["einzelheiten"] and schluessel not in ausnahme["einzelheiten"]
+    lang = buch.eintragen("Browser", "fehler", "lang", "A" * 3000 + "MITTE" + "B" * 30000 + "ENDE")["einzelheiten"]
+    assert len(lang) <= ui_fehlerbuch.EINZELHEITEN_LAENGE and lang.startswith("AAA") and lang.endswith("ENDE") and "[… gekürzt …]" in lang, "von zu langen Einzelheiten bleiben Anfang und Ende"
+    datei = ablage / ui_fehlerbuch.DATEI
+    geschrieben = lesen(datei)
+    assert len(geschrieben.splitlines()) == 5 and all(g not in geschrieben for g in (schluessel, "geheimnis-eins-zwei", str(PROJEKT))), "eine Zeile je Eintrag, bereinigt"
+    if not plattform.WINDOWS:
+        assert datei.stat().st_mode & 0o777 == 0o600 and ablage.stat().st_mode & 0o777 == 0o700, "die Datei ist nur für den Benutzer lesbar"
+    spaeter = ui_fehlerbuch.Fehlerbuch(ablage, "oberflaeche-20261119-090000")      # ein späterer Lauf findet die Einträge wieder, seine Zählung beginnt neu
+    assert [x["meldung"] for x in spaeter.liste()] == [x["meldung"] for x in buch.liste()] and spaeter.zahl() == {"fehler": 0, "hinweise": 0, "lauf": "oberflaeche-20261119-090000"}
+    spaeter.eintragen("Oberfläche", "fehler", "Neu im zweiten Lauf")
+    text = spaeter.text("KOPF")
+    assert text.startswith("KOPF\n") and "== Lauf der Oberfläche oberflaeche-20261119-080000 (früher)" in text and "== Lauf der Oberfläche oberflaeche-20261119-090000 (dieser)" in text
+    assert text.index("Erste Meldung") < text.index("Neu im zweiten Lauf") and "\n    Zeile 2 in <Projekt>\n" in text and "FEHLER · Aktion · Fall FALL-1: Erste Meldung" in text, text[:700]
+    assert buch.selten("x") and not buch.selten("x") and buch.selten("y") and buch.selten("x", 0), "eine Meldung, die sich von aussen auslösen lässt, steht höchstens einmal je Abstand da"
+    assert spaeter.leeren() == 6 and not datei.exists() and spaeter.liste() == [] and spaeter.text() == "\n"
+    alte_maske = os.umask(0o022)        # mit der üblichen Maske entstünde eine Datei ohne eigene Rechte für alle lesbar
+    try:
+        spaeter.eintragen("Aktion", "hinweis", "nach dem Leeren")
+    finally:
+        os.umask(alte_maske)
+    assert plattform.WINDOWS or datei.stat().st_mode & 0o777 == 0o600, "auch die Datei, die nach dem Leeren neu entsteht, ist nur für den Benutzer lesbar"
+    (aussen / "keine-ablage.txt").write_text("x", encoding="utf-8")       # das Eintragen scheitert nie: Ohne Datei bleibt der Eintrag im Speicher, und die Seite sagt es
+    gesperrt = ui_fehlerbuch.Fehlerbuch(aussen / "keine-ablage.txt" / "darunter", "oberflaeche-x")
+    assert gesperrt.eintragen("Aktion", "fehler", "bleibt im Speicher")["nr"] == 1 and gesperrt.schreibfehler and len(gesperrt.liste()) == 1
+
+    # ---- 3. Der Server: Die Einträge zeigt er nur gegen das Geheimnis. Was er abweist, hält er fest, ohne es zu wiederholen
+    b.fehlerbuch._zuletzt.clear()
+    assert aktion("fehler_leeren", {})[0] == 200
+    leer = seite()
+    assert "Keine Einträge" in leer["html"] and "data-fehler-kopieren" not in leer["html"] and leer["zahl"] == {"fehler": 0, "hinweise": 0, "lauf": b.sitzung}, leer["zahl"]
+    status, _kopf, inhalt = ui_anfrage(port, "/api/fehler")
+    ohne = json.loads(inhalt)["html"]
+    assert status == 200 and "Dieses Fenster kann nur lesen" in ohne and 'class="eintrag' not in ohne, "ohne Geheimnis steht da nur, wo das Fehlerprotokoll zu sehen ist"
+    assert "führt kein Fehlerprotokoll" in ui_formulare.fehler_lesen(False), "im Modus «nur lesen» gibt es keines"
+    for geheimnis in (None, "falsch"):
+        assert ui_anfrage(port, "/api/klartext/fehler", "POST", {}, **({"X_OSINT_Geheimnis": geheimnis} if geheimnis else {}))[0] == 403, geheimnis
+        for name in ("fehler_melden", "fehler_leeren"):
+            assert aktion(name, {"meldung": "x"}, geheimnis)[0] == 403, (name, geheimnis)
+    assert len(eintraege()) == 1 and eintraege()[0]["stufe"] == "hinweis" and eintraege()[0]["meldung"].startswith("Eine Anfrage ohne das Geheimnis der Oberfläche wurde abgewiesen (403)."), \
+        f"sechs Anfragen ohne Geheimnis, ein Eintrag: {[x['meldung'] for x in eintraege()]}"
+    assert ui_anfrage(port, "/api/faelle", Host="boese.example")[0] == 403 and ui_anfrage(port, "/api/faelle", Origin="https://boese.example")[0] == 403
+    assert [x["meldung"].split(" wurde ")[0] for x in eintraege()[1:]] == ["Eine Anfrage unter einem anderen Namen als 127.0.0.1 oder localhost", "Eine Anfrage, die eine fremde Seite ausgelöst hat,"], \
+        [x["meldung"] for x in eintraege()]
+    assert "boese.example" not in json.dumps(eintraege()), "die fremde Adresse steht nicht im Eintrag"
+    # Eine Ansicht scheitert: Die Antwort verweist auf das Fehlerprotokoll, der Eintrag hat die Aufrufliste, aber nicht, was jemand in die Adresse getippt hat
+    echt_ansicht = ui_seiten.faelle_seite
+
+    def kaputt(*a, **k):
+        raise RuntimeError(f"Absicht mit {schluessel} in {Path.home() / 'x.py'}")
+    ui_seiten.faelle_seite = kaputt
+    try:
+        status, _kopf, inhalt = still(lambda: ui_anfrage(port, "/api/faelle?q=suchwort-aus-der-adresse"))
+    finally:
+        ui_seiten.faelle_seite = echt_ansicht
+    antwort = json.loads(inhalt)
+    assert status == 500 and "RuntimeError" in antwort["fehler"] and "Fehlerprotokoll" in antwort["fehler"] and schluessel not in antwort["fehler"], antwort
+    e = letzter("Oberfläche")
+    assert e["stufe"] == "fehler" and e["meldung"].startswith("Ansicht /api/faelle: RuntimeError: Absicht mit ‹") and "suchwort-aus-der-adresse" not in json.dumps(e), e
+    assert "Traceback (most recent call last)" in e["einzelheiten"] and "<Projekt>" in e["einzelheiten"] and schluessel not in e["einzelheiten"] and heim not in e["einzelheiten"], e["einzelheiten"]
+    # Eine Aktion scheitert unerwartet
+    b.pflichtquellen = lambda d: 1 / 0
+    try:
+        status, antwort = still(lambda: aktion("pflichtquellen", {"fall": fall, "quellen": []}))
+    finally:
+        del b.pflichtquellen
+    e = letzter("Aktion")
+    assert status == 500 and "ZeroDivisionError" in antwort["fehler"] and "Fehlerprotokoll" in antwort["fehler"], antwort
+    assert e["stufe"] == "fehler" and e["meldung"].startswith("Aktion /api/aktion/pflichtquellen: ZeroDivisionError") and "Traceback" in e["einzelheiten"], e
+    assert e["fall"] == fall, "der Eintrag nennt den Fall, um den es ging"
+    # Absagen: mit Wortlaut nur, wo er keinen Dateinamen und keine Eingabe nennen kann
+    assert aktion("freigabe", {"fall": fall, "art": "gibt-es-nicht"})[0] == 400
+    assert (letzter("Aktion")["stufe"], letzter("Aktion")["meldung"], letzter("Aktion")["fall"]) == ("hinweis", "freigabe: Absage (400). Diese Freigabe gibt es nicht.", fall), letzter("Aktion")
+    assert aktion("freigabe", {"fall": "Gibt es nicht <b>", "art": "aktiv"})[0] == 400 and letzter("Aktion")["fall"] == "", "als Fall steht nur da, was ein Fall ist"
+    assert aktion("korb_entfernen", {"ziel": "", "ids": []})[0] == 400
+    assert letzter("Aktion")["meldung"].startswith("korb_entfernen: Absage (400). Der Wortlaut stand im Fenster."), "eine Absage aus dem Akten-Eingang steht ohne Wortlaut da"
+    laufend = b.ermittlungen.get(fall)
+    if laufend is not None and laufend.laeuft():
+        laufend.anhalten()
+    status, antwort = aktion("ermittlung_starten", {"fall": fall, "vorgaben": f"Bitte {nummer} zurückrufen"})
+    e = letzter("Aktion")
+    assert status == 400 and antwort.get("sperrfund") is True and "SPERRE" in antwort["fehler"], antwort
+    assert e["meldung"].startswith("ermittlung_starten: Absage (400). Der Wortlaut stand im Fenster.") and "SPERRE" not in e["meldung"], "was die PII-Prüfung zu einer Eingabe sagt, steht nicht im Fehlerprotokoll"
+    assert aktion("gibt<es>nicht", {})[0] == 404 and letzter("Aktion")["meldung"].startswith("gibtesnicht: Absage (404). Der Wortlaut stand im Fenster."), letzter("Aktion")
+    alle_aktionen = ui_bedienung.AKTIONEN + ui_sitzung.AKTIONEN
+    for name in ui_fehlerbuch.MIT_WORTLAUT:
+        assert name in ("anmelden", "rueckfrage") or any(a.startswith(name) for a in alle_aktionen), f"MIT_WORTLAUT nennt eine Aktion, die es nicht gibt: {name}"
+    assert not [a for a in alle_aktionen if a.startswith(("korb_", "pseudo_", "eingang_", "zurueckfuehren", "beleg")) and a.startswith(ui_fehlerbuch.MIT_WORTLAUT)], \
+        "Aktionen mit Dateinamen oder freier Eingabe stehen nicht auf der Liste"
+    # Ein Fehler aus dem Browserfenster
+    status, antwort = aktion("fehler_melden", {"meldung": f"TypeError: x is undefined ({schluessel})", "einzelheiten": "Ansicht: rapport\n/app.js:12:3", "fall": fall})
+    e = letzter("Browser")
+    assert status == 200 and e["stufe"] == "fehler" and e["fall"] == fall and e["meldung"].startswith("TypeError: x is undefined (‹") and e["einzelheiten"] == "Ansicht: rapport\n/app.js:12:3", e
+    assert aktion("fehler_melden", {"meldung": "  "})[0] == 400
+    assert aktion("fehler_melden", {"meldung": "ohne Fall", "fall": "../../etc"})[0] == 200 and letzter("Browser")["fall"] == "", "was keine Fall-ID ist, steht nicht als Fall im Eintrag"
+    # Werkzeuge des Projekts: ein Absturz mit seinen letzten Zeilen, eine Prüfung mit Befund als Hinweis. Von tools/fall.py nie die Ausgabe
+    echt_lauf = ui_bedienung.werkzeug_lauf
+    try:
+        ui_bedienung.werkzeug_lauf = lambda argumente, zeit=600: (2, f"Traceback (most recent call last):\n  File \"{PROJEKT / 'tools' / 'audit_pruefen.py'}\", line 9\nOSError: {schluessel}")
+        status, antwort = aktion("dokumente", {"fall": fall, "was": "kette"})
+        e = letzter("Werkzeug")
+        assert status == 200 and antwort["gelungen"] is False and (e["stufe"], e["fall"], e["meldung"]) == ("fehler", fall, f"tools/audit_pruefen.py {fall} endete mit Rückgabewert 2."), e
+        assert "<Projekt>" in e["einzelheiten"] and e["einzelheiten"].endswith("_API_KEY›") and schluessel not in e["einzelheiten"], e["einzelheiten"]
+        ui_bedienung.werkzeug_lauf = lambda argumente, zeit=600: (1, "Die Kette ist gebrochen bei P-0003.")
+        aktion("dokumente", {"fall": fall, "was": "kette"})
+        assert (letzter("Werkzeug")["stufe"], letzter("Werkzeug")["einzelheiten"]) == ("hinweis", "Die Kette ist gebrochen bei P-0003.")
+        zahl = len(eintraege())
+        assert b.werkzeug(["tools/fall.py", "aufnehmen", fall, "/x/Hans Muster.txt"])[0] == 1 and len(eintraege()) == zahl, "die PII-Prüfung nimmt ein Dokument nicht an: Das ist kein Fehler"
+        ui_bedienung.werkzeug_lauf = lambda argumente, zeit=600: (3, "Traceback (most recent call last):\n  /x/Hans Muster.txt")
+        b.werkzeug(["tools/fall.py", "aufnehmen", fall, "/x/Hans Muster.txt"])
+        e = letzter("Werkzeug")
+        assert e["stufe"] == "fehler" and e["meldung"].startswith(f"tools/fall.py aufnehmen {fall} endete mit Rückgabewert 3.") and not e["einzelheiten"] and "Hans Muster" not in json.dumps(e), e
+    finally:
+        ui_bedienung.werkzeug_lauf = echt_lauf
+    echt_run = ui_bedienung.subprocess.run
+    ui_bedienung.subprocess.run = lambda befehl, **kw: subprocess.CompletedProcess(befehl, 0, json.dumps(
+        {"quelle": "Shodan", "werkzeug": "shodan_host", "ergebnis": "fehler", "fehler": "HTTP 401: Die Quelle nimmt den Schlüssel nicht an.", "id": "P-0011"}) + "\n", "")
+    try:
+        status, antwort = aktion("quelle_testen", {"quelle": "Shodan"})
+    finally:
+        ui_bedienung.subprocess.run = echt_run
+    e = letzter("Werkzeug")
+    assert status == 200 and antwort["gelungen"] is False and e["stufe"] == "hinweis" and e["meldung"] == "Testabfrage Shodan: HTTP 401: Die Quelle nimmt den Schlüssel nicht an.", e
+    assert e["einzelheiten"] == "Werkzeug shodan_host, Beleg P-0011 in der Fallakte SELBSTTEST", e["einzelheiten"]
+    stand = json.loads(ui_anfrage(port, "/api/rueckfragen")[2])["fehler"]
+    # Zwei gescheiterte Anfragen, zwei Meldungen aus dem Browser, zwei abgestürzte Werkzeuge
+    assert stand == b.fehlerbuch.zahl() and stand["lauf"] == b.sitzung and stand["fehler"] == sum(1 for x in eintraege() if x["stufe"] == "fehler") == 6, f"die Zahl für die Navigation: {stand}"
+
+    # ---- 4. Eine Ermittlung, die schiefgeht: die Abfrage mit Fehlschlag, was Claude Code am Fehlerkanal meldet, das Ende mit Fehler
+    davor = len(eintraege())
+    os.environ["OSINT_FAKE_ABSTURZ"] = "1"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200
+        s = b.ermittlungen[fall]
+        s.prozess.wait(timeout=30)
+        s.leser.join(timeout=30)
+        assert not s.leser.is_alive(), "der Lauf wurde nicht fertig verarbeitet"
+    finally:
+        os.environ.pop("OSINT_FAKE_ABSTURZ", None)
+    neu = [x for x in eintraege()[davor:] if x["bereich"] == "Ermittlung"]
+    meldungen = [x["meldung"] for x in neu]
+    assert len(neu) == 4 and all(x["fall"] == fall for x in neu), meldungen
+    abfrage = next(x for x in neu if x["meldung"].startswith("Abfrage "))
+    assert (abfrage["stufe"], abfrage["meldung"]) == ("hinweis", "Abfrage shodan_host (Ermittlungsleitung): Fehlschlag, Beleg P-0009. HTTP 401: Die Quelle nimmt den Schluessel nicht an."), abfrage
+    assert "203.0.113.7" not in json.dumps(abfrage), "das Ziel einer Abfrage steht im Beleg, nicht im Fehlerprotokoll"
+    ende = next(x for x in neu if x["meldung"].startswith("Claude Code meldet das Ende"))
+    assert ende["stufe"] == "fehler" and "(error_during_execution)" in ende["meldung"] and ende["einzelheiten"] == "API Error: 529 Overloaded", ende
+    kanal = next(x for x in neu if x["meldung"].startswith("Claude Code meldet am Fehlerkanal"))
+    assert kanal["stufe"] == "hinweis" and "request failed, key=‹" in kanal["meldung"] and "(und 1 weitere Zeile)" in kanal["meldung"], kanal
+    assert all(g not in json.dumps(kanal, ensure_ascii=False) for g in (schluessel, nummer)) and heim not in kanal["einzelheiten"] and "cli.js:1:1)" in kanal["einzelheiten"], kanal
+    assert meldungen[-1] == "Claude Code hat sich mit Rückgabewert 3 beendet." and neu[-1]["stufe"] == "fehler" and meldungen.index(kanal["meldung"]) < 3, \
+        f"was am Fehlerkanal stand, steht vor dem Ende: {meldungen}"
+    chat = json.loads(ui_anfrage(port, f"/api/fall/{fall}/verlauf?v=0")[2])
+    ueber_dem_chat = chat["meldung"] + " " + chat["lage"] + " " + chat["feld"]
+    assert chat["status"] == "fehler" and all(g not in ueber_dem_chat for g in (schluessel, nummer, heim)), \
+        f"auch über dem Chat steht, was Claude Code gemeldet hat, nur bereinigt: {chat['meldung']}"
+    assert chat["meldung"] in ("API Error: 529 Overloaded", kanal["einzelheiten"].splitlines()[0]), f"über dem Chat steht die erste Zeile einer Meldung, nicht ihre Aufrufliste: {chat['meldung']}"
+    # Eine Ermittlung, die der Sachbearbeiter anhält, ist kein Fehler. Und ein Aufruf, den er abgelehnt hat, kein Fehlschlag
+    davor = len(eintraege())
+    os.environ["OSINT_FAKE_LANG"] = "1"
+    try:
+        assert aktion("ermittlung_starten", {"fall": fall})[0] == 200 and aktion("ermittlung_anhalten", {"fall": fall})[0] == 200
+        b.ermittlungen[fall].leser.join(timeout=30)
+    finally:
+        os.environ.pop("OSINT_FAKE_LANG", None)
+    assert not b.ermittlungen[fall].leser.is_alive() and not eintraege()[davor:], f"anhalten hinterlässt keinen Eintrag: {[x['meldung'] for x in eintraege()[davor:]]}"
+    probe = ui_sitzung.Sitzung(b, fall, port)
+    for kennung, werkzeug in (("toolu_a", "mcp__osint__virustotal_ip"), ("toolu_b", "mcp__osint__virustotal_ip"), ("toolu_c", "Bash")):
+        probe.ereignis({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": kennung, "name": werkzeug, "input": {"fall": fall, "ip": "203.0.113.7", "command": "false"}}]}})
+    probe.abgelehnte.add("toolu_a")
+    for kennung in ("toolu_a", "toolu_b", "toolu_c"):
+        probe.ereignis({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "is_error": True, "content": "Der Aufruf ist gescheitert: MCP error -32000"}]}})
+    assert [x["meldung"] for x in eintraege()[davor:]] == ["Abfrage virustotal_ip (Ermittlungsleitung): Fehlschlag. Der Aufruf ist gescheitert: MCP error -32000"], \
+        "ins Fehlerprotokoll kommt die Abfrage, die scheitert. Nicht der abgelehnte Aufruf und nicht jeder Befehl des Agenten"
+
+    # ---- 5. Die Seite und der Text zum Kopieren und Speichern: dieselben Einträge, nichts Geheimes, neueste auf der Seite zuerst
+    d = seite()
+    seite_html, text = d["html"], d["text"]
+    assert d["titel"] == "Fehlerprotokoll" and re.fullmatch(r"fehlerprotokoll-\d{8}-\d{6}\.txt", d["name"]) and d["zahl"] == b.fehlerbuch.zahl(), (d["name"], d["zahl"])
+    for stueck in ("data-fehler-kopieren", "Alles kopieren", "data-fehler-speichern", "Als Datei speichern", 'data-aktion="fehler_leeren"', "Vor dem Weitergeben durchsehen",
+                   "data-fehler-suche", 'data-fehler-filter="fehler"', 'data-fehler-filter="dieser"', "Was hier steht und was nicht", "Dieser Lauf der Oberfläche, gestartet",
+                   ui_fehlerbuch.DATEI, "Fehler in diesem Lauf"):
+        assert stueck in seite_html, f"Seite «Fehlerprotokoll»: «{stueck}» fehlt"
+    assert not verstoesse(seite_html, fall), verstoesse(seite_html, fall)
+    for geheim in (schluessel, b.geheimnis, nummer, str(PROJEKT)):
+        assert geheim not in seite_html and geheim not in text, f"«{geheim[:8]}…» steht im Fehlerprotokoll"
+    assert heim not in text and "Hans Muster" not in text, "im Text zum Weitergeben steht kein Benutzerordner"
+    koepfe = [a["data-kopf"] for t, a in Seite(seite_html).elemente if t == "li" and "eintrag" in a.get("class", "").split()]
+    assert len(koepfe) == len(eintraege()) and koepfe[0] == ui_fehlerbuch.kopfzeile(eintraege()[-1]) and all(k in text for k in koepfe), \
+        "jeder Eintrag der Seite steht mit derselben Zeile im Text, der neueste auf der Seite zuoberst"
+    assert text.startswith("Fehlerprotokoll des OSINT-Arbeitsplatzes") and "Bereinigt:" in text and "Namen erkennt die Bereinigung nicht" in text, text[:400]
+    assert f"Lauf der Oberfläche: {b.sitzung.replace('oberflaeche-', '')}. In diesem Lauf: {d['zahl']['fehler']} Fehler" in text and "System: " in text and "Python " in text, text[:500]
+    assert text.index("freigabe: Absage (400)") < text.index("Rückgabewert 3 beendet") and seite_html.index("Rückgabewert 3 beendet") < seite_html.index("freigabe: Absage (400)")
+    datei = b.ablage / ui_fehlerbuch.DATEI
+    inhalt = lesen(datei)
+    assert not ui_bedienung.innerhalb(datei) and all(g not in inhalt for g in (schluessel, b.geheimnis, nummer)), "die Datei liegt in der Ablage ausserhalb des Projekts, bereinigt"
+    assert not list((PROJEKT / "faelle").rglob(ui_fehlerbuch.DATEI)) and {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)} == vorher, "in einer Fallakte steht davon nichts"
+    status, antwort = aktion("fehler_leeren", {})
+    assert status == 200 and "geleert" in antwort["meldung"] and not datei.exists() and eintraege() == [] and "Keine Einträge" in seite()["html"], antwort
+
+    # ---- 6. Das Fenster: Navigation mit Zahl, kopieren, speichern, eigene Fehler melden. Und die Dokumentation
+    js = lesen(PROJEKT / "tools" / "ui" / "app.js")
+    for stueck in ('"Fehlerprotokoll", "#/fehler"', 'senden("/api/klartext/fehler", {})', "async function inZwischenablage(text)", "navigator.clipboard.writeText(text)",
+                   "function dateiGeben(name, inhalt, typ)", 'addEventListener("error"', 'addEventListener("unhandledrejection"', '"/api/aktion/fehler_melden"', "f.gemeldet >= 20",
+                   "function fehlerMarke()", "if (d.fehler) fehlerStand(d.fehler);"):
+        assert stueck in js, f"app.js: {stueck} fehlt"
+    doku, readme = lesen(REPO / "docs" / "OBERFLAECHE.md"), lesen(REPO / "README.md")
+    for stueck in ("## Fehlerprotokoll", "Alles kopieren", "Als Datei speichern", ui_fehlerbuch.DATEI, "Vor dem Weitergeben durchsehen"):
+        assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
+    assert "Fehlerprotokoll" in readme and '"/api/fehler"' in lesen(PROJEKT / "tools" / "oberflaeche.py"), "das README nennt das Fehlerprotokoll, und die Selbstprüfung ruft die Seite ab"
 
 
 @test("Bedienung, Quellen: Bereitschaft, Testabfrage je Quelle und Stand der Listen. Von Schlüsseln zeigt die Seite nur den Namen der Variablen")

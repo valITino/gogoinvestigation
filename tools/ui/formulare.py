@@ -10,13 +10,15 @@ Alle drei tragen das Band «lokal, Klartext». Ihren Inhalt gibt der Server nur 
 from __future__ import annotations
 
 import json
+import platform
+from datetime import datetime
 
-from gateway import pflichtquellen as pq
+from gateway import pflichtquellen as pq, plattform
 from gateway.akte import FAELLE, eingang_stand
 from tools import _pseudo as ps
 from tools._html import TYPEN as INDIKATOR_TYPEN
 from tools.pii_pruefung import pruefen as pii_pruefen
-from tools.ui import daten
+from tools.ui import daten, fehlerbuch
 from tools.ui.seiten import esc, pfad, pflichtquellen_html, pflichtquellen_kurz, tabelle
 
 KLARTEXT_BAND = ('<div class="klartext-band" role="note"><b>lokal, Klartext</b> Dieser Bildschirm zeigt echte Angaben. Sie bleiben auf diesem Rechner: '
@@ -637,6 +639,126 @@ def arbeitsplatz_seite(bedienung) -> str:
             + "<p class='klein'>Tor läuft dabei weiter, wenn der Arbeitsplatz es als Proxy nutzt: Es gehört zum System und braucht euer Passwort. "
               f"Am Terminal schaltet <code>{dienste.PY} tools/dienste.py aus</code> auch Tor ab, <code>{dienste.PY} tools/dienste.py ein</code> schaltet "
               f"Web-Check und Tor wieder ein. Die Oberfläche startet wieder mit <code>{dienste.PY} tools/oberflaeche.py</code>. Docker selbst bleibt an.</p>")
+
+
+# --------------------------------------------------------------------------- Fehlerprotokoll
+
+FEHLER_UNTER = ("<h1>Fehlerprotokoll</h1><p class='unter'>Was an diesem Arbeitsplatz schiefging, an einem Ort: zum Nachsehen, Kopieren und Speichern, "
+                "etwa für eine Fehlermeldung oder für die Frage an ein Sprachmodell.</p>")
+FEHLER_STUFE = {"fehler": ("kritisch", "✕ Fehler"), "hinweis": ("neutral", "○ Hinweis")}
+FEHLER_LEEREN_FRAGE = "Das Fehlerprotokoll leeren? Alle Einträge verschwinden, im Fenster und in der Datei in der Ablage. Fallakten und Protokolle der Fälle bleiben unberührt."
+FEHLER_BEREICHE = (("Oberfläche", "der lokale Server: eine Ansicht liess sich nicht aufbauen, eine Anfrage wurde abgewiesen"),
+                   ("Aktion", "Bedienung im Fenster: eine Aktion ist gescheitert oder wurde abgesagt"),
+                   ("Ermittlung", "die Sitzung von Claude Code: ein Ende mit Fehler, Meldungen am Fehlerkanal, eine Abfrage mit Fehlschlag"),
+                   ("Werkzeug", "Werkzeuge des Projekts, die die Oberfläche startet (Rapport, Protokoll, PDF, Testabfrage)"),
+                   ("Browser", "ein Fehler im Skript dieses Fensters"))
+
+
+def zeit_ch(zeit: str) -> str:
+    """2026-11-19 14:03:12 wird 19.11.2026 14:03:12."""
+    try:
+        return datetime.strptime(zeit, "%Y-%m-%d %H:%M:%S").strftime("%d.%m.%Y %H:%M:%S")
+    except ValueError:
+        return zeit
+
+
+def lauf_wort(lauf: str) -> str:
+    """Wann ein Lauf der Oberfläche begann, aus seiner Kennung: oberflaeche-20261119-140312 wird 19.11.2026 14:03."""
+    try:
+        return datetime.strptime(lauf.replace("oberflaeche-", ""), "%Y%m%d-%H%M%S").strftime("%d.%m.%Y %H:%M")
+    except ValueError:
+        return lauf or "unbekannt"
+
+
+def fehler_kopf(bedienung, claude: str = "") -> str:
+    """Der Kopf des Fehlerprotokolls als Text: was wissen muss, wer es liest, ohne den Arbeitsplatz zu kennen (auch ein Sprachmodell).
+    `claude`: leer, wenn Claude Code bereit ist, sonst der Grund, warum nicht."""
+    zahl = bedienung.fehlerbuch.zahl()
+    return fehlerbuch.bereinigen("\n".join([
+        "Fehlerprotokoll des OSINT-Arbeitsplatzes (Oberfläche im Browser, tools/oberflaeche.py)",
+        f"Erstellt: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"System: {platform.system()} {platform.release()}" + (" (WSL)" if plattform.wsl() else "") + f", Python {platform.python_version()}",
+        f"Lauf der Oberfläche: {bedienung.sitzung.replace('oberflaeche-', '')}. In diesem Lauf: {zahl['fehler']} Fehler, {zahl['hinweise']} Hinweise.",
+        "Claude Code: " + (" ".join(claude.split()) if claude else "bereit"),
+        "Bereiche: " + "; ".join(f"{name} = {was}" for name, was in FEHLER_BEREICHE) + ".",
+        "Bereinigt: Schlüssel, das Geheimnis der Oberfläche, Benutzerordner und Rechnername sind ersetzt, ebenso Angaben, die die PII-Prüfung erkennt "
+        "(zum Beispiel ‹Telefonnummer›, ‹IBAN›). Namen erkennt die Bereinigung nicht: vor dem Weitergeben durchsehen.",
+        "Die Einträge stehen in der Reihenfolge, in der sie entstanden sind, der neueste zuletzt."]), ablage=bedienung.ablage)
+
+
+def fehler_lesen(bedienbar: bool) -> str:
+    """Das Fehlerprotokoll für ein Fenster ohne Geheimnis: nur, wo es zu sehen ist. Einträge zeigt der Server nur dem Fenster des Starts."""
+    return FEHLER_UNTER + (
+        '<p class="banner">Dieses Fenster kann nur lesen. Das Fehlerprotokoll zeigt die Oberfläche in dem Browserfenster, das sie beim Start geöffnet hat.</p>'
+        if bedienbar else
+        '<p class="banner">Die Oberfläche läuft im Modus «nur lesen» und führt kein Fehlerprotokoll. Was schiefgeht, steht im Terminal, in dem sie läuft.</p>')
+
+
+def _fehler_eintrag(e: dict, dieser: bool) -> str:
+    farbe, wort = FEHLER_STUFE[e["stufe"]]
+    zeilen = e["einzelheiten"].count("\n") + 1 if e["einzelheiten"] else 0
+    mal = (f'<span class="klein">{int(e["mal"])} mal, zuletzt {esc(zeit_ch(str(e.get("zuletzt") or ""))[-8:])}</span>' if e.get("mal") else "")
+    fall = (f'<a class="eintrag-fall" href="{pfad(e["fall"])}">Fall {esc(e["fall"])}</a>' if e["fall"] and (FAELLE / e["fall"] / "fall.json").is_file()
+            else f'<span class="eintrag-fall">Fall {esc(e["fall"])}</span>' if e["fall"] else "")
+    return (f'<li class="eintrag s-{esc(e["stufe"])}" data-stufe="{esc(e["stufe"])}" data-lauf="{"dieser" if dieser else "frueher"}" data-kopf="{esc(fehlerbuch.kopfzeile(e))}">'
+            f'<div class="eintrag-kopf"><span class="marke z-{farbe}">{wort}</span><time>{esc(zeit_ch(e["zeit"]))}</time>'
+            f'<span class="eintrag-bereich">{esc(e["bereich"])}</span>{fall}{mal}'
+            '<button type="button" class="klein-knopf" data-fehler-eintrag title="Diesen Eintrag in die Zwischenablage kopieren">kopieren</button></div>'
+            f'<p class="eintrag-meldung">{esc(e["meldung"])}</p>'
+            + (f'<details class="eintrag-mehr"><summary>Einzelheiten ({zeilen} {"Zeile" if zeilen == 1 else "Zeilen"})</summary><pre class="rohtext">{esc(e["einzelheiten"])}</pre></details>'
+               if e["einzelheiten"] else "") + "</li>")
+
+
+def fehler_seite(bedienung) -> str:
+    """Das Fehlerprotokoll: Zahlen, Knöpfe zum Kopieren, Speichern und Leeren, die Einträge (neueste zuerst), und was hier steht und was nicht.
+    Den Text zum Kopieren und Speichern gibt der Server daneben mit: Er ist derselbe wie auf der Seite, nur in der Reihenfolge des Entstehens."""
+    buch = bedienung.fehlerbuch
+    eintraege, zahl = buch.liste(), buch.zahl()
+    frueher = sum(1 for e in eintraege if e["lauf"] != buch.lauf)
+    h = [FEHLER_UNTER, '<div data-fehlerprotokoll>',
+         '<div class="kacheln fehler-zahlen">' + "".join(
+             f'<div class="kachel{" " + klasse if n and klasse else ""}"><div class="wert">{daten.ds.zahl(n)}</div><div class="name">{esc(name)}</div></div>'
+             for n, name, klasse in ((zahl["fehler"], "Fehler in diesem Lauf", "k-kritisch"), (zahl["hinweise"], "Hinweise in diesem Lauf", ""),
+                                     (frueher, "Einträge aus früheren Läufen", ""))) + "</div>"]
+    if not eintraege:
+        h.append('<p class="fehler-leer"><b>Keine Einträge.</b> Seit dem Start der Oberfläche ist nichts schiefgegangen, und aus früheren Läufen liegt nichts vor.</p>')
+    else:
+        h.append('<div class="knopfzeile fehler-knoepfe"><button type="button" class="haupt" data-fehler-kopieren>Alles kopieren</button>'
+                 '<button type="button" data-fehler-speichern>Als Datei speichern</button>'
+                 + formular("fehler_leeren", "", "Leeren", danach="neu-laden", klasse="klein-form", frage=FEHLER_LEEREN_FRAGE)
+                 + '<span class="klein" data-fehler-meldung role="status" aria-live="polite"></span></div>'
+                 '<p class="fehler-durchsehen"><b>Vor dem Weitergeben durchsehen.</b> Schlüssel, Pfade und erkannte Angaben (Rufnummer, IBAN …) sind ersetzt. '
+                 "Namen erkennt die Bereinigung nicht, und technische Angaben aus einem Fall (IP-Adresse, Domain) bleiben stehen.</p>"
+                 '<div class="fehler-filter" role="group" aria-label="Fehlerprotokoll filtern">'
+                 '<input type="search" data-fehler-suche placeholder="Einträge durchsuchen" aria-label="Einträge durchsuchen">'
+                 '<button type="button" aria-pressed="false" data-fehler-filter="fehler">nur Fehler</button>'
+                 '<button type="button" aria-pressed="false" data-fehler-filter="dieser">nur dieser Lauf</button>'
+                 '<span class="klein" data-fehler-zahl></span></div>')
+        zeilen, lauf = [], None
+        for e in reversed(eintraege):       # neueste zuerst, je Lauf der Oberfläche eine Zwischenzeile
+            if e["lauf"] != lauf:
+                lauf = e["lauf"]
+                dieser = lauf == buch.lauf
+                zeilen.append(f'<li class="lauf-kopf" data-lauf="{"dieser" if dieser else "frueher"}">'
+                              + (f"Dieser Lauf der Oberfläche, gestartet {esc(lauf_wort(lauf))}" if dieser else f"Früherer Lauf, gestartet {esc(lauf_wort(lauf))}") + "</li>")
+            zeilen.append(_fehler_eintrag(e, e["lauf"] == buch.lauf))
+        h.append('<ol class="fehlerliste" aria-label="Einträge, neueste zuerst">' + "".join(zeilen) + "</ol>"
+                 '<p class="fehler-leer" data-fehler-nichts hidden>Kein Eintrag passt zu diesem Filter.</p>')
+    ort = (f'Die Einträge liegen auch als Datei in der Ablage ausserhalb des Projektordners: <span class="mono">{esc(buch.datei)}</span> '
+           f"(eine Zeile je Eintrag, nur für den eigenen Benutzer lesbar; wird sie grösser als {fehlerbuch.DATEI_GROESSE // (1024 * 1024)} MB, fallen die ältesten "
+           "Einträge weg). So überstehen sie das Ende der Oberfläche."
+           + (f' <b class="z-kritisch">Die Datei liess sich zuletzt nicht schreiben ({esc(buch.schreibfehler)}): Die Einträge stehen nur im Speicher.</b>' if buch.schreibfehler else ""))
+    h.append('<details class="fehler-erklaerung"><summary>Was hier steht und was nicht</summary>'
+             "<p>Die Oberfläche hält fest, was bei ihr schiefgeht:</p><ul>"
+             + "".join(f"<li><b>{esc(name)}</b>: {esc(was)}</li>" for name, was in FEHLER_BEREICHE) + "</ul>"
+             "<p>Jeder Eintrag wird bereinigt, bevor er irgendwo steht: Der Wert eines Schlüssels ist durch den Namen seiner Variablen ersetzt, "
+             "Benutzerordner, Projektordner und Rechnername sind gekürzt, und was die PII-Prüfung erkennt, ist durch seine Art ersetzt. "
+             "Eine Absage aus dem Akten-Eingang, vom lokalen Bildschirm für Klartext oder nach einem Fund der PII-Prüfung steht ohne ihren Wortlaut da: "
+             "Er könnte einen Dateinamen oder eine Eingabe nennen.</p>"
+             "<p>Nicht hier steht, was zu einem Fall gehört: Abfragen und Antworten der Quellen stehen in der Protokollkette des Falls, "
+             "die Schritte einer Ermittlung im Sitzungsprotokoll. Das Fehlerprotokoll ist kein Beleg.</p>"
+             f"<p>{ort}</p></details></div>")
+    return "\n".join(h)
 
 
 def quellen_bedienung(bedienung) -> str:

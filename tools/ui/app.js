@@ -18,6 +18,7 @@ const el = (name, attribute = {}, ...kinder) => {
 const zustand = { fall: null, ansicht: "", adresse: "", lauf: 0, spurStand: 0, spurFall: null, spurFilter: new Set(), spurTimer: null, indikatoren: [],
   bedienung: false, geheimnis: "", auswahl: {}, warteschlange: null, hochgeladen: null, titel: "OSINT-Arbeitsplatz",
   chat: { fall: null, feld: null, v: 0, timer: null, knoten: new Map(), merkmal: "", feldStand: "", tafelStand: "", pflichtStand: null }, rueckfrage: "", rueckfrageTimer: null,
+  fehler: { zahl: 0, gesehen: 0, lauf: "", gemeldet: 0 },      // Fehlerprotokoll: Fehler in diesem Lauf, wie viele davon schon gesehen sind, was dieses Fenster selbst gemeldet hat
   aus: false };       // wahr nach «Alles abschalten»: Der Server ist beendet, das Fenster fragt nichts mehr ab
 const DATEI_GROESSE = 60 * 1024 * 1024;     // wie auf dem Server: grösste einzelne Datei im Akten-Eingang
 
@@ -77,6 +78,8 @@ function ergebnisZeigen(feld, daten, fehler) {
   feld.replaceChildren();
   feld.className = "ergebnis " + (fehler ? "z-kritisch" : "");
   feld.append(el("p", { klasse: fehler ? "banner" : "meldung", text: fehler || daten.meldung || "Erledigt." }));
+  // Verweist die Meldung auf das Fehlerprotokoll, führt ein Klick dorthin
+  if (fehler && bedienbar() && /Fehlerprotokoll/.test(fehler)) feld.append(el("p", { klasse: "klein" }, el("a", { href: "#/fehler", text: "Zum Fehlerprotokoll" })));
   if (daten && daten.ausgabe) feld.append(el("pre", { klasse: "rohtext", text: daten.ausgabe }));
   if (daten && daten.zuordnung) feld.append(el("p", { klasse: "klein", text: "Zuordnungstabelle: " + daten.zuordnung + " (ausserhalb des Projektordners)" }));
   if (daten && daten.dateinamen) feld.append(el("p", { klasse: "klein", text: "Welche Datei unter welchem Namen im Fall liegt: " + daten.dateinamen + " (ausserhalb des Projektordners)" }));
@@ -518,7 +521,9 @@ function chatBauen(feld, fall, gross) {
   feld.replaceChildren();
   feld.classList.add("chat");
   feld.dataset.fall = fall;
-  const kopf = el("div", { klasse: "chat-kopf" }, el("h2", { text: "Chat mit der Ermittlung" }), el("span", { klasse: "marke", "data-chat-status": "", text: "…" }));
+  const kopf = el("div", { klasse: "chat-kopf" }, el("h2", { text: "Chat mit der Ermittlung" }), el("span", { klasse: "marke", "data-chat-status": "", text: "…" }),
+    // nach einem Abbruch: der Weg zu dem, was dazu im Fehlerprotokoll steht
+    el("a", { klasse: "klein", href: "#/fehler", "data-chat-fehler": "", hidden: "", text: "Fehlerprotokoll" }));
   // Die Lage in einem Satz: was die Ermittlung gerade tut, worauf sie wartet, wie es weitergeht
   const lage = el("p", { klasse: "chat-lage", "data-chat-lage": "", role: "status", hidden: "" });
   const verlauf = el("ol", { klasse: "chat-verlauf", "aria-live": "polite", "aria-label": "Verlauf der Ermittlung", tabindex: "0" });
@@ -639,6 +644,7 @@ function chatZeigen(d) {
   const marke = $("[data-chat-status]", feld);
   marke.textContent = STATUS_WORT[d.status] || d.status;
   marke.className = "marke z-" + (STATUS_FARBE[d.status] || "leer");
+  $("[data-chat-fehler]", feld).hidden = d.status !== "fehler";
   const lage = $("[data-chat-lage]", feld);
   lage.textContent = d.lage || "";
   lage.hidden = !d.lage;
@@ -706,6 +712,7 @@ async function rueckfragenHolen() {
   if (!bedienbar()) return;
   try {
     const d = await holen("/api/rueckfragen");
+    if (d.fehler) fehlerStand(d.fehler);      // derselbe Abruf sagt, wie viele Fehler das Fehlerprotokoll in diesem Lauf hat
     if (d.html !== zustand.rueckfrage) {
       zustand.rueckfrage = d.html;
       const ebene = $("#rueckfrage-ebene"), hinweis = $("#rueckfrage-hinweis");
@@ -733,6 +740,113 @@ async function rueckfragenHolen() {
   zustand.rueckfrageTimer = setTimeout(rueckfragenHolen, 1500);
 }
 
+/* ---------- Fehlerprotokoll: ansehen, kopieren, speichern. Und was in diesem Fenster schiefgeht, steht auch dort ---------- */
+
+function fehlerMarke() {
+  // Die Zahl in der Navigation: Fehler, die seit dem letzten Blick ins Fehlerprotokoll dazugekommen sind
+  const marke = $("#nav-fehler"), f = zustand.fehler;
+  if (!marke) return;
+  const neu = Math.max(0, f.zahl - f.gesehen);
+  marke.hidden = neu === 0;
+  marke.textContent = neu > 99 ? "99+" : String(neu);
+  marke.title = neu === 1 ? "1 neuer Fehler seit dem letzten Blick ins Fehlerprotokoll" : `${neu} neue Fehler seit dem letzten Blick ins Fehlerprotokoll`;
+  marke.setAttribute("aria-label", marke.title);
+}
+
+function fehlerStand(stand, gesehen) {
+  // `stand`: was der Server zählt, mit der Kennung seines Laufs. Nach einem Neustart der Oberfläche oder nach «Leeren» beginnt die Zählung neu
+  const f = zustand.fehler;
+  if (!f.lauf) { try { const alt = JSON.parse(sessionStorage.getItem("fehler-gesehen") || "{}"); if (alt.lauf === stand.lauf) f.gesehen = Number(alt.zahl) || 0; } catch (e) { /* ohne Speicher gilt: nichts gesehen */ } }
+  else if (f.lauf !== stand.lauf) f.gesehen = 0;
+  f.lauf = stand.lauf || "";
+  f.zahl = Number(stand.fehler) || 0;
+  if (gesehen || f.gesehen > f.zahl) {
+    f.gesehen = f.zahl;
+    try { sessionStorage.setItem("fehler-gesehen", JSON.stringify({ lauf: f.lauf, zahl: f.gesehen })); } catch (e) { /* siehe oben */ }
+  }
+  fehlerMarke();
+}
+
+async function inZwischenablage(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return; } catch (e) { /* dann der Weg über ein Textfeld */ }
+  }
+  const feld = el("textarea", { "aria-hidden": "true", tabindex: "-1" });
+  feld.value = text;
+  feld.style.cssText = "position:fixed;left:-999px;top:0;opacity:0";
+  document.body.append(feld);
+  feld.select();
+  let gut = false;
+  try { gut = document.execCommand("copy"); } catch (e) { /* gilt als nicht gelungen */ }
+  feld.remove();
+  if (!gut) throw new Error("Der Browser gibt die Zwischenablage nicht frei. «Als Datei speichern» geht immer.");
+}
+
+function dateiGeben(name, inhalt, typ) {
+  // Eine Datei aus dem Fenster zum Speichern anbieten. Sie entsteht im Browser, nichts geht dafür nach aussen
+  const verweis = el("a", { href: URL.createObjectURL(new Blob([inhalt], { type: typ })), download: name });
+  document.body.append(verweis); verweis.click(); verweis.remove(); setTimeout(() => URL.revokeObjectURL(verweis.href), 1000);
+}
+
+function fehlerEinrichten(wurzel, daten) {
+  const seite = $("[data-fehlerprotokoll]", wurzel);
+  if (!seite) return;
+  if (daten.zahl) fehlerStand(daten.zahl, true);     // wer die Seite sieht, hat die Fehler gesehen
+  const meldung = $("[data-fehler-meldung]", seite);
+  const sagen = (text) => { if (!meldung) return; meldung.textContent = text; clearTimeout(meldung.zeit); meldung.zeit = setTimeout(() => { meldung.textContent = ""; }, 8000); };
+  // Der Text wird beim Klick frisch geholt: So fehlt nichts, was seit dem Laden der Seite dazugekommen ist
+  const holenText = () => senden("/api/klartext/fehler", {});
+  const kopieren = $("[data-fehler-kopieren]", seite), speichern = $("[data-fehler-speichern]", seite);
+  if (kopieren) kopieren.addEventListener("click", async () => {
+    try { const d = await holenText(); await inZwischenablage(d.text); sagen("In die Zwischenablage kopiert."); } catch (e) { sagen("Kopieren ist nicht gelungen: " + e.message); }
+  });
+  if (speichern) speichern.addEventListener("click", async () => {
+    try { const d = await holenText(); dateiGeben(d.name, d.text, "text/plain;charset=utf-8"); sagen(`Gespeichert als ${d.name}, im Ordner für Downloads des Browsers.`); }
+    catch (e) { sagen("Speichern ist nicht gelungen: " + e.message); }
+  });
+  const eintraege = $$("li.eintrag", seite), koepfe = $$("li.lauf-kopf", seite);
+  const einzelheiten = (li) => { const mehr = $("pre", li); return mehr ? mehr.textContent : ""; };
+  for (const li of eintraege) $("[data-fehler-eintrag]", li).addEventListener("click", async () => {
+    const mehr = einzelheiten(li);
+    try { await inZwischenablage(li.dataset.kopf + (mehr ? "\n" + mehr.split("\n").map(z => "    " + z).join("\n") : "") + "\n"); sagen("Eintrag kopiert."); }
+    catch (e) { sagen("Kopieren ist nicht gelungen: " + e.message); }
+  });
+  // Filter: Suche im Text der Einträge, nur Fehler, nur dieser Lauf. Eine Zwischenzeile bleibt nur, wenn unter ihr etwas zu sehen ist
+  const suche = $("[data-fehler-suche]", seite), knoepfe = $$("[data-fehler-filter]", seite), zahl = $("[data-fehler-zahl]", seite), nichts = $("[data-fehler-nichts]", seite);
+  if (!suche) return;
+  const texte = new Map(eintraege.map(li => [li, (li.dataset.kopf + "\n" + einzelheiten(li)).toLocaleLowerCase("de-CH")]));
+  const filtern = () => {
+    const q = suche.value.trim().toLocaleLowerCase("de-CH");
+    const an = new Set(knoepfe.filter(k => k.getAttribute("aria-pressed") === "true").map(k => k.dataset.fehlerFilter));
+    let n = 0;
+    for (const li of eintraege) {
+      const zeigen = (!an.has("fehler") || li.dataset.stufe === "fehler") && (!an.has("dieser") || li.dataset.lauf === "dieser") && (!q || texte.get(li).includes(q));
+      li.hidden = !zeigen;
+      n += zeigen ? 1 : 0;
+    }
+    for (const kopf of koepfe) {
+      let etwas = false;
+      for (let x = kopf.nextElementSibling; x && !x.classList.contains("lauf-kopf"); x = x.nextElementSibling) if (!x.hidden) etwas = true;
+      kopf.hidden = !etwas;
+    }
+    zahl.textContent = `${n} von ${eintraege.length} ${eintraege.length === 1 ? "Eintrag" : "Einträgen"}`;
+    if (nichts) nichts.hidden = n > 0;
+  };
+  suche.addEventListener("input", filtern);
+  for (const k of knoepfe) k.addEventListener("click", () => { k.setAttribute("aria-pressed", String(k.getAttribute("aria-pressed") !== "true")); filtern(); });
+  filtern();
+}
+
+function fehlerMelden(meldung, einzelheiten) {
+  // Ein Fehler im Skript dieses Fensters. Höchstens zwanzig je Fenster: Ein Fehler in einer Schleife füllt das Protokoll nicht
+  const f = zustand.fehler;
+  if (!bedienbar() || zustand.aus || f.gemeldet >= 20) return;
+  f.gemeldet += 1;
+  const ort = (text) => String(text || "").split(location.origin).join("");
+  senden("/api/aktion/fehler_melden", { meldung: ort(meldung).slice(0, 600), einzelheiten: (`Ansicht: ${zustand.ansicht || "(Start)"}\n` + ort(einzelheiten)).slice(0, 4000),
+    fall: zustand.fall || "" }).catch(() => { /* ist der Server nicht erreichbar, bleibt der Fehler in der Konsole des Browsers */ });
+}
+
 /* ---------- Navigation und Adressen ---------- */
 
 function adresse() {
@@ -751,6 +865,7 @@ function navigation(a) {
     const verweis = el("a", { href: ziel, text });
     if (aktiv) verweis.setAttribute("aria-current", "page");
     liste.append(el("li", unter ? { klasse: "unter" } : {}, verweis));
+    return verweis;
   };
   punkt("Fälle", "#/", !a.fall && a.ansicht === "faelle");
   if (zustand.bedienung) punkt("Neuer Fall", "#/neu", !a.fall && (a.ansicht === "neu" || a.ansicht === "klartext"));
@@ -765,7 +880,11 @@ function navigation(a) {
   }
   punkt("Quellen", "#/quellen", !a.fall && a.ansicht === "quellen");
   punkt("Arbeitsplatz", "#/arbeitsplatz", !a.fall && a.ansicht === "arbeitsplatz");
+  if (zustand.bedienung) {        // mit der Zahl der Fehler, die seit dem letzten Blick dazugekommen sind
+    punkt("Fehlerprotokoll", "#/fehler", !a.fall && a.ansicht === "fehler").append(el("span", { klasse: "nav-zahl", id: "nav-fehler", hidden: "" }));
+  }
   nav.append(liste);
+  fehlerMarke();
   const farbe = el("button", { type: "button", klasse: "farbwahl", text: "Hell / Dunkel" });
   farbe.addEventListener("click", () => {
     const jetzt = document.documentElement.dataset.farbe || (matchMedia("(prefers-color-scheme: dark)").matches ? "dunkel" : "hell");
@@ -796,10 +915,12 @@ async function laden() {
     if (lauf !== zustand.lauf) return;          // inzwischen wurde eine andere Ansicht verlangt
     zustand.ansicht = a.ansicht;
     const pfad = a.fall ? `/api/fall/${encodeURIComponent(a.fall)}/${encodeURIComponent(a.ansicht)}`
-      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${["quellen", "neu", "arbeitsplatz"].includes(a.ansicht) ? a.ansicht : "faelle"}`;
-    // Was echte Angaben zeigen kann, gibt der Server nur gegen das Geheimnis heraus: den Bildschirm der Pseudonymisierung und den Akten-Eingang
+      + (a.arg && a.ansicht !== "rapport" ? "/" + a.arg.split("/").map(encodeURIComponent).join("/") : "") : `/api/${["quellen", "neu", "arbeitsplatz", "fehler"].includes(a.ansicht) ? a.ansicht : "faelle"}`;
+    // Was echte Angaben zeigen kann, gibt der Server nur gegen das Geheimnis heraus: den Bildschirm der Pseudonymisierung, den Akten-Eingang
+    // und das Fehlerprotokoll (bereinigt, aber Namen erkennt die Bereinigung nicht)
     const daten = a.ansicht === "klartext" ? await senden("/api/klartext/pseudo", { vorgang: a.arg })
       : bedienbar() && ((!a.fall && a.ansicht === "neu") || (a.fall && a.ansicht === "akten")) ? await senden("/api/klartext/korb", { ziel: a.fall || "" })
+      : bedienbar() && !a.fall && a.ansicht === "fehler" ? await senden("/api/klartext/fehler", {})
       : await holen(pfad);
     if (lauf !== zustand.lauf) return;
     einsetzen(mitte, daten.html);
@@ -807,6 +928,7 @@ async function laden() {
     titelSetzen();
     einrichten(mitte, a);
     bedienungEinrichten(mitte);
+    fehlerEinrichten(mitte, daten);
     chatEinrichten(a);
     if (a.ansicht === "rapport" && a.arg) { const ziel = document.getElementById(a.arg); if (ziel) { ziel.scrollIntoView(); ziel.classList.add("ziel"); } }
     else mitte.scrollTop = gleiche ? hoehe : 0;        // dieselbe Ansicht neu geladen: Die Stelle bleibt
@@ -816,7 +938,9 @@ async function laden() {
     if (lauf !== zustand.lauf) return;
     zustand.adresse = "";
     const zurueck = a.ansicht === "klartext" ? ["#/neu", "Zum Akten-Eingang"] : a.fall ? [weg("fall", a.fall), "Zur Fallübersicht"] : ["#/", "Zur Liste der Fälle"];
-    mitte.replaceChildren(el("h1", { text: "Das hat nicht geklappt" }), el("p", { klasse: "banner", text: e.message }), el("p", {}, el("a", { href: zurueck[0], text: zurueck[1] })));
+    const wege = el("p", {}, el("a", { href: zurueck[0], text: zurueck[1] }));
+    if (bedienbar() && a.ansicht !== "fehler") wege.append(" · ", el("a", { href: "#/fehler", text: "Zum Fehlerprotokoll" }));
+    mitte.replaceChildren(el("h1", { text: "Das hat nicht geklappt" }), el("p", { klasse: "banner", text: e.message }), wege);
     chatEinrichten({ fall: null, ansicht: "" });
   }
   mitte.removeAttribute("aria-busy");
@@ -869,9 +993,8 @@ function tabelleEinrichten(tabelle) {
     const text = (zelle) => { const k = zelle.cloneNode(true); k.querySelectorAll(".hilfe, .nicht-csv, summary").forEach(x => x.remove()); return k.textContent.replace(/\s+/g, " ").trim(); };
     const kopf = Array.from(tabelle.tHead.rows[0].cells).map(text);
     const inhalt = [kopf].concat(zeilen().filter(z => !z.hidden).map(z => Array.from(z.cells).map(text)));
-    const blob = new Blob(["﻿" + inhalt.map(z => z.map(csvSicher).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-    const verweis = el("a", { href: URL.createObjectURL(blob), download: ((zustand.fall ? zustand.fall + "_" : "") + (tabelle.dataset.name || "tabelle")).replace(/[^\w.-]+/g, "_") + ".csv" });
-    document.body.append(verweis); verweis.click(); verweis.remove(); setTimeout(() => URL.revokeObjectURL(verweis.href), 1000);
+    dateiGeben(((zustand.fall ? zustand.fall + "_" : "") + (tabelle.dataset.name || "tabelle")).replace(/[^\w.-]+/g, "_") + ".csv",
+      "﻿" + inhalt.map(z => z.map(csvSicher).join(";")).join("\r\n"), "text/csv;charset=utf-8");
   });
   leiste.append(feld, csv, zahl);
   (tabelle.closest(".tabelle-breit") || tabelle).before(leiste);
@@ -1140,4 +1263,7 @@ try { const farbe = localStorage.getItem("farbe"); if (farbe) document.documentE
 addEventListener("beforeprint", () => $$("details").forEach(d => { d.dataset.war = d.open ? "1" : ""; d.open = true; }));
 addEventListener("afterprint", () => $$("details").forEach(d => { d.open = d.dataset.war === "1"; }));
 addEventListener("resize", chatHoehe);
+// Was im Skript dieses Fensters schiefgeht, steht sonst nur in der Konsole des Browsers: Es geht ins Fehlerprotokoll
+addEventListener("error", (e) => fehlerMelden(e.message || "Fehler im Skript der Oberfläche", (e.filename ? `${e.filename}:${e.lineno}:${e.colno}\n` : "") + ((e.error && e.error.stack) || "")));
+addEventListener("unhandledrejection", (e) => { const g = e.reason; fehlerMelden("Unbehandelter Fehler: " + ((g && g.message) || String(g)), (g && g.stack) || ""); });
 anmelden().then(() => { addEventListener("hashchange", laden); laden(); rueckfragenHolen(); });

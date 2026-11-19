@@ -145,7 +145,7 @@ def selbstpruefung(port: int) -> int:
     oeffner = urllib.request.build_opener(urllib.request.ProxyHandler({}))      # nie über einen Proxy: Es geht nur um den eigenen Rechner
     try:
         fehler = []
-        wege = ["/", "/app.js", "/app.css", "/bedienung.css", "/basis.css", "/api/faelle", "/api/quellen", "/api/neu", "/api/arbeitsplatz"]
+        wege = ["/", "/app.js", "/app.css", "/bedienung.css", "/basis.css", "/api/faelle", "/api/quellen", "/api/neu", "/api/arbeitsplatz", "/api/fehler"]
         for fall in daten.faelle():
             if fall["muster"]:
                 wege += [f"/api/fall/{fall['id']}/{a}" for a in ("kopf", "uebersicht", "akten", "rapport", "indikatoren", "rohdaten", "dokumente", "ergebnisse", "verlauf", "spur")]

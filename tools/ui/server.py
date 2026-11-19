@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from tools._html import STIL
-from tools.ui import bedienung as bedienung_modul, daten, formulare, paket, seiten, sitzung as sitzung_modul
+from tools.ui import bedienung as bedienung_modul, daten, fehlerbuch, formulare, paket, seiten, sitzung as sitzung_modul
 
 ORT = Path(__file__).resolve().parent
 STATISCH = {"/app.js": ("app.js", "text/javascript; charset=utf-8"), "/app.css": ("app.css", "text/css; charset=utf-8"),
@@ -138,14 +138,16 @@ class Bearbeiter(BaseHTTPRequestHandler):
 
     # ---- Schutz
     def zulaessig(self) -> bool:
+        # Was hier abgewiesen wird, steht als Hinweis im Fehlerprotokoll, ohne die fremde Adresse und höchstens einmal je Minute.
+        # So zeigt sich auch, wenn jemand die Oberfläche unter einem anderen Namen als 127.0.0.1 oder localhost öffnet.
         if (self.headers.get("Host") or "").strip().lower() not in self.erlaubt:
+            self.festhalten("Oberfläche", "hinweis", "Eine Anfrage unter einem anderen Namen als 127.0.0.1 oder localhost wurde abgewiesen (403). "
+                                                     "Die Oberfläche antwortet nur unter der Adresse, die sie beim Start genannt hat.", selten="fremder-host")
             self.fehler(403, "Abgewiesen: Diese Oberfläche antwortet nur unter 127.0.0.1 und localhost.")
             return False
         herkunft = self.headers.get("Origin")
-        if herkunft and urlsplit(herkunft).netloc.lower() not in self.erlaubt:
-            self.fehler(403, "Abgewiesen: Die Anfrage kommt von einer fremden Seite.")
-            return False
-        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+        if (herkunft and urlsplit(herkunft).netloc.lower() not in self.erlaubt) or (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            self.festhalten("Oberfläche", "hinweis", "Eine Anfrage, die eine fremde Seite ausgelöst hat, wurde abgewiesen (403).", selten="fremde-seite")
             self.fehler(403, "Abgewiesen: Die Anfrage kommt von einer fremden Seite.")
             return False
         return True
@@ -162,9 +164,56 @@ class Bearbeiter(BaseHTTPRequestHandler):
             pass
         except Exception as e:      # eine Ansicht darf scheitern, der Server läuft weiter
             traceback.print_exc(file=sys.stderr)
-            self.fehler(500, f"Die Ansicht konnte nicht aufgebaut werden ({type(e).__name__}). Einzelheiten stehen im Terminal, in dem die Oberfläche läuft.")
+            self.festhalten("Oberfläche", "fehler", "Ansicht " + self.ort(), e, fall=self.fall_im_weg())
+            self.fehler(500, f"Die Ansicht konnte nicht aufgebaut werden ({type(e).__name__}). {self.wo_steht_es()}")
 
     do_HEAD = do_GET
+
+    # ---- Fehlerprotokoll: Was schiefgeht, steht nicht nur im Terminal. Im Modus «nur lesen» gibt es keins
+    def ort(self) -> str:
+        """Wohin die Anfrage ging, ohne das, was jemand eingetippt hat: die ersten Teile des Pfads, ohne Suchbegriff. Von einer
+        Adresse mit einer Karte für einen Abruf steht nur der Anfang da."""
+        teile = urlsplit(self.path).path.split("/")[1:5]
+        return "/" + "/".join(teile[:1] + ["…"] if teile[:1] == ["klartext"] else teile)
+
+    def fall_im_weg(self) -> str:
+        """Der Fall, um den es in der Adresse geht (/api/fall/<Fall-ID>/… oder /fall/<Fall-ID>/…), wenn es ihn gibt."""
+        teile = [unquote(t) for t in urlsplit(self.path).path.split("/") if t]
+        return self.fall_wenn_echt(teile[teile.index("fall") + 1]) if "fall" in teile[:2] and len(teile) > teile.index("fall") + 1 else ""
+
+    @staticmethod
+    def fall_wenn_echt(kandidat: object) -> str:
+        """Eine Fall-ID nur, wenn sie eine ist und es den Fall gibt: Ins Fehlerprotokoll kommt nichts, was jemand frei eingetippt hat."""
+        kandidat = str(kandidat or "")
+        return kandidat if bedienung_modul.FALL_RE.match(kandidat) and (bedienung_modul.fall_pfad(kandidat) / "fall.json").is_file() else ""
+
+    def wo_steht_es(self) -> str:
+        return ("Einzelheiten stehen im Fehlerprotokoll (Seite «Fehlerprotokoll»)." if self.bedienung is not None else
+                "Einzelheiten stehen im Terminal, in dem die Oberfläche läuft.")
+
+    def festhalten(self, bereich: str, stufe: str, meldung: str, fehler: BaseException | None = None, selten: str = "", fall: str = "") -> None:
+        """`selten`: ein Name für Meldungen, die sich von aussen beliebig oft auslösen lassen. Sie stehen höchstens einmal je Minute da."""
+        buch = getattr(self.bedienung, "fehlerbuch", None)
+        if buch is None:
+            return
+        try:
+            if selten and not buch.selten(selten):
+                return
+            if fehler is not None:
+                buch.ausnahme(bereich, meldung, fehler, fall)
+            else:
+                buch.eintragen(bereich, stufe, meldung, "", fall)
+        except Exception:       # das Festhalten eines Fehlers darf selbst nie einer werden
+            pass
+
+    def absage_festhalten(self, weg: list[str], fehler: "bedienung_modul.Fehler", fall: str = "") -> None:
+        """Eine Absage an eine Aktion. Mit der Meldung, die auch im Fenster stand, wenn die Aktion keinen Dateinamen und keine
+        Eingabe nennen kann (fehlerbuch.MIT_WORTLAUT). Sonst steht nur da, dass es die Absage gab."""
+        aktion = weg[2] if len(weg) == 3 and weg[:2] == ["api", "aktion"] else "/".join(weg[1:3])
+        aktion = "".join(z for z in aktion[:60] if z.isalnum() or z in "_/-") or "unbekannt"
+        wortlaut = aktion.startswith(fehlerbuch.MIT_WORTLAUT) and not fehler.heikel
+        self.festhalten("Aktion", "hinweis", f"{aktion}: Absage ({fehler.status})."
+                        + (f" {fehler}" if wortlaut else " Der Wortlaut stand im Fenster. Hier steht er nicht: Er kann einen Dateinamen oder eine Eingabe nennen."), fall=fall)
 
     def nicht_erlaubt(self) -> None:
         self.send_response(405)
@@ -200,6 +249,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
             laenge = -1
         typ = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         b = self.bedienung
+        angaben: dict = {}
         try:
             if weg == ["api", "hochladen"]:
                 return self.hochladen(parse_qs(url.query), laenge, typ, schliessen)
@@ -218,6 +268,8 @@ class Bearbeiter(BaseHTTPRequestHandler):
             if weg == ["api", "rueckfrage"]:    # die Frage einer gesteuerten Sitzung: Ihre Karte taugt nur zum Fragen, nie zum Erlauben
                 return self.json(sitzung_modul.rueckfrage(b, angaben))
             if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
+                self.festhalten("Aktion", "hinweis", "Eine Anfrage ohne das Geheimnis der Oberfläche wurde abgewiesen (403). Bedienen lässt sich die Oberfläche nur aus "
+                                                     "dem Fenster, das sie beim Start geöffnet hat.", selten="ohne-geheimnis")
                 return self.fehler_json(403, OHNE_GEHEIMNIS)
             if len(weg) == 3 and weg[:2] == ["api", "aktion"]:
                 antwort = self.aktion(weg[2], angaben)
@@ -238,8 +290,14 @@ class Bearbeiter(BaseHTTPRequestHandler):
                 with b.sperre:
                     seite = formulare.akten_seite(b, ziel)
                 return self.json({"titel": f"Akten · {ziel}" if ziel else "Neuer Fall", "html": seite})
+            if weg == ["api", "klartext", "fehler"]:    # das Fehlerprotokoll: bereinigt, aber Namen erkennt niemand. Darum nur gegen das Geheimnis
+                # Neben der Seite der Text zum Kopieren und Speichern, mit einem Kopf, der sagt, was das ist und wie es bereinigt wurde
+                return self.json({"titel": "Fehlerprotokoll", "html": formulare.fehler_seite(b), "zahl": b.fehlerbuch.zahl(),
+                                  "text": b.fehlerbuch.text(formulare.fehler_kopf(b, sitzung_modul.verfuegbar())),
+                                  "name": "fehlerprotokoll-" + time.strftime("%Y%m%d-%H%M%S") + ".txt"})
             return self.fehler_json(404, "Diese Aktion gibt es nicht.")
         except bedienung_modul.Fehler as e:
+            self.absage_festhalten(weg, e, self.fall_wenn_echt(angaben.get("fall")))
             return self.json({"fehler": str(e), **e.mehr}, e.status)
         except (daten.NichtGefunden, FileNotFoundError) as e:
             return self.fehler_json(404, str(e))
@@ -247,7 +305,8 @@ class Bearbeiter(BaseHTTPRequestHandler):
             pass
         except Exception as e:      # eine Aktion darf scheitern, der Server läuft weiter. Die Meldung nennt nie Inhalte
             traceback.print_exc(file=sys.stderr)
-            return self.fehler_json(500, f"Die Aktion ist gescheitert ({type(e).__name__}). Einzelheiten stehen im Terminal, in dem die Oberfläche läuft.")
+            self.festhalten("Aktion", "fehler", "Aktion " + self.ort(), e, fall=self.fall_wenn_echt(angaben.get("fall")))
+            return self.fehler_json(500, f"Die Aktion ist gescheitert ({type(e).__name__}). {self.wo_steht_es()}")
 
     def fehler_json(self, status: int, text: str) -> None:
         self.json({"fehler": text}, status)
@@ -258,6 +317,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
         und was vom Inhalt noch ankommt, wird verworfen (ausklingen). `schliessen`: ob die Verbindung nach der Antwort ohnehin endet."""
         b = self.bedienung
         if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
+            self.festhalten("Aktion", "hinweis", "Eine Datei ohne das Geheimnis der Oberfläche wurde abgewiesen (403) und nicht angenommen.", selten="ohne-geheimnis")
             return self.fehler_json(403, OHNE_GEHEIMNIS)
         name = unquote(self.headers.get("X-OSINT-Name") or "")
         if typ != "application/octet-stream" or laenge < 0 or not name.strip():
@@ -337,7 +397,12 @@ class Bearbeiter(BaseHTTPRequestHandler):
             return self.json({"titel": "Fälle", "html": seiten.faelle_seite(self.bedienung is not None), "faelle": daten.faelle()})
         if weg == ["rueckfragen"]:      # Rückfragen, die gerade auf den Sachbearbeiter warten, über alle Fälle: für den Dialog in jeder Ansicht
             fragen = sitzung_modul.offene_fragen(self.bedienung)
-            return self.json({"anzahl": len(fragen), "html": formulare.rueckfrage_dialog(fragen)})
+            antwort = {"anzahl": len(fragen), "html": formulare.rueckfrage_dialog(fragen)}
+            if self.bedienung is not None:      # dazu, wie viele Einträge das Fehlerprotokoll in diesem Lauf hat: für die Zahl in der Navigation
+                antwort["fehler"] = self.bedienung.fehlerbuch.zahl()
+            return self.json(antwort)
+        if weg == ["fehler"]:           # ohne Geheimnis nur der Hinweis, wo das Fehlerprotokoll zu sehen ist
+            return self.json({"titel": "Fehlerprotokoll", "html": formulare.fehler_lesen(self.bedienung is not None)})
         if weg == ["quellen"]:
             return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + formulare.quellen_bedienung(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
         if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt, und wer hier antwortet. Das Geheimnis steht hier nie
