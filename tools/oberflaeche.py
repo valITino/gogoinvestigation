@@ -109,6 +109,30 @@ def nur_lesen_grund(gewollt: bool) -> str:
     return ""
 
 
+def ordner_bestaetigen() -> None:
+    """Vertraut Claude Code dem Projektordner noch nicht, startet die Oberfläche es einmal dafür: Ein eigener Schritt ist so
+    nicht mehr nötig. Die Antwort gibt der Mensch im Dialog von Claude Code, nie die Oberfläche. Fehlt Claude Code, oder
+    lässt sich der Stand nicht ablesen, geschieht nichts."""
+    claude = plattform.programm("claude")
+    if not claude or plattform.ordner_vertraut(plattform.PROJEKT) is not False:
+        return
+    print("Claude Code vertraut diesem Ordner noch nicht. " + plattform.OHNE_VERTRAUEN + "\n"
+          "Es startet jetzt einmal und fragt danach: mit Ja bestätigen, dann /exit eingeben. Danach öffnet die Oberfläche.")
+    try:
+        antwort = input("Jetzt starten? Enter für Ja, n für Nein: ").strip().lower()
+    except EOFError:
+        antwort = "n"
+    if antwort in ("n", "nein"):
+        print("Nicht gestartet. Die Oberfläche fragt beim nächsten Start wieder.")
+        return
+    try:
+        subprocess.call([claude], cwd=str(plattform.PROJEKT))
+    except (OSError, KeyboardInterrupt):
+        pass
+    print("Projektordner in Claude Code bestätigt." if plattform.ordner_vertraut(plattform.PROJEKT) else
+          "Keine Bestätigung gefunden. Die Oberfläche öffnet trotzdem. " + plattform.OHNE_VERTRAUEN)
+
+
 def selbstpruefung(port: int) -> int:
     """Startet, ruft die Hauptseiten ab und beendet sich. Prüft, dass die Oberfläche auf diesem System läuft."""
     server = ui_server.starten(port)
@@ -197,6 +221,8 @@ def main() -> int:
     p.add_argument("--ablage", help="Ordner ausserhalb des Projektordners für Klartext und Zuordnungstabellen")
     p.add_argument("--selbstpruefung", action="store_true")
     p.add_argument("--sitzungsprobe", action="store_true")
+    # Die Einrichtung hat eben selbst nach dem Ja zum Projektordner gefragt: Dann fragt der Start nicht gleich noch einmal
+    p.add_argument("--ordner-gefragt", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args()
     if a.selbstpruefung:
         return selbstpruefung(0)
@@ -216,6 +242,8 @@ def main() -> int:
         except bedienung_modul.Fehler as e:
             print(f"FEHLER: {e}", file=sys.stderr)
             return 2
+        if not a.ordner_gefragt:
+            ordner_bestaetigen()
     try:
         server = ui_server.starten(a.port, bedienung=bedienung)
     except OSError as e:

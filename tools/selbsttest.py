@@ -909,7 +909,8 @@ def flach(text: str) -> str:
 
 def einrichtung_optionen(**angaben) -> argparse.Namespace:
     werte = dict(nur_pruefen=False, nichts_installieren=False, mythos=False, ohne_mythos=False, env_von=None, docker_installieren=False,
-                 ohne_docker=False, ohne_webcheck=False, ohne_robin=False, testen=False, vorschau=False, werte={}, anmelden="", start="")
+                 ohne_docker=False, ohne_webcheck=False, ohne_robin=False, testen=False, vorschau=False, werte={}, anmelden="", start="",
+                 start_gefragt=False, ohne_rueckfragen=False)
     return argparse.Namespace(**{**werte, **angaben})
 
 
@@ -1598,7 +1599,7 @@ def _():
             os.environ["OSINT_BROWSER"] = gewuenscht
 
 
-@test("Einrichtung führt bis zum Start: Jeder Schritt steht da, in der Reihenfolge, in der er zu tun ist. Claude Code und die Oberfläche starten nur auf Wunsch")
+@test("Einrichtung führt bis zum Start: am Schluss eine Frage statt einer Liste. Was im Terminal bleibt, sind höchstens zwei Schritte, und Claude Code und die Oberfläche starten nur auf Wunsch")
 def _():
     echt = (plattform.wsl, plattform.programm, einrichten.ui, einrichten.anmeldung, einrichten.subprocess, einrichten.paket_installieren,
             einrichten.lauf, einrichten.root_praefix, plattform.ordner_vertraut)
@@ -1646,17 +1647,31 @@ def _():
             assert "hasTrustDialogAccepted\"] =" not in lesen(PROJEKT / datei) and "hasTrustDialogAccepted': True" not in lesen(PROJEKT / datei), datei
         plattform.ordner_vertraut = lambda projekt=None: vertraut[0]
 
-        # ---- Die Liste: vom Terminal bis zu den Ergebnissen, nichts zum Erraten
+        # ---- Was im Terminal bleibt: der Start der Oberfläche, und davor das neue Terminal, wo es eines braucht. So gewünscht am
+        # 19.11.2026: Sechs Schritte am Schluss waren zu viel. Den Ordner bestätigt der Mensch beim Start, der Rest steht in der Oberfläche
         plattform.wsl = lambda: False
         w = plattform.weiter()
-        assert len(w) == 5 and w[0].startswith("Falls noch nicht geschehen: im Projektordner einmal Claude Code starten") and "/exit" in w[0], w[0]
-        assert plattform.OHNE_VERTRAUEN in w[0] and "Erlaubnisse des Projekts" in plattform.OHNE_VERTRAUEN, "der Schritt sagt, wozu er gut ist"
-        assert w[1].startswith(f"Oberfläche starten: {plattform.PY} tools/oberflaeche.py") and "steht die Adresse im Terminal" in w[1], w[1]
-        assert "«Neuer Fall»" in w[2] and "Pflichtquellen" in w[3] and "«Ergebnisse»" in w[4]
+        assert len(w) == 1 and w[0].startswith(f"Oberfläche starten: {plattform.PY} tools/oberflaeche.py") and "steht die Adresse im Terminal" in w[0], w
+        assert "startet davor einmal Claude Code" in w[0] and "mit Ja bestätigen" in w[0] and "/exit" in w[0], "der Start fragt nach dem Ja zum Ordner, und der Schritt sagt es"
+        assert w[0].endswith("Wie es weitergeht, steht in der Oberfläche.") and "«Neuer Fall»" not in w[0], w[0]
+        assert "Erlaubnisse des Projekts" in plattform.OHNE_VERTRAUEN and plattform.OHNE_VERTRAUEN in plattform.schritt_ordner(False)
         w = plattform.weiter(["der Befehl 'claude'", "der Zugriff auf Docker"], False)
-        assert len(w) == 6 and w[0].startswith("Dieses Terminal schliessen und ein neues öffnen") and f"cd {plattform.PROJEKT}" in w[0], w[0]
-        assert "der Befehl 'claude' und der Zugriff auf Docker" in w[0] and w[1].startswith("Im Projektordner einmal Claude Code starten"), w[:2]
-        assert len(plattform.weiter((), True)) == 4 and "vertrauen" not in " ".join(plattform.weiter((), True)), "ist der Ordner bestätigt, entfällt der Schritt"
+        assert len(w) == 2 and w[0].startswith("Dieses Terminal schliessen und ein neues öffnen") and f"cd {plattform.PROJEKT}" in w[0], w[0]
+        assert "der Befehl 'claude' und der Zugriff auf Docker" in w[0] and w[1] == plattform.schritt_start(False), w
+        assert plattform.weiter((), True) == [plattform.schritt_start(True)] and "Claude Code" not in plattform.schritt_start(True), "ist der Ordner bestätigt, steht davon nichts mehr da"
+        for stueck in plattform.IN_DER_OBERFLAECHE:
+            assert stueck not in " ".join(plattform.weiter(["x"], False)), "was in der Oberfläche zu tun ist, steht dort und nicht im Terminal"
+        # Dort stehen die drei Schritte auf der ersten Seite: aufgeklappt, solange es ausser dem Musterfall keinen Fall gibt
+        from tools.ui import seiten as seiten_ui
+        muster, echter = {"id": "MUSTER-2026-001", "muster": True}, {"id": "2026-0001", "muster": False}
+        kasten = seiten_ui.einstieg([muster])
+        assert kasten.startswith('<details class="einstieg" open><summary>So geht es</summary>'), kasten[:80]
+        assert all(seiten_ui.esc(stueck) in kasten for stueck in plattform.IN_DER_OBERFLAECHE) and kasten.count("<li>") == 3, kasten
+        assert 'href="#/fall/MUSTER-2026-001"' in kasten and "Er ist erfunden" in kasten, "der Musterfall zum Ausprobieren"
+        assert seiten_ui.einstieg([muster, echter]).startswith('<details class="einstieg"><summary>'), "mit einem eigenen Fall bleibt der Kasten als eine Zeile stehen"
+        assert "Musterfall" not in seiten_ui.einstieg([]) and seiten_ui.einstieg([]).startswith('<details class="einstieg" open>')
+        assert 'class="einstieg"' in seiten_ui.faelle_seite(True) and "einstieg" not in seiten_ui.faelle_seite(False), "nur die bedienbare Oberfläche führt"
+        assert not plattform.IN_DER_OBERFLAECHE[0].startswith("Dort"), "in der Oberfläche heisst es nicht «dort»"
         plattform.wsl = lambda: True
         w = plattform.weiter(["der Zugriff auf Docker"], True)
         assert w[0].startswith("Dieses WSL-Fenster schliessen") and "Der Browser von Windows öffnet sich von selbst" in w[1], w[:2]
@@ -1666,17 +1681,25 @@ def _():
         plattform.wsl = lambda: False
         assert "wsl --shutdown" not in plattform.weiter([docker_grund], True)[0]
 
-        # ---- Der Abschluss der Einrichtung nennt sie, und was noch offen ist, bleibt davon getrennt
+        # ---- Der Abschluss der Einrichtung nennt, was noch offen ist. Was danach im Terminal zu tun bleibt, steht getrennt davon
         einrichten.stand = einrichten.Stand()
         einrichten.stand.neues_terminal, einrichten.stand.ordner = ["der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn"], False
         einrichten.stand.offen = ["Schlüssel eintragen"]
         einrichten.ui, aus = oberflaeche([], interaktiv=False)
         assert einrichten.abschluss(0, "mit 25 von 28 Quellen") == 0
+        assert "So geht es weiter" not in aus.getvalue() and "Einsatzbereit" in aus.getvalue() and "Schlüssel eintragen" in aus.getvalue()
+        einrichten.weiter_zeigen()
         text = aus.getvalue()
-        stellen = [text.index(s) for s in ("Noch offen", "Schlüssel eintragen", "So geht es weiter", "Terminal schliessen", "einmal Claude Code starten",
-                                           "Oberfläche starten", "«Neuer Fall»", "«Ergebnisse»")]
+        stellen = [text.index(s) for s in ("Noch offen", "Schlüssel eintragen", "So geht es weiter", "Terminal schliessen", "Oberfläche starten",
+                                           "Ausserdem", "Stand prüfen", "Einstellungen ändern")]
         assert stellen == sorted(stellen), f"die Schritte stehen nicht in der Reihenfolge, in der sie zu tun sind: {stellen}"
         assert text.count("Terminal schliessen") == 1, "das neue Terminal steht als Schritt da, nicht zusätzlich unter «Noch offen»"
+        assert "«Neuer Fall»" not in text and "MUSTER-2026-001" not in text and "tools/fall.py" not in text, "der Abschluss bleibt kurz"
+        einrichten.stand = einrichten.Stand()
+        einrichten.stand.ordner = True
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        einrichten.weiter_zeigen()
+        assert aus.getvalue().count("Oberfläche starten") == 1 and "2." not in aus.getvalue() and "Terminal schliessen" not in aus.getvalue(), "dann bleibt ein einziger Schritt"
         # Fehlt noch etwas, gibt es kein «So geht es weiter». Was davon schon jetzt zu tun ist, steht dann unter «Das ist zu tun»,
         # im selben Wortlaut: So gesehen am 18.11.2026, die Zeile «Projektordner» versprach einen Schritt, der dann fehlte.
         einrichten.stand = einrichten.Stand()
@@ -1691,7 +1714,7 @@ def _():
         assert stellen == sorted(stellen), f"erst das neue Terminal, dann was fehlt, dann der Projektordner: {stellen}"
         assert "Erst im neuen Fenster gilt: der Zugriff des Kontos tester auf Docker (Gruppe docker). Robin braucht ihn." in text, text
         assert flach(plattform.schritt_ordner(False)) in text, "derselbe Wortlaut wie unter «So geht es weiter»"
-        assert plattform.weiter(["x"], False)[:2] == [plattform.schritt_terminal(["x"]), plattform.schritt_ordner(False)]
+        assert plattform.weiter(["x"], False) == [plattform.schritt_terminal(["x"]), plattform.schritt_start(False)]
         for ordner in (True, None):         # ist der Ordner bestätigt oder liess es sich nicht ablesen, steht der Schritt hier nicht
             einrichten.stand = einrichten.Stand()
             einrichten.stand.noetig, einrichten.stand.ordner = ["Claude Code"], ordner
@@ -1709,7 +1732,7 @@ def _():
             einrichten.ui, aus = oberflaeche([], interaktiv=False)
             a = einrichtung_optionen(start=wunsch)
             einrichten.ordner_bestaetigen(a)
-            einrichten.oberflaeche_starten(a)
+            assert einrichten.oberflaeche_starten(a) is (wunsch == "alles"), "die Einrichtung muss wissen, ob sie die Oberfläche gestartet hat"
             assert len(rufe) == erwartet, (wunsch, rufe)
             if erwartet:
                 assert rufe[0] == (["/daheim/.local/bin/claude"], {"cwd": str(einrichten.PROJEKT)}) and einrichten.stand.ordner is True, rufe[0]
@@ -1718,7 +1741,7 @@ def _():
             else:
                 assert einrichten.stand.ordner is None and aus.getvalue() == ""
             if erwartet == 2:
-                assert rufe[1][0] == [str(einrichten.VENV), str(einrichten.PROJEKT / "tools" / "oberflaeche.py")], rufe[1]
+                assert rufe[1][0] == [str(einrichten.VENV), str(einrichten.PROJEKT / "tools" / "oberflaeche.py"), "--ordner-gefragt"], rufe[1]
         # Hat der Mensch Claude Code verlassen, ohne Ja zu sagen, bleibt der Schritt stehen. Die Einrichtung behauptet nichts
         vertraut[0] = False
         rufe.clear()
@@ -1726,7 +1749,7 @@ def _():
         einrichten.ui, aus = oberflaeche([], interaktiv=False)
         einrichten.ordner_bestaetigen(einrichtung_optionen(start="claude"))
         assert len(rufe) == 1 and einrichten.stand.ordner is None and "keine Bestätigung gefunden" in flach(aus.getvalue()), aus.getvalue()
-        assert plattform.weiter((), einrichten.stand.ordner)[0].startswith("Falls noch nicht geschehen")
+        assert "startet davor einmal Claude Code" in plattform.weiter((), einrichten.stand.ordner)[0], "der Start der Oberfläche fragt dann noch einmal danach"
         # Ist der Ordner schon bestätigt, startet Claude Code nicht noch einmal. Die Oberfläche auf Wunsch schon
         rufe.clear()
         einrichten.stand = einrichten.Stand()
@@ -1734,7 +1757,7 @@ def _():
         a = einrichtung_optionen(start="alles")
         einrichten.ordner_bestaetigen(a)
         einrichten.oberflaeche_starten(a)
-        assert [r[0][-1] for r in rufe] == [str(einrichten.PROJEKT / "tools" / "oberflaeche.py")], rufe
+        assert [r[0][-2:] for r in rufe] == [[str(einrichten.PROJEKT / "tools" / "oberflaeche.py"), "--ordner-gefragt"]], rufe
         # Der Schritt «Claude Code» zeigt den Stand als Zeile, und er bestimmt, ob der Schritt am Ende dasteht
         for gelesen, erstmals, soll, satz in ((True, True, True, "in Claude Code bestätigt"), (False, False, False, "noch nicht bestätigt"),
                                               (None, True, False, "noch nicht bestätigt"), (None, False, None, "")):
@@ -1769,6 +1792,39 @@ def _():
             for k, v in alt.items():
                 os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
         assert einrichten.stand.neu_anmelden and any("Gruppe docker" in t and "tester" in t for t in einrichten.stand.neues_terminal), einrichten.stand.neues_terminal
+
+        # ---- Ist der Arbeitsplatz bereit, fragt die Einrichtung am Schluss einmal, statt Schritte aufzulisten. So gewünscht am 19.11.2026
+        einrichten.anmeldung = lambda: (True, "claude.ai")
+        ci = os.environ.pop("CI", None)         # in der CI fragt die Einrichtung nie: Hier geht es um den Menschen am Terminal
+        try:
+            def frage(tasten: list[str], ordner: bool | None = False, **angaben):
+                einrichten.stand = einrichten.Stand()
+                einrichten.stand.ordner = ordner
+                einrichten.stand.neu_anmelden = angaben.pop("neu_anmelden", False)
+                einrichten.ui, aus = oberflaeche(tasten, hoehe=40) if tasten is not None else oberflaeche([], interaktiv=False)
+                a = einrichtung_optionen(**angaben)
+                einrichten.start_fragen(a)
+                return a.start, flach(aus.getvalue())
+            start, text = frage(["enter"])
+            assert start == "alles" and "Soll die Oberfläche jetzt öffnen?" in text, (start, text)
+            assert "Davor startet einmal Claude Code" in text and "Die Antwort gebt ihr selbst" in text, "wer Ja sagt, weiss vorher, dass Claude Code einmal startet"
+            start, text = frage(["enter"], ordner=True)
+            assert start == "alles" and "Claude Code" not in text, "ist der Ordner bestätigt, ist davon keine Rede"
+            assert frage(["runter", "enter"])[0] == "" and frage(["esc"])[0] == "", "Nein und Esc heissen: später von Hand"
+            for grund, angaben in (("der Assistent hat schon gefragt", {"start_gefragt": True, "start": "claude"}), ("ohne Rückfragen", {"ohne_rueckfragen": True}),
+                                   ("erst im neuen Terminal gilt die Gruppe docker", {"neu_anmelden": True})):
+                start, text = frage(["enter"], **angaben)
+                assert start == angaben.get("start", "") and "jetzt öffnen" not in text, f"keine Frage: {grund}"
+            assert frage(None) == ("", ""), "ohne Terminal fragt niemand"
+            os.environ["CI"] = "true"
+            assert frage(["enter"])[0] == "", "in der CI fragt niemand"
+        finally:
+            os.environ.pop("CI", None) if ci is None else os.environ.__setitem__("CI", ci)
+        import inspect
+        ablauf = inspect.getsource(einrichten.main)
+        stellen = [ablauf.index(s) for s in ("abschluss(code, fazit, tests_ok)", "start_fragen(a)", "ordner_bestaetigen(a)", "oberflaeche_starten(a)", "weiter_zeigen()")]
+        assert stellen == sorted(stellen), "erst das Ergebnis, dann die Frage, dann der Ordner, dann die Oberfläche. Die Schritte nur, wenn sie nicht startet"
+        einrichten.anmeldung = lambda: (False, "")
 
         # ---- Der Assistent fragt danach, und auf einem eingerichteten Arbeitsplatz startet er nichts von selbst
         assert einrichten.THEMEN[-1] == "start" and set(einrichten.START_ANTWORT) == {"alles", "claude", ""}
@@ -4868,7 +4924,8 @@ def _():
     from tools.ui import bedienung as grenzen, sitzung as fristen
     assert f"{grenzen.DATEI_GROESSE // (1024 * 1024)} MB je Datei, {grenzen.KORB_GROESSE // (1024 * 1024)} MB und {grenzen.KORB_EINTRAEGE} Dateien je Eingang" in doku
     assert all(endung in doku for endung in gewandelt if endung != ".pdf") and "PDF" in doku and f"innert {fristen.WARTEZEIT // 60} Minuten" in doku
-    assert "Stand: 17.11.2026." in doku and "So geht es weiter" in readme and "So geht es weiter" in lesen(REPO / "tools" / "einrichten.py")
+    assert "Stand: 19.11.2026." in doku and "So geht es weiter" in readme and "So geht es weiter" in lesen(REPO / "tools" / "einrichten.py")
+    assert "«So geht es»" in doku and "fragt der Start einmal danach" in doku, "die Doku nennt den Einstieg auf der ersten Seite und die Frage beim Start"
     assert "\nABRECHNUNG\n" not in doku + readme, "Platzhalter in der Dokumentation"
     # Das README nennt die Zahl der ändernden Aktionen so, wie der Code sie hat
     from tools.ui import bedienung as bedien_modul, sitzung as sitzung_modul
@@ -5212,6 +5269,56 @@ def _():
         assert "basis = basis_adresse(server.server_address[1])" in quelle, "der Start muss die Adresse von dort nehmen"
         wege = [weg[0] for weg in oberflaeche_start.WSL_WEGE]
         assert wege[0] == "rundll32.exe" and wege[-1] == "wslview" and all("{adresse}" in weg[-1] for weg in oberflaeche_start.WSL_WEGE), wege
+
+        # ---- Vertraut Claude Code dem Projektordner noch nicht, fragt der Start einmal danach: Ein eigener Schritt ist dafür nicht
+        # mehr nötig. Die Antwort gibt der Mensch im Dialog von Claude Code, der Start behauptet nichts
+        import builtins
+        echt_start = (plattform.programm, plattform.ordner_vertraut, builtins.input)
+        gestartet: list[tuple[list[str], dict]] = []
+        vertraut: list[bool | None] = [False]
+        eingaben: list[str] = []
+        sagt_ja = [True]
+
+        class Starter(Attrappe):
+            def call(self, befehl, **mehr) -> int:
+                gestartet.append((list(befehl), mehr))
+                if sagt_ja[0]:
+                    vertraut[0] = True
+                return 0
+
+        def bestaetigen() -> str:
+            with contextlib.redirect_stdout(io.StringIO()) as aus:
+                oberflaeche_start.ordner_bestaetigen()
+            return aus.getvalue()
+        try:
+            oberflaeche_start.subprocess = Starter()
+            plattform.programm = lambda name: "/daheim/.local/bin/claude" if name == "claude" else None
+            plattform.ordner_vertraut = lambda projekt=None: vertraut[0]
+            builtins.input = lambda frage="": eingaben.pop(0)
+            eingaben[:] = [""]             # Enter heisst Ja
+            text = bestaetigen()
+            assert gestartet == [(["/daheim/.local/bin/claude"], {"cwd": str(plattform.PROJEKT)})], gestartet
+            assert "mit Ja bestätigen" in text and "/exit" in text and plattform.OHNE_VERTRAUEN in text and "in Claude Code bestätigt" in text, text
+            gestartet.clear()
+            assert bestaetigen() == "" and gestartet == [], "ist der Ordner bestätigt, fragt niemand mehr"
+            vertraut[0] = False
+            eingaben[:] = ["n"]
+            assert "Nicht gestartet" in bestaetigen() and gestartet == [], "ein Nein startet nichts"
+            vertraut[0] = None
+            assert bestaetigen() == "" and gestartet == [], "lässt sich der Stand nicht ablesen, fragt niemand"
+            vertraut[0] = False
+            plattform.programm = lambda name: None
+            assert bestaetigen() == "" and gestartet == [], "ohne Claude Code gibt es nichts zu bestätigen"
+            plattform.programm = lambda name: "/daheim/.local/bin/claude" if name == "claude" else None
+            sagt_ja[0] = False              # Claude Code verlassen, ohne Ja zu sagen
+            eingaben[:] = ["j"]
+            text = bestaetigen()
+            assert len(gestartet) == 1 and "Keine Bestätigung gefunden" in text and "öffnet trotzdem" in text, text
+            stellen = [quelle.index(s) for s in ("    if not grund:\n        try:\n            bedienung = ", "        if not a.ordner_gefragt:\n            ordner_bestaetigen()",
+                                                "        server = ui_server.starten(a.port")]
+            assert stellen == sorted(stellen), "gefragt wird nur, wenn ein Mensch am Terminal sitzt, und bevor der Server startet"
+        finally:
+            plattform.programm, plattform.ordner_vertraut, builtins.input = echt_start
     finally:
         plattform.wsl, oberflaeche_start._programm, oberflaeche_start.subprocess, webbrowser.open = echt
 
