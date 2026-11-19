@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 99 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 100 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -1067,7 +1067,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Klartext bleibt beim Sachbearbeiter | `tools/pseudonymisieren.py` und `tools/reidentifizieren.py` laufen nur an einem Terminal und nicht aus Claude Code heraus. Die Berechtigungen verbieten beide Befehle für Agenten. Dokument, Zuordnungstabelle und Ausgabe müssen ausserhalb des Projektordners liegen. Das Pseudonymisieren sperrt sich selbst jede Netzverbindung. | `.claude/settings.json`, `tools/pseudonymisieren.py` |
 | Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten für die Schreibwerkzeuge gesperrt | Die Berechtigungen verbieten `Edit` und `Write` auf `fall.json`, Protokoll, Rohdaten und Eingang. Ein Shell-Befehl, der dort schreibt, steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. Veränderungen zeigt die Kette. | `.claude/settings.json` |
-| Die Oberfläche ändert nur für den Sachbearbeiter | Ändernde Anfragen brauchen das Geheimnis des Starts (nur im Speicher des Servers und im Browserfenster). Ohne Terminal oder aus Claude Code gestartet, läuft sie «nur lesen». Eine hochgeladene Datei liest der Server erst ein, wenn das Geheimnis stimmt. Sie ruft die bestehenden Werkzeuge auf und schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Die Ablage mit Klartext und Zuordnungstabellen liegt ausserhalb des Projekts. Die Vorgabe `OSINT-Ablage` im Benutzerordner sperren die Berechtigungen für Agenten. | `tools/ui/bedienung.py`, `tools/oberflaeche.py`, `.claude/settings.json` |
+| Die Oberfläche ändert nur für den Sachbearbeiter | Ändernde Anfragen brauchen das Geheimnis des Starts (nur im Speicher des Servers und im Browserfenster). Ohne Terminal oder aus Claude Code gestartet, läuft sie «nur lesen». Eine hochgeladene Datei nimmt der Server erst an, wenn das Geheimnis stimmt: Den Inhalt einer abgewiesenen Anfrage verwirft er, ohne ihn auszuwerten. Sie ruft die bestehenden Werkzeuge auf und schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Die Ablage mit Klartext und Zuordnungstabellen liegt ausserhalb des Projekts. Die Vorgabe `OSINT-Ablage` im Benutzerordner sperren die Berechtigungen für Agenten. | `tools/ui/bedienung.py`, `tools/oberflaeche.py`, `.claude/settings.json` |
 | Die Oberfläche führt nichts Fremdes aus | Der Server hört nur auf 127.0.0.1 und weist fremde Host-Köpfe ab. Inhalte aus Quellen erscheinen als Text, Rohdateien als Text oder Bild, eine Content-Security-Policy verbietet alles von aussen. Adressen aus dem Fall sind nie anklickbar. | `tools/ui/server.py`, `tools/ui/seiten.py` |
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
 | Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. Eine Kürzung am Ende erkennt die Kette allein nicht: Dafür steht der letzte Kettenwert in Rapport und Protokoll, und `tools/audit_pruefen.py --erwartet <Wert>` prüft später, ob er noch in der Kette steht. | `gateway/akte.py`, `tools/audit_pruefen.py` |
@@ -1168,7 +1168,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 99 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 100 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1334,6 +1334,18 @@ PowerShell 7:
   Änderung bestanden dort 92 von 96 Tests, und einer wartete mitten im Lauf auf eine Bestätigung. Danach bestanden an
   derselben Stelle 99 von 99. In der Einrichtung und in der CI fiel das nie auf, weil die Tests dort ohne Terminal
   laufen. **Nicht geprüft:** ein echtes Terminal unter Windows und macOS.
+- Eine Absage der Oberfläche kommt seit dem 19.11.2026 an, ohne dass die Verbindung abbricht. Anlass: In der CI unter
+  Windows scheiterte am 19.11.2026 einer von drei Läufen der Selbsttests an einem Verbindungsabbruch (WinError 10053).
+  Die Ursache: Wies der Server eine Anfrage ab, bevor ihr Inhalt gelesen war (ohne Geheimnis, in falscher Form, von
+  fremder Seite, zu gross, im Modus «nur lesen»), schloss er die Verbindung sofort. Ein Betriebssystem bricht eine
+  Verbindung ab, wenn beim Schliessen noch Daten ungelesen oder unterwegs sind, und die Gegenseite kann dabei auch die
+  Antwort verlieren, die schon gesendet ist. Jetzt kündigt der Server das Ende an, verwirft den Rest der Anfrage und
+  schliesst erst dann (`ausklingen` in `tools/ui/server.py`). Vom Verworfenen wird nichts ausgewertet und nichts
+  behalten. Begrenzt ist das auf 5 Sekunden, auf 1 Sekunde ohne neue Daten und auf 120 MB. Ein Selbsttest prüft die
+  sieben Absagen in beiden Reihenfolgen (Inhalt vor und nach der Absage gesendet) und die drei Grenzen.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux): Auf dem Stand davor brach die Verbindung in 14 von 14
+  nachgestellten Abläufen ab, danach in keinem. **Nicht geprüft:** ein Browser unter Windows, und ob er je einen
+  Netzwerkfehler statt der Absage zeigte. Ob die CI unter Windows damit stabil läuft, zeigen erst mehrere Läufe.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1358,7 +1370,7 @@ PowerShell 7:
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
   17.11.2026, seit dem 19.11.2026 mit «Alles abschalten»: Jede der 26 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
-  seiner Stelle mit 403 und ändert nichts. Eine Datei liest der Server erst ein, wenn das Geheimnis stimmt. Der
+  seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
   ein ZIP mit einem ZIP darin, ein ZIP mit Passwort, eine E-Mail mit Anhängen, Word, ein Bild, gleicher Inhalt zweimal,
