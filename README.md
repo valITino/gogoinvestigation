@@ -621,8 +621,9 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 
 Die Sitzung von Claude Code läuft im Projektordner und ohne Schalter, die Einstellungen, Hooks oder MCP-Server
 abschalten. Berechtigungen und Protokoll-Hooks gelten wie am Terminal, die Modelle bleiben, wie das Projekt sie
-festlegt. Ob der Weg an eurem Arbeitsplatz trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage), zeigt eine Probe
-mit dem echten Claude Code in vier kurzen Sitzungen: `python3 tools/oberflaeche.py --sitzungsprobe`.
+festlegt. Ob der Weg an eurem Arbeitsplatz trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage, Frage an den
+Sachbearbeiter), zeigt eine Probe mit dem echten Claude Code in fünf kurzen Sitzungen:
+`python3 tools/oberflaeche.py --sitzungsprobe`.
 
 **Abrechnung: Abo oder API.** Eine Sitzung aus der Oberfläche rechnet über denselben Zugang ab wie `claude` am Terminal
 desselben Benutzers. Einen eigenen API-Schlüssel braucht dieser Weg nicht. Stand: Dokumentation von Claude Code

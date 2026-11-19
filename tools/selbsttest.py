@@ -6646,7 +6646,7 @@ def _():
 
     def ergebnis(kennung: str, text: str, fehler: bool) -> dict:
         return {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "content": text, "is_error": fehler}]}}
-    assert [art for art, _ in ui_sitzung.PROBEN] == ["ablauf", "fortsetzen", "verbot", "rueckfrage"]
+    assert [art for art, _ in ui_sitzung.PROBEN] == ["ablauf", "fortsetzen", "verbot", "rueckfrage", "frage"]
     anfang = {"type": "system", "subtype": "init", "session_id": "s-1", "model": "modell-x", "mcp_servers": [{"name": "osint", "status": "connected"}, {"name": "oberflaeche", "status": "connected"}]}
     schluss = {"type": "result", "subtype": "success", "is_error": False, "result": f"{ui_sitzung.PROBE_SATZ}: 3 Abfragen."}
     ablauf = [anfang, aufruf("s", "mcp__osint__fall_status", {"fall": fall, "zweck": "Probe"}), ergebnis("s", '{"abfragen": 3}', False), schluss]
@@ -6670,6 +6670,24 @@ def _():
     assert [g for g, _ in ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "abgelehnt", True)], [{"werkzeug": "WebSearch"}], True)] == [True, True]
     assert ui_sitzung.probe_auswerten("rueckfrage", [aufruf("c", "WebSearch", {"query": "example.com"}), ergebnis("c", "Treffer …", False)], [], True) == \
         [(False, "Bei der Oberfläche kam keine Rückfrage an."), (False, "Nach der Ablehnung in der Oberfläche: AUSGEFÜHRT. Meldung: Treffer …")]
+    # Die fünfte Probe: Claude Code stellt dem Sachbearbeiter eine Frage, die Probe wählt die zweite Antwort. Kommt die Frage an, nimmt Claude Code die Antwort an, erreicht sie das Modell?
+    probe_frage = next(text for art, text in ui_sitzung.PROBEN if art == "frage")
+    assert "AskUserQuestion" in probe_frage and all(p in probe_frage for p in ("{frage}", "{erste}", "{zweite}")) and len(ui_sitzung.PROBE_WAHL) == 2
+    frage_eingabe = {"questions": [{"question": ui_sitzung.PROBE_FRAGE, "header": "Probe", "multiSelect": False, "options": [{"label": w, "description": ""} for w in ui_sitzung.PROBE_WAHL]}]}
+    zweite = ui_sitzung.PROBE_WAHL[1]
+    gestellt = {"art": "frage", "werkzeug": "AskUserQuestion", "fragen": ui_sitzung.worte.fragen_lesen(frage_eingabe), "gewaehlt": zweite}
+    ende_gut = {"type": "result", "subtype": "success", "is_error": False, "result": f"{ui_sitzung.PROBE_SATZ}: {zweite}."}
+    punkte = ui_sitzung.probe_auswerten("frage", [aufruf("f", "AskUserQuestion", frage_eingabe), ergebnis("f", zweite, False), ende_gut], [gestellt], True)
+    assert [gut for gut, _ in punkte] == [True, True, True] and ", ".join(ui_sitzung.PROBE_WAHL) in punkte[0][1] and "angenommen" in punkte[1][1] and f"«{zweite}»" in punkte[2][1], punkte
+    # Claude Code verwirft die Antwort, oder das Modell nennt die andere Antwort: Die Probe sagt, an welcher Stelle der Weg bricht
+    verworfen = [aufruf("f", "AskUserQuestion", frage_eingabe), ergebnis("f", "Permission prompt tool returned an invalid result", True),
+                 {**ende_gut, "result": f"{ui_sitzung.PROBE_SATZ}: {ui_sitzung.PROBE_WAHL[0]}."}]
+    punkte = ui_sitzung.probe_auswerten("frage", verworfen, [gestellt], True)
+    assert [gut for gut, _ in punkte] == [True, False, False] and "NICHT angenommen" in punkte[1][1] and "invalid result" in punkte[1][1], punkte
+    punkte = ui_sitzung.probe_auswerten("frage", [ende_gut], [], True)
+    assert len(punkte) == 1 and not punkte[0][0] and "hat keine Frage gestellt" in punkte[0][1], "bietet Claude Code das Werkzeug nicht an, sagt die Probe das und behauptet sonst nichts"
+    punkte = ui_sitzung.probe_auswerten("frage", [aufruf("f", "AskUserQuestion", frage_eingabe)], [{"art": "zustimmung", "werkzeug": "AskUserQuestion"}], True)
+    assert len(punkte) == 1 and not punkte[0][0] and "nicht als Frage an" in punkte[0][1], punkte
     ausgabe = io.StringIO()
     with contextlib.redirect_stderr(ausgabe):
         assert oberflaeche_start.sitzungsprobe(MUSTER, "ohne Terminal gestartet", None) == 2 and "nur, wenn ein Mensch" in ausgabe.getvalue()

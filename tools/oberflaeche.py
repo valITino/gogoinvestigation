@@ -10,8 +10,9 @@
                                                      (Vorgabe: OSINT-Ablage im Benutzerordner)
     python3 tools/oberflaeche.py --selbstpruefung    kurz starten, die Hauptseiten abrufen, wieder beenden (für die CI)
     python3 tools/oberflaeche.py --sitzungsprobe [Fall-ID]
-                                                     Probe mit dem echten Claude Code, am Terminal: Vier kurze Sitzungen starten wie aus der
-                                                     Oberfläche und zeigen, ob der Weg trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage)
+                                                     Probe mit dem echten Claude Code, am Terminal: Fünf kurze Sitzungen starten wie aus der
+                                                     Oberfläche und zeigen, ob der Weg trägt (Ausgabe und Hooks, Fortsetzen, Verbote, Rückfrage,
+                                                     Frage an den Sachbearbeiter)
 
 Ein lokaler Server in Python, erreichbar nur über 127.0.0.1. Eine Seite, keine fremden Inhalte, läuft ohne Internet.
 Beenden mit Strg+C. Was die Oberfläche zeigt und wie sie geschützt ist: docs/OBERFLAECHE.md.
@@ -192,11 +193,12 @@ def sitzungsprobe(fall: str, grund: str, ablage: str | None) -> int:
     except daten.NichtGefunden as e:
         print(f"FEHLER: {e}", file=sys.stderr)
         return 2
-    print(f"Die Probe startet Claude Code viermal kurz im Projektordner, auf demselben Weg wie «Ermittlung starten», am Fall {fall}.\n"
+    print(f"Die Probe startet Claude Code fünfmal kurz im Projektordner, auf demselben Weg wie «Ermittlung starten», am Fall {fall}.\n"
           "1. Ablauf: Claude Code ruft einmal fall_status auf. Geprüft wird die Form der Ausgabe, ob das Gateway geladen ist und ob der Protokoll-Hook mitschreibt.\n"
           "2. Fortsetzen: Dieselbe Sitzung wird wieder aufgenommen, wie es eine Nachricht aus dem Chat tut.\n"
           "3. Verbote: Claude Code soll zwei gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei lesen).\n"
           "4. Rückfrage: Claude Code soll ein Werkzeug aufrufen, das eine Zustimmung verlangt. Die Probe lehnt jede Rückfrage ab.\n"
+          "5. Frage: Claude Code soll dem Sachbearbeiter eine Frage mit zwei Antworten stellen. Die Probe beantwortet sie selbst und prüft, ob die Antwort ankommt.\n"
           "Am Fall ändert die Probe nichts. Sie verbraucht etwas Kontingent des angemeldeten Kontos.\n" + sitzung_modul.abrechnung()["text"])
     if input("Starten? Zur Bestätigung «ja» eingeben: ").strip().lower() != "ja":
         print("Nicht gestartet.")

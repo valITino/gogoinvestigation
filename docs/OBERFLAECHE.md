@@ -777,7 +777,7 @@ statt ohne Berechtigungen und Protokoll zu arbeiten.
 python3 tools/oberflaeche.py --sitzungsprobe          # am Terminal, verbraucht etwas Kontingent
 ```
 
-Er startet vier kurze Sitzungen auf demselben Weg wie «Ermittlung starten» und ändert nichts am Fall:
+Er startet fünf kurze Sitzungen auf demselben Weg wie «Ermittlung starten» und ändert nichts am Fall:
 
 1. **Ablauf.** Claude Code ruft einmal `fall_status` auf. Geprüft wird: Meldet es Sitzung und Modell, ist das Gateway
    geladen, kommt die Antwort an, läuft der Aufruf ohne Rückfrage, und hat der Protokoll-Hook mitgeschrieben.
@@ -785,8 +785,13 @@ Er startet vier kurze Sitzungen auf demselben Weg wie «Ermittlung starten» und
 3. **Verbote.** Claude Code soll zwei gesperrte Befehle versuchen (sich eine Freigabe erteilen, die Schlüsseldatei
    lesen). Erwartet wird: beide abgelehnt, `fall.json` unverändert.
 4. **Rückfrage.** Claude Code soll ein Werkzeug aufrufen, das eine Zustimmung verlangt. Die Probe lehnt jede Rückfrage ab.
+5. **Frage.** Claude Code soll dem Sachbearbeiter mit `AskUserQuestion` eine Frage mit zwei Antworten stellen. Die
+   Probe beantwortet sie selbst, mit der zweiten Antwort. Geprüft wird: Kommt die Frage bei der Oberfläche an, nimmt
+   Claude Code die Antwort an, und nennt das Modell danach die gewählte Antwort.
 
-Die Probe nennt dazu, über welchen Zugang abgerechnet wird und welche MCP-Server Claude Code geladen hat.
+Die Probe nennt dazu, über welchen Zugang abgerechnet wird und welche MCP-Server Claude Code geladen hat. Scheitert
+Punkt 1 an «hat eine Rückfrage ausgelöst», wendet Claude Code die Erlaubt-Liste nicht an: Dann fehlt das Ja zum
+Projektordner (siehe «Rückfragen»).
 
 ### Schutz der Bedienung
 

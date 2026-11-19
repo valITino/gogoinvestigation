@@ -905,7 +905,12 @@ PROBEN = (
                "Antworte danach in zwei kurzen Sätzen, was bei (1) und was bei (2) geschah, und zitiere die Meldung, die du jeweils bekommen hast."),
     ("rueckfrage", "Dies ist eine Prüfung der Rückfrage dieses Arbeitsplatzes. Rufe genau einmal das Werkzeug WebSearch mit der Suche «example.com» auf und versuche "
                    "nichts anderes. Antworte danach in einem Satz, was geschah, und zitiere die Meldung."),
+    ("frage", "Dies ist eine Prüfung der Fragen an den Sachbearbeiter, keine Ermittlung. Rufe genau einmal das Werkzeug AskUserQuestion auf, mit genau einer Frage im "
+              "Wortlaut «{frage}», der Überschrift «Probe» und genau zwei Antworten zur Auswahl: «{erste}» und «{zweite}». Versuche nichts anderes. Antworte danach mit "
+              "genau einem Satz, der mit «" + PROBE_SATZ + ":» beginnt und die Antwort wörtlich nennt, die du bekommen hast."),
 )
+# Die Frage der fünften Probe. Die Probe wählt die zweite Antwort: Ein Modell, das ohne Antwort rät, nennt eher die erste
+PROBE_FRAGE, PROBE_WAHL = "Welche Farbe soll die Probe nennen?", ("Blau", "Rot")
 
 
 def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_unveraendert: bool, protokolliert: bool | None = None) -> list[tuple[bool, str]]:
@@ -965,6 +970,28 @@ def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_u
                 fehler, text = ergebnisse.get(k, (True, "ohne Ergebnis"))
                 punkte.append((fehler or k in abgelehnt, f"{was}: {f'abgelehnt, {wer}' if fehler or k in abgelehnt else 'AUSGEFÜHRT'}. Meldung: {text}"))
         punkte.append((akte_unveraendert, "fall.json des Falls ist unverändert." if akte_unveraendert else "fall.json des Falls wurde VERÄNDERT."))
+    elif art == "frage":
+        # Eine Frage der Ermittlung an den Sachbearbeiter: Kommt sie an, nimmt Claude Code die Antwort an, und erreicht sie das Modell?
+        gestellt = [k for k, a in aufrufe.items() if a.get("name") == worte.FRAGE_WERKZEUG]
+        angekommen = next((f for f in fragen if f.get("art") == "frage"), None)
+        if not gestellt:
+            punkte.append((False, "Claude Code hat keine Frage gestellt: Das Werkzeug AskUserQuestion fehlt in der Ausgabe. Vielleicht bietet diese Fassung von Claude Code "
+                                  "es im Skriptbetrieb nicht an. Die Probe sagt dann nichts darüber, ob sich eine Frage beantworten lässt."))
+            return punkte
+        punkte.append((angekommen is not None, "Die Frage kam bei der Oberfläche an: " + kurz(angekommen["fragen"][0]["frage"], 120) + " ("
+                       + ", ".join(w["name"] for w in angekommen["fragen"][0]["wahl"]) + ")." if angekommen is not None else
+                       "Claude Code hat eine Frage gestellt, aber sie kam bei der Oberfläche nicht als Frage an"
+                       + (f" (angekommen ist: {fragen[0].get('werkzeug')})." if fragen else ": Es kam gar keine Rückfrage an.")))
+        if angekommen is None:
+            return punkte
+        gewaehlt = str(angekommen.get("gewaehlt") or "")
+        for k in gestellt:
+            fehler, text = ergebnisse.get(k, (True, "ohne Ergebnis"))
+            punkte.append((not fehler and k not in abgelehnt, ("Claude Code hat die Antwort der Oberfläche angenommen." if not fehler and k not in abgelehnt else
+                                                             "Claude Code hat die Antwort der Oberfläche NICHT angenommen.") + f" Meldung des Werkzeugs: {text}"))
+        punkte.append((bool(gewaehlt) and gewaehlt in antwort and PROBE_SATZ in antwort,
+                       f"Die Antwort «{gewaehlt}» hat das Modell erreicht: {kurz(antwort, 160)}" if gewaehlt and gewaehlt in antwort and PROBE_SATZ in antwort
+                       else f"Die Antwort «{gewaehlt}» steht nicht in dem, was das Modell danach sagt: {kurz(antwort, 160) or 'nichts'}"))
     else:
         punkte.append((bool(fragen), f"Die Rückfrage kam bei der Oberfläche an: {fragen[0]['werkzeug']}." if fragen else "Bei der Oberfläche kam keine Rückfrage an."))
         for k in [k for k, a in aufrufe.items() if a.get("name") == "WebSearch"]:
@@ -974,8 +1001,9 @@ def probe_auswerten(art: str, ereignisse: list[dict], fragen: list[dict], akte_u
 
 
 def probe(b: "bedienung_modul.Bedienung", port: int, fall: str, ausgabe=print, zeit: int = 300) -> int:
-    """Startet vier kurze Sitzungen des echten Claude Code über denselben Weg wie «Ermittlung starten» und zeigt, ob der Weg trägt:
-    Form der Ausgabe und Hooks des Projekts, Fortsetzen derselben Sitzung, Verbotsregeln, Rückfrage. Die Probe lehnt jede Rückfrage ab.
+    """Startet fünf kurze Sitzungen des echten Claude Code über denselben Weg wie «Ermittlung starten» und zeigt, ob der Weg trägt:
+    Form der Ausgabe und Hooks des Projekts, Fortsetzen derselben Sitzung, Verbotsregeln, Rückfrage, Frage an den Sachbearbeiter.
+    Die Probe lehnt jede Rückfrage ab. Die Frage der fünften Sitzung beantwortet sie selbst, mit der zweiten Antwort zur Auswahl.
     Sie verbraucht etwas Kontingent und ändert nichts am Fall."""
     fall_daten(fall)
     akte = PROJEKT / "faelle" / fall / "fall.json"
@@ -995,12 +1023,18 @@ def probe(b: "bedienung_modul.Bedienung", port: int, fall: str, ausgabe=print, z
                 fehler += 1
                 continue
             s.kennung = erste
-        s.starten(auftrag.replace("{fall}", fall), fortsetzen=art == "fortsetzen")
+        s.starten(auftrag.replace("{fall}", fall).replace("{frage}", PROBE_FRAGE).replace("{erste}", PROBE_WAHL[0]).replace("{zweite}", PROBE_WAHL[1]),
+                  fortsetzen=art == "fortsetzen")
         ende = time.time() + zeit
         while time.time() < ende:
             frage = s._frage_dict()
             if frage:
                 fragen.append(frage)
+                wahl = frage["fragen"][0]["wahl"] if art == "frage" and frage.get("art") == "frage" else []
+                if wahl:        # die Frage der Probe: Die Probe antwortet selbst, mit der letzten Antwort zur Auswahl
+                    frage["gewaehlt"] = wahl[-1]["name"]
+                    s.antworten(frage["id"], True, {frage["fragen"][0]["frage"]: wahl[-1]["name"]})
+                    continue
                 s.antworten(frage["id"], False)
             if s.prozess is not None and s.prozess.poll() is not None:
                 break
