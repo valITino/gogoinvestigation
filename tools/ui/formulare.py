@@ -662,7 +662,7 @@ def arbeitsplatz_loeschen(bedienung, stand: dict | None = None) -> str:
         return (kopf + "<p class='klein'>Den Arbeitsplatz von diesem Rechner entfernen kann nur der Sachbearbeiter: in der bedienbaren Oberfläche "
                 f"oder am Terminal mit <code>{loeschen.PY} tools/loeschen.py alles</code>. Was dabei geschähe, zeigt <code>{loeschen.PY} tools/loeschen.py</code>, "
                 "ohne etwas zu ändern.</p>")
-    p = loeschen.plan(mit_oberflaeche=False, laeuft=stand)
+    p = loeschen.plan(mit_oberflaeche=False, laeuft=stand, ablage=bedienung.ablage)      # die Seite nennt die Ablage dieser Oberfläche, nicht die Vorgabe
     plan = ("<div data-ohne-leiste>"
             + tabelle(["Was", "Was geschieht"], [[esc(was), ('<span class="marke z-kritisch">Achtung</span> ' if zeichen == loeschen.FEHLT else "") + esc(wie)]
                                                  for zeichen, was, wie in loeschen.plan_zeilen(p)], "Was gelöscht wird") + "</div>")

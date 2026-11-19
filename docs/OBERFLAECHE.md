@@ -760,9 +760,12 @@ Zum Löschen tippt der Sachbearbeiter den **Namen des Projektordners** ein und b
 dieser Reihenfolge:
 
 1. Jede laufende Ermittlung wird angehalten. Das steht im Sitzungsprotokoll ihres Falls und damit in der Sicherung.
-2. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` im Benutzerordner, nur für das
-   eigene Konto lesbar. Es enthält jede Datei unter `faelle/` ausser dem Musterfall, die Sitzungsprotokolle unter
-   `protokoll/` und, falls vorhanden, den Ordner `intern/`. `INHALT.txt` nennt je Datei die Prüfsumme.
+   Dann wird der Bericht angelegt, im Ordner der Sicherung. Lässt er sich nicht schreiben, geschieht nichts weiter.
+2. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` im Benutzerordner. Es
+   enthält jede Datei unter `faelle/` ausser dem Musterfall, die Sitzungsprotokolle unter `protokoll/` und, falls
+   vorhanden, den Ordner `intern/`. `INHALT.txt` nennt je Datei die Prüfsumme. Unter Linux und macOS sind Archiv und
+   Bericht nur für das eigene Konto lesbar. Unter Windows gelten die Rechte des Ordners: Im Benutzerordner sind das das
+   eigene Konto, die Administratoren und das System.
 3. Die Sicherung wird geprüft: Jede Datei im Archiv hat die Prüfsumme ihrer Quelle, und keine Quelle hat sich seit dem
    Lesen verändert. **Scheitert das, wird nichts gelöscht**, und die Oberfläche läuft weiter.
 4. Gelöscht werden: die Container und Abbilder von Web-Check und Robin, die Schlüsseldatei, Fallakten und
@@ -778,6 +781,18 @@ Code mit seinen eigenen Gesprächsverläufen, und was die Einrichtung im System 
 nur löschen, solange in ihm nichts abgefragt wurde. Dieselbe Regel gilt hier: Was abgefragt wurde, verlässt den Rechner
 nicht, es zieht in die Sicherung um. Wer auch die Sicherung nicht mehr braucht, entfernt sie selbst und bewusst.
 
+**Wann der Abschnitt keinen Knopf zeigt.** Dann steht an seiner Stelle der Grund, und es lässt sich nichts auslösen:
+
+| Grund | Warum das anhält |
+|---|---|
+| In den Fallakten liegt ein Verweis auf einen anderen Ort, oder `faelle`, `protokoll` oder `intern` ist selbst einer (etwa auf ein anderes Laufwerk) | Gelöscht würde nur der Verweis. Was dahinter liegt, bliebe an seinem Ort, und der Bericht behauptete das Gegenteil. Das klärt ein Mensch von Hand. |
+| Die Ablage liegt im Projektordner | Sie würde mit dem Ordner entfernt, samt den Zuordnungstabellen. Die Oberfläche selbst nimmt eine solche Ablage nicht an. Am Terminal kann `OSINT_ABLAGE` dorthin zeigen. |
+| Der Ordner ist nicht der Projektordner dieses Arbeitsplatzes | Es fehlen die Dateien, die nur dieses Projekt hat, oder der Benutzerordner liegt darin. |
+
+Steht der Projektordner nicht unter Git (etwa als entpacktes Archiv), kann der Plan nicht sagen, ob darin eigene
+Dateien liegen. Er sagt dann genau das. Gesichert wird in jedem Fall nur, was unter `faelle/`, `protokoll/` und
+`intern/` liegt.
+
 Am Terminal geht dasselbe:
 
 ```bash
@@ -791,7 +806,10 @@ denn ein Programm kann den Ordner, aus dem es läuft, nicht auf jedem System sel
 Oberfläche oder das Werkzeug beendet ist, und prüft dann noch einmal, dass der Ordner wirklich dieser Projektordner ist:
 ein vollständiger Pfad, kein Verweis, nicht die Wurzel, nicht der Benutzerordner, mit den Dateien, die nur dieses
 Projekt hat. Sonst fasst es nichts an und schreibt das in den Bericht. Steht noch ein Terminal im Projektordner, bleibt
-unter Windows der leere Ordner zurück. Auch das steht im Bericht, mit dem Befehl dafür.
+unter Windows der leere Ordner zurück. Auch das steht im Bericht, mit dem Befehl dafür. Schreibgeschützte Dateien
+entfernt der Helfer (Rohdaten sind es mit Absicht). Rechte ändert er dabei nie durch einen Verweis hindurch: Das Ziel
+eines Verweises liegt vielleicht ausserhalb des Projektordners. Läuft die Oberfläche oder das Werkzeug nach zwei
+Minuten noch, räumt er nichts weg und schreibt in den Bericht, wie es von Hand geht.
 
 ### Fehlerprotokoll
 

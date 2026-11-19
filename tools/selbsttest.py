@@ -7791,17 +7791,16 @@ def _():
         # Das Programm endet. Dann schliesst das System die Leitung zum Helfer (hier von Hand): Er entfernt den Ordner, hängt das Ergebnis an den Bericht
         # und räumt seine eigene Kopie weg
         helfer.stdin.close()
-        helfer.wait(120)
+        assert helfer.wait(120) == 0, "der Helfer endet ohne Fehler"
         ende = time.monotonic() + 90
         while time.monotonic() < ende and (projekt.exists() or "Ende des Berichts." not in lesen(bericht)):
             time.sleep(0.2)
         text = lesen(bericht)
         assert not projekt.exists() and f"ENTFERNT        Projektordner {projekt}" in text and text.rstrip().endswith("Ende des Berichts."), text[-500:]
         assert (wurzel / "arbeit").is_dir() and heim.is_dir() and archiv.is_file(), "der Ordner darüber, der Benutzerordner und die Sicherung stehen"
-        ende = time.monotonic() + 10
-        while time.monotonic() < ende and list(Path(tempfile.gettempdir()).glob("osint-loeschen-*.py")):
-            time.sleep(0.2)
-        assert not list(Path(tempfile.gettempdir()).glob("osint-loeschen-*.py")), "der Helfer hat seine eigene Kopie entfernt"
+        kopie = Path(helfer.args[2])            # genau die Kopie dieses Helfers: Eine fremde, liegen gebliebene im selben Ordner zählt nicht
+        assert kopie.name.startswith("osint-loeschen-") and kopie.parent == Path(tempfile.gettempdir()) and not loeschen.innerhalb(kopie, projekt), kopie
+        assert not kopie.exists(), "der Helfer hat seine eigene Kopie entfernt"
 
         # ---- 4. Scheitert die Sicherung, wird nichts gelöscht, und es bleibt kein halbes Archiv liegen
         bauen()
@@ -7817,20 +7816,59 @@ def _():
             raise AssertionError("eine Datei ändert sich während der Sicherung, und es wurde trotzdem gelöscht")
         except loeschen.Fehler as e:
             assert "verändert" in str(e) and inhalt() == vorher and not (heim / loeschen.SICHERUNG / "fallakten-20261119-143100.zip").exists(), e
+            assert not (heim / loeschen.SICHERUNG / "bericht-20261119-143100.txt").exists(), "der angefangene Bericht verschwindet wieder: Es wurde nichts gelöscht"
             assert not any(b[:2] == ["docker", "rm"] or b[:3] == ["docker", "image", "rm"] for b in befehle), "vor der geprüften Sicherung wird nichts entfernt"
         finally:
             loeschen._summe = echt[12]
-        # Ein Verweis in den Fallakten: Die Sicherung nähme sein Ziel nicht mit. Dann wird nicht gelöscht, sondern gefragt
+        # Der Bericht wird angelegt, bevor irgendetwas geschieht. Lässt er sich nicht anlegen, wird weder gesichert noch gelöscht
+        belegt = heim / loeschen.SICHERUNG / "bericht-20261119-143200.txt"
+        belegt.write_text("gehört jemand anderem\n", encoding="utf-8")
+        try:
+            loeschen.ausfuehren(projekt, None, weg="Selbsttest", zeit=datetime(2026, 11, 19, 14, 32, 0).astimezone())
+            raise AssertionError("der Bericht liess sich nicht anlegen, und es wurde trotzdem gelöscht")
+        except loeschen.Fehler as e:
+            assert "gibt es schon" in str(e) and inhalt() == vorher and lesen(belegt) == "gehört jemand anderem\n", e
+            assert not (heim / loeschen.SICHERUNG / "fallakten-20261119-143200.zip").exists() and not any(b[:1] == ["docker"] for b in befehle), "ohne Bericht geschieht nichts"
+        belegt.unlink()
+        # Ein Verweis in den Fallakten, oder einer der Ordner ist selbst ein Verweis: Gelöscht würde nur er, und was dahinter liegt, bliebe.
+        # Dann wird nicht gelöscht, sondern gefragt, und der Plan sagt es schon vorher
         fremd = wurzel / "fremd"
         (fremd / "wichtig").mkdir(parents=True)
-        with contextlib.suppress(OSError, NotImplementedError):
-            (projekt / "faelle" / "FALL-0001" / "verweis").symlink_to(fremd, target_is_directory=True)
+        plattform.baum_loeschen(projekt / "intern")
+        for verweis_, wort in ((projekt / "faelle" / "FALL-0001" / "verweis", "faelle/FALL-0001/verweis"), (projekt / "intern", "(intern)")):
+            angelegt = False
+            with contextlib.suppress(OSError, NotImplementedError):     # wo sich kein Verweis anlegen lässt, entfällt dieser Punkt
+                verweis_.symlink_to(fremd, target_is_directory=True)
+                angelegt = True
+            if not angelegt:
+                continue
+            assert plattform.ist_verweis(verweis_) and not plattform.ist_verweis(fremd) and not plattform.ist_verweis(wurzel / "gibt-es-nicht")
+            assert "Verweis auf einen anderen Ort" in loeschen.plan(projekt)["hindernis"] and wort in loeschen.plan(projekt)["hindernis"], loeschen.plan(projekt)["hindernis"]
             try:
                 loeschen.ausfuehren(projekt, None, weg="Selbsttest")
-                raise AssertionError("ein Verweis in den Fallakten wurde übergangen")
+                raise AssertionError(f"ein Verweis wurde übergangen: {wort}")
             except loeschen.Fehler as e:
                 assert "Verweis auf einen anderen Ort" in str(e) and (projekt / ".env").is_file() and (fremd / "wichtig").is_dir(), e
-            (projekt / "faelle" / "FALL-0001" / "verweis").unlink()
+            verweis_.unlink()
+        bauen()
+        assert inhalt() == vorher and loeschen.plan(projekt)["hindernis"] == "", "nach dem Aufräumen steht das Wegwerf-Projekt wieder wie zuvor"
+        # Die Ablage des Sachbearbeiters im Projektordner: Sie würde mit entfernt, samt den Zuordnungstabellen. Auch das hält an
+        os.environ["OSINT_ABLAGE"] = str(projekt / "ablage")
+        assert "Ablage des Sachbearbeiters liegt im Projektordner" in loeschen.plan(projekt)["hindernis"], loeschen.plan(projekt)["hindernis"]
+        try:
+            loeschen.ausfuehren(projekt, None, weg="Selbsttest")
+            raise AssertionError("die Ablage liegt im Projektordner, und es wurde trotzdem gelöscht")
+        except loeschen.Fehler as e:
+            assert "Zuordnungstabellen" in str(e) and inhalt() == vorher, e
+        del os.environ["OSINT_ABLAGE"]
+        # Was bleibt, nennt die Ablage, die gilt: die der Oberfläche, sonst die Vorgabe mit dem Hinweis, dass es eine eigene geben kann
+        eigene_ablage = dict(loeschen.plan(projekt, ablage=wurzel / "meine-ablage")["bleibt"])["Ablage des Sachbearbeiters"]
+        assert eigene_ablage.startswith(str(wurzel / "meine-ablage")) and "--ablage" not in eigene_ablage, eigene_ablage
+        assert "--ablage" in dict(loeschen.plan(projekt)["bleibt"])["Ablage des Sachbearbeiters"], "ohne Angabe ist es die Vorgabe, und das steht da"
+        # Ohne Git lässt sich nicht sagen, ob eigene Dateien im Projektordner liegen: Der Plan sagt das, statt zu schweigen
+        assert loeschen.git_offen(heim) is None
+        text = "\n".join(f"{was}: {wie}" for _z, was, wie in loeschen.plan_zeilen(dict(loeschen.plan(projekt), git_offen=None)))
+        assert "lässt sich hier nicht feststellen" in text and "Sie gehen verloren" not in text, text
 
         # ---- 5. Der Helfer fasst nichts Fremdes an: Er startet gar nicht, und von Hand gestartet prüft er selbst noch einmal
         try:
@@ -7841,22 +7879,63 @@ def _():
         skript = wurzel / "helfer.py"
         skript.write_text(loeschen.HELFER, encoding="utf-8")
         for ordner in (fremd, heim, wurzel):
-            subprocess.run([loeschen.basis_python(), "-I", str(skript), json.dumps({"ordner": str(ordner), "bericht": str(wurzel / "bericht-fremd.txt"),
-                                                                                    "kennzeichen": list(loeschen.KENNZEICHEN), "versuche": 1})],
-                           check=False, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+            fertig = subprocess.run([loeschen.basis_python(), "-I", str(skript), json.dumps({"ordner": str(ordner), "bericht": str(wurzel / "bericht-fremd.txt"),
+                                                                                             "kennzeichen": list(loeschen.KENNZEICHEN), "versuche": 1})],
+                                    check=False, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
             assert (fremd / "wichtig").is_dir() and heim.is_dir() and projekt.is_dir(), f"der Helfer hat {ordner} angefasst"
+            assert fertig.returncode == 0 and not fertig.stderr, (ordner, fertig.returncode, fertig.stderr)
             skript.write_text(loeschen.HELFER, encoding="utf-8")        # er räumt seine Kopie am Schluss weg
         assert lesen(wurzel / "bericht-fremd.txt").count("NICHT ENTFERNT") == 3 and "Es wurde nichts angefasst." in lesen(wurzel / "bericht-fremd.txt")
-        # Läuft das Programm nach der Frist noch, räumt der Helfer nichts unter ihm weg und sagt, wie es von Hand geht
+        # Läuft das Programm nach der Frist noch, räumt der Helfer nichts unter ihm weg und sagt, wie es von Hand geht. Er endet auch dann ohne
+        # Absturz: Sein Thread wartet noch an der Leitung, und das gewöhnliche Ende von Python bräche daran ab (gesehen am 19.11.2026)
         skript.write_text(loeschen.HELFER, encoding="utf-8")
         haengt = subprocess.Popen([loeschen.basis_python(), "-I", str(skript), json.dumps({"ordner": str(projekt), "bericht": str(wurzel / "bericht-frist.txt"),
                                                                                            "kennzeichen": list(loeschen.KENNZEICHEN), "warten": 1})],
-                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                  stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         try:
-            haengt.wait(60)
+            code = haengt.wait(60)
+            gemeldet = haengt.stderr.read()
         finally:
             haengt.stdin.close()
+            haengt.stderr.close()
+        assert (code, gemeldet) == (0, b""), f"der Helfer endet nach abgelaufener Frist ohne Absturz: {code} {gemeldet!r}"
         assert projekt.is_dir() and (projekt / "tools" / "loeschen.py").is_file() and "lief nach 1 Sekunden noch" in lesen(wurzel / "bericht-frist.txt"), lesen(wurzel / "bericht-frist.txt")
+        assert lesen(wurzel / "bericht-frist.txt").rstrip().endswith("Ende des Berichts.") and not skript.exists(), "auch dann schliesst er den Bericht ab und räumt seine Kopie weg"
+        assert 'os._exit(0)' in loeschen.HELFER and loeschen.HELFER.rstrip().endswith("os._exit(0)"), "der Helfer endet nicht über das Aufräumen des Interpreters"
+
+        # ---- 5b. Beim Aufräumen ändert niemand Rechte durch einen Verweis hindurch: weder der Helfer noch plattform.baum_loeschen. Sein Ziel liegt
+        # vielleicht ausserhalb des Ordners, der entfernt wird. Geprüft an der Funktion selbst, die shutil.rmtree im Fehlerfall ruft
+        raum: dict = {"os": os, "stat": stat_}
+        exec(loeschen.HELFER[loeschen.HELFER.index("def verweis(pfad):"):loeschen.HELFER.index("von_hand = ")], raum)      # dieselben Zeilen, die der Helfer ausführt
+        for wer, nochmal in (("plattform.baum_loeschen", plattform._nochmal), ("der Helfer", raum["nochmal"])):
+            ziel, absage = fremd / "geschuetzt.txt", PermissionError(13, "gestellt")
+            ziel.write_text("gehört nicht zum Projekt\n", encoding="utf-8")
+            os.chmod(ziel, stat_.S_IREAD)
+            modus = ziel.stat().st_mode
+            link, angelegt = wurzel / "verweis-auf-datei", False
+            with contextlib.suppress(OSError, NotImplementedError):     # wo sich kein Verweis anlegen lässt, entfällt dieser Punkt
+                link.symlink_to(ziel)
+                angelegt = True
+            if angelegt:
+                try:
+                    nochmal(os.unlink, str(link), absage)
+                    raise AssertionError(f"{wer}: Die Absage beim Entfernen eines Verweises wurde übergangen")
+                except PermissionError as e:
+                    assert e is absage, e
+                assert ziel.stat().st_mode == modus and link.is_symlink(), f"{wer} hat die Rechte am Ziel eines Verweises geändert"
+                link.unlink()
+            for form in (absage, (PermissionError, absage, None)):       # ab Python 3.12 die Ausnahme, davor ihr Tripel
+                try:
+                    nochmal(os.open, str(ziel), form)
+                    raise AssertionError(f"{wer}: Eine Absage, die nicht vom Entfernen kommt, wurde übergangen")
+                except PermissionError as e:
+                    assert e is absage and ziel.stat().st_mode == modus, e
+            nochmal(os.unlink, str(ziel), absage)                       # eine schreibgeschützte Datei: Rechte öffnen und entfernen
+            zu = fremd / "zu"
+            zu.mkdir()
+            os.chmod(zu, stat_.S_IREAD | stat_.S_IEXEC)
+            nochmal(os.rmdir, str(zu), absage)                          # ein schreibgeschützter Ordner ebenso
+            assert not ziel.exists() and not zu.exists() and (fremd / "wichtig").is_dir(), f"{wer}: Schreibgeschütztes liess sich nicht entfernen"
 
         # ---- 6. Am Terminal: zeigen darf jeder. Löschen verlangt ein Terminal, läuft nicht aus Claude Code und braucht den Namen des Ordners
         loeschen.PROJEKT = projekt
@@ -7883,9 +7962,15 @@ def _():
             assert "Zur Bestätigung den Namen des Projektordners eintippen: mini-projekt" in bild.getvalue()
         builtins.input = lambda frage="": "mini-projekt"
         einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        (wurzel / "eigene-sicherung").mkdir()                       # ein Ordner, den es schon gibt: An seinen Rechten ändert das Werkzeug nichts
+        if not WINDOWS:
+            os.chmod(wurzel / "eigene-sicherung", 0o755)
         with contextlib.redirect_stdout(io.StringIO()):
             assert loeschen.main(["alles", "--sicherung", str(wurzel / "eigene-sicherung")]) == 0, aus.getvalue()
         assert len(list((wurzel / "eigene-sicherung").glob("fallakten-*.zip"))) == 1 and not (projekt / ".env").exists() and not (projekt / "faelle").exists()
+        if not WINDOWS:
+            assert (wurzel / "eigene-sicherung").stat().st_mode & 0o777 == 0o755, "ein vorhandener Ordner behält seine Rechte"
+            assert {d.stat().st_mode & 0o777 for d in (wurzel / "eigene-sicherung").iterdir() if d.suffix in (".zip", ".txt")} == {0o600}, "Archiv und Bericht darin sind nur für den Benutzer lesbar"
         assert len(gestartet) == 1 and gestartet[0][0] == projekt and gestartet[0][1].parent == wurzel / "eigene-sicherung", gestartet
         assert "Bitte in einen anderen Ordner wechseln" in aus.getvalue() and "wird entfernt, sobald dieses Programm beendet ist" in aus.getvalue(), aus.getvalue()
 
@@ -7906,12 +7991,14 @@ def _():
         assert "sys.stdin.buffer.read" in loeschen.HELFER and "os.kill" not in loeschen.HELFER and "ctypes" not in loeschen.HELFER, \
             "der Helfer erkennt das Ende an der Leitung, nicht an einer Prozessnummer: Die könnte ein anderer Prozess erben, und ein beendeter Prozess kann noch gelistet sein"
     finally:
-        for h in loeschen.LAUFENDE_HELFER:          # kein Helfer bleibt wartend zurück
+        for h in loeschen.LAUFENDE_HELFER:          # kein Helfer bleibt wartend zurück, und keine Kopie von ihm im temporären Ordner
             if h.poll() is None:
                 h.kill()
                 h.wait(10)
             with contextlib.suppress(OSError):
                 h.stdin.close()
+            with contextlib.suppress(OSError):
+                Path(h.args[2]).unlink()
         loeschen.LAUFENDE_HELFER.clear()
         (dienste.docker_kurz, dienste.webcheck, dienste.robin_abbild, dienste.oberflaeche_beenden, dienste.stand, einrichten.lauf, einrichten.LOGS,
          einrichten.benutzervariable, einrichten.ui, plattform.terminal, builtins.input, loeschen.PROJEKT, loeschen._summe, loeschen.helfer_starten) = echt
@@ -8037,6 +8124,7 @@ def _():
         feld = [a for t, a in Seite(text).elemente if t == "input" and a.get("name") == "bestaetigung"]
         assert len(feld) == 1 and feld[0].get("value") == "" and "required" in feld[0], "die Bestätigung tippt der Mensch selbst ein: Das Feld ist leer"
         assert str(Path.home() / loeschen.SICHERUNG) in text, "die Seite nennt den Ordner der Sicherung"
+        assert html_escape(str(u["b"].ablage)) in text and "--ablage startet" not in text, "die Seite nennt die Ablage dieser Oberfläche, nicht die Vorgabe"
         nur_lesen = ui_formulare.arbeitsplatz_seite(None)
         assert "arbeitsplatz_loeschen" not in nur_lesen and "gefahrenbereich" not in nur_lesen and "tools/loeschen.py alles" in nur_lesen, "im Modus «nur lesen» steht nur der Weg da"
 
@@ -8097,7 +8185,7 @@ def _():
         ausgang["fehler"] = None
         status, antwort = anfrage({"bestaetigung": name}, b.geheimnis)
         assert status == 200 and (antwort["abgeschaltet"], antwort["geloescht"], antwort["gelungen"]) == (True, True, True), antwort
-        assert aufrufe[-1][:3] == (PROJEKT, None, {"weg": "Oberfläche", "aus_oberflaeche": True}), aufrufe[-1]
+        assert aufrufe[-1][:3] == (PROJEKT, None, {"weg": "Oberfläche", "aus_oberflaeche": True, "ablage": b.ablage}), aufrufe[-1]
         assert antwort["punkte"] == ["Fallakten gesichert: /sicherung/fallakten.zip (9 Dateien, 4 KB, geprüft)", "Schlüsseldatei: gelöscht",
                                      "Projektordner: wird entfernt, sobald dieses Programm beendet ist"], antwort["punkte"]
         assert antwort["bleibt"] == ["Sicherung der Fallakten: /sicherung", "Ablage des Sachbearbeiters: /ablage"] and antwort["bericht"] == "/sicherung/bericht.txt", antwort
@@ -8114,7 +8202,7 @@ def _():
     for stueck in ("if (daten.geloescht) {", '"Arbeitsplatz gelöscht"', '"Was bleibt"', "daten.bericht"):
         assert stueck in js, f"app.js: {stueck} fehlt"
     assert 'if weg[2] in ("abschalten", "arbeitsplatz_loeschen") and antwort.get("abgeschaltet"):' in server_quelle, "der Server endet nach der Antwort"
-    assert "arbeitsplatz_loeschen" in ui_bedienung.AKTIONEN and "loeschen.ausfuehren(PROJEKT, None, weg=\"Oberfläche\", aus_oberflaeche=True)" in lesen(PROJEKT / "tools" / "ui" / "bedienung.py")
+    assert "arbeitsplatz_loeschen" in ui_bedienung.AKTIONEN and "loeschen.ausfuehren(PROJEKT, None, weg=\"Oberfläche\", aus_oberflaeche=True, ablage=self.ablage)" in lesen(PROJEKT / "tools" / "ui" / "bedienung.py")
     doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
     for stueck in ("### Arbeitsplatz löschen", "Namen des Projektordners", loeschen.SICHERUNG, "tools/loeschen.py"):
         assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"

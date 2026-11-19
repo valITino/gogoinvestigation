@@ -1213,7 +1213,7 @@ class Bedienung:
             raise Fehler(f"Zur Bestätigung bitte den Namen des Projektordners eintippen: {name}. Es wurde nichts geändert.")
         faelle = self.alles_anhalten("«Alles löschen» in der Oberfläche")
         try:
-            r = loeschen.ausfuehren(PROJEKT, None, weg="Oberfläche", aus_oberflaeche=True)
+            r = loeschen.ausfuehren(PROJEKT, None, weg="Oberfläche", aus_oberflaeche=True, ablage=self.ablage)
         except loeschen.Fehler as e:
             raise Fehler(f"{e} Gelöscht wurde nichts." + (f" Die Ermittlung ist angehalten ({', '.join(faelle)}) und lässt sich fortsetzen." if faelle else "")) from e
         punkte = ([f"Ermittlung angehalten: {', '.join(faelle)}."] if faelle else []) + [f"{was}: {wie}" for _, was, wie in r["zeilen"]]

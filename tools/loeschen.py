@@ -7,15 +7,19 @@
 
 Was «alles» tut, in dieser Reihenfolge:
 
-  1. Was läuft, wird beendet: die Oberfläche samt laufender Ermittlung, Robin und Web-Check.
-  2. Die Fallakten und die Sitzungsprotokolle werden gesichert: ein Archiv ausserhalb des Projekts, mit der Prüfsumme jeder
+  1. Der Bericht wird angelegt, im Ordner der Sicherung. Lässt er sich nicht schreiben, geschieht nichts.
+  2. Was läuft, wird beendet: die Oberfläche samt laufender Ermittlung, Robin und Web-Check.
+  3. Die Fallakten und die Sitzungsprotokolle werden gesichert: ein Archiv ausserhalb des Projekts, mit der Prüfsumme jeder
      Datei. Das Archiv wird geprüft, bevor irgendetwas gelöscht wird. Scheitert die Sicherung, bleibt alles, wie es ist.
-  3. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
+  4. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
      die Container und Abbilder von Web-Check und Robin, und am Schluss der Projektordner selbst, mit Code und Python-Umgebung.
 
 Was bleibt: die Sicherung der Fallakten, die Ablage des Sachbearbeiters (Klartext und Zuordnungstabellen), die
 Gesprächsverläufe, die Claude Code selbst führt, und was die Einrichtung im System installiert hat (Claude Code, Docker,
 Tor, ein Browser). Der Bericht am Schluss nennt jeden dieser Orte.
+
+Es beginnt gar nicht erst, wenn in den Fallakten ein Verweis auf einen anderen Ort liegt (gelöscht würde nur er) oder
+wenn die Ablage im Projektordner liegt (sie würde mit entfernt). Dann steht da, woran es liegt, und nichts ist geändert.
 
 Fallakten und Protokolle sind Beweismittel. Einen Weg, sie ohne Sicherung zu löschen, gibt es deshalb nicht: Wer auch
 die Sicherung nicht mehr braucht, entfernt sie selbst und bewusst.
@@ -156,9 +160,38 @@ def zu_sichern(projekt: Path = PROJEKT) -> list[Path]:
 
 
 def verweise(projekt: Path = PROJEKT) -> list[str]:
-    """Verweise (Symlinks) in dem, was gesichert wird. Ein Verweis zeigt irgendwohin: Die Sicherung nähme sein Ziel nicht mit."""
-    return sorted(d.relative_to(projekt).as_posix() for name in ("faelle", *SICHERN_AUCH) if (projekt / name).is_dir()
-                  for d in (projekt / name).rglob("*") if d.is_symlink())
+    """Verweise in dem, was gesichert wird: die Ordner selbst (etwa faelle als Verweis auf ein anderes Laufwerk) und alles
+    darin. Ein Verweis zeigt irgendwohin: Gelöscht würde nur er, und was hinter ihm liegt, bliebe an seinem Ort."""
+    gefunden: list[str] = []
+    for name in ("faelle", *SICHERN_AUCH):
+        wurzel = projekt / name
+        if plattform.ist_verweis(wurzel):
+            gefunden.append(name)
+        elif wurzel.is_dir():
+            gefunden += [d.relative_to(projekt).as_posix() for d in wurzel.rglob("*") if plattform.ist_verweis(d)]
+    return sorted(gefunden)
+
+
+def ablageort(wunsch: str | os.PathLike | None = None) -> Path:
+    """Wo die Ablage des Sachbearbeiters liegt, soweit dieses Werkzeug es wissen kann: die der laufenden Oberfläche
+    (`wunsch`), sonst OSINT_ABLAGE, sonst die Vorgabe im Benutzerordner."""
+    eigen = os.environ.get("OSINT_ABLAGE", "").strip()
+    return Path(wunsch).expanduser() if wunsch else Path(eigen).expanduser() if eigen else Path.home() / ABLAGE
+
+
+def hindernis(projekt: Path, ablage: Path) -> str:
+    """Was dagegen spricht, diesen Arbeitsplatz zu löschen, bevor irgendetwas geschieht. Leer, wenn nichts dagegen spricht."""
+    grund = nicht_loeschbar(projekt)
+    if grund:
+        return grund
+    if innerhalb(ablage, projekt):      # sie würde mit dem Ordner entfernt, samt den Zuordnungstabellen
+        return (f"Die Ablage des Sachbearbeiters liegt im Projektordner ({ablage}). Sie würde mit entfernt, samt den Zuordnungstabellen. "
+                "Bitte zuerst an einen Ort ausserhalb verschieben.")
+    fremd = verweise(projekt)
+    if fremd:                           # die Sicherung nähme mit, was dahinter liegt, das Löschen aber nur den Verweis
+        return (f"In den Fallakten liegt ein Verweis auf einen anderen Ort ({', '.join(fremd[:3])}). Bitte zuerst von Hand klären, was dahinter liegt: "
+                "Gelöscht würde nur der Verweis.")
+    return ""
 
 
 def schluesselzahl(projekt: Path = PROJEKT) -> int:
@@ -191,34 +224,36 @@ def groesse(n: int) -> str:
     return f"{n} B" if n < 1024 else f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / (1024 * 1024):.1f} MB".replace(".", ",")
 
 
-def plan(projekt: Path = PROJEKT, sicherung: str | os.PathLike | None = None, mit_oberflaeche: bool = True, laeuft: dict | None = None) -> dict:
+def plan(projekt: Path = PROJEKT, sicherung: str | os.PathLike | None = None, mit_oberflaeche: bool = True, laeuft: dict | None = None,
+         ablage: str | os.PathLike | None = None) -> dict:
     """Was «Alles löschen» täte, ohne etwas zu ändern: für die Anzeige am Terminal und in der Oberfläche.
     `hindernis`: weshalb es gar nicht ginge (leer, wenn nichts dagegen spricht). `laeuft`: der Stand der Dienste, wenn der
-    Aufrufer ihn schon kennt (dienste.stand()). Die Oberfläche fragt sich dabei nicht selbst (mit_oberflaeche=False)."""
+    Aufrufer ihn schon kennt (dienste.stand()). Die Oberfläche fragt sich dabei nicht selbst (mit_oberflaeche=False) und
+    nennt ihre eigene Ablage (`ablage`)."""
     projekt = Path(projekt).resolve()
-    hindernis = nicht_loeschbar(projekt)
+    grund = hindernis(projekt, ablageort(ablage))
     try:
         ordner: Path | None = sicherungsordner(sicherung, projekt)
     except Fehler as e:
-        ordner, hindernis = None, hindernis or str(e)
+        ordner, grund = None, grund or str(e)
     akten = fallakten(projekt)
     dateien = zu_sichern(projekt)
-    return {"projekt": str(projekt), "name": projekt.name, "hindernis": hindernis,
+    return {"projekt": str(projekt), "name": projekt.name, "hindernis": grund,
             "sicherung": str(ordner) if ordner else "", "faelle": akten,
             "sichern": {"faelle": [f["id"] for f in akten if not f["muster"]], "dateien": len(dateien), "bytes": sum(d.stat().st_size for d in dateien)},
             "schluessel": schluesselzahl(projekt), "git_offen": git_offen(projekt), "laeuft": laeuft if laeuft is not None else dienste.stand(mit_oberflaeche),
             "abbilder": [a for a in (webcheck_abbild(projekt), dienste.robin_abbild()) if a],
-            "bleibt": bleibt(ordner)}
+            "bleibt": bleibt(ordner, ablage)}
 
 
-def bleibt(sicherung: Path | None) -> list[tuple[str, str]]:
+def bleibt(sicherung: Path | None, ablage: str | os.PathLike | None = None) -> list[tuple[str, str]]:
     """Was nach dem Löschen auf dem Rechner bleibt, mit dem Ort. Nichts davon fasst das Werkzeug an."""
-    eigen = os.environ.get("OSINT_ABLAGE", "").strip()
-    ablage = Path(eigen).expanduser() if eigen else Path.home() / ABLAGE
+    # Ohne Angabe kennt das Werkzeug nur die Vorgabe: Wer die Oberfläche mit --ablage startet, hat die Ablage an dem dort genannten Ort
+    vorgabe = "" if ablage or os.environ.get("OSINT_ABLAGE", "").strip() else " Wer die Oberfläche mit --ablage startet, hat sie am dort genannten Ort."
     konto = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
     return [("Sicherung der Fallakten", str(sicherung) if sicherung else "(kein Ordner festgelegt)"),
-            ("Ablage des Sachbearbeiters", f"{ablage} (Klartext, Zuordnungstabellen, Fehlerprotokoll). Ohne die Zuordnungstabellen lassen sich die "
-                                           "gesicherten Rapporte nicht mehr zurückführen"),
+            ("Ablage des Sachbearbeiters", f"{ablageort(ablage)} (Klartext, Zuordnungstabellen, Fehlerprotokoll).{vorgabe} Ohne die Zuordnungstabellen lassen sich "
+                                           "die gesicherten Rapporte nicht mehr zurückführen"),
             ("Claude Code", f"das Programm, eure Anmeldung und seine Gesprächsverläufe ({konto / 'projects'})"),
             ("Im System installiert", "Docker, Tor, ein Browser für PDF, pdftotext: was die Einrichtung dort installiert hat, bleibt")]
 
@@ -253,6 +288,9 @@ def plan_zeilen(p: dict) -> list[Zeile]:
     if p["git_offen"]:
         zeilen.append((FEHLT, "Achtung", f"Im Projektordner liegen {p['git_offen']} Dateien, die verändert oder neu sind und nicht im Repository stehen. "
                                          "Sie gehen verloren"))
+    elif p["git_offen"] is None:
+        zeilen.append((AUS, "Eigene Dateien", "Ob im Projektordner eigene Dateien liegen, lässt sich hier nicht feststellen (kein Git-Arbeitsverzeichnis, oder "
+                                              "Git antwortet nicht). Gesichert wird nur, was unter faelle/, protokoll/ und intern/ liegt"))
     return zeilen
 
 
@@ -285,20 +323,27 @@ seiner Dienststelle. Zum Zurückführen der Rapporte braucht es zusätzlich die 
 """
 
 
+def ordner_anlegen(ordner: Path) -> None:
+    """Legt den Ordner für Sicherung und Bericht an. Einen neuen nur für das eigene Konto (Linux, macOS). An einem Ordner,
+    den es schon gibt, ändert das Werkzeug nichts: Er gehört ihm nicht."""
+    neu = not ordner.exists()
+    ordner.mkdir(parents=True, exist_ok=True)
+    if neu and not WINDOWS:
+        os.chmod(ordner, 0o700)
+
+
 def sichern(projekt: Path, ordner: Path, zeit: datetime, weg: str = "Terminal") -> dict | None:
     """Sichert die Fallakten in ein Archiv im Sicherungsordner und prüft es: Jede Datei im Archiv hat die Prüfsumme ihrer
     Quelle, und die Quelle hat sich seit dem Lesen nicht verändert. Gibt None zurück, wenn es nichts zu sichern gibt.
     Bei jedem Fehler bleibt kein halbes Archiv liegen, und es wird nichts gelöscht."""
     dateien = zu_sichern(projekt)
     fremd = verweise(projekt)
-    if fremd:           # die Sicherung nähme das Ziel nicht mit, das Löschen aber den Verweis
+    if fremd:           # die Sicherung nähme mit, was dahinter liegt, das Löschen aber nur den Verweis
         raise Fehler(f"In den Fallakten liegt ein Verweis auf einen anderen Ort ({', '.join(fremd[:3])}). Bitte zuerst von Hand klären, was dahinter liegt.")
     if not dateien:
         return None
     try:
-        ordner.mkdir(parents=True, exist_ok=True)
-        if not WINDOWS:
-            os.chmod(ordner, 0o700)
+        ordner_anlegen(ordner)
     except OSError as e:
         raise Fehler(f"Der Ordner für die Sicherung liess sich nicht anlegen ({ordner}): {e}") from e
     archiv = ordner / f"fallakten-{zeit.strftime('%Y%m%d-%H%M%S')}.zip"
@@ -306,7 +351,8 @@ def sichern(projekt: Path, ordner: Path, zeit: datetime, weg: str = "Terminal") 
         raise Fehler(f"{archiv} gibt es schon. Bitte in einer Sekunde noch einmal versuchen.")
     summen: dict[str, tuple[str, int]] = {}
     try:
-        # Nur für das eigene Konto lesbar, von Anfang an. O_BINARY: Unter Windows verfälschte der Textmodus sonst jeden Zeilenumbruch im Archiv
+        # Unter Linux und macOS von Anfang an nur für das eigene Konto lesbar. Unter Windows gelten die Rechte des Ordners.
+        # O_BINARY: Unter Windows verfälschte der Textmodus sonst jeden Zeilenumbruch im Archiv
         griff = os.open(archiv, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
         with os.fdopen(griff, "wb") as roh, zipfile.ZipFile(roh, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as z:
             for datei in dateien:
@@ -490,23 +536,41 @@ def schreiben(zeile):
         pass
 
 
-def nochmal(funktion, ziel, _fehler):
-    os.chmod(ziel, stat.S_IWRITE | stat.S_IREAD)       # Rohdaten sind mit Absicht schreibgeschützt
+def verweis(pfad):
+    """Ein symbolischer Link oder, unter Windows, eine Verknüpfung des Dateisystems (Junction)."""
+    try:
+        st = os.lstat(pfad)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                                            and getattr(st, "st_reparse_tag", 0) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", -1))
+
+
+def nochmal(funktion, ziel, fehler):
+    """Schreibgeschützt ist kein Hindernis (Rohdaten sind es mit Absicht): Rechte öffnen und noch einmal versuchen. Nur beim
+    Entfernen selbst, und nie durch einen Verweis hindurch: Sein Ziel liegt vielleicht ausserhalb und gehört nicht dazu."""
+    if funktion not in (os.unlink, os.rmdir) or verweis(ziel):
+        raise fehler[1] if isinstance(fehler, tuple) else fehler
+    os.chmod(ziel, stat.S_IRWXU if os.path.isdir(ziel) else stat.S_IWRITE | stat.S_IREAD)
     funktion(ziel)
 
 
 von_hand = ('rmdir /s /q "' + str(ordner) + '"') if os.name == "nt" else ("rm -rf '" + str(ordner) + "'")
-frist = float(a.get("warten", 120))
-grund = hindernis()
-if grund:
-    schreiben("NICHT ENTFERNT  Projektordner " + str(ordner) + ": " + grund + ". Es wurde nichts angefasst.")
-elif not beendet(frist):
-    # Das Programm läuft noch: Unter ihm wird nichts weggeräumt. Die Daten sind schon gelöscht, es bleibt der Code
-    schreiben("NICHT ENTFERNT  Projektordner " + str(ordner) + ": Das Programm, das gelöscht hat, lief nach " + str(int(frist))
-              + " Sekunden noch. Es beenden und den Ordner von Hand entfernen: " + von_hand)
-elif hindernis():
-    schreiben("NICHT ENTFERNT  Projektordner " + str(ordner) + ": " + hindernis() + ". Es wurde nichts angefasst.")
-else:
+
+
+def entfernen():
+    """Prüft, wartet, prüft noch einmal und entfernt dann den Ordner. Gibt die Zeile für den Bericht zurück."""
+    frist = float(a.get("warten", 120))
+    grund = hindernis()
+    if grund:
+        return "NICHT ENTFERNT  Projektordner " + str(ordner) + ": " + grund + ". Es wurde nichts angefasst."
+    if not beendet(frist):
+        # Das Programm läuft noch: Unter ihm wird nichts weggeräumt. Die Daten sind schon gelöscht, es bleibt der Code
+        return ("NICHT ENTFERNT  Projektordner " + str(ordner) + ": Das Programm, das gelöscht hat, lief nach " + str(int(frist))
+                + " Sekunden noch. Es beenden und den Ordner von Hand entfernen: " + von_hand)
+    grund = hindernis()
+    if grund:
+        return "NICHT ENTFERNT  Projektordner " + str(ordner) + ": " + grund + ". Es wurde nichts angefasst."
     letzter = ""
     for _versuch in range(int(a.get("versuche", 15))):     # unter Windows gibt ein eben beendeter Prozess seine Dateien nicht sofort frei
         try:
@@ -520,16 +584,26 @@ else:
             break
         time.sleep(1)
     if not ordner.exists():
-        schreiben("ENTFERNT        Projektordner " + str(ordner) + " (mit Code, Einstellungen und Python-Umgebung)")
-    else:
-        rest = sum(1 for _ in ordner.rglob("*"))
-        schreiben("NICHT VOLLSTÄNDIG  Projektordner " + str(ordner) + ": " + str(rest) + " Einträge bleiben (" + (letzter or "in Gebrauch")
-                  + "). Steht noch ein Terminal in dem Ordner? Dann den Ordner verlassen und von Hand entfernen: " + von_hand)
+        return "ENTFERNT        Projektordner " + str(ordner) + " (mit Code, Einstellungen und Python-Umgebung)"
+    rest = sum(1 for _ in ordner.rglob("*"))
+    return ("NICHT VOLLSTÄNDIG  Projektordner " + str(ordner) + ": " + str(rest) + " Einträge bleiben (" + (letzter or "in Gebrauch")
+            + "). Steht noch ein Terminal in dem Ordner? Dann den Ordner verlassen und von Hand entfernen: " + von_hand)
+
+
+try:
+    ergebnis = entfernen()
+except Exception as e:      # was auch immer geschah: Der Bericht sagt es, statt ohne seine letzte Zeile zu enden
+    ergebnis = ("NICHT VOLLSTÄNDIG  Projektordner " + str(ordner) + ": unerwarteter Fehler (" + type(e).__name__ + ": " + str(e)
+                + "). Nachsehen, ob der Ordner noch da ist, und ihn von Hand entfernen: " + von_hand)
+schreiben(ergebnis)
 schreiben("Ende des Berichts.")
 try:
     selbst.unlink()
 except OSError:
     pass
+# Nicht über das gewöhnliche Ende von Python: Wartet der Thread noch an der Leitung (die Frist lief ab), endete das Aufräumen
+# des Interpreters in einem Absturz, mit Absturzmeldung des Systems
+os._exit(0)
 '''
 
 
@@ -566,11 +640,30 @@ def helfer_starten(projekt: Path, bericht: Path, warten: float = 120, versuche: 
     return helfer
 
 
+def _berichtskopf(zeit: datetime, projekt: Path, weg: str) -> list[str]:
+    return ["Alles löschen · OSINT-Ermittlungsarbeitsplatz", f"Zeit: {zeit.astimezone().isoformat(timespec='seconds')}", f"Projektordner: {projekt}",
+            f"Ausgelöst: {weg}", ""]
+
+
+def bericht_anlegen(datei: Path, zeit: datetime, projekt: Path, weg: str) -> None:
+    """Legt den Bericht an, bevor irgendetwas geschieht: Nach dem Löschen ist er der einzige Beleg dafür. Lässt er sich nicht
+    schreiben, wird nicht gelöscht. Unter Linux und macOS von Anfang an nur für das eigene Konto lesbar."""
+    try:
+        ordner_anlegen(datei.parent)
+        # O_BINARY: Unter Windows machte der Textmodus des Systems sonst aus jedem Zeilenende zwei Zeichen
+        griff = os.open(datei, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+        with os.fdopen(griff, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(_berichtskopf(zeit, projekt, weg) + ["Begonnen. Gelöscht ist noch nichts. Dieser Bericht wird am Schluss vervollständigt."]) + "\n")
+    except FileExistsError as e:
+        raise Fehler(f"{datei} gibt es schon. Bitte in einer Sekunde noch einmal versuchen.") from e
+    except OSError as e:
+        raise Fehler(f"Der Bericht liess sich nicht anlegen ({datei}): {e}") from e
+
+
 def bericht_schreiben(datei: Path, zeit: datetime, projekt: Path, weg: str, zeilen: list[Zeile], sicherung: dict | None, rest: list[tuple[str, str]]) -> None:
     """Der Bericht im Sicherungsordner: was gelöscht wurde, wo die Sicherung liegt, was bleibt. Den letzten Schritt hängt der Helfer an."""
     wort = {GUT: "ERLEDIGT", FEHLT: "NICHT ERLEDIGT"}
-    text = ["Alles löschen · OSINT-Ermittlungsarbeitsplatz", f"Zeit: {zeit.astimezone().isoformat(timespec='seconds')}", f"Projektordner: {projekt}",
-            f"Ausgelöst: {weg}", ""]
+    text = _berichtskopf(zeit, projekt, weg)
     if sicherung:
         text += [f"Sicherung der Fallakten: {sicherung['archiv']}", f"  SHA-256 des Archivs: {sicherung['sha256']}",
                  f"  {sicherung['dateien']} Dateien, {groesse(sicherung['bytes'])}, Fälle: {', '.join(sicherung['faelle']) or '(lose Dateien)'}", ""]
@@ -578,36 +671,39 @@ def bericht_schreiben(datei: Path, zeit: datetime, projekt: Path, weg: str, zeil
         text += ["Sicherung der Fallakten: keine. Ausser dem Musterfall gab es weder Fallakten noch Sitzungsprotokolle.", ""]
     text += [f"{wort.get(zeichen, 'HINWEIS'):<15} {was}: {wie}" for zeichen, was, wie in zeilen]
     text += ["", "Was bleibt:"] + [f"  {was}: {wo}" for was, wo in rest] + ["", "Letzter Schritt (der Projektordner selbst):"]
-    datei.parent.mkdir(parents=True, exist_ok=True)
-    if not WINDOWS:
-        os.chmod(datei.parent, 0o700)
-    plattform.text_schreiben(datei, "\n".join(text) + "\n")
-    if not WINDOWS:
-        os.chmod(datei, 0o600)
+    plattform.text_schreiben(datei, "\n".join(text) + "\n")      # die Datei gibt es schon (bericht_anlegen): Ihre Rechte bleiben
 
 
 def ausfuehren(projekt: Path = PROJEKT, sicherung: str | os.PathLike | None = None, *, weg: str = "Terminal", aus_oberflaeche: bool = False,
-               zeit: datetime | None = None) -> dict:
-    """Löscht den Arbeitsplatz. Reihenfolge: beenden, was läuft. Fallakten sichern und die Sicherung prüfen. Container und
-    Abbilder entfernen. Schlüssel, Fallakten und Einstellungen löschen. Den Helfer starten, der den Projektordner entfernt.
-    Löst Fehler aus, solange noch nichts gelöscht ist (Hindernis, gescheiterte Sicherung). Danach berichtet jede Zeile für sich.
+               zeit: datetime | None = None, ablage: str | os.PathLike | None = None) -> dict:
+    """Löscht den Arbeitsplatz. Reihenfolge: den Bericht anlegen. Beenden, was läuft. Fallakten sichern und die Sicherung
+    prüfen. Container und Abbilder entfernen. Schlüssel, Fallakten und Einstellungen löschen. Den Helfer starten, der den
+    Projektordner entfernt.
+    Löst Fehler aus, solange noch nichts gelöscht ist (Hindernis, Bericht oder Sicherung gescheitert). Danach berichtet jede Zeile für sich.
     `aus_oberflaeche`: Die Oberfläche ruft selbst auf. Sie hat ihre Ermittlungen schon angehalten und beendet sich danach.
-    Weitere Oberflächen desselben Projekts werden in beiden Fällen beendet, die aufrufende nie."""
+    Weitere Oberflächen desselben Projekts werden in beiden Fällen beendet, die aufrufende nie. `ablage`: die Ablage der
+    aufrufenden Oberfläche, für die Angabe, was bleibt."""
     zeit = zeit or datetime.now().astimezone()
     projekt = Path(projekt).resolve()       # der Ordner selbst, nicht ein Verweis auf ihn
-    grund = nicht_loeschbar(projekt)
+    grund = hindernis(projekt, ablageort(ablage))
     if grund:
         raise Fehler(grund)
     ordner = sicherungsordner(sicherung, projekt)
     bericht = ordner / f"bericht-{zeit.strftime('%Y%m%d-%H%M%S')}.txt"
+    bericht_anlegen(bericht, zeit, projekt, weg)
     zeilen: list[Zeile] = []
     gelungen = True
     # 1. Beenden, was läuft: Eine Oberfläche hält dabei ihre Ermittlungen an. Erst danach steht fest, was in den Fallakten steht
     beendet = dienste.oberflaeche_beenden()
     zeilen += beendet or ([] if aus_oberflaeche else [(AUS, "Oberfläche", "läuft nicht")])
     gelungen = gelungen and all(zeichen != FEHLT for zeichen, _, _ in beendet)
-    # 2. Sichern und prüfen. Scheitert das, endet hier alles: Gelöscht ist noch nichts
-    gesichert = sichern(projekt, ordner, zeit, weg)
+    # 2. Sichern und prüfen. Scheitert das, endet hier alles: Gelöscht ist noch nichts, und der angefangene Bericht verschwindet wieder
+    try:
+        gesichert = sichern(projekt, ordner, zeit, weg)
+    except Fehler:
+        with contextlib.suppress(OSError):
+            bericht.unlink()
+        raise
     zeilen.append((GUT, "Fallakten gesichert", f"{gesichert['archiv']} ({gesichert['dateien']} Dateien, {groesse(gesichert['bytes'])}, geprüft)") if gesichert else
                   (AUS, "Fallakten gesichert", "nichts zu sichern: Ausser dem Musterfall gab es weder Fallakten noch Sitzungsprotokolle"))
     # 3. Container und Abbilder, dann die Daten: Schlüssel zuerst
@@ -619,8 +715,12 @@ def ausfuehren(projekt: Path = PROJEKT, sicherung: str | os.PathLike | None = No
     gelungen = gelungen and ok
     with contextlib.suppress(OSError):
         plattform.baum_loeschen(einrichten.LOGS)        # die Protokolle der Einrichtung im temporären Ordner des Systems
-    rest = bleibt(ordner)
-    bericht_schreiben(bericht, zeit, projekt, weg, zeilen, gesichert, rest)
+    rest = bleibt(ordner, ablage)
+    try:
+        bericht_schreiben(bericht, zeit, projekt, weg, zeilen, gesichert, rest)
+    except OSError as e:        # gelöscht ist schon: Jetzt wird gemeldet, nicht mehr abgebrochen
+        gelungen = False
+        zeilen.append((FEHLT, "Bericht", f"liess sich nicht vervollständigen ({bericht}): {e}"))
     # 4. Der Ordner selbst: Das übernimmt der Helfer, sobald dieser Prozess beendet ist
     try:
         helfer_starten(projekt, bericht)

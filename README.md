@@ -277,17 +277,26 @@ python3 tools/loeschen.py alles --sicherung <Ordner>  # legt die Sicherung der F
 
 Für den Fall, dass ein Rechner den Arbeitsplatz nicht mehr führen soll. Was geschieht, in dieser Reihenfolge:
 
-1. Was läuft, wird beendet: die Oberfläche samt laufender Ermittlung.
-2. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` in eurem Benutzerordner, mit
+1. Der Bericht wird angelegt, im Ordner der Sicherung. Lässt er sich nicht schreiben, geschieht nichts.
+2. Was läuft, wird beendet: die Oberfläche samt laufender Ermittlung.
+3. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` in eurem Benutzerordner, mit
    der Prüfsumme jeder Datei. Das Archiv wird geprüft, bevor irgendetwas gelöscht wird. Scheitert die Sicherung, bleibt
    alles, wie es ist.
-3. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
+4. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
    die Container und Abbilder von Web-Check und Robin, und am Schluss der Projektordner selbst.
 
 Fallakten und Protokolle sind Beweismittel. Einen Weg, sie ohne Sicherung zu löschen, gibt es deshalb nicht. Wer auch die
 Sicherung nicht mehr braucht, entfernt sie selbst, bewusst und nach den Regeln seiner Dienststelle. Zurückspielen lässt
 sie sich in einen neu eingerichteten Arbeitsplatz: Archiv im Projektordner entpacken, dann je Fall
 `python3 tools/audit_pruefen.py <Fall-ID>`.
+
+Archiv und Bericht sind unter Linux und macOS nur für das eigene Konto lesbar. Unter Windows gelten die Rechte des
+Ordners: Im Benutzerordner sind das das eigene Konto, die Administratoren und das System. Einen Ordner für die
+Sicherung, den es schon gibt, lässt das Werkzeug, wie er ist.
+
+Das Werkzeug beginnt gar nicht erst, wenn in den Fallakten ein Verweis auf einen anderen Ort liegt (oder `faelle`,
+`protokoll` oder `intern` selbst einer ist) oder wenn die Ablage des Sachbearbeiters im Projektordner liegt. Es sagt dann,
+woran es liegt, und ändert nichts.
 
 Es bleiben: die Sicherung, die Ablage des Sachbearbeiters (Klartext und Zuordnungstabellen), Claude Code mit seinen eigenen
 Gesprächsverläufen, und was die Einrichtung im System installiert hat (Docker, Tor, ein Browser). Ein Bericht im Ordner
@@ -1237,6 +1246,7 @@ Was ihr wissen müsst:
 | Ein neu eingetragener Schlüssel wirkt in der laufenden Ermittlung nicht | Das Gateway liest Schlüssel und Schalter bei seinem Start | Die Ermittlung anhalten und fortsetzen, oder die nächste starten |
 | «Alles löschen» bricht ab mit «Während der Sicherung hat sich … verändert» | Eine Sitzung von Claude Code schreibt noch in eine Fallakte | Die Sitzung beenden (`/exit` oder «Anhalten» in der Oberfläche) und noch einmal versuchen. Gelöscht wurde nichts |
 | Nach «Alles löschen» steht der Projektordner noch da, leer oder mit Resten | Ein Terminal steht noch in dem Ordner, oder ein Programm hielt Dateien offen | Der Bericht im Ordner `OSINT-Sicherung` nennt den Grund und den Befehl. Das Terminal in einen anderen Ordner wechseln, dann den Ordner von Hand entfernen |
+| «Alles löschen» zeigt keinen Knopf, sondern «So lässt sich der Arbeitsplatz nicht löschen» (am Terminal: «So geht es nicht») | In den Fallakten liegt ein Verweis auf einen anderen Ort, einer der Ordner `faelle`, `protokoll`, `intern` ist selbst ein Verweis, oder die Ablage liegt im Projektordner | Die Zeile nennt den Grund. Von Hand klären, was hinter dem Verweis liegt, oder die Ablage an einen Ort ausserhalb verschieben. Geändert wurde nichts |
 | Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
@@ -1493,9 +1503,18 @@ PowerShell 7:
   das System den beendeten Prozess noch führte. Jetzt erkennt er das Ende an einer Leitung, die sich mit dem Programm
   schliesst. An einem echten Docker (29.9.2) entfernte das Werkzeug drei eigens angelegte Container und zwei eigens
   angelegte Abbilder. Der laufende Container von Web-Check und sein Abbild blieben dabei unberührt.
+  Eine zweite Durchsicht des Werkzeugs am selben Tag fand weitere Punkte, sie sind behoben und haben je eine Prüfung im
+  Selbsttest. Gesehen: Lief das aufrufende Programm nach der Frist noch, schrieb der Helfer seinen Bericht fertig und
+  stürzte dann beim Beenden ab (Rückgabewert -6 unter Python 3.11, 3.12 und 3.13), weil sein Thread noch an der Leitung
+  wartete. Jetzt endet er mit 0. Aus dem Lesen des Codes: Beim Entfernen schreibgeschützter Dateien hätten der Helfer und
+  `plattform.baum_loeschen` die Rechte auch am Ziel eines Verweises geändert, wenn das Entfernen des Verweises scheitert.
+  Sie tun es nicht mehr. Ein vorhandener Ordner für die Sicherung behält seine Rechte. Der Bericht wird angelegt, bevor
+  etwas gelöscht wird. Und ein Ordner, der selbst ein Verweis ist, oder eine Ablage im Projektordner halten das Löschen
+  an, statt übergangen zu werden.
   **Nicht geprüft:** das Löschen eines echten, eingerichteten Arbeitsplatzes. Der Befehl an einem echten Terminal: Er
   verlangt einen Menschen, aufgerufen wurden die Funktionen dahinter. Windows und macOS: Dort läuft derselbe Selbsttest
   in der CI, gesehen ist dort nichts. Unter Windows bleibt der leere Ordner zurück, solange ein Terminal darin steht.
+  Die Rechte von Archiv und Bericht unter Windows: Dort gelten die des Ordners, eingeschränkt wird nichts.
 - Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
   Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
   Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
