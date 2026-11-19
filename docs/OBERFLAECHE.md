@@ -681,6 +681,83 @@ startet mit jeder Ermittlung von selbst. Läuft Tor nicht, sagt es der Start und
 Auch wer die Oberfläche mit Strg+C beendet, hält damit laufende Ermittlungen an: Eine Sitzung ohne Oberfläche könnte
 niemanden mehr fragen.
 
+### Fehlerprotokoll
+
+Geht bei der Oberfläche etwas schief, stand der Wortlaut bisher im Terminal oder nirgends. Die Seite
+**«Fehlerprotokoll»** (in der Navigation unter «Arbeitsplatz») sammelt ihn an einem Ort: zum Nachsehen, zum Kopieren
+und zum Speichern, etwa für eine Fehlermeldung oder für die Frage an ein Sprachmodell.
+
+**Was hineinkommt**
+
+| Bereich | Was |
+|---|---|
+| Oberfläche | Eine Ansicht liess sich nicht aufbauen (mit Aufrufliste). Eine Anfrage wurde abgewiesen, weil sie unter einem fremden Namen oder von einer fremden Seite kam. |
+| Aktion | Eine Aktion ist gescheitert (mit Aufrufliste) oder wurde abgesagt. Eine Anfrage kam ohne Geheimnis. |
+| Ermittlung | Claude Code endet mit einem Fehler oder meldet etwas am Fehlerkanal. Eine Abfrage scheitert: das Werkzeug, der Beleg, was die Quelle gemeldet hat. |
+| Werkzeug | Ein Werkzeug des Projekts endet mit einem Fehler (Rapport, Protokoll, PDF, Kettenprüfung). Eine Testabfrage scheitert. |
+| Browser | Ein Fehler im Skript des Fensters. |
+
+Ein Eintrag ist ein **Fehler** (etwas ist abgestürzt oder abgebrochen) oder ein **Hinweis** (eine Absage, eine Meldung,
+ein Fehlschlag, nach dem die Arbeit weitergeht). Die Navigation zeigt die Zahl der Fehler, die seit dem letzten Blick
+ins Fehlerprotokoll dazugekommen sind. Nach einem Abbruch führt auch der Chat dorthin, und eine Meldung «Das hat nicht
+geklappt» ebenfalls.
+
+**Die Seite**
+
+- Drei Zahlen: Fehler und Hinweise in diesem Lauf der Oberfläche, Einträge aus früheren Läufen.
+- **Alles kopieren** legt das ganze Protokoll als Text in die Zwischenablage. **Als Datei speichern** gibt denselben
+  Text als Datei, mit Datum und Zeit im Namen (`fehlerprotokoll-20261119-141022.txt`). Der Text beginnt mit einem Kopf:
+  Datum, System, Version von Python, ob Claude Code bereit ist, was die Bereiche bedeuten und wie bereinigt wurde. So
+  versteht ihn auch, wer den Arbeitsplatz nicht kennt.
+- **kopieren** an einem Eintrag kopiert nur diesen, mit seinen Einzelheiten.
+- Filter: Suche im Text, «nur Fehler», «nur dieser Lauf».
+- **Leeren** löscht alle Einträge, im Fenster und in der Ablage, nach einer Rückfrage.
+
+Die Einträge stehen auf der Seite mit dem neuesten zuoberst, im Text in der Reihenfolge, in der sie entstanden sind.
+Dieselbe Meldung mehrmals hintereinander steht einmal da, mit der Zahl der Wiederholungen.
+
+**Was nie hineinkommt**
+
+Jeder Eintrag wird bereinigt, bevor er irgendwo steht:
+
+- Der Wert eines Schlüssels ist durch den Namen seiner Variablen ersetzt (`‹SHODAN_API_KEY›`). Dasselbe gilt für das
+  Geheimnis der Oberfläche, für Zugangsdaten in der Adresse des Proxys und für alles, was in einer Adresse oder
+  Kopfzeile nach einem Schlüssel aussieht (`key=…`, `Authorization: …`).
+- Projektordner, Benutzerordner, Ablage und der Name des Rechners sind gekürzt (`<Projekt>`, `~`, `<Ablage>`).
+- Was die PII-Prüfung erkennt, ist durch seine Art ersetzt: `‹Telefonnummer›`, `‹IBAN›`, `‹AHV-Nummer›`,
+  `‹E-Mail-Adresse›` und so weiter.
+- Eine Absage steht mit ihrem Wortlaut nur da, wenn die Aktion keinen Dateinamen und keine Eingabe nennen kann. Was
+  aus dem Akten-Eingang, vom lokalen Bildschirm für Klartext, vom Zurückführen oder aus der PII-Prüfung einer Nachricht
+  kommt, steht ohne Wortlaut da. Von `tools/fall.py` steht nie die Ausgabe da: Sie nennt die Namen der Dokumente.
+- Von einer Abfrage mit Fehlschlag stehen das Werkzeug, der Beleg und die Meldung der Quelle da, nicht das Ziel. Das
+  Ziel steht im Beleg.
+
+**Vor dem Weitergeben durchsehen.** Namen erkennt die Bereinigung nicht, und technische Angaben aus einem Fall
+(IP-Adresse, Domain) bleiben stehen, wenn eine Meldung sie nennt. Die Fall-ID steht bei jedem Eintrag, der zu einem
+Fall gehört.
+
+**Wo es liegt**
+
+Im Speicher der Oberfläche (die letzten 500 Einträge) und als Datei in der Ablage ausserhalb des Projektordners:
+`fehlerprotokoll.jsonl`, eine Zeile je Eintrag, nur für den eigenen Benutzer lesbar. Wird sie grösser als 2 MB, fallen
+die ältesten Einträge weg. So übersteht das Protokoll das Ende der Oberfläche: Beim nächsten Start stehen die Einträge
+als «früherer Lauf» da. Im Projektordner und in einer Fallakte steht davon nichts.
+
+Das Fehlerprotokoll ist kein Beleg. Abfragen stehen in der Protokollkette des Falls, die Schritte einer Ermittlung im
+Sitzungsprotokoll.
+
+Zu sehen ist es nur in dem Fenster, das die Oberfläche beim Start geöffnet hat: Der Server gibt die Einträge nur gegen
+das Geheimnis heraus. Im Modus «nur lesen» führt die Oberfläche kein Fehlerprotokoll. Dort steht, was schiefgeht, im
+Terminal.
+
+**Mit einem Sprachmodell besprechen.** Den kopierten Text einfügen oder die gespeicherte Datei mitgeben. Wer nur einen
+Fehler bespricht, nimmt «kopieren» am Eintrag: Das ist kürzer. Die Datei in der Ablage selbst kann ein Agent dieses
+Projekts nicht lesen, wenn die Ablage am vorgegebenen Ort liegt: Dort liegen auch Klartext und Zuordnungstabellen, und
+die Berechtigungen sperren den Ordner.
+
+Dieselbe Bereinigung gilt für die Meldung, die nach einem Abbruch über dem Chat steht. Es ist die erste Zeile dessen,
+was Claude Code am Fehlerkanal gemeldet hat. Die ganze Meldung steht im Fehlerprotokoll.
+
 ### Der Weg des Klartexts
 
 Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung.
@@ -891,5 +968,12 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
 - **Darsteller ohne echte Vorlage.** Siehe oben: Für aktive Massnahmen, Abfragen mit Personenbezug, Spur, Telegram
   über RapidAPI, Shodan-DNS, die Wayback Machine und Robin ist nicht geprüft, ob der Darsteller zur echten Antwort passt.
 - **Keine Anmeldung, kein Mehrbenutzerbetrieb.** Siehe Schutz.
+- **Fehlerprotokoll.** Geprüft am 19.11.2026 unter Linux und im Browser (Chromium): die Zahl in der Navigation, die
+  Seite mit Filter, «Alles kopieren», «Als Datei speichern», «Leeren», ein Fenster ohne Geheimnis. Die Ermittlung
+  spielte dabei das Programm, das in den Tests für Claude Code steht. Nicht geprüft: was das echte Claude Code am
+  Fehlerkanal meldet und ob darin etwas steht, das die Bereinigung nicht erkennt. Die Bereinigung ersetzt bekannte
+  Schlüssel, Pfade und die Muster der PII-Prüfung. Namen und frei formulierte Angaben erkennt sie nicht: Deshalb steht
+  auf der Seite, dass vor dem Weitergeben durchzusehen ist. Nicht geprüft ist auch die Zwischenablage in anderen
+  Browsern als Chromium. Gibt ein Browser sie nicht frei, sagt es die Seite, und «Als Datei speichern» geht immer.
 
 Was geprüft ist und was nicht, mit Datum, steht im README unter «Stand der Prüfung und Grenzen».

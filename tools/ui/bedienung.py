@@ -41,6 +41,7 @@ from gateway.akte import FALL_RE, FREIGABE_TEXT, FREIGABEN, PROJEKT, eingang_sta
 from gateway.quellen import QUELLEN
 from tools import _pseudo as ps, beleg as belegwerkzeug, fall as fallwerkzeug, reidentifizieren as rueck
 from tools.pii_pruefung import GEWANDELT, NichtLesbar, bericht as pii_bericht, mail_lesen, pruefen as pii_pruefen, text_aus, text_lesen
+from tools.ui import fehlerbuch
 
 DATEI_GROESSE = 60 * 1024 * 1024        # grösste einzelne Datei im Akten-Eingang
 KORB_GROESSE = 600 * 1024 * 1024        # alles zusammen, was ein Akten-Eingang im Speicher hält
@@ -63,12 +64,15 @@ WERKZEUGE = {       # was «Dokumente» auslösen kann: Name -> (Bezeichnung, Be
 
 class Fehler(Exception):
     """Eine Bedienung, die so nicht geht. Der Text ist für den Sachbearbeiter und nennt nie Klartext.
-    `mehr`: Angaben, die das Fenster neben dem Text braucht, etwa dass sich eine gesperrte Nachricht bewusst doch senden lässt."""
+    `mehr`: Angaben, die das Fenster neben dem Text braucht, etwa dass sich eine gesperrte Nachricht bewusst doch senden lässt.
+    `heikel`: Der Text beschreibt eine Eingabe des Sachbearbeiters (etwa die Stelle, die die PII-Prüfung gesperrt hat). Er steht
+    im Fenster, aber nicht im Fehlerprotokoll."""
 
     def __init__(self, text: str, status: int = 400):
         super().__init__(text)
         self.status = status
         self.mehr: dict = {}
+        self.heikel = False
 
 
 def innerhalb(pfad: Path) -> bool:
@@ -200,6 +204,10 @@ class Bedienung:
         self.sitzung = "oberflaeche-" + datetime.now().strftime("%Y%m%d-%H%M%S")
         self.sperre = threading.RLock()
         self.ermittlungen: dict = {}        # Fall-ID -> Sitzung (tools/ui/sitzung.py)
+        # Das Fehlerprotokoll: im Speicher und in der Ablage ausserhalb des Projekts. Was hineinkommt, wird beim Eintragen bereinigt
+        # Geheim sind hier: das Geheimnis der Oberfläche, der Startcode und die Karten der Sitzungen (sie taugen nur zum Fragen)
+        self.fehlerbuch = fehlerbuch.Fehlerbuch(self.ablage, self.sitzung, lambda: (
+            self.geheimnis, self.startcode or "", *(str(getattr(s, "karte", "") or "") for s in list(self.ermittlungen.values()))))
 
     # ---- Geheimnis
     def anmelden(self, startcode: str) -> str:
@@ -655,9 +663,9 @@ class Bedienung:
                     for schalter, feld in (("--auftrag", "auftrag"), ("--kuerzel", "kuerzel"), ("--klassifizierung", "klassifizierung")):
                         if str(d.get(feld) or "").strip():
                             befehl += [schalter, " ".join(str(d[feld]).split())]
-                    code, ausgabe = werkzeug_lauf(befehl, 600)
+                    code, ausgabe = self.werkzeug(befehl, 600)
                 elif dateien:
-                    code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
+                    code, ausgabe = self.werkzeug(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
                 # Was der Sachbearbeiter trotz Sperrfund aufnimmt: über dieselbe Funktion wie am Terminal, mit seinem Kürzel und seiner
                 # Begründung. Am Terminal bestätigt er von Hand, hier hat seine Anfrage das Geheimnis getragen.
                 if gewagt and (fall_pfad(fall) / "fall.json").is_file():
@@ -853,7 +861,7 @@ class Bedienung:
         dateien = [str(eingang / n) for n in namen if n in ungeprueft]
         if not dateien:
             raise Fehler("Keines der gewählten Dokumente ist ungeprüft.")
-        code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
+        code, ausgabe = self.werkzeug(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
         jetzt = eingang_stand(fall_pfad(fall))
         geprueft = [n for n in namen if n in jetzt[0]]
         if geprueft:
@@ -893,7 +901,7 @@ class Bedienung:
         with Zwischenablage() as ordner:
             for n, neu in plan.items():
                 shutil.copyfile(eingang / n, ordner / neu)
-            code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", ziel, *[str(ordner / neu) for neu in plan.values()]], 600)
+            code, ausgabe = self.werkzeug(["tools/fall.py", "aufnehmen", ziel, *[str(ordner / neu) for neu in plan.values()]], 600)
             ausgabe = ausgabe.replace(str(ordner) + os.sep, "").replace(str(ordner), "(Zwischenablage)")
         dort = set(eingang_stand(fall_pfad(ziel))[0])
         angekommen = [n for n, neu in plan.items() if neu in dort and neu.lower() not in vorher]
@@ -988,7 +996,7 @@ class Bedienung:
         titel, befehle = WERKZEUGE[was]
         ausgaben, code = [], 0
         for befehl in befehle:
-            c, ausgabe = werkzeug_lauf([teil.replace("{fall}", fall) for teil in befehl])
+            c, ausgabe = self.werkzeug([teil.replace("{fall}", fall) for teil in befehl])
             ausgaben.append(ausgabe)
             code = code or c
             if c and was == "alles":        # ohne Rapport kein PDF: Der erste Fehler sagt, woran es liegt
@@ -1046,12 +1054,50 @@ class Bedienung:
         if not e:
             raise Fehler("Die Testabfrage liess sich nicht ausführen: " + ((r.stderr.strip().splitlines() or ["ohne Meldung"])[-1])[:300], 500)
         gut = e.get("ergebnis") in ("ok", "kein_treffer")
+        if not gut:     # was die Quelle gemeldet hat, gehört ins Fehlerprotokoll: Daran lässt sich ablesen, ob Schlüssel, Kontingent oder Netz fehlt
+            self.fehlerbuch.eintragen("Werkzeug", "hinweis", f"Testabfrage {q.name}: {e.get('fehler') or 'keine verwertbare Antwort'}",
+                                      f"Werkzeug {plan[0]['werkzeug']}" + (f", Beleg {e['id']} in der Fallakte SELBSTTEST" if e.get("id") else ""))
         return {"gelungen": gut, "beleg": e.get("id"), "kurz": e.get("kurz") or "",
                 "meldung": (f"{q.name} antwortet ({e.get('ergebnis')}, {e.get('id')} in der Fallakte SELBSTTEST)." + (f" {e['kurz']}" if e.get("kurz") else ""))
                 if gut else f"{q.name}: {e.get('fehler') or 'keine verwertbare Antwort'}"}
 
 
-    # ---- 8. Arbeitsplatz: alles abschalten
+    # ---- 8. Fehlerprotokoll
+    def werkzeug(self, argumente: list[str], zeit: int = 600) -> tuple[int, str]:
+        """Startet ein Werkzeug des Projekts (werkzeug_lauf). Endet es mit einem Fehler, steht das im Fehlerprotokoll."""
+        code, ausgabe = werkzeug_lauf(argumente, zeit)
+        if code != 0:
+            self._werkzeug_fehler(argumente, code, ausgabe)
+        return code, ausgabe
+
+    def _werkzeug_fehler(self, argumente: list[str], code: int, ausgabe: str) -> None:
+        """Ein Werkzeug des Projekts endete mit einem Fehler. Von tools/fall.py steht nur das da: Seine Ausgabe nennt die Namen der
+        Dokumente, und ein Name kann eine Person nennen. Von den anderen Werkzeugen stehen die letzten Zeilen der Ausgabe da."""
+        werkzeug = next((a for a in argumente if a.startswith("tools/")), "Werkzeug")
+        befehl = " ".join(a for a in argumente[:3] if a.startswith(("tools/", "--")) or FALL_RE.match(a))
+        fall = next((a for a in argumente if FALL_RE.match(a) and (fall_pfad(a) / "fall.json").is_file()), "")
+        heikel = werkzeug == "tools/fall.py"
+        # Rückgabewert 1 heisst bei den Werkzeugen des Projekts meist «die Prüfung hat etwas gefunden». Ein Absturz ist ein Fehler
+        absturz = code != 1 or "Traceback (most recent call last)" in ausgabe
+        if heikel and not absturz:
+            return          # tools/fall.py meldet so, dass die PII-Prüfung ein Dokument nicht annimmt: Das steht im Fenster und ist kein Fehler
+        self.fehlerbuch.eintragen("Werkzeug", "fehler" if absturz else "hinweis", f"{befehl or werkzeug} endete mit Rückgabewert {code}."
+                                  + (" Die Ausgabe ist nicht festgehalten: Sie nennt die Namen der Dokumente." if heikel else ""),
+                                  "" if heikel else "\n".join(ausgabe.splitlines()[-40:]), fall)
+
+    def fehler_melden(self, d: dict) -> dict:
+        """Ein Fehler aus dem Browserfenster: Das Skript der Oberfläche meldet ihn, damit er nicht nur in der Konsole des Browsers steht."""
+        meldung = " ".join(str(d.get("meldung") or "").split())[:600]
+        if not meldung:
+            raise Fehler("Die Meldung ist leer.")
+        self.fehlerbuch.eintragen("Browser", "fehler", meldung, str(d.get("einzelheiten") or "")[:4000], str(d.get("fall") or "") if FALL_RE.match(str(d.get("fall") or "")) else "")
+        return {"meldung": "Im Fehlerprotokoll festgehalten."}
+
+    def fehler_leeren(self, d: dict) -> dict:
+        zahl = self.fehlerbuch.leeren()
+        return {"meldung": f"Das Fehlerprotokoll ist geleert ({zahl} {'Eintrag' if zahl == 1 else 'Einträge'}), im Speicher und in der Ablage."}
+
+    # ---- 9. Arbeitsplatz: alles abschalten
     def alles_anhalten(self, grund: str = "") -> list[str]:
         """Hält jede laufende Ermittlung an und vermerkt es im Sitzungsprotokoll ihres Falls, mit dem Grund. Sie lässt sich
         später fortsetzen. Gibt die Fälle zurück, die es betraf. Aufgerufen auch, wenn die Oberfläche endet: Eine Sitzung
@@ -1085,4 +1131,4 @@ class Bedienung:
 
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_risiko", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
             "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "eingang_nachbessern", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente",
-            "zurueckfuehren", "quelle_testen", "abschalten")
+            "zurueckfuehren", "quelle_testen", "fehler_melden", "fehler_leeren", "abschalten")

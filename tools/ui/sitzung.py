@@ -75,6 +75,8 @@ UNTERBRECHUNG = ("Der Sachbearbeiter hat die Ermittlung unterbrochen und gibt ü
 NACHRICHT_LAENGE = 6000
 VERLAUF_LAENGE = 20000          # so viele Einträge behält der Verlauf im Speicher
 ABSCHLUSS = "abschluss"         # nach einer gelungenen Ermittlung: Ermittlungsprotokoll, PDF und Datenblätter erzeugen
+FEHLERKANAL_PAUSE = 1.5         # Sekunden: Was Claude Code in dieser Zeit am Fehlerkanal meldet, wird ein Eintrag im Fehlerprotokoll
+FEHLERKANAL_ZEILEN = 80         # so viele Zeilen behält ein solcher Eintrag höchstens, die letzten
 PFLICHT_SERVER = ("osint",)     # ohne das Gateway des Projekts läuft keine gesteuerte Sitzung
 CLOUD = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
 OHNE_PROJEKT = ("Claude Code hat die Einstellungen des Projekts nicht geladen (es fehlt: {fehlt}). Ohne sie gelten Berechtigungen, Gateway und "
@@ -148,6 +150,20 @@ def kurz(wert: object, n: int = 160) -> str:
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
+def ergebnis_lesen(inhalt: object) -> dict:
+    """Das Ergebnis eines Werkzeugs als Wörterbuch, wenn es eines ist: Das Gateway antwortet in JSON, Claude Code reicht es als
+    Text oder als Liste von Textblöcken weiter. Sonst ein leeres Wörterbuch."""
+    texte = [inhalt] if isinstance(inhalt, str) else [b.get("text") for b in inhalt if isinstance(b, dict)] if isinstance(inhalt, list) else []
+    for text in texte:
+        try:
+            d = json.loads(text)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(d, dict):
+            return d
+    return {}
+
+
 def sperrfunde(text: str) -> int:
     """Wie viele Stellen eines Textes die strenge PII-Prüfung sperrt. Eine Nachricht hat keine Abschnitte: Jede Angabe, die nach
     Personendaten aussieht, zählt."""
@@ -171,6 +187,7 @@ def eingabe_pruefen(text: object, was: str, trotzdem: bool = False) -> str:
                                            "\nGehört die Angabe zu einer geschädigten Person, zur Verfasserin oder zum Verfasser oder zur Dienststelle: bitte den "
                                            "Platzhalter verwenden. Gehört sie zur Täterseite, lässt sich der Text trotzdem senden."))
         fehler.mehr = {} if streng else {"sperrfund": True}
+        fehler.heikel = True        # der Text zeigt die gesperrte Stelle maskiert: Er steht im Fenster, nicht im Fehlerprotokoll
         raise fehler
     return text
 
@@ -246,6 +263,9 @@ class Sitzung:
         self.ohne_nachfrage = False             # der Sachbearbeiter hat entschieden: bei Werkzeugen der Erlaubt-Liste nicht mehr fragen
         self.von_selbst: dict | None = None     # der eine Eintrag im Verlauf, der zählt, was danach von selbst erlaubt wurde
         self.schritte = 0                       # Werkzeugaufrufe seit dem Start dieser Sitzung, über alle Analysten
+        self.fehlerzeilen: list[str] = []       # was Claude Code am Fehlerkanal meldet und noch nicht im Fehlerprotokoll steht
+        self.fehleruhr: threading.Timer | None = None
+        self.abgelehnte: set[str] = set()       # Aufrufe, die die Oberfläche abgelehnt hat: Ihr Ausbleiben ist kein Fehlschlag
 
     @property
     def frage(self) -> dict | None:
@@ -272,6 +292,18 @@ class Sitzung:
         with self.sperre:
             self.version += 1
             eintrag.update(werte, v=self.version)
+
+    def festhalten(self, stufe: str, meldung: str, einzelheiten: str = "", fehler: BaseException | None = None) -> None:
+        """Ins Fehlerprotokoll der Oberfläche, was bei dieser Ermittlung schiefging. Dort wird es bereinigt. Das Festhalten
+        selbst wird nie zum Fehler der Ermittlung."""
+        try:
+            buch = self.bedienung.fehlerbuch
+            if fehler is not None:
+                buch.ausnahme("Ermittlung", meldung, fehler, self.fall)
+            else:
+                buch.eintragen("Ermittlung", stufe, meldung, einzelheiten, self.fall)
+        except Exception:
+            pass
 
     # ---- Start
     def starten(self, auftrag: str, fortsetzen: bool = False) -> None:
@@ -306,21 +338,24 @@ class Sitzung:
             except OSError as e:
                 self.status, self.meldung = "fehler", f"Claude Code liess sich nicht starten ({type(e).__name__})."
                 self.notieren("oberfläche", self.meldung, "fehler")
+                self.festhalten("fehler", "Claude Code liess sich nicht starten", fehler=e)
                 raise bedienung_modul.Fehler(self.meldung, 500) from e
             self.status = "laeuft"
             self.version += 1
             prozess, ordner = self.prozess, self.ordner
-        self.leser = threading.Thread(target=self._lesen, args=(prozess, ordner), daemon=True)
+        fehlerleser = threading.Thread(target=self._fehlerkanal, args=(prozess,), daemon=True)
+        self.leser = threading.Thread(target=self._lesen, args=(prozess, ordner, fehlerleser), daemon=True)
+        fehlerleser.start()
         self.leser.start()
-        threading.Thread(target=self._fehlerkanal, args=(prozess,), daemon=True).start()
 
     # ---- Ausgabe von Claude Code lesen: eine JSON-Zeile je Ereignis
     def _wer(self, ereignis: dict) -> str:
         return self.auftraege.get(str(ereignis.get("parent_tool_use_id") or ""), "hauptsitzung")
 
-    def _lesen(self, prozess: subprocess.Popen, ordner: Path) -> None:
+    def _lesen(self, prozess: subprocess.Popen, ordner: Path, fehlerleser: threading.Thread | None = None) -> None:
         """Liest die Ausgabe eines Laufs bis zu seinem Ende. Jeder Lauf hat seinen eigenen Leser und seinen eigenen Ordner:
-        Wird eine Sitzung unterbrochen und sofort fortgesetzt, räumt der alte Leser nur auf, was zu seinem Lauf gehört."""
+        Wird eine Sitzung unterbrochen und sofort fortgesetzt, räumt der alte Leser nur auf, was zu seinem Lauf gehört.
+        `fehlerleser`: der Faden, der den Fehlerkanal desselben Laufs liest."""
         assert prozess.stdout is not None
         for zeile in prozess.stdout:
             zeile = zeile.strip()
@@ -335,8 +370,9 @@ class Sitzung:
                     self.ereignis(e)
                 except Exception as fehler:     # ein unerwartetes Ereignis darf das Zusehen nicht beenden
                     self.notieren("oberfläche", f"Ein Ereignis liess sich nicht lesen ({type(fehler).__name__}).", "fehler")
+                    self.festhalten("fehler", f"Ein Ereignis von Claude Code liess sich nicht lesen (Art {kurz(str(e.get('type') or 'unbekannt'), 40)})", fehler=fehler)
         code = prozess.wait()
-        naechste, abschliessen = None, False
+        naechste, abschliessen, melden = None, False, False
         with self.sperre:
             if self.prozess is prozess:
                 if self.gewollt_beendet:
@@ -346,6 +382,8 @@ class Sitzung:
                     if code != 0 and not self.meldung:
                         self.meldung = f"Claude Code hat sich mit Rückgabewert {code} beendet."
                         self.notieren("oberfläche", self.meldung, "fehler")
+                # Ein Ende mit Fehler gehört ins Fehlerprotokoll. Nicht, wenn die Sitzung angehalten oder von der Oberfläche beendet wurde
+                melden = code != 0 and not self.gewollt_beendet and not self.abbruch
                 for frage in self.fragen_offen:        # wer nicht mehr läuft, bekommt keine Antwort mehr
                     frage["ereignis"].set()
                 self.version += 1
@@ -355,6 +393,14 @@ class Sitzung:
                 else:
                     abschliessen = self.status == "beendet" and not self.abbruch
         shutil.rmtree(ordner, ignore_errors=True)
+        # Zuerst, was Claude Code am Fehlerkanal gemeldet hat: Der Grund für ein Ende steht meist dort. Sein Leser endet mit dem Lauf
+        if fehlerleser is not None:
+            fehlerleser.join(timeout=3)
+        self._fehlerkanal_festhalten()
+        if melden:
+            self.festhalten("fehler", f"Claude Code hat sich mit Rückgabewert {code} beendet.",
+                            "Was Claude Code dazu am Fehlerkanal gemeldet hat, steht in einem eigenen Eintrag derselben Zeit («Claude Code meldet am Fehlerkanal»). "
+                            "Gibt es keinen, hat Claude Code nichts gemeldet.")
         if naechste is not None:
             self.aendern(naechste["eintrag"], wartet=False)
             try:
@@ -362,6 +408,7 @@ class Sitzung:
                 self.bedienung.vermerken(self.fall, "Nachricht an die Ermittlung zugestellt", kurz(naechste["text"], 1500), sitzung=self.kennung)
             except bedienung_modul.Fehler as e:
                 self.notieren("oberfläche", f"Die wartende Nachricht liess sich nicht zustellen: {e}", "fehler")
+                self.festhalten("fehler", f"Eine wartende Nachricht liess sich nicht zustellen: {e}")
         elif abschliessen:
             self._abschliessen()
         self.verlauf_sichern()
@@ -394,6 +441,7 @@ class Sitzung:
             ergebnis = self.bedienung.dokumente({"fall": self.fall, "was": ABSCHLUSS})
         except Exception as e:      # der Abschluss darf scheitern, die Ermittlung ist trotzdem zu Ende
             ergebnis = {"gelungen": False, "ausgabe": f"{type(e).__name__}"}
+            self.festhalten("fehler", "Die Unterlagen nach der Ermittlung liessen sich nicht erzeugen", fehler=e)
         self.unterlagen = "bereit" if ergebnis.get("gelungen") else "fehler"
         self.aendern(eintrag, text="Die Unterlagen liegen unter «Ergebnisse» bereit." if ergebnis.get("gelungen") else
                      "Die Ermittlung ist abgeschlossen. Nicht alle Unterlagen liessen sich erzeugen: " + kurz((ergebnis.get("ausgabe") or "").splitlines()[-1:] or "", 300)
@@ -404,11 +452,34 @@ class Sitzung:
         for zeile in prozess.stderr:
             if zeile.strip():
                 with self.sperre:
-                    if not self.abbruch:
-                        self.meldung = kurz(zeile, 400)
+                    # Über dem Chat steht die erste Zeile einer Meldung: Sie sagt, worum es geht, was folgt, ist meist die Aufrufliste.
+                    # Bereinigt wie ein Eintrag im Fehlerprotokoll: Claude Code kann einen Pfad oder einen Schlüssel nennen
+                    if not self.abbruch and not self.fehlerzeilen:
+                        self.meldung = kurz(self.bedienung.fehlerbuch.sauber(zeile), 400)
                         self.version += 1
+                    # Fürs Fehlerprotokoll: Zeilen, die kurz nacheinander kommen, werden ein Eintrag (eine Aufrufliste hat viele Zeilen)
+                    self.fehlerzeilen.append(zeile.rstrip()[:2000])
+                    del self.fehlerzeilen[:-FEHLERKANAL_ZEILEN]
+                    if self.fehleruhr is None:
+                        self.fehleruhr = threading.Timer(FEHLERKANAL_PAUSE, self._fehlerkanal_festhalten)
+                        self.fehleruhr.daemon = True
+                        self.fehleruhr.start()
                 if LISTE_RUHT.search(zeile):
                     self._liste_ruht_melden()
+        self._fehlerkanal_festhalten()
+
+    def _fehlerkanal_festhalten(self) -> None:
+        """Was Claude Code am Fehlerkanal gemeldet hat und noch nirgends steht, als ein Eintrag ins Fehlerprotokoll."""
+        with self.sperre:
+            zeilen, self.fehlerzeilen = self.fehlerzeilen, []
+            uhr, self.fehleruhr = self.fehleruhr, None
+        if uhr is not None:
+            uhr.cancel()
+        if zeilen:
+            weitere = len(zeilen) - 1
+            self.festhalten("hinweis", "Claude Code meldet am Fehlerkanal: " + kurz(zeilen[0], 300)
+                            + (f" (und {weitere} weitere {'Zeile' if weitere == 1 else 'Zeilen'})" if weitere else ""),
+                            "\n".join(zeilen) if weitere or len(zeilen[0]) > 300 else "")
 
     def _liste_ruht_melden(self) -> None:
         """Einmal je Sitzung: Claude Code wendet die Erlaubt-Liste des Projekts nicht an. Was das heisst und wie es sich beheben lässt."""
@@ -436,6 +507,7 @@ class Sitzung:
                         self.abbruch = self.meldung = OHNE_PROJEKT.format(fehlt="MCP-Server " + ", ".join(fehlt))
                         self.status = "fehler"
                         self.notieren("oberfläche", self.abbruch, "fehler")
+                        self.festhalten("fehler", self.abbruch, "Claude Code meldet beim Start diese MCP-Server: " + (", ".join(sorted(namen)) or "keinen"))
                         if self.prozess is not None and self.prozess.poll() is None:
                             try:
                                 self.prozess.terminate()
@@ -493,6 +565,13 @@ class Sitzung:
                         if beleg or ergebnis or block.get("is_error"):
                             self.aendern(eintrag, **({"beleg": beleg.group(1)} if beleg else {}),
                                          ergebnis=ergebnis.group(1) if ergebnis else ("fehler" if block.get("is_error") else ""))
+                        # Eine Abfrage mit Fehlschlag gehört ins Fehlerprotokoll: das Werkzeug, der Beleg, was die Quelle gemeldet hat.
+                        # Nur Abfragen (Gateway, Robin), nicht jeder Befehl des Agenten. Und nicht, was der Sachbearbeiter abgelehnt hat.
+                        gescheitert = (ergebnis.group(1) if ergebnis else "") in ("fehler", "nicht_ausgefuehrt") or bool(block.get("is_error"))
+                        if gescheitert and eintrag.get("quelle") and kennung not in self.abgelehnte:
+                            grund = str(ergebnis_lesen(inhalt).get("fehler") or "") or (kurz(text, 600) if block.get("is_error") else "")
+                            self.festhalten("hinweis", f"Abfrage {eintrag.get('technik') or ''} ({worte.team(eintrag.get('wer') or 'hauptsitzung')}): Fehlschlag"
+                                            + (f", Beleg {beleg.group(1)}" if beleg else "") + (f". {kurz(grund, 600)}" if grund else "."))
                 return
             if art == "result":
                 fehler = bool(e.get("is_error")) or str(e.get("subtype") or "") not in ("success", "")
@@ -504,6 +583,9 @@ class Sitzung:
                 if antwort and antwort != self.letzte_antwort:
                     self.notieren("hauptsitzung", antwort, "fehler" if fehler else "claude")
                 self.notieren("oberfläche", "Der Auftrag ist zu Ende." if not fehler else "Die Sitzung endete mit einem Fehler.", "fehler" if fehler else "oberflaeche")
+                if fehler:
+                    self.festhalten("fehler", "Claude Code meldet das Ende der Sitzung mit einem Fehler"
+                                    + (f" ({kurz(e.get('subtype'), 60)})" if e.get("subtype") else "") + ".", kurz(antwort, 1500))
                 kennung, text = self.kennung, antwort
         if art == "result" and text:
             # Die Antwort gehört ins Sitzungsprotokoll: Der Hook hält Aufträge und Werkzeugaufrufe fest, die Antwort sonst niemand
@@ -889,6 +971,9 @@ def rueckfrage(b: "bedienung_modul.Bedienung", d: dict) -> dict:
         raise bedienung_modul.Fehler("Diese Rückfrage gehört zu keiner laufenden Sitzung.", 403)
     start = time.time()
     antwort = s.fragen(str(d.get("werkzeug") or ""), d.get("eingabe"), str(d.get("tool_use_id") or ""))
+    if not antwort.get("erlauben") and d.get("tool_use_id"):
+        with s.sperre:      # ein abgelehnter Aufruf bleibt aus: Das ist ein Entscheid und kein Fehlschlag fürs Fehlerprotokoll
+            s.abgelehnte.add(str(d["tool_use_id"]))
     return {**antwort, "gewartet": round(time.time() - start, 1)}
 
 

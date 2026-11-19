@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 106 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 107 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -618,6 +618,14 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 ![Bedienen: Freigaben, Abklärung von Hand, Dokumente](docs/bilder/oberflaeche-bedienen.png)
 
 ![Zurückführen: der Rapport mit echten Angaben, nur auf diesem Bildschirm (erfundene Angaben)](docs/bilder/oberflaeche-zurueck.png)
+
+- **Fehlerprotokoll.** Was bei der Oberfläche schiefgeht, steht an einem Ort: eine Ansicht, die sich nicht aufbauen
+  liess, eine Ermittlung, die mit einem Fehler endet, eine Abfrage mit Fehlschlag, ein Werkzeug, das abstürzt. Die
+  Navigation zeigt die Zahl der neuen Fehler. «Alles kopieren» und «Als Datei speichern» geben das Protokoll als Text
+  heraus, etwa für eine Fehlermeldung oder für die Frage an ein Sprachmodell. Schlüssel, Benutzerordner und Angaben,
+  die die PII-Prüfung erkennt, sind darin ersetzt. Namen erkennt die Bereinigung nicht: vor dem Weitergeben durchsehen.
+
+![Fehlerprotokoll: Zahlen, kopieren und speichern, Einträge mit Einzelheiten](docs/bilder/oberflaeche-fehlerprotokoll.png)
 
 Die Sitzung von Claude Code läuft im Projektordner und ohne Schalter, die Einstellungen, Hooks oder MCP-Server
 abschalten. Berechtigungen und Protokoll-Hooks gelten wie am Terminal, die Modelle bleiben, wie das Projekt sie
@@ -1155,6 +1163,7 @@ Was ihr wissen müsst:
 | In der Oberfläche fragt Claude Code bei jedem Werkzeug nach, auch bei `fall_status` | Claude Code wendet die Erlaubt-Liste des Projekts nicht an: Es vertraut dem Projektordner noch nicht | Ermittlung anhalten, im Terminal im Projektordner einmal `claude` starten, die Frage nach dem Ordner mit Ja bestätigen, `/exit`, in der Oberfläche fortsetzen. Für die laufende Ermittlung: im Fenster «Erlauben und nicht mehr fragen» |
 | Der Chat nimmt eine Nachricht nicht an: «sieht nach Personendaten aus» | Die PII-Prüfung sperrt jede Rufnummer und jedes Konto, sie sieht nicht, wem die Angabe gehört | Gehört sie zur Täterseite: «Trotzdem senden». Gehört sie zu Geschädigten: den Platzhalter verwenden |
 | Die Ermittlung meldet eine Angabe im Klartext | Im Dokument steht noch eine geschützte Angabe | Unter «Akten»: Dokument wählen, «Gewählte nachbessern», auf dem lokalen Bildschirm ersetzen, wieder aufnehmen |
+| In der Oberfläche steht «abgebrochen», «Das hat nicht geklappt» oder eine Zahl neben «Fehlerprotokoll» | Eine Ermittlung, eine Ansicht oder ein Werkzeug ist gescheitert | Seite «Fehlerprotokoll» öffnen: Der Eintrag nennt Zeit, Bereich und Wortlaut. Für eine Rückfrage: «Alles kopieren» oder «Als Datei speichern», vor dem Weitergeben durchsehen |
 | Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
@@ -1187,6 +1196,10 @@ Meldungen der Einrichtung: `/tmp/osint-setup/` (unter Windows `%TEMP%\osint-setu
 `pakete.log`, `venv.log`, `pip.log`, `claude.log`, `docker.log`, `muster.log`, `pruefung.log`. Was fehlt, ohne
 etwas zu ändern: `./setup.sh --nur-pruefen`.
 
+Meldungen der Oberfläche: die Seite «Fehlerprotokoll». Dort steht, was schiefging, mit Zeit, Bereich und Wortlaut.
+«Alles kopieren» und «Als Datei speichern» geben es als Text heraus, ohne Schlüssel und ohne Benutzerordner. Die Datei
+dazu liegt in der Ablage ausserhalb des Projektordners (`fehlerprotokoll.jsonl`).
+
 ## Stand der Prüfung und Grenzen
 
 **Bei jeder Änderung geprüft** durch GitHub Actions ([`.github/workflows/pruefung.yml`](.github/workflows/pruefung.yml)),
@@ -1195,7 +1208,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 106 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 107 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1355,6 +1368,21 @@ PowerShell 7:
   **Nicht geprüft:** der Befehl an einem echten Terminal (er verlangt einen Menschen: Aufgerufen wurden die Funktionen
   dahinter). Tor an einem echten System abschalten und starten. Robin mit seinem echten Abbild: Gestoppt wurde ein
   Container, der dafür stand. Docker Desktop unter Windows und macOS.
+- Das Fehlerprotokoll der Oberfläche gibt es seit dem 19.11.2026. Anlass war die Rückmeldung des Eigentümers vom selben
+  Tag: Fehler sollen sich ansehen und speichern lassen, auch um sie mit einem Sprachmodell zu besprechen. Ein Selbsttest
+  gilt dem. Er prüft die Bereinigung (ein erfundener Schlüssel, das Geheimnis der Oberfläche, Projekt- und
+  Benutzerordner, eine Rufnummer und eine IBAN verschwinden, IP-Adresse und Domain bleiben), die Datei in der Ablage,
+  dass der Server die Einträge nur gegen das Geheimnis herausgibt, und was hineinkommt: eine Ansicht und eine Aktion,
+  die scheitern, Absagen mit und ohne Wortlaut, ein Werkzeug, das abstürzt, eine Testabfrage mit Fehlschlag, ein Fehler
+  aus dem Browser und eine Ermittlung, die mit einem Fehler endet. Eine angehaltene Ermittlung und ein abgelehnter
+  Aufruf hinterlassen keinen Eintrag.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux, Chromium), mit dem Programm, das in den Tests für Claude Code
+  steht: Die Navigation zählte die neuen Fehler und hörte nach dem Blick auf die Seite damit auf. Filter und Suche
+  stimmten mit dem Zähler überein. «Alles kopieren» legte denselben Text in die Zwischenablage, den «Als Datei
+  speichern» als Datei gab. In beidem stand weder der erfundene Schlüssel noch der Benutzerordner. Ein Fenster ohne
+  Geheimnis bekam keinen Eintrag zu sehen. «Leeren» entfernte die Einträge im Fenster und die Datei in der Ablage.
+  **Nicht geprüft:** was das echte Claude Code am Fehlerkanal meldet und ob darin etwas steht, das die Bereinigung
+  nicht erkennt. Namen erkennt sie nie. Die Zwischenablage in anderen Browsern als Chromium.
 - Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
   Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
   Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
@@ -1444,7 +1472,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen» und «nachbessern»: Jede der 28 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen», «nachbessern» und dem Fehlerprotokoll: Jede der 30 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
