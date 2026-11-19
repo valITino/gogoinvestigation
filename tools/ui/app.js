@@ -545,7 +545,16 @@ function chatBauen(feld, fall, gross) {
   form.addEventListener("submit", (e) => { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); });
   text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); const erster = $("[data-chat-knoepfe] button", form); if (erster) erster.click(); } });
   feld.append(kopf, lage, verlauf, el("div", { klasse: "chat-wartend" }), form);
-  if (gross) chatHoehe();
+  if (c.beobachter) c.beobachter.disconnect();
+  c.beobachter = null;
+  if (gross) {
+    chatHoehe();
+    // Was über dem Chat steht, ändert seine Höhe (Pflichtquellen aufgeklappt, eine Meldung kommt dazu): Der Chat passt sich an
+    if (typeof ResizeObserver === "function") {
+      c.beobachter = new ResizeObserver(chatHoehe);
+      for (const davor of [$("#ermittlung"), $("[data-pflicht]"), $("#kopf")]) if (davor) c.beobachter.observe(davor);
+    }
+  }
   chatHolen();
 }
 
@@ -681,7 +690,11 @@ function chatEinrichten(a) {
   rand.hidden = !klein;
   if (gross && bedienbar()) { rand.replaceChildren(); chatBauen(gross, a.fall, true); }
   else if (klein) { if (zustand.chat.feld !== rand || zustand.chat.fall !== a.fall || !rand.firstChild) chatBauen(rand, a.fall, false); }
-  else { clearTimeout(zustand.chat.timer); zustand.chat.feld = null; zustand.chat.fall = null; rand.replaceChildren(); }
+  else {
+    clearTimeout(zustand.chat.timer);
+    if (zustand.chat.beobachter) { zustand.chat.beobachter.disconnect(); zustand.chat.beobachter = null; }
+    zustand.chat.feld = null; zustand.chat.fall = null; rand.replaceChildren();
+  }
 }
 
 /* ---------- Rückfrage: erscheint in jeder Ansicht, über allem anderen ---------- */
