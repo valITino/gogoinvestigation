@@ -19,6 +19,12 @@ Die Schichten, in dieser Reihenfolge (docs/PSEUDONYMISIERUNG.md):
     5  Kandidaten im Fliesstext              Anreden, Titel, Vornamenliste. Ersetzt nie selbst.
     6  Bestätigung                           Entscheide, gesetzt von der Bedienung
 
+Davor und danach gilt die Vorgabe des Eigentümers (tools/schutzumfang.py): Ersetzt wird, was zur Dienststelle, zur Verfasserin
+oder zum Verfasser und zu Geschädigten gehört. Was im Abschnitt der Täterseite steht, bleibt stehen, wenn der Mensch nichts
+anderes sagt. Trägt ein Dokument schon Platzhalter (es wurde im Haus pseudonymisiert), gilt das auch für Angaben ausserhalb
+der geschützten Abschnitte: Sie wurden dort mit Absicht stehen gelassen. Reste von Word-Feldfunktionen, die Klartext
+wiederholen, entfernt der Vorgang, bevor er sucht.
+
 Ein weiterer Erkenner (etwa ein lokales Sprachmodell) lässt sich über `erkenner=` anhängen: eine Funktion, die
 einen Text nimmt und Kandidaten (Beginn, Ende, Typ, Grund) liefert. Auch sie ersetzt nie selbst.
 """
@@ -38,7 +44,8 @@ from typing import Callable, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.pii_pruefung import KANTONE, MUSTER, PLATZHALTER  # noqa: E402
+from tools import schutzumfang as su  # noqa: E402
+from tools.pii_pruefung import KANTONE, MUSTER, PLATZHALTER, PLATZHALTER_OHNE, feldreste_entfernen  # noqa: E402
 
 ORT = Path(__file__).resolve().parent
 FELDMARKEN = ORT / "feldmarken.txt"
@@ -93,7 +100,7 @@ class Fund:
     sicher: bool
     angabe: str = ""            # Schlüssel der Angabe, leer bei Kandidaten
     grund: str = ""
-    frage: str = ""             # "seite" | "geschuetzt" | "mehrdeutig" | ""
+    frage: str = ""             # "seite" | "geschuetzt" | "mehrdeutig" | "taeter" (bleibt nach der Vorgabe stehen) | ""
     wert: str = ""              # bei Kandidaten: die Angabe, wie sie aufgenommen würde
 
     @property
@@ -799,6 +806,8 @@ def _ernten(text: str, marken: Marken, vornamen: frozenset) -> list[tuple[int, i
         wert, fm = text[f.start:f.ende], f.marke
         if falten(wert) in NICHTS or not re.search(r"\w", wert):
             continue
+        if PLATZHALTER.search(wert) or PLATZHALTER_OHNE.search(wert):
+            continue        # schon ersetzt, auch von anderer Hand: Ein Platzhalter ist keine Angabe und bekommt keinen zweiten
         if fm.typ == "PERSON":
             if fm.teil == "kuerzel":
                 m = re.match(r"[^\W\d_]{2,6}(?![^\W_])", wert)
@@ -1372,7 +1381,38 @@ def erkennen(text: str, *, marken: Marken | None = None, vornamen: frozenset | N
         for start, ende, typ, grund in fn(text):
             if typ in TYPEN and 0 <= start < ende <= len(text) and frei(start, ende):
                 bel.dazu(Fund(start, ende, typ, 7, 7, False, "", grund, wert=" ".join(text[start:ende].split())))
+    _vorgabe_anwenden(text, bel.funde, reg.verweis)
     return Erkennung(text, reg.angaben, sorted(bel.funde, key=lambda f: f.start), geschuetzt, tabelle, dict(reg.verweis))
+
+
+def _vorgabe_anwenden(text: str, funde: list[Fund], verweis: dict) -> None:
+    """Die Vorgabe des Eigentümers: Angaben der Täterseite bleiben stehen. Entschieden wird je Angabe, damit dieselbe Rufnummer
+    nicht an einer Stelle ersetzt wird und an der andern stehen bleibt. Zur Täterseite gehört eine Angabe, wenn sie in einem
+    Abschnitt der Täterseite steht und in keinem geschützten. Trägt das Dokument schon Platzhalter, bleibt auch stehen, was ein
+    Muster ausserhalb jedes geschützten Abschnitts findet: Wer es pseudonymisiert hat, liess es mit Absicht stehen.
+    E-Mail-Adressen behalten ihre eigene Rückfrage. Was der Mensch entscheidet, geht immer vor."""
+    seiten = su.rollen(text)
+    if not seiten:
+        return
+    hat_platzhalter = bool(PLATZHALTER.search(text) or PLATZHALTER_OHNE.search(text))
+    wo: dict[str, set] = {}
+    muster_nur: dict[str, bool] = {}
+    for f in funde:
+        if not f.angabe:
+            continue
+        schluessel = verweis.get(f.angabe, f.angabe)
+        if f.schicht in (1, 3):         # wo die Angabe selbst steht, nicht wo sie sich fortpflanzt
+            wo.setdefault(schluessel, set()).add(seiten[min(text.count("\n", 0, f.start), len(seiten) - 1)])
+        muster_nur[schluessel] = muster_nur.get(schluessel, True) and f.quelle == 3
+    for f in funde:
+        schluessel = verweis.get(f.angabe, f.angabe)
+        orte = wo.get(schluessel)
+        if not orte or orte & set(su.GESCHUETZT) or f.frage == "seite":
+            continue
+        if "taeter" in orte:
+            f.sicher, f.frage, f.grund = False, "taeter", (f.grund + " · " if f.grund else "") + "Täterseite: bleibt nach der Vorgabe stehen"
+        elif hat_platzhalter and muster_nur.get(schluessel):
+            f.sicher, f.frage, f.grund = False, "taeter", (f.grund + " · " if f.grund else "") + "ausserhalb der geschützten Abschnitte: bleibt stehen"
 
 
 # --------------------------------------------------------------------------- Anwenden
@@ -1386,6 +1426,8 @@ def stand(f: Fund, ent: Entscheide | None) -> bool | None:
         return ent.angabe[f.angabe]
     if f.frage == "seite" and f.angabe in ent.seite:
         return ent.seite[f.angabe] != "taeter"
+    if f.frage == "taeter":
+        return False        # bleibt nach der Vorgabe stehen, solange der Mensch nichts anderes sagt
     return True if f.sicher else None
 
 
@@ -1449,7 +1491,8 @@ class Vorgang:
 
     def __init__(self, text: str, *, zuordnung: Iterable = (), namensliste: Iterable = (), marken: Marken | None = None,
                  vornamen: frozenset | None = None, erkenner: Iterable[Callable] = (), belegt: dict | None = None):
-        self.text = text
+        # Reste von Word-Feldfunktionen wiederholen Angaben im Klartext und gehören nicht zum Text: weg damit, bevor gesucht wird
+        self.text, self.feldreste = feldreste_entfernen(text)
         self.zuordnung = list(zuordnung)
         self.belegt = dict(belegt or {})        # höchste Nummer je Typ, die anderswo im Fall schon vergeben ist
         self.marken, self.vornamen, self.erkenner = marken, vornamen, tuple(erkenner)

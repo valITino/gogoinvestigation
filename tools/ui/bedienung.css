@@ -16,6 +16,12 @@
 .einstieg ol{margin:8px 0 6px;padding-left:22px}
 .einstieg li{margin:4px 0}
 
+/* Pseudonymisierung: die Vorgabe auf dem lokalen Bildschirm, und «Risiko übernehmen» im Akten-Eingang */
+p.vorgabe{border-left:3px solid var(--achse);padding:6px 12px;margin:8px 0 14px;max-width:110ch;font-size:13.5px;color:var(--tinte-2)}
+details.risiko{border:1px solid var(--rand);border-radius:8px;padding:8px 14px;margin:12px 0;max-width:90ch}
+details.risiko>summary{cursor:pointer;font-weight:600}
+details.risiko[open]>summary{margin-bottom:6px}
+
 /* Arbeitsplatz: «Alles abschalten», und was danach im Fenster steht */
 form.abschalten{max-width:78ch}
 form.abschalten .knoepfe button{border-color:var(--kritisch,#b3261e);color:var(--kritisch,#b3261e);font-weight:600}

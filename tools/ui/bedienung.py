@@ -17,6 +17,7 @@ Was sich nicht lesen lässt (Bilder, Ton, alte Formate), lässt sich nicht prüf
 """
 from __future__ import annotations
 
+import contextlib
 import csv
 import hashlib
 import hmac
@@ -139,10 +140,13 @@ class Eintrag:
         self.rolle = "beilage"
         self.vorgang: str | None = None         # Kennung einer laufenden Pseudonymisierung
         self.ersetzt: int | None = None         # Zahl der ersetzten Fundstellen, sobald eine Pseudonymisierung übernommen ist
+        self.risiko: dict | None = None         # {"durch", "grund"}: Der Sachbearbeiter nimmt die Datei trotz Sperrfund auf
 
     @property
     def stand(self) -> str:
-        return "nicht_lesbar" if self.text is None else "personendaten" if self.sperren else "sauber"
+        if self.text is None:
+            return "nicht_lesbar"
+        return "risiko" if self.sperren and self.risiko else "personendaten" if self.sperren else "sauber"
 
     @property
     def endung(self) -> str:
@@ -151,7 +155,7 @@ class Eintrag:
     def kurz(self) -> dict:
         return {"id": self.id, "name": self.name, "ordner": self.ordner, "groesse": self.groesse, "endung": self.endung, "stand": self.stand, "grund": self.grund,
                 "sperren": self.sperren, "hinweise": self.hinweise, "platzhalter": self.platzhalter, "rolle": self.rolle, "ersetzt": self.ersetzt,
-                "vorgang": self.vorgang or ""}
+                "vorgang": self.vorgang or "", "risiko": bool(self.risiko)}
 
 
 class Korb:
@@ -300,6 +304,8 @@ class Bedienung:
         e.hinweise = sum(1 for f in funde if f.stufe == "hinweis")
         e.platzhalter = sum(platzhalter.values())
         e.bericht = pii_bericht(e.name, funde, platzhalter)
+        if not e.sperren:
+            e.risiko = None         # wo nichts mehr gesperrt ist, gibt es kein Risiko zu übernehmen
 
     def _einlegen(self, korb: Korb, name: str, ordner: str, inhalt: bytes, tiefe: int, neu: list, meldungen: list) -> None:
         if not inhalt:
@@ -439,10 +445,37 @@ class Bedienung:
         name = sauberer_name(d.get("name"))[0]
         if Path(name).suffix.lower() != e.endung:
             name += e.endung        # die Endung sagt, wie die Datei gelesen wird: Sie bleibt
-        if any(f for f in pii_pruefen(name)[0] if f.stufe == "sperre"):
+        if any(f for f in pii_pruefen(name, "streng")[0] if f.stufe == "sperre"):
             raise Fehler("In diesem Namen steckt eine Angabe, die nach Personendaten aussieht. Bitte einen anderen Namen wählen.")
         e.name = name
         return {"meldung": "Umbenannt."}
+
+    def korb_risiko(self, d: dict) -> dict:
+        """Der Sachbearbeiter übernimmt das Risiko: Die gewählten Dateien gehen trotz Sperrfund der PII-Prüfung in den Fall, so
+        wie sie sind (Entscheid des Eigentümers vom 19.11.2026). Das verlangt sein Kürzel und eine Begründung. Beides steht
+        danach im Register des Falls und im Sitzungsprotokoll. Mit «zurueck» nimmt er den Entscheid wieder zurück."""
+        korb = self.korb(d.get("ziel"))
+        zurueck = str(d.get("zurueck") or "") not in ("", "0", "false")
+        durch, grund = " ".join(str(d.get("durch") or "").split()), " ".join(str(d.get("grund") or "").split())
+        if not zurueck:
+            if not durch or len(grund) < 5:
+                raise Fehler("Wer das Risiko übernimmt, nennt sein Kürzel und eine Begründung in ein paar Worten.")
+            if len(durch) > 60 or len(grund) > 400:
+                raise Fehler("Kürzel (bis 60 Zeichen) und Begründung (bis 400 Zeichen) bitte kürzer fassen.")
+            if any(f.stufe == "sperre" for f in pii_pruefen(f"{durch}\n{grund}", "streng")[0]):
+                raise Fehler("Kürzel und Begründung stehen im Register des Falls und im Protokoll. Darin steckt eine Angabe, die nach Personendaten aussieht.")
+        with self.sperre:
+            auswahl = [e for e in self._auswahl(korb, {"ids": d.get("ids") or d.get("namen")}) if e.sperren and e.text is not None]
+            if not auswahl:
+                raise Fehler("Keine der gewählten Dateien ist gesperrt. Was bereit ist, braucht diesen Schritt nicht.")
+            if any(e.vorgang for e in auswahl):
+                raise Fehler("Eine der gewählten Dateien wird gerade pseudonymisiert. Bitte zuerst übernehmen oder abbrechen.")
+            for e in auswahl:
+                e.risiko = None if zurueck else {"durch": durch, "grund": grund}
+        if zurueck:
+            return {"meldung": f"Zurückgenommen für {len(auswahl)} Datei(en): Sie gelten wieder als gesperrt."}
+        return {"meldung": f"Risiko übernommen für {len(auswahl)} Datei(en). Sie gehen beim Aufnehmen so in den Fall, wie sie sind: "
+                           f"{sum(e.sperren for e in auswahl)} Fundstelle(n) bleiben im Klartext."}
 
     # ---- Klartext: der lokale Bildschirm der Pseudonymisierung
     def korb_pseudo(self, d: dict) -> dict:
@@ -578,7 +611,7 @@ class Bedienung:
         if neu and not str(d.get("titel") or "").strip():
             raise Fehler("Ein neuer Fall braucht einen Titel.")
         for feld in ("titel", "auftrag", "kuerzel"):
-            if any(f.stufe == "sperre" for f in pii_pruefen(str(d.get(feld) or ""))[0]):
+            if any(f.stufe == "sperre" for f in pii_pruefen(str(d.get(feld) or ""), "streng")[0]):
                 raise Fehler("Titel, Auftrag und Kürzel stehen in jedem Dokument der Akte. Darin steckt eine Angabe, die nach Personendaten aussieht.")
         neutral = str(d.get("neutral", "1")) not in ("", "0", "false")
         with self.sperre:
@@ -587,8 +620,9 @@ class Bedienung:
                 raise Fehler("Der Akten-Eingang ist leer. Bitte zuerst Dateien hineinziehen.")
             if any(e.vorgang for e in auswahl):
                 raise Fehler("Eine der gewählten Dateien wird gerade pseudonymisiert. Bitte zuerst übernehmen oder abbrechen.")
-            bereit = sorted((e for e in auswahl if e.stand == "sauber"), key=lambda e: e.rolle != "rapport")
-            zurueck = [e for e in auswahl if e.stand != "sauber"]
+            # bereit ist, was die Prüfung besteht, und was der Sachbearbeiter trotz Sperrfund aufnimmt (er hat das Risiko übernommen)
+            bereit = sorted((e for e in auswahl if e.stand in ("sauber", "risiko")), key=lambda e: e.rolle != "rapport")
+            zurueck = [e for e in auswahl if e.stand not in ("sauber", "risiko")]
             if not bereit:
                 return {"aufgenommen": False, "fall": fall, "anzahl": 0, "zurueck": [e.kurz() for e in zurueck],
                         "meldung": "Keine der gewählten Dateien lässt sich aufnehmen: Sie enthalten Personendaten oder lassen sich nicht lesen. Es wurde nichts angelegt."}
@@ -602,22 +636,36 @@ class Bedienung:
             namen = {e.id: self._zielname(e, neutral, zaehler, vergeben) for e in bereit}
             if not neutral:
                 for e in bereit:
-                    if any(f.stufe == "sperre" for f in pii_pruefen(namen[e.id])[0]):
+                    if any(f.stufe == "sperre" for f in pii_pruefen(namen[e.id], "streng")[0]):
                         raise Fehler("Im Namen einer Datei steckt eine Angabe, die nach Personendaten aussieht. Bitte neutrale Dateinamen verwenden oder umbenennen.")
+            gewagt = [e for e in bereit if e.stand == "risiko"]
             with Zwischenablage() as ordner:
                 dateien = []
                 for e in bereit:
                     datei = ordner / namen[e.id]
                     datei.write_text(e.text or "", encoding="utf-8")
-                    dateien.append(str(datei))
+                    if e not in gewagt:
+                        dateien.append(str(datei))
+                ausgabe = ""
                 if neu:
-                    befehl = ["tools/fall.py", "neu", fall, "--titel", " ".join(str(d.get("titel") or fall).split()), "--rapport", *dateien]
+                    befehl = ["tools/fall.py", "neu", fall, "--titel", " ".join(str(d.get("titel") or fall).split())] + (["--rapport", *dateien] if dateien else [])
                     for schalter, feld in (("--auftrag", "auftrag"), ("--kuerzel", "kuerzel"), ("--klassifizierung", "klassifizierung")):
                         if str(d.get(feld) or "").strip():
                             befehl += [schalter, " ".join(str(d[feld]).split())]
-                else:
-                    befehl = ["tools/fall.py", "aufnehmen", fall, *dateien]
-                code, ausgabe = werkzeug_lauf(befehl, 600)
+                    code, ausgabe = werkzeug_lauf(befehl, 600)
+                elif dateien:
+                    code, ausgabe = werkzeug_lauf(["tools/fall.py", "aufnehmen", fall, *dateien], 600)
+                # Was der Sachbearbeiter trotz Sperrfund aufnimmt: über dieselbe Funktion wie am Terminal, mit seinem Kürzel und seiner
+                # Begründung. Am Terminal bestätigt er von Hand, hier hat seine Anfrage das Geheimnis getragen.
+                if gewagt and (fall_pfad(fall) / "fall.json").is_file():
+                    for e in gewagt:
+                        puffer = io.StringIO()
+                        try:
+                            with contextlib.redirect_stdout(puffer):
+                                fallwerkzeug.aufnehmen(fall, [str(ordner / namen[e.id])], e.risiko["grund"], e.risiko["durch"], weg="Oberfläche")
+                        except (fallwerkzeug.Fehler, OSError) as fehler:
+                            puffer.write(f"FEHLER: {fehler}\n")
+                        ausgabe += ("\n" if ausgabe else "") + puffer.getvalue().strip()
                 ausgabe = ausgabe.replace(str(ordner) + os.sep, "").replace(str(ordner), "(Zwischenablage)")
             if not (fall_pfad(fall) / "fall.json").is_file():
                 return {"aufgenommen": False, "fall": fall, "anzahl": 0, "ausgabe": ausgabe, "meldung": "Der Fall liess sich nicht anlegen."}
@@ -646,10 +694,17 @@ class Bedienung:
                   + (f". {len(zurueck) - len(bleibt)} mit Personendaten zurückgehalten" if len(zurueck) > len(bleibt) else ""))
         if drin:
             self.vermerken(fall, "Fall angelegt" if neu else "Dokumente aufgenommen", angabe)
+        for e in drin:
+            if e in gewagt:     # wer das Risiko übernommen hat und warum: gehört ins Protokoll des Falls, nicht nur ins Register
+                self.vermerken(fall, "Dokument trotz Sperrfund aufgenommen",
+                               f"{namen[e.id]}: {e.sperren} Fundstelle(n) der PII-Prüfung bleiben im Klartext. Risiko übernommen durch {e.risiko['durch']}. "
+                               f"Begründung: {e.risiko['grund']}")
         return {"aufgenommen": bool(drin), "angelegt": neu, "fall": fall, "anzahl": len(drin), "namen": [namen[e.id] for e in drin], "ausgabe": ausgabe,
                 "zurueck": [e.kurz() for e in zurueck], "bleibt": len(korb.eintraege), "zuordnung": str(tabelle) if tabelle is not None else "",
                 "dateinamen": str(namensliste) if namensliste is not None else "",
                 "meldung": ((f"Fall {fall} angelegt, " if neu else "") + f"{len(drin)} Dokument(e) aufgenommen."
+                            + (f" Davon {sum(1 for e in drin if e in gewagt)} trotz Sperrfund: Das Risiko ist übernommen und im Protokoll vermerkt."
+                               if any(e in gewagt for e in drin) else "")
                             + (f" {len(zurueck)} bleiben im Akten-Eingang: Personendaten oder nicht lesbar." if zurueck else "")
                             + (f" {tabelle_hinweis}" if tabelle_hinweis else "")) if drin
                 else (f"Fall {fall} ist angelegt, aber kein Dokument wurde aufgenommen, siehe Ausgabe. Die Dateien liegen im Akten-Eingang dieses Falls."
@@ -972,6 +1027,6 @@ class Bedienung:
                 "meldung": "Die Oberfläche ist beendet. Gelöscht wurde nichts: Fallakten, Schlüssel und Einstellungen sind, wie sie waren."}
 
 
-AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
+AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_risiko", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
             "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente", "zurueckfuehren", "quelle_testen",
             "abschalten")

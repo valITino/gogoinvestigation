@@ -68,8 +68,13 @@ def am_terminal_bestaetigen(frage: str, erwartet: str) -> None:
         raise Fehler("Nicht bestätigt. Es wurde nichts geändert.")
 
 
-def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str | None) -> bool:
-    """Prüft Dokumente und legt sie in eingang/ ab. Gibt False zurück, wenn etwas gesperrt blieb."""
+def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str | None, *, weg: str = "Terminal") -> bool:
+    """Prüft Dokumente und legt sie in eingang/ ab. Gibt False zurück, wenn etwas gesperrt blieb. Mit `trotzdem` (Begründung)
+    und `durch` nimmt ein Mensch ein Dokument trotz Sperrfund auf und übernimmt damit das Risiko: am Terminal nach einer
+    Eingabe von Hand, aus der Oberfläche nach einer Anfrage mit dem Geheimnis (Entscheid des Eigentümers vom 19.11.2026).
+    Wer das auslöst, entscheidet dort der Aufrufer. Das Register hält fest, wer es war, warum und auf welchem Weg."""
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
     pfad = fall_pfad(fall_id)
     eingang = pfad / "eingang"
     eingang.mkdir(parents=True, exist_ok=True)
@@ -96,9 +101,10 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
                 continue
             if not durch:
                 raise Fehler("--trotzdem verlangt --durch (wer übersteuert).")
-            am_terminal_bestaetigen(
-                f"{len(sperren)} Sperrfund(e) in {quelle.name} werden übersteuert. Das Dokument geht so an das Sprachmodell.",
-                fall_id)
+            if weg == "Terminal":
+                am_terminal_bestaetigen(
+                    f"{len(sperren)} Sperrfund(e) in {quelle.name} werden übersteuert. Das Dokument geht so an das Sprachmodell.",
+                    fall_id)
             ergebnis = "uebersteuert"
         # Agenten lesen immer die Textfassung. Das Original bleibt daneben liegen.
         ziel = eingang / quelle.name
@@ -121,7 +127,7 @@ def aufnehmen(fall_id: str, dateien: list[str], trotzdem: str | None, durch: str
             register["dateien"][datei.name] = {
                 "sha256": sha256_datei(datei), "geprueft": jetzt(), "ergebnis": ergebnis,
                 "hinweise": sum(1 for f in funde if f.stufe == "hinweis"),
-                **({"durch": durch, "begruendung": trotzdem} if ergebnis == "uebersteuert" else {})}
+                **({"durch": durch, "begruendung": trotzdem, "weg": weg, "sperrfunde": len(sperren)} if ergebnis == "uebersteuert" else {})}
         print(f"→ aufgenommen: faelle/{fall_id}/eingang/{lesefassung.name}\n")
     schreiben(register_datei, register)
     return alles_gut

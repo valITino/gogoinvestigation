@@ -5,6 +5,10 @@ eigenes LLM im Haus diese Daten durch Platzhalter. Dieses Dokument beschreibt, w
 müssen, was stehen bleibt, eine fertige Anweisung für euer LLM, und wie der fertige Rapport wieder zu echten
 Angaben kommt.
 
+**Seit dem 19.11.2026 gilt die Vorgabe des Eigentümers:** Ersetzt werden die Angaben zur Dienststelle, zur Verfasserin
+oder zum Verfasser (EL-Fall) und zu Geschädigten. Alles andere bleibt stehen, weil die Ermittlung es braucht. Siehe
+[Was ersetzt wird](#was-ersetzt-wird-die-vorgabe).
+
 ## Der Weg eines Dokuments
 
 ```
@@ -37,7 +41,12 @@ geschieht auf demselben Rechner, mit derselben Bibliothek wie der Rückfall, ohn
   Dokument `[PERSON_08]`, heisst die nächste Person `[PERSON_09]`.
 - Was die Oberfläche ersetzt, steht in einer eigenen Zuordnungstabelle in ihrer Ablage ausserhalb des Projekts
   (`<Ablage>/<Fall-ID>/zuordnung.csv`). Die Tabelle aus dem Haus kennt die Oberfläche nicht.
-- In den Fall kommt von jedem Dokument die Textfassung, nie das Original, und nur, wenn die PII-Prüfung nichts mehr findet.
+- In den Fall kommt von jedem Dokument die Textfassung, nie das Original, und nur, wenn die PII-Prüfung nichts mehr sperrt.
+- Angaben der Täterseite bleiben auf dem lokalen Bildschirm stehen, wenn ihr nichts anderes sagt. Dasselbe gilt in einem
+  Dokument, das schon Platzhalter trägt, für Angaben ausserhalb der geschützten Abschnitte: Wer es im Haus pseudonymisiert
+  hat, liess sie mit Absicht stehen. Jede lässt sich mit «doch ersetzen» ersetzen.
+- Reste von Word-Feldfunktionen, die eine Angabe im Klartext wiederholen, entfernt der lokale Bildschirm von selbst und
+  sagt es.
 
 Einzelheiten: [OBERFLAECHE.md](OBERFLAECHE.md), «Akten-Eingang» und «Nochmals pseudonymisieren».
 
@@ -45,13 +54,16 @@ Einzelheiten: [OBERFLAECHE.md](OBERFLAECHE.md), «Akten-Eingang» und «Nochmals
 
 Form: eckige Klammern, Typ in Grossbuchstaben, Unterstrich, laufende Nummer. `[PERSON_01]`
 
+Welche Angaben einen Platzhalter bekommen, sagt die Vorgabe im nächsten Abschnitt. Die Typen unten sind die dieses
+Arbeitsplatzes. Ein Werkzeug im Haus darf eigene Typen vergeben (`[HEIMATORT_01]`): Sie bleiben, wie sie sind.
+
 | Platzhalter | Steht für |
 |---|---|
-| `[PERSON_01]` | natürliche Person (Geschädigte, Zeugen, Beschuldigte, Sachbearbeiter) |
-| `[ORG_01]` | Firma, Behörde, Verein auf Geschädigten- oder Zeugenseite |
-| `[ADRESSE_01]` | Wohn- oder Geschäftsadresse |
-| `[TEL_01]` | Telefonnummer |
-| `[EMAIL_01]` | E-Mail-Adresse einer Person oder der geschädigten Organisation |
+| `[PERSON_01]` | natürliche Person: Geschädigte, Verfasserin oder Verfasser, EL-Fall |
+| `[ORG_01]` | geschädigte Organisation, Dienstabteilung |
+| `[ADRESSE_01]` | Adresse, Wohnort, Heimatort, Dienstort |
+| `[TEL_01]` | Rufnummer einer geschädigten Person oder der Dienststelle |
+| `[EMAIL_01]` | E-Mail-Adresse einer geschädigten Person, der geschädigten Organisation oder der Dienststelle |
 | `[GEBDAT_01]` | Geburtsdatum |
 | `[AHV_01]` | AHV-Nummer |
 | `[KONTO_01]` | Bankverbindung, IBAN |
@@ -68,39 +80,76 @@ Drei Regeln, die über die Qualität der Ermittlung entscheiden:
 3. **Die Rolle darf stehen bleiben.** «[PERSON_02], Sachbearbeiter der [ORG_01]» ist richtig. Die Rolle hilft
    der Ermittlung und identifiziert niemanden.
 
-## Was stehen bleibt
+## Was ersetzt wird: die Vorgabe
 
-Nach technischen Indikatoren wird gesucht. Sind sie ersetzt, gibt es nichts zu ermitteln.
+Vorgabe des Eigentümers vom 19.11.2026. Sie steht als Liste in `tools/schutzumfang.py`, und danach richten sich die
+PII-Prüfung, der lokale Bildschirm der Oberfläche und die Agenten.
+
+| Wird ersetzt | Dazu gehört |
+|---|---|
+| **Dienststelle** | Dienstabteilung, Dienstort, Dienst-Rufnummer, Dienst-E-Mail |
+| **Verfasserin oder Verfasser, EL-Fall** | der Name und, wo sie vorkommen: Geburtsdatum, Ort, Heimatort, Adresse, E-Mail-Adresse |
+| **Geschädigte** | der Name, Heimatort, Adresse, Geburtsdatum und was sie erreichbar macht: Rufnummer, E-Mail-Adresse |
+
+Alles andere bleibt stehen. Nach technischen Indikatoren wird gesucht, und die Angaben der Täterseite sind die Ansätze
+der Ermittlung. Sind sie ersetzt, gibt es nichts zu ermitteln.
 
 | Bleibt stehen | Warum |
 |---|---|
 | IP-Adressen, Domains, URLs der Täterseite | Kern jeder Abfrage |
 | Datei-Hashes, Dateinamen von Schadsoftware | Abfrage bei VirusTotal |
 | E-Mail-Adressen der Täterseite (Absender der Phishing-Mail, Kontakt im Erpresserschreiben) | Domain und Adresse sind Indikatoren |
+| Rufnummern, Konten und IBAN der Täterseite | Ansatz für ein Editionsbegehren beim Anbieter oder bei der Bank |
 | Onion-Adressen | Abgleich mit Gruppen und Leak-Seiten |
 | Wallet-Adressen und Transaktions-IDs von Zahlungen in Kryptowährungen, mit Währung, Betrag und Datum | Ohne sie lässt sich kein Geldfluss verfolgen. Das gilt auch für die Zahlung der geschädigten Person: Ihre Transaktions-ID bleibt stehen, ihr Name und ihr Kundenkonto bei der Börse nicht. |
 | Namen von Tätergruppen, Malware-Familien, Kampagnen | Abfrage bei ransomware.live |
 | Benutzernamen und Kanäle der Täterseite | nur mit Freigabe `personenbezug` abfragbar |
+| Was im Abschnitt «Beschuldigte/-r» oder «Täterschaft» steht | Angaben der Täterseite |
 | Datum und Uhrzeit von Ereignissen | Zeitachse |
 
-| Wird ersetzt | Hinweis |
-|---|---|
-| Alle natürlichen Personen | auch Sachbearbeiter und Unterzeichnende |
-| Geschädigte Organisationen | siehe unten |
-| Adressen, Telefonnummern, Geburtsdaten, AHV-Nummern, Bankverbindungen, Kontrollschilder | |
-| E-Mail-Adressen und Domains der Geschädigten | Die Domain der geschädigten Firma verrät die Firma |
-| Interne Aktenzeichen mit Personenbezug | Die Fall-ID im Arbeitsplatz ist eine eigene, neutrale Nummer |
+**Was ihr dabei entscheiden müsst**
 
-**Grenzfälle, die ihr entscheiden müsst**
-
-- *IP-Adressen und Konten der Täterseite sind auch Personendaten.* Sie müssen stehen bleiben, damit ermittelt
-  werden kann, und gehen damit an Anthropic und an die abgefragten Dienste. Klärt mit Rechtsdienst und
-  Datenschutz, für welche Arten von Indikatoren das zulässig ist.
+- *Angaben der Täterseite sind auch Personendaten.* Sie bleiben stehen, damit ermittelt werden kann, und gehen damit an
+  Anthropic und an die abgefragten Dienste. Das gilt seit der Vorgabe nicht nur für IP-Adressen und Benutzernamen,
+  sondern auch für Namen, Rufnummern und Konten im Abschnitt der Täterseite. Klärt mit Rechtsdienst und Datenschutz,
+  für welche Arten von Angaben das zulässig ist. Wer es enger will, stellt die Prüfung auf «streng» (siehe unten).
+- *Zeugen und Auskunftspersonen* nennt die Vorgabe nicht. Ihre Abschnitte gelten deshalb nicht als geschützt, und was
+  dort steht, bleibt stehen, wenn es niemand ersetzt. Für die Ermittlung bringen diese Angaben nichts.
 - *Name der geschädigten Organisation.* Pseudonymisiert ist er sicher, aber dann lässt sich nicht prüfen, ob die
   Organisation auf einer Leak-Seite steht. Der Rapport nennt diese Abfrage unter «Lücken» als im Haus
   nachzuholen. Die Opferliste der Gruppe liegt dafür in den Rohdaten.
 - *Infrastruktur der Geschädigten* (deren Server, deren Domain). In der Regel ersetzen. Soll sie untersucht
   werden, muss sie stehen bleiben, und der Auftrag muss es ausdrücklich sagen.
+
+## Die PII-Prüfung nach der Vorgabe
+
+Bevor ein Dokument in einen Fall kommt, prüft `tools/pii_pruefung.py`, ob etwas im Klartext dasteht, das ersetzt sein
+müsste. Sie erkennt Muster (Rufnummer, IBAN, AHV-Nummer, Geburtsdatum, Kontrollschild, Kartennummer, E-Mail-Adresse,
+Strassenadresse) und Felder mit Klartext («Heimatort: …»). Namen erkennt sie nicht.
+
+| Wo die Angabe steht | Was die Prüfung tut |
+|---|---|
+| Abschnitt «Geschädigte/-r», Felder der Dienststelle («Dienstort», «Dienst-Rufnummer»), Feld «Verfasserin/EL-Fall» | **sperrt.** Das Dokument kommt so nicht in den Fall. |
+| Abschnitt «Beschuldigte/-r», «Täterschaft», «Tatmittel» | zeigt die Angabe an, mit dem Vermerk «Täterseite». Sperrt nicht. |
+| In keinem Abschnitt zu einer Person (Sachverhalt, Liste der Zahlungen) | zeigt die Angabe an, mit dem Vermerk «ohne Abschnitt». Sperrt nicht. |
+| Rest einer Word-Feldfunktion mit Klartext (`IF "Musterweg 12" = "" …`) | **sperrt immer.** Die Anweisung eines Felds wiederholt den Wert, den es zeigt. |
+| Dokument ganz ohne Platzhalter | **sperrt jede Angabe.** Es ist offenbar nicht pseudonymisiert. |
+
+Die Seite erkennt die Prüfung am Aufbau des Dokuments, nicht am Inhalt: an der Überschrift eines Abschnitts und an der
+Marke vor einem Feld. Ein Abschnitt reicht bis zur nächsten Überschrift, höchstens 60 Zeilen weit. Die Überschriften
+und Marken stehen in `tools/schutzumfang.py` (deutsch, französisch, italienisch). **Die Liste ist vorläufig**: Sie
+kennt übliche Wörter, nicht eure Vorlage. Heisst ein Abschnitt bei euch anders, erkennt ihn die Prüfung nicht, und
+was darin steht, gilt als «ohne Abschnitt». Dann die Überschrift in der Datei ergänzen.
+
+Platzhalter von anderer Hand gelten auch ohne eckige Klammern (`ADRESSE_02`) und mit eigenen Typen (`HEIMATORT_01`).
+
+**Aus einem Word-Dokument** liest der Arbeitsplatz nur, was man im Dokument sieht. Feldanweisungen, gelöschter Text aus
+«Änderungen nachverfolgen», ausgeblendeter Text und Kommentare kommen nicht in die Textfassung. Anlass: Am 19.11.2026
+stand eine Adresse nach zwei Pseudonymisierungen noch im Klartext da, in der Anweisung eines Seriendruckfelds.
+
+**Strenger prüfen:** In der Schlüsseldatei `OSINT_SCHUTZ=streng` eintragen. Dann sperrt jede Angabe, die nach
+Personendaten aussieht, gleich wo sie steht, wie bis zum 19.11.2026. Titel, Dateinamen, Nachrichten im Chat und Belege
+von Hand prüft der Arbeitsplatz immer streng: Sie haben keine Abschnitte.
 
 ## Anweisung für euer LLM
 
@@ -111,39 +160,37 @@ Du pseudonymisierst polizeiliche Rapporte und Nachträge. Du gibst zwei Dinge au
 Dokument und eine Zuordnungstabelle.
 
 ERSETZEN durch Platzhalter der Form [TYP_NN] mit zweistelliger laufender Nummer je Typ:
-- natürliche Personen (Vor- und Nachnamen, auch Kürzel und Unterschriften) → [PERSON_NN]
-- Organisationen auf Geschädigten- und Zeugenseite → [ORG_NN]
-- Wohn- und Geschäftsadressen → [ADRESSE_NN]
-- Telefonnummern → [TEL_NN]
-- E-Mail-Adressen von Personen und von geschädigten Organisationen → [EMAIL_NN]
-- Geburtsdaten → [GEBDAT_NN]
-- AHV-Nummern → [AHV_NN]
-- Bankverbindungen und IBAN → [KONTO_NN]
-- Kontrollschilder → [KFZ_NN]
-- Ausweisnummern und Aktenzeichen mit Personenbezug → [AUSWEIS_NN]
-- Domains und Hostnamen, die der geschädigten Organisation gehören → [DOMAIN_NN]
-- IP-Adressen, die der geschädigten Organisation gehören → [IP_NN]
+- die Dienststelle: Dienstabteilung → [ORG_NN], Dienstort → [ADRESSE_NN], Dienst-Rufnummer → [TEL_NN],
+  Dienst-E-Mail → [EMAIL_NN]
+- die Verfasserin oder den Verfasser und die Person im Feld EL-Fall → [PERSON_NN], samt Kürzel und Unterschrift,
+  und ihre persönlichen Angaben: Geburtsdatum → [GEBDAT_NN], Ort, Heimatort und Adresse → [ADRESSE_NN],
+  E-Mail-Adresse → [EMAIL_NN]
+- geschädigte Personen → [PERSON_NN] und geschädigte Organisationen → [ORG_NN], samt ihren Angaben:
+  Heimatort und Adresse → [ADRESSE_NN], Geburtsdatum → [GEBDAT_NN], Rufnummern → [TEL_NN],
+  E-Mail-Adressen → [EMAIL_NN], AHV-Nummer → [AHV_NN], Kontrollschild → [KFZ_NN]
 
 NICHT ERSETZEN, zeichengenau übernehmen:
-- IP-Adressen, Domains und URLs, die der Täterseite zugeschrieben werden
+- alles, was der Täterseite zugeschrieben wird: Namen, Rufnummern, Konten und IBAN, E-Mail-Adressen,
+  Benutzernamen und Kanäle
+- IP-Adressen, Domains und URLs der Täterseite
 - Datei-Hashes und Dateinamen verdächtiger Dateien
-- E-Mail-Adressen, von denen Phishing, Betrug oder Erpressung ausging
 - Onion-Adressen
 - Wallet-Adressen und Transaktions-IDs von Zahlungen in Kryptowährungen, samt Währung, Betrag und Datum
 - Namen von Tätergruppen, Schadsoftware, Kampagnen
-- Benutzernamen und Kanäle, über die Täter auftraten
 - Datum und Uhrzeit von Ereignissen
-- Rollen und Funktionen ("Leiterin Finanzen", "Geschädigter", "Beschuldigte")
+- Rollen, Funktionen und Überschriften ("Leiterin Finanzen", "Geschädigte/-r", "Beschuldigte/-r")
 
 REGELN:
 1. Dieselbe Person, Organisation oder Angabe erhält im ganzen Dokument denselben Platzhalter.
 2. Liegt eine Zuordnungstabelle aus einem früheren Dokument desselben Falls vor, führst du sie fort und
    vergibst für bereits bekannte Einträge keine neuen Nummern.
-3. Die Rolle einer Person bleibt neben dem Platzhalter stehen.
-4. Bist du unsicher, ob eine Angabe der Täter- oder der Geschädigtenseite gehört, ersetzt du sie und
+3. Die Rolle einer Person und die Überschrift ihres Abschnitts bleiben stehen.
+4. Bist du unsicher, ob eine Angabe zu einer geschädigten Person gehört, ersetzt du sie und
    vermerkst sie am Ende unter "Zur Klärung".
 5. Du änderst sonst nichts am Text: keine Zusammenfassung, keine Korrekturen, keine Auslassungen.
 6. Nummerierung der Ziffern und Abschnitte bleibt erhalten, damit Fundstellen zitierbar sind.
+7. Ersetze eine Angabe überall, wo sie steht, auch in Feldanweisungen, Kommentaren und gelöschtem Text
+   eines Word-Dokuments. Am sichersten ist die Ausgabe als reiner Text.
 
 AUSGABE:
 --- DOKUMENT ---

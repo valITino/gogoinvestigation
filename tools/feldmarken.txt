@@ -57,6 +57,10 @@ Rapportierender             ; PERSON  ; name
 Rapportierende              ; PERSON  ; name
 Verfasser                   ; PERSON  ; name
 Verfasserin                 ; PERSON  ; name
+Verfasser/in                ; PERSON  ; name
+Verfasserin/EL-Fall         ; PERSON  ; name
+Verfasser/EL-Fall           ; PERSON  ; name
+EL-Fall                     ; PERSON  ; name
 Visum                       ; PERSON  ; name
 Unterschrift                ; PERSON  ; name
 Kürzel                      ; PERSON  ; kuerzel
@@ -81,11 +85,23 @@ Raison sociale              ; ORG
 Entreprise                  ; ORG
 Ditta                       ; ORG
 
+# --- Dienststelle (Vorgabe des Eigentümers vom 19.11.2026: Dienstabteilung, Dienstort, Dienst-Rufnummer, Dienst-E-Mail)
+Dienstabteilung             ; ORG
+Dienststelle                ; ORG
+Dienstort                   ; ADRESSE ; ort
+Dienst-Rufnummer            ; TEL
+Dienstrufnummer             ; TEL
+Dienst-Telefon              ; TEL
+Dienst-E-Mail               ; EMAIL
+
 # --- Adressen
 Adresse                     ; ADRESSE ; adresse
 Wohnadresse                 ; ADRESSE ; adresse
 Wohnhaft                    ; ADRESSE ; adresse
 Wohnort                     ; ADRESSE ; ort
+Heimatort                   ; ADRESSE ; ort
+Bürgerort                   ; ADRESSE ; ort
+Geburtsort                  ; ADRESSE ; ort
 Anschrift                   ; ADRESSE ; adresse
 Geschäftsadresse            ; ADRESSE ; adresse
 Domizil                     ; ADRESSE ; adresse

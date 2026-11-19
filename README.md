@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 100 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 104 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -548,8 +548,9 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
 
 - **Akten hineinziehen.** Unter «Neuer Fall»: einzelne Dateien, ein ganzer Ordner oder ein ZIP. Gelesen werden Text,
   Word, PDF, OpenDocument, Excel, PowerPoint, RTF, E-Mail (.eml, die Anhänge werden eigene Dokumente), CSV und JSON.
-  Jede Datei geht sofort durch die PII-Prüfung: bereit, Personendaten oder nicht lesbar. Bilder, Ton und alte Formate
-  lassen sich nicht prüfen und bleiben bei euch.
+  Jede Datei geht sofort durch die PII-Prüfung: bereit, Personendaten oder nicht lesbar. Gesperrt ist, was nach der
+  Vorgabe ersetzt sein muss (Dienststelle, Verfasserin oder Verfasser, Geschädigte). Angaben der Täterseite bleiben
+  stehen und erscheinen als Hinweis. Bilder, Ton und alte Formate lassen sich nicht prüfen und bleiben bei euch.
 - **Auswählen und ordnen.** Jede Zeile hat einen Haken, dazu «alle auswählen» und die Umschalttaste für einen Bereich.
   Für die Auswahl: nochmals pseudonymisieren, als Rapport oder Beilage ordnen, entfernen, in den Akten-Eingang eines
   anderen Falls verschieben.
@@ -714,7 +715,7 @@ Buchstabe und jede Ziffer ersetzt ist. Die Tabellen schreibt das Werkzeug selbst
 sie zum Stand des Codes passen (`--pruefen`).
 
 <!-- pseudo-messung:anfang -->
-Prüfsatz: 240 synthetische Rapporte, 10395 Stellen mit Personendaten, 1875 technische Indikatoren. Feldmarken: 132 (vorläufige Liste). Vornamenliste: 820 Namen (vorläufige Liste). Von 1050 Personen im Prüfsatz tragen 166 einen Vornamen, der nicht in der Liste steht.
+Prüfsatz: 240 synthetische Rapporte, 10395 Stellen mit Personendaten, 1875 technische Indikatoren. Feldmarken: 146 (vorläufige Liste). Vornamenliste: 820 Namen (vorläufige Liste). Von 1050 Personen im Prüfsatz tragen 166 einen Vornamen, der nicht in der Liste steht.
 
 **Angaben, die in einem Feld stehen (alle ihre Stellen, auch die im Fliesstext)**: Stellen, die stehen bleiben
 
@@ -763,7 +764,7 @@ Prüfsatz: 240 synthetische Rapporte, 10395 Stellen mit Personendaten, 1875 tech
 | Kandidaten, die Schicht 5 vorlegt | 1021 |
 | davon richtig (Personendaten) | 785 (76.9 %) |
 
-**Gegenprobe: Das Dokument trägt Marken, die nicht in der Liste stehen.** Dieselben Dokumente, aber das Werkzeug kennt nur jede zweite Marke (66 von 132). Von 8718 Stellen der Angaben, die in einem Feld stehen, bleiben ohne Zutun 3137 (36.0 %) stehen.
+**Gegenprobe: Das Dokument trägt Marken, die nicht in der Liste stehen.** Dieselben Dokumente, aber das Werkzeug kennt nur jede zweite Marke (73 von 146). Von 8718 Stellen der Angaben, die in einem Feld stehen, bleiben ohne Zutun 3297 (37.8 %) stehen.
 
 **Kontrolle an 240 weiteren Rapporten (Nummern 241 bis 480), die bei der Entwicklung nie angesehen wurden.** Stellen, die stehen bleiben:
 
@@ -1053,14 +1054,14 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 
 | Schutz | Wie | Wo |
 |---|---|---|
-| Keine übersehenen Personendaten | PII-Prüfung vor der Aufnahme (AHV-Nummer, IBAN, Telefon, Geburtsdatum, Kontrollschild, Kreditkarte). Sperrfunde verhindern die Aufnahme. Dieselbe Prüfung liest in der Oberfläche jede hochgeladene Datei und jede Eingabe im Chat, bevor sie das Sprachmodell erreicht. Sie erkennt Muster, keine Namen. | `tools/pii_pruefung.py`, `tools/ui/bedienung.py`, `tools/ui/sitzung.py` |
+| Keine übersehenen Personendaten | PII-Prüfung vor der Aufnahme. Seit dem 19.11.2026 sperrt sie nach der Vorgabe des Eigentümers: was zur Dienststelle, zur Verfasserin oder zum Verfasser (EL-Fall) und zu Geschädigten gehört und im Klartext dasteht (Rufnummer, IBAN, AHV-Nummer, Geburtsdatum, Kontrollschild, Kreditkarte, Adresse, E-Mail-Adresse, Felder wie «Heimatort»). Die Seite erkennt sie am Aufbau des Dokuments. Angaben der Täterseite und Angaben ohne Abschnitt zeigt sie an und sperrt nicht. Immer gesperrt: ein Dokument ganz ohne Platzhalter und der Rest einer Word-Feldfunktion mit Klartext. `OSINT_SCHUTZ=streng` sperrt jede Angabe wie früher. Titel, Dateinamen und Eingaben im Chat prüft die Oberfläche immer streng, bevor sie das Sprachmodell erreichen. Die Prüfung erkennt Muster, keine Namen. | `tools/pii_pruefung.py`, `tools/ui/bedienung.py`, `tools/ui/sitzung.py` |
 | In den Fall kommt die Textfassung, nie das Original | Der Akten-Eingang der Oberfläche liest jede Datei im Speicher und nimmt nur ihren Text auf, unter einem neutralen Namen. Verfasser, eingebettete Bilder und Änderungsverlauf eines Originals bleiben draussen. Was sich nicht lesen lässt (Bilder, Ton, alte Formate), geht nicht in den Fall. | `tools/ui/bedienung.py`, `tools/pii_pruefung.py` |
 | Geprüft ist nur, was die PII-Prüfung aufgenommen hat | `fall_status` nennt den Agenten nur Dokumente, deren Prüfsumme im Register der PII-Prüfung steht. Von Hand Kopiertes und nachträglich Verändertes meldet es als ungeprüft, ohne den Namen zu nennen. Die Oberfläche warnt im Kopf des Falls. Dass ein Agent ein solches Dokument liest, verhindert seit dem Wegfall des Wächters keine Sperre mehr. | `gateway/akte.py` (`eingang_stand`), `gateway/server.py` |
 | Keine Abfrage ohne Fall und Zweck | Das Gateway weist sie ab. | `gateway/kern.py` |
 | Aktiv und Personenbezug nur mit Freigabe | Das Gateway prüft `fall.json`. Abgelehnte Versuche stehen im Protokoll. Aktive Werkzeuge fragen zudem jedes Mal nach. | `gateway/kern.py`, `.claude/settings.json` |
 | Dark Web nur mit Zustimmung | Jeder Aufruf von Robin fragt nach (Regel «ask»). Die Oberfläche lehnt ihn ohne Freigabe `darkweb` von selbst ab und lässt ihn mit Freigabe zu. Am Terminal entscheidet der Mensch je Aufruf: Dort prüft niemand mehr die Freigabe. | `.claude/settings.json`, `tools/ui/sitzung.py` |
 | Pflichtquellen gibt nur der Sachbearbeiter vor | Vorgeben, ändern und aufheben verlangen ein Terminal oder das Geheimnis der Oberfläche. Die Berechtigungen verbieten den Befehl für Agenten. Ob eine Pflichtquelle gefragt wurde, liest der Rapport aus dem Protokoll: Nie gefragt ist ein Mangel und verhindert ihn. Eine Pflichtquelle ersetzt keine Freigabe. | `tools/fall.py`, `gateway/pflichtquellen.py`, `tools/rapport.py`, `.claude/settings.json` |
-| Keine Selbstfreigabe | `fall.py freigabe` und das Übersteuern der PII-Prüfung verlangen ein Terminal. Die Berechtigungen verbieten den Befehl für Agenten. Der Aufruf der Funktion dahinter aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. | `tools/fall.py`, `.claude/settings.json` |
+| Keine Selbstfreigabe | `fall.py freigabe` und das Übersteuern der PII-Prüfung verlangen am Terminal eine Eingabe von Hand, in der Oberfläche das Geheimnis des Starts («Risiko übernehmen», seit dem 19.11.2026). Die Berechtigungen verbieten den Befehl für Agenten. Der Aufruf der Funktion dahinter aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. | `tools/fall.py`, `tools/ui/bedienung.py`, `.claude/settings.json` |
 | Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind verboten. `WebFetch` und `WebSearch` fragen jedes Mal nach, ebenso jeder Shell-Befehl, der nicht auf der Erlaubt-Liste steht. | `.claude/settings.json` |
 | Keine öffentliche Einreichung | Eine URL geht bei urlscan.io und urlquery nur als «private» hinaus. Die Werkzeuge haben keinen Parameter dafür, und eine Schranke im Kern hält jede andere Einreichung auf, egal welches Werkzeug sie schickt. | `gateway/kern.py` (`schranke`) |
 | Kein selbst geschriebener Beleg | Abklärungen von Hand erfasst nur der Sachbearbeiter, am Terminal oder in der Oberfläche. Das Werkzeug verlangt ein Terminal, die Berechtigungen verbieten den Befehl für Agenten. | `tools/beleg.py`, `.claude/settings.json` |
@@ -1099,6 +1100,10 @@ Was ihr wissen müsst:
   - Gateway, Werkzeuge, Hooks und Einstellungen sind für Sitzungen änderbar. Eine Ermittlungssitzung ändert sie
     nicht (`CLAUDE.md`), technisch hindert sie daran nichts.
 - **Die PII-Prüfung erkennt keine Namen.** Sie ist ein Sicherheitsnetz für Muster, kein Ersatz für die Pseudonymisierung.
+- **Die PII-Prüfung erkennt die Seite am Aufbau des Dokuments.** Sie kennt übliche Überschriften («Geschädigte/-r»,
+  «Beschuldigte/-r») und Marken («Dienstort»), nicht eure Vorlage. Heisst ein Abschnitt bei euch anders, gilt, was
+  darin steht, als «ohne Abschnitt» und sperrt nicht. Die Liste steht in `tools/schutzumfang.py` und lässt sich ergänzen.
+  Eine Angabe zu einer geschädigten Person mitten im Sachverhalt sperrt ebenfalls nicht: Dort hat sie keine Seite.
 - **`@datei` im Prompt umgeht die PII-Prüfung.** Claude Code fügt so erwähnte Dateien ohne Werkzeugaufruf ein.
   Dokumente deshalb nie mit `@` anhängen, sondern über die Oberfläche oder `fall.py` aufnehmen.
 - **Die Kette erkennt Veränderungen, sie verhindert sie nicht.** Wer den Stand verbindlich festhalten will,
@@ -1149,7 +1154,8 @@ Was ihr wissen müsst:
 | VirusTotal-Abfragen dauern lange | Drossel für den öffentlichen Schlüssel | Mit Premium `VT_INTERVALL=0` in `.env` |
 | «Nicht ausgeführt: … braucht der Fall die Freigabe» | Freigabe fehlt | `python3 tools/fall.py freigabe …` am Terminal |
 | «… ist nicht durch die PII-Prüfung freigegeben» | Datei von Hand in den Eingang kopiert oder nachträglich geändert | `python3 tools/fall.py aufnehmen <Fall-ID> <Datei>` |
-| Dokument wird nicht aufgenommen (Sperrfunde) | Personendaten übersehen, oder Fehlalarm | Nachpseudonymisieren. Bei Fehlalarm am Terminal: `--trotzdem "Begründung" --durch "Kürzel"` |
+| Dokument wird nicht aufgenommen (Sperrfunde) | Eine Angabe zur Dienststelle, zur Verfasserin oder zu Geschädigten steht im Klartext da, oder Fehlalarm | In der Oberfläche «nochmals pseudonymisieren»: Der lokale Bildschirm zeigt die Stelle. Wer das Dokument bewusst so aufnehmen will: in der Oberfläche «Trotzdem aufnehmen: Risiko übernehmen» (Kürzel und Begründung), am Terminal `--trotzdem "Begründung" --durch "Kürzel"` |
+| Die Prüfung sperrt auch Angaben der Täterseite | Das Dokument trägt keinen einzigen Platzhalter, oder `OSINT_SCHUTZ=streng` ist gesetzt | Ein Dokument ohne Platzhalter gilt als nicht pseudonymisiert. Sonst die Einstellung in der Schlüsseldatei prüfen |
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
 | Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
 | `rapport.py` meldet «Pflichtquelle …: nicht abgefragt für …» oder «… im Fall nie abgefragt» | Eine vorgegebene Quelle wurde für einen passenden Indikator nie gefragt, eine Suchquelle im ganzen Fall nie | Die Ermittlung fortsetzen: Sie holt die Abfrage nach. Fehlt dafür eine Freigabe oder ein Schlüssel: erteilen, einrichten oder die Quelle aus der Vorgabe nehmen (`python3 tools/fall.py quellen <Fall-ID>`, oder in der Oberfläche) |
@@ -1168,7 +1174,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 100 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 104 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1346,6 +1352,28 @@ PowerShell 7:
   **Gesehen** in der Prüfumgebung (19.11.2026, Linux): Auf dem Stand davor brach die Verbindung in 14 von 14
   nachgestellten Abläufen ab, danach in keinem. **Nicht geprüft:** ein Browser unter Windows, und ob er je einen
   Netzwerkfehler statt der Absage zeigte. Ob die CI unter Windows damit stabil läuft, zeigen erst mehrere Läufe.
+- Die Pseudonymisierung folgt seit dem 19.11.2026 der Vorgabe des Eigentümers: Ersetzt wird, was zur Dienststelle, zur
+  Verfasserin oder zum Verfasser (EL-Fall) und zu Geschädigten gehört. Angaben der Täterseite bleiben stehen. Anlass war
+  ein Lauf des Eigentümers an seinem Arbeitsplatz: Nach zwei Pseudonymisierungen standen Angaben zu einer geschädigten
+  Person noch im Klartext da, die Ermittlung hielt deshalb zweimal an, und ihre Rückfrage liess sich in der Oberfläche
+  nicht beantworten. Das Dokument selbst habe ich nicht gesehen. Nachgestellt ist der Fehler mit einem erfundenen
+  Word-Dokument (19.11.2026): Die Textfassung übernahm die Anweisungen von Seriendruckfeldern
+  (`IF "Musterweg 12" = "" …`), gelöschten Text aus «Änderungen nachverfolgen», ausgeblendeten Text und Kommentare. Die
+  PII-Prüfung meldete die Adresse darin nur als Hinweis, und das Dokument kam in den Fall.
+  **Geändert:** Aus Word, OpenDocument und RTF kommt nur noch der sichtbare Text in die Textfassung. Die PII-Prüfung
+  sperrt, was nach der Vorgabe ersetzt sein muss, auch Adressen und Felder wie «Heimatort», die sie vorher nicht
+  sperrte, und zeigt Angaben der Täterseite nur noch an. Bisher sperrte sie jede Rufnummer und jede IBAN, gleich auf
+  welcher Seite: In der Oberfläche blieb dann nur, auch die Angaben der Täterseite zu ersetzen. Die lokale
+  Pseudonymisierung lässt die Täterseite stehen, im ganzen Dokument gleich, und gibt Platzhaltern von anderer Hand
+  keinen zweiten. Die Agenten halten bei einer geschützten Angabe im Klartext nicht mehr an: Sie verwenden sie nicht,
+  nennen die Stelle ohne den Wert und arbeiten weiter. Der Sachbearbeiter kann in der Oberfläche das Risiko übernehmen
+  und ein gesperrtes Dokument so aufnehmen, wie es ist: mit Kürzel und Begründung, vermerkt im Register des Falls und
+  im Sitzungsprotokoll (Entscheid des Eigentümers vom 19.11.2026, bis dahin ging das nur am Terminal). Vier neue
+  Selbsttests prüfen das an erfundenen Rapporten. Die Messwerte der Pseudonymisierung sind unverändert: Der Prüfsatz
+  kennt keine Abschnitte der Täterseite.
+  **Nicht geprüft:** eure Vorlage und ein Dokument aus eurem Haus. Die Prüfung erkennt die Seite an üblichen
+  Überschriften und Marken (`tools/schutzumfang.py`), nicht an euren. Ob ein Agent die neuen Regeln in einer echten
+  Ermittlung einhält, ist ebenfalls nicht geprüft: Es sind Anweisungen an ein Sprachmodell, keine Sperre.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1369,7 +1397,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten»: Jede der 26 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten» und «Risiko übernehmen»: Jede der 27 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
