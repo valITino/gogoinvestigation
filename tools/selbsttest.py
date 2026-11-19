@@ -5649,13 +5649,23 @@ def _():
         ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_MENGE = 120.0, 1000
         a, g = socket.socketpair()
         with a:
-            g.sendall(b"x" * 20_000)
-            g.close()
+            def alles_senden() -> None:
+                # In einem eigenen Faden: Der Puffer eines Socket-Paars fasst je nach System nur wenige Kilobyte (macOS: 8 kB).
+                # Wer mehr sendet, als hineinpasst, wartet, bis die Gegenseite liest.
+                try:
+                    g.sendall(b"x" * 20_000)
+                except OSError:
+                    pass
+                finally:
+                    g.close()
+            sender = threading.Thread(target=alles_senden, daemon=True)
+            sender.start()
             assert gemessen(a) < 20
             rest = 0
             while stueck := a.recv(65536):
                 rest += len(stueck)
-            assert rest == 19_000, f"der Ausklang verwirft höchstens die erlaubte Menge: Es blieben {rest} von 20000 Bytes"
+            sender.join(timeout=20)
+            assert rest == 19_000 and not sender.is_alive(), f"der Ausklang verwirft höchstens die erlaubte Menge: Es blieben {rest} von 20000 Bytes"
     finally:
         ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE = grenzen
         ui_bedienung.DATEI_GROESSE = gross
