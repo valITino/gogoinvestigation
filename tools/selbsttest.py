@@ -5621,6 +5621,141 @@ def _():
         p.wait(timeout=20)
 
 
+@test("Bedienung: Eine Absage kommt an. Der Server bricht die Verbindung nicht ab, wenn der Inhalt der Anfrage noch unterwegs ist, und er wartet darauf nicht endlos")
+def _():
+    import socket
+    u = bedien_vorbereiten()
+    b, port = u["b"], u["port"]
+    lesend = ui_server.starten(0)       # dieselbe Oberfläche im Modus «nur lesen»
+    threading.Thread(target=lesend.serve_forever, daemon=True).start()
+    inhalt = b"x" * 300_000
+    grenzen = ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE
+    assert 0 < grenzen[1] <= grenzen[0] <= 30 and ui_bedienung.DATEI_GROESSE <= grenzen[2] <= 4 * ui_bedienung.DATEI_GROESSE, grenzen
+
+    def antwort_lesen(s: socket.socket) -> tuple[int, dict]:
+        daten = b""
+        while b"\r\n\r\n" not in daten:
+            stueck = s.recv(65536)
+            assert stueck, "die Verbindung endete vor der Antwort"
+            daten += stueck
+        kopf, _, rest = daten.partition(b"\r\n\r\n")
+        zeilen = {n.strip().lower(): w.strip() for n, _, w in (z.partition(":") for z in kopf.decode("latin-1").split("\r\n")[1:])}
+        while len(rest) < int(zeilen.get("content-length", "0")):
+            stueck = s.recv(65536)
+            assert stueck, "die Verbindung endete mitten in der Antwort"
+            rest += stueck
+        return int(kopf.split(b" ", 2)[1]), zeilen
+
+    def ablauf(ziel: int, weg: str, kopf: dict, spaet: bool) -> tuple[int, dict]:
+        """Eine Anfrage über einen rohen Socket. `spaet`: Der Inhalt geht erst hinaus, wenn die Absage schon da ist. Sonst geht alles
+        zusammen hinaus, und gelesen wird nach einer Pause. Beide Male muss die Verbindung ordentlich enden: Ein Abbruch ist ein Fehler."""
+        anfang = (f"POST {weg} HTTP/1.1\r\n" + "".join(f"{n}: {w}\r\n" for n, w in {"Host": f"127.0.0.1:{ziel}", "Content-Length": str(len(inhalt)), **kopf}.items())
+                  + "\r\n").encode("latin-1")
+        with socket.create_connection(("127.0.0.1", ziel), timeout=60) as s:
+            if spaet:
+                s.sendall(anfang)
+                antwort = antwort_lesen(s)
+                for i in range(0, len(inhalt), 30_000):
+                    s.sendall(inhalt[i:i + 30_000])
+                    time.sleep(0.01)
+            else:
+                s.sendall(anfang + inhalt)
+                time.sleep(0.1)
+                antwort = antwort_lesen(s)
+            s.shutdown(socket.SHUT_WR)
+            while s.recv(65536):
+                pass
+        return antwort
+
+    geheim = {"X-OSINT-Geheimnis": b.geheimnis}
+    datei = {"Content-Type": "application/octet-stream", "X-OSINT-Name": "a.txt"}
+    absagen = [("Hochladen ohne Geheimnis", port, "/api/hochladen?ziel=", datei, 403),
+               ("Hochladen in falscher Form", port, "/api/hochladen?ziel=", {**datei, **geheim, "Content-Type": "application/json"}, 400),
+               ("Hochladen einer zu grossen Datei", port, "/api/hochladen?ziel=", {**datei, **geheim}, 413),
+               ("Aktion in falscher Form", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "text/plain"}, 400),
+               ("Aktion mit fremdem Host-Kopf", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "application/json", "Host": "boese.example"}, 403),
+               ("Aktion von fremder Seite", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "application/json", "Origin": "https://boese.example"}, 403),
+               ("POST im Modus «nur lesen»", lesend.server_address[1], "/api/aktion/freigabe", {"Content-Type": "application/json"}, 405)]
+    gross = ui_bedienung.DATEI_GROESSE
+    try:
+        # Solange die Gegenseite sendet, wartet der Server: Eine träge Prüfumgebung darf daraus keinen Abbruch machen
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_bedienung.DATEI_GROESSE = 120.0, 60.0, len(inhalt) - 1
+        for name, ziel, weg, kopf, erwartet in absagen:
+            for spaet in (True, False):
+                wann = "nach" if spaet else "vor"
+                try:
+                    status, zeilen = ablauf(ziel, weg, kopf, spaet)
+                except OSError as e:
+                    raise AssertionError(f"{name}, Inhalt {wann} der Absage gesendet: Die Verbindung wurde abgebrochen ({type(e).__name__}: {e})") from e
+                assert status == erwartet and zeilen.get("connection") == "close", f"{name}, Inhalt {wann} der Absage gesendet: {status} {zeilen}"
+        assert not b.koerbe, "von einer abgewiesenen Anfrage darf nichts im Akten-Eingang liegen"
+        ui_bedienung.DATEI_GROESSE = gross
+        # Ist der Inhalt gelesen, bleibt die Verbindung für die nächste Anfrage: zwei Absagen über dieselbe Verbindung
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+        try:
+            leitungen = []
+            for i in (1, 2):
+                c.request("POST", "/api/aktion/freigabe", body=json.dumps({"fall": OBERFL}), headers={"Content-Type": "application/json", "X-OSINT-Geheimnis": "falsch"})
+                r = c.getresponse()
+                assert r.status == 403 and b"nichts ge" in r.read() and r.getheader("Connection") is None and c.sock is not None, (i, r.status, r.getheaders())
+                leitungen.append(c.sock)
+            assert leitungen[0] is leitungen[1], "die zweite Anfrage brauchte eine neue Verbindung"
+        finally:
+            c.close()
+
+        # Der Ausklang selbst, an einem Paar verbundener Sockets. Er endet: mit der Gegenseite, nach der Pause, nach der Dauer, nach der Menge
+        def gemessen(a: socket.socket) -> float:
+            beginn = time.monotonic()
+            ui_server.ausklingen(a)
+            return time.monotonic() - beginn
+
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE = 120.0, 60.0, 10_000_000
+        a, g = socket.socketpair()
+        with a:
+            g.close()
+            assert gemessen(a) < 20, "die Gegenseite hat geschlossen: Der Ausklang muss sofort enden"
+        ui_server.AUSKLANG_PAUSE = 0.2
+        a, g = socket.socketpair()
+        with a, g:
+            dauer = gemessen(a)
+            assert 0.15 <= dauer < 20, f"die Gegenseite schweigt: Der Ausklang endet nach der Pause, nicht nach {dauer:.2f} s"
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE = 0.5, 60.0
+        a, g = socket.socketpair()
+        with a, g:
+            genug = threading.Event()
+
+            def endlos() -> None:
+                try:
+                    while not genug.is_set():
+                        g.sendall(b"x")
+                        time.sleep(0.005)
+                except OSError:
+                    pass
+            faden = threading.Thread(target=endlos, daemon=True)
+            faden.start()
+            try:
+                dauer = gemessen(a)
+            finally:
+                genug.set()
+                faden.join(timeout=20)
+            assert 0.4 <= dauer < 20, f"die Gegenseite sendet endlos: Der Ausklang endet nach der Dauer, nicht nach {dauer:.2f} s"
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_MENGE = 120.0, 1000
+        a, g = socket.socketpair()
+        with a:
+            g.sendall(b"x" * 20_000)
+            g.close()
+            assert gemessen(a) < 20
+            rest = 0
+            while stueck := a.recv(65536):
+                rest += len(stueck)
+            assert rest == 19_000, f"der Ausklang verwirft höchstens die erlaubte Menge: Es blieben {rest} von 20000 Bytes"
+    finally:
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE = grenzen
+        ui_bedienung.DATEI_GROESSE = gross
+        lesend.shutdown()
+        lesend.server_close()
+
+
 @test("Oberfläche starten: Unter WSL öffnet sich der Browser von Windows, und wo sich keiner öffnen lässt, steht die Adresse im Terminal")
 def _():
     import webbrowser
