@@ -6,8 +6,9 @@ Schutz, nicht verhandelbar:
   - Lesen geht mit GET und HEAD. Ändern geht nur mit POST und nur mit dem Geheimnis, das beim Start entsteht
     (tools/ui/bedienung.py). Läuft die Oberfläche im Modus «nur lesen», gibt es keinen Weg, über sie etwas zu ändern.
   - Was echte Angaben zeigen kann (der Akten-Eingang mit den Namen hochgeladener Dateien, der Bildschirm der
-    Pseudonymisierung), gibt der Server nur per POST und nur gegen das Geheimnis heraus. Eine hochgeladene Datei liest
-    er erst ein, wenn die Anfrage das Geheimnis trägt.
+    Pseudonymisierung), gibt der Server nur per POST und nur gegen das Geheimnis heraus. Eine hochgeladene Datei nimmt
+    er erst an, wenn die Anfrage das Geheimnis trägt. Den Körper einer abgewiesenen Anfrage wertet er nicht aus und behält
+    ihn nicht: Er verwirft ihn beim Schliessen der Verbindung (ausklingen), damit die Absage die Gegenseite erreicht.
   - Die Seite lädt nichts von aussen (Content-Security-Policy). Skripte kommen nur aus der eigenen Datei app.js.
   - Rohdateien liefert er als Text oder als Bild aus, nie als HTML. Was aus einer Quelle stammt, wird nicht ausgeführt.
   - Gespeicherte Dokumente der Akte (Abschlussrapport.html) laufen in einem Rahmen ohne Skripte.
@@ -16,8 +17,11 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
+import socket
 import sys
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -72,6 +76,34 @@ class Zustand:
 
 KOERPER = 8 * 1024 * 1024       # grösste Anfrage in JSON. Dateien kommen nicht als JSON, sondern einzeln über /api/hochladen
 
+# Ausklang einer Verbindung, siehe ausklingen()
+AUSKLANG_DAUER = 5.0            # Sekunden: so lange nimmt der Server den Rest einer Anfrage höchstens noch entgegen
+AUSKLANG_PAUSE = 1.0            # Sekunden: kommt so lange nichts, wartet er nicht weiter
+AUSKLANG_MENGE = 2 * bedienung_modul.DATEI_GROESSE     # Bytes: mehr verwirft er nicht
+
+
+def ausklingen(verbindung: socket.socket) -> None:
+    """Beendet eine Verbindung geordnet: das Ende ankündigen, verwerfen, was von der Anfrage noch ankommt, dann erst schliessen.
+
+    Der Grund: Schliesst ein Server, während Daten der Anfrage noch unterwegs sind oder ungelesen bei ihm liegen, bricht das
+    Betriebssystem die Verbindung ab (TCP-Reset). Die Gegenseite kann damit auch die Antwort verlieren, die schon gesendet
+    ist (gesehen am 19.11.2026 in der CI unter Windows: WinError 10053 statt der Absage). Das trifft jede Absage, die fällt,
+    bevor der Körper der Anfrage gelesen ist: ohne Geheimnis, in falscher Form, von fremder Seite, zu gross, im Modus «nur lesen».
+
+    Was hier ankommt, wird nicht ausgewertet und nicht behalten. Dauer, Pause und Menge sind begrenzt: Wer die Verbindung
+    offen hält oder endlos sendet, hält den Server nicht auf. Hat die Gegenseite schon geschlossen, kehrt der Aufruf sofort zurück."""
+    try:
+        verbindung.shutdown(socket.SHUT_WR)
+        ende, rest = time.monotonic() + AUSKLANG_DAUER, AUSKLANG_MENGE
+        while rest > 0 and (bleibt := ende - time.monotonic()) > 0:
+            verbindung.settimeout(min(AUSKLANG_PAUSE, bleibt))
+            stueck = verbindung.recv(min(65536, rest))
+            if not stueck:
+                return
+            rest -= len(stueck)
+    except OSError:     # die Gegenseite schweigt, hat geschlossen oder abgebrochen: Dann gibt es nichts mehr zu verwerfen
+        pass
+
 
 class Bearbeiter(BaseHTTPRequestHandler):
     server_version = "OSINT-Oberflaeche"
@@ -89,7 +121,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
         self.send_response(status)
         for name, wert in {"Content-Type": typ, "Content-Length": str(len(inhalt)), "Content-Security-Policy": csp, "X-Content-Type-Options": "nosniff",
                            "Referrer-Policy": "no-referrer", "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin",
-                           "X-Frame-Options": "SAMEORIGIN", **(weitere or {})}.items():
+                           "X-Frame-Options": "SAMEORIGIN", **({"Connection": "close"} if self.close_connection else {}), **(weitere or {})}.items():
             self.send_header(name, wert)
         self.end_headers()
         if self.command != "HEAD":
@@ -144,12 +176,21 @@ class Bearbeiter(BaseHTTPRequestHandler):
 
     do_PUT = do_DELETE = do_PATCH = do_OPTIONS = nicht_erlaubt
 
+    def finish(self) -> None:
+        try:
+            self.wfile.flush()
+        except OSError:
+            pass
+        ausklingen(self.connection)
+        super().finish()
+
     # ---- Ändern: nur mit POST, nur mit dem Geheimnis des Starts. Angaben kommen als JSON, eine Datei als Rohinhalt
     def do_POST(self) -> None:
         if self.bedienung is None:
             return self.nicht_erlaubt()
+        # Bis der Körper gelesen ist, beendet jede Absage die Verbindung: Was von der Anfrage noch kommt, gehört zu keiner nächsten.
+        schliessen, self.close_connection = self.close_connection, True
         if not self.zulaessig():
-            self.close_connection = True
             return
         url = urlsplit(self.path)
         weg = [unquote(t) for t in url.path.split("/") if t]
@@ -161,12 +202,13 @@ class Bearbeiter(BaseHTTPRequestHandler):
         b = self.bedienung
         try:
             if weg == ["api", "hochladen"]:
-                return self.hochladen(parse_qs(url.query), laenge, typ)
+                return self.hochladen(parse_qs(url.query), laenge, typ, schliessen)
             if laenge < 0 or laenge > KOERPER or typ != "application/json":
-                self.close_connection = True
                 return self.fehler_json(400, "Die Anfrage hat nicht die erwartete Form.")
+            roh = self.rfile.read(laenge)
+            self.close_connection = schliessen or len(roh) != laenge     # der Körper ist gelesen: Die Verbindung kann bleiben
             try:
-                angaben = json.loads(self.rfile.read(laenge) or b"{}")
+                angaben = json.loads(roh or b"{}")
                 if not isinstance(angaben, dict):
                     raise ValueError
             except (ValueError, UnicodeDecodeError):
@@ -178,7 +220,13 @@ class Bearbeiter(BaseHTTPRequestHandler):
             if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
                 return self.fehler_json(403, OHNE_GEHEIMNIS)
             if len(weg) == 3 and weg[:2] == ["api", "aktion"]:
-                return self.json(self.aktion(weg[2], angaben))
+                antwort = self.aktion(weg[2], angaben)
+                self.json(antwort)
+                if weg[2] == "abschalten" and antwort.get("abgeschaltet"):
+                    # Erst antworten, dann enden: serve_forever() kehrt zurück, und wer den Server gestartet hat, räumt auf.
+                    # Aus einem eigenen Faden, denn shutdown() wartet auf die Schleife, in der diese Anfrage noch steckt.
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return None
             # Ansichten, die echte Angaben zeigen können: nur per POST und nur mit Geheimnis
             if weg == ["api", "klartext", "pseudo"]:
                 pseudo = b.pseudo_holen(angaben.get("vorgang"))
@@ -204,24 +252,22 @@ class Bearbeiter(BaseHTTPRequestHandler):
     def fehler_json(self, status: int, text: str) -> None:
         self.json({"fehler": text}, status)
 
-    def hochladen(self, frage: dict, laenge: int, typ: str) -> None:
+    def hochladen(self, frage: dict, laenge: int, typ: str, schliessen: bool) -> None:
         """Eine Datei für den Akten-Eingang: der Rohinhalt im Körper der Anfrage, ihr Name (mit Ordnern) im Kopf X-OSINT-Name.
-        Erst das Geheimnis, dann der Inhalt: Ohne Geheimnis liest der Server nichts ein."""
+        Erst das Geheimnis, dann der Inhalt: Ohne Geheimnis nimmt der Server nichts an. Nach einer Absage endet die Verbindung,
+        und was vom Inhalt noch ankommt, wird verworfen (ausklingen). `schliessen`: ob die Verbindung nach der Antwort ohnehin endet."""
         b = self.bedienung
         if not b.berechtigt(self.headers.get("X-OSINT-Geheimnis")):
-            self.close_connection = True
             return self.fehler_json(403, OHNE_GEHEIMNIS)
         name = unquote(self.headers.get("X-OSINT-Name") or "")
         if typ != "application/octet-stream" or laenge < 0 or not name.strip():
-            self.close_connection = True
             return self.fehler_json(400, "Die Anfrage hat nicht die erwartete Form.")
         if laenge > bedienung_modul.DATEI_GROESSE:
-            self.close_connection = True
             return self.fehler_json(413, f"{bedienung_modul.sauberer_name(name)[0]}: grösser als {bedienung_modul.DATEI_GROESSE // (1024 * 1024)} MB, nicht angenommen.")
         inhalt = self.rfile.read(laenge)
         if len(inhalt) != laenge:
-            self.close_connection = True
             return self.fehler_json(400, "Die Datei ist nicht vollständig angekommen.")
+        self.close_connection = schliessen      # der Inhalt ist gelesen: Die Verbindung kann bleiben
         return self.json(b.hochladen((frage.get("ziel") or [""])[0], name, inhalt))
 
     def aktion(self, name: str, angaben: dict) -> dict:
@@ -294,10 +340,15 @@ class Bearbeiter(BaseHTTPRequestHandler):
             return self.json({"anzahl": len(fragen), "html": formulare.rueckfrage_dialog(fragen)})
         if weg == ["quellen"]:
             return self.json({"titel": "Quellen", "html": seiten.quellen_seite() + formulare.quellen_bedienung(self.bedienung) + "<h2>Begriffe</h2>" + seiten.begriffe()})
-        if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt. Das Geheimnis steht hier nie
-            return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else ""})
+        if weg == ["bedienung"]:        # ob sich die Oberfläche bedienen lässt, und wer hier antwortet. Das Geheimnis steht hier nie
+            from tools import dienste
+            # Prozess und Projekt: Daran prüft «tools/dienste.py aus», dass hinter einem Merker wirklich diese Oberfläche steht
+            return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else "",
+                              "prozess": os.getpid(), "projekt": dienste.kennung()})
         if weg == ["neu"]:
             return self.json({"titel": "Neuer Fall", "html": formulare.neu_seite(self.bedienung)})
+        if weg == ["arbeitsplatz"]:     # was zum Arbeitsplatz gehört und läuft, und der Knopf «Alles abschalten»
+            return self.json({"titel": "Arbeitsplatz", "html": formulare.arbeitsplatz_seite(self.bedienung)})
         if len(weg) >= 3 and weg[0] == "fall":
             fall = self.zustand.fall(weg[1])
             ansicht, arg = weg[2], "/".join(weg[3:])

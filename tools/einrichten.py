@@ -1454,7 +1454,7 @@ def start_fragen(a: argparse.Namespace) -> None:
 def weiter_zeigen() -> None:
     """Was im Terminal noch zu tun ist, wenn die Einrichtung die Oberfläche nicht selbst gestartet hat. Höchstens zwei Schritte."""
     ui.liste("So geht es weiter", plattform.weiter(stand.neues_terminal, stand.ordner), nummeriert=True)
-    ui.paare("Ausserdem", [("Stand prüfen", f"{PY} tools/pruefen.py"), ("Einstellungen ändern", SETUP)])
+    ui.paare("Ausserdem", [("Stand prüfen", f"{PY} tools/pruefen.py"), ("Einstellungen ändern", SETUP), ("Alles abschalten", f"{PY} tools/dienste.py aus")])
 
 
 def abschluss(code: int, fazit: str = "", tests_ok: bool = True) -> int:

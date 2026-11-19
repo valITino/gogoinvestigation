@@ -23,7 +23,9 @@ python3 tools/oberflaeche.py --selbstpruefung    # kurz starten, Hauptseiten abr
 ```
 
 Der Befehl startet einen kleinen Server in Python und öffnet den Browser. Der Server braucht nur die
-Standardbibliothek, keine Bauschritte und kein Internet. Beendet wird er mit Strg+C im Terminal.
+Standardbibliothek, keine Bauschritte und kein Internet. Beendet wird er mit Strg+C im Terminal, mit «Alles abschalten»
+auf der Seite «Arbeitsplatz» oder aus einem anderen Terminal mit `python3 tools/dienste.py aus`. In jedem Fall hält er
+vorher an, was an Ermittlungen läuft.
 
 Vertraut Claude Code dem Projektordner noch nicht, fragt der Start einmal danach, bevor die Oberfläche öffnet: Claude
 Code startet, ihr bestätigt mit Ja und beendet es mit `/exit`. Die Antwort gebt ihr selbst, der Start liest nur ab, ob
@@ -46,7 +48,7 @@ auf 127.0.0.1 und nimmt beide Namen an. Den Browser öffnet der Befehl über Pro
 
 | Bereich | Inhalt |
 |---|---|
-| Links: Navigation | Fälle, «Neuer Fall», der geöffnete Fall (Fallübersicht, Akten, Ermittlung, Rapport, Indikatoren, Rohdaten, Suche, Ergebnisse, Bedienen), Quellen. «Neuer Fall», «Ermittlung» und «Bedienen» erscheinen nur, wenn die Oberfläche bedienbar ist. Darunter der Schalter Hell / Dunkel. |
+| Links: Navigation | Fälle, «Neuer Fall», der geöffnete Fall (Fallübersicht, Akten, Ermittlung, Rapport, Indikatoren, Rohdaten, Suche, Ergebnisse, Bedienen), Quellen, Arbeitsplatz. «Neuer Fall», «Ermittlung» und «Bedienen» erscheinen nur, wenn die Oberfläche bedienbar ist. Darunter der Schalter Hell / Dunkel. |
 | Oben: Kopf des Falls | Fall-ID, Titel, Freigaben (erteilt oder nicht, durch wen, wann) und die Schrittleiste. |
 | Schrittleiste | Fall angelegt, Indikatoren, Plan, Abfragen, Gegenprüfung, Rapport. Jeder Schritt sagt, woran die Oberfläche ihn erkennt (zum Beispiel «12 von 13 Befunden gegengeprüft»). Fehlt ein Schritt in der Akte, steht «nicht abgelegt». |
 | Mitte | Die Ansichten, siehe unten. |
@@ -72,6 +74,7 @@ auf demselben Rechner läuft:
 | `#/fall/<Fall-ID>/akten` | Was im Eingang des Falls liegt. Bedienbar: dazu der Akten-Eingang für weitere Dokumente |
 | `#/neu`, `#/fall/<Fall-ID>/ermittlung`, `…/bedienen`, `…/zurueck` | Bedienung, siehe dort |
 | `#/quellen` | Verzeichnis der Quellen und Begriffe |
+| `#/arbeitsplatz` | Was zum Arbeitsplatz gehört und gerade läuft. Bedienbar: dazu «Alles abschalten» |
 
 Jede Tabelle lässt sich sortieren (Klick auf die Spaltenüberschrift), filtern (Feld über der Tabelle) und als CSV
 ausgeben. Jede Ansicht lässt sich drucken: Navigation, Arbeitsspur und Bedienelemente fallen im Druck weg.
@@ -549,6 +552,49 @@ Jeder dieser Schritte steht im Sitzungsprotokoll des Falls (`protokoll/sitzungen
 «Oberfläche», und erscheint im Ermittlungsprotokoll unter «Sitzungsverlauf». Eine Freigabe trägt den Vermerk zusätzlich
 in `fall.json` (`"weg": "Oberfläche"`).
 
+### Arbeitsplatz: alles abschalten
+
+Die Seite «Arbeitsplatz» zeigt, was zum Arbeitsplatz gehört und gerade läuft: die Oberfläche, laufende Ermittlungen,
+Web-Check, Robin und Tor, wenn der Arbeitsplatz es als Proxy nutzt. Im Modus «nur lesen» ist das alles.
+
+Bedienbar steht darunter der Knopf **«Alles abschalten»**. Nach einer Rückfrage geschieht in dieser Reihenfolge:
+
+1. Jede laufende Ermittlung wird angehalten. Im Sitzungsprotokoll ihres Falls steht «Ermittlung angehalten» mit dem
+   Grund. Sie lässt sich später fortsetzen.
+2. Robin und Web-Check werden gestoppt (`docker stop`). Docker selbst läuft weiter: Es kann auch anderem dienen.
+3. Die Oberfläche beendet sich. Das Fenster zeigt, was abgeschaltet wurde und wie sie wieder startet.
+
+**Gelöscht wird dabei nichts.** Fallakten, Schlüssel und Einstellungen bleiben, wie sie sind.
+
+Tor lässt der Knopf laufen: Tor gehört zum System, und ein Browser kann nicht nach dem Passwort fragen. Am Terminal
+geht alles in einem:
+
+```bash
+python3 tools/dienste.py          # zeigt, was läuft
+python3 tools/dienste.py aus      # schaltet alles ab: Oberfläche samt Ermittlung, Robin, Web-Check und Tor (fragt nach dem Passwort)
+python3 tools/dienste.py ein      # schaltet Web-Check und Tor wieder ein
+```
+
+Der Befehl findet eine laufende Oberfläche auch aus einem anderen Terminal. Sie legt beim Start einen Merker mit
+Prozessnummer und Port ab und räumt ihn beim Ende weg: kein Geheimnis, nichts im Projektordner. Die Merker liegen im
+temporären Ordner des Systems, in einem Ordner, der nur dem eigenen Konto gehört. Der Befehl legt dort eine Bitte ab.
+Die Oberfläche liest sie innert einer Sekunde und endet wie mit Strg+C: Sie hält ihre Ermittlungen an und vermerkt es.
+So geht es auf jedem System. Hat sie die Bitte angenommen, bekommt sie Zeit zum Aufräumen (bis zu einer weiteren
+Minute). Antwortet sie nach 20 Sekunden weiter, als wäre nichts gewesen, beendet das System den Prozess hart. Dann
+sagt die Zeile, dass das Ende einer laufenden Ermittlung nicht im Sitzungsprotokoll steht.
+
+Hart beendet wird nur ein Prozess, der sich auf dem Port des Merkers eben noch als diese Oberfläche ausgewiesen hat:
+derselbe Prozess, dasselbe Projekt. Ein Merker von früher, dessen Prozessnummer inzwischen etwas anderem gehört,
+beendet so keinen fremden Prozess. Antwortet auf dem Port niemand rechtzeitig, weil die Oberfläche gerade beschäftigt
+ist, bleibt ihr Merker liegen, und beendet wird nichts: Die Zeile nennt dann Strg+C in ihrem Terminal. Tor fasst der
+Befehl nur an, wenn der Arbeitsplatz Tor auf diesem Rechner als Proxy eingetragen hat.
+
+Beim nächsten Start schaltet die bedienbare Oberfläche Web-Check von selbst wieder ein, wenn er abgeschaltet war. Robin
+startet mit jeder Ermittlung von selbst. Läuft Tor nicht, sagt es der Start und nennt den Befehl.
+
+Auch wer die Oberfläche mit Strg+C beendet, hält damit laufende Ermittlungen an: Eine Sitzung ohne Oberfläche könnte
+niemanden mehr fragen.
+
 ### Der Weg des Klartexts
 
 Klartext bearbeitet nur der lokale Server, nie eine Claude-Sitzung.
@@ -647,13 +693,14 @@ Die Probe nennt dazu, über welchen Zugang abgerechnet wird und welche MCP-Serve
 
 | Schutz | Wie er umgesetzt ist |
 |---|---|
-| Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST und trägt das Geheimnis in einer Kopfzeile: Angaben als JSON, eine Datei als Rohinhalt. Ohne es antwortet der Server mit 403 und ändert nichts. Eine Datei liest er erst ein, wenn das Geheimnis stimmt. Host-Kopf und Herkunft prüft er wie beim Lesen. |
+| Ändern nur mit Geheimnis | Jede ändernde Anfrage ist ein POST und trägt das Geheimnis in einer Kopfzeile: Angaben als JSON, eine Datei als Rohinhalt. Ohne es antwortet der Server mit 403 und ändert nichts. Eine Datei nimmt er erst an, wenn das Geheimnis stimmt. Host-Kopf und Herkunft prüft er wie beim Lesen. Nach einer Absage, die fällt, bevor der Inhalt gelesen ist, endet die Verbindung: Der Server verwirft den Rest der Anfrage, ohne ihn auszuwerten, und schliesst erst dann. So kommt die Absage an (begrenzt auf 5 Sekunden und 120 MB). |
 | Kein Geheimnis für Agenten | Der Startcode gilt einmal. Das Geheimnis steht in keiner Datei und in keiner Umgebung. Aus Claude Code oder ohne Terminal gestartet, läuft die Oberfläche «nur lesen». Ein Agent kann sich so über die Oberfläche keine Freigabe erteilen, keinen Beleg erfassen und seine eigene Rückfrage nicht beantworten. |
 | Die Kette bleibt die eine Wahrheit | Die Oberfläche schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Sie ruft die bestehenden Werkzeuge auf. Das Sitzungsprotokoll schreibt der Hook, der es immer schreibt. Die eine Datei, die sie selbst in einem Fall ablegt, ist der Verlauf des Chats im Arbeitsstand. |
 | Der Chat geht durch die PII-Prüfung | Vorgaben und Nachrichten prüft die Oberfläche wie ein Dokument, bevor sie an Claude Code gehen. Titel, Auftrag und Kürzel eines Falls ebenso. |
 | Werkzeuge schützen sich selbst | Freigabe, Beleg von Hand, Entfernen, Löschen, Pseudonymisieren und Zurückführen verlangen am Terminal eine Eingabe von Hand. Die Berechtigungen des Projekts verbieten die Befehle für Agenten. Die Funktionen dahinter ruft die Oberfläche erst auf, wenn die Anfrage das Geheimnis trägt. |
 | Die Ablage ist für Agenten gesperrt | Die Berechtigungen verbieten Lesen und Schreiben in der Vorgabe-Ablage (`~/OSINT-Ablage`). Eine eigene Ablage (`--ablage`, `OSINT_ABLAGE`) kennen die Berechtigungen nicht: Wer sie nimmt, trägt den Ordner selbst als Verbot in `.claude/settings.local.json` ein. |
 | Klartext bleibt draussen | Siehe «Der Weg des Klartexts». Ablage und Zwischendateien liegen ausserhalb des Projektordners. Eine Ablage im Projektordner lehnt die Oberfläche ab. |
+| Abschalten entscheidet ein Mensch | «Alles abschalten» verlangt das Geheimnis wie jede Änderung. `tools/dienste.py aus` und `ein` verlangen ein Terminal und laufen nicht aus Claude Code, die Berechtigungen des Projekts verbieten beide Befehle für Agenten. Den Stand zeigen darf jeder. |
 
 **Grenzen dieses Schutzes.** Einen Wächter, der jeden Werkzeugaufruf vorab prüft, gibt es seit dem 17.11.2026 nicht
 mehr. Ein Agent, der die Funktionen hinter der Oberfläche aus einem Shell-Befehl aufruft (zum Beispiel
@@ -698,6 +745,14 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
   Suchquellen und bei Quellen für Gruppen und Konten prüft die Auswertung nur, dass im Fall gefragt wurde, nicht womit.
 - **Anhalten unter Windows.** Dort beendet das System den Prozess hart. Ob Befehle, die Claude Code gerade ausführt,
   dabei mit enden, ist nicht geprüft.
+- **Alles abschalten.** Geprüft am 19.11.2026 unter Linux, an einem echten Docker: Der Container von Web-Check wurde
+  gestoppt und wieder gestartet, ein Container, der für Robin stand, wurde gestoppt, und eine laufende Oberfläche wurde
+  von aussen gefunden, gebeten und endete selbst. Im Browser (Chromium) geprüft: der Knopf, mit und ohne laufende
+  Ermittlung. Die Ermittlung spielte dabei das Programm, das in den Tests für Claude Code steht. Nicht geprüft: der
+  Befehl an einem echten Terminal (er verlangt einen Menschen), Tor an einem echten System abschalten und starten
+  (dafür braucht es das Passwort und einen Dienst Tor), Robin mit seinem echten Abbild, Docker Desktop und das harte
+  Ende unter Windows (`taskkill` mit dem Schalter `/T`, der auch die Sitzungen beenden soll, die die Oberfläche
+  gestartet hat).
 - **Der Akten-Eingang lebt im Speicher.** Was hochgeladen, aber noch nicht in einen Fall aufgenommen ist, ist nach dem
   Beenden der Oberfläche weg. Dasselbe gilt für eine Pseudonymisierung, die noch nicht übernommen ist.
 - **Formate.** Gelesen werden Text, Word (.docx), OpenDocument, Excel (.xlsx), PowerPoint (.pptx), RTF, E-Mail (.eml)

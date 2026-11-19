@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 97 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 100 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -248,6 +248,24 @@ python3 tools/pruefen.py          # Umgebung, Konfiguration, Modelle, Quellen, a
 python3 tools/pruefen.py --live   # zusätzlich eine harmlose Testabfrage je eingerichteter Quelle
 claude mcp list                   # zeigt "osint … Connected", sobald der Ordner als vertrauenswürdig bestätigt ist
 ```
+
+**Abschalten und einschalten**
+
+```bash
+python3 tools/dienste.py          # zeigt, was läuft: Oberfläche, Web-Check, Robin, Tor
+python3 tools/dienste.py aus      # schaltet alles ab, auch eine Oberfläche in einem anderen Terminal
+python3 tools/dienste.py ein      # schaltet Web-Check und Tor wieder ein
+```
+
+«Alles abschalten» hält eine laufende Ermittlung an, beendet die Oberfläche und stoppt Robin und Web-Check. Am Terminal
+stoppt es auch Tor, wenn der Arbeitsplatz es als Proxy nutzt, und fragt dafür nach dem Passwort (sudo).
+Gelöscht wird dabei nichts: Fallakten, Schlüssel und Einstellungen bleiben, und eine angehaltene Ermittlung lässt sich
+fortsetzen. Docker selbst läuft weiter, es kann auch anderem dienen.
+
+In der Oberfläche steht derselbe Knopf auf der Seite «Arbeitsplatz». Er lässt Tor laufen, denn ein Browser kann nicht
+nach dem Passwort fragen. Die Oberfläche startet wieder mit `python3 tools/oberflaeche.py` und schaltet dabei einen
+abgeschalteten Web-Check von selbst wieder ein. Abschalten und einschalten kann nur ein Mensch am Terminal oder im
+bedienbaren Fenster: Ohne Terminal und aus Claude Code heraus zeigt das Werkzeug nur den Stand.
 
 ### Windows
 
@@ -479,7 +497,9 @@ python3 tools/oberflaeche.py MUSTER-2026-001     # öffnet gleich diesen Fall
 ```
 
 Ein Befehl, auf Linux, macOS und Windows. Dahinter steht ein kleiner Server in Python, der nur die
-Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C.
+Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C, oder mit
+«Alles abschalten» auf der Seite «Arbeitsplatz»: Sie zeigt, was läuft (Oberfläche, Ermittlung, Web-Check, Robin, Tor),
+und hält mit einem Knopf alles an. Siehe [Abschalten und einschalten](#einrichten).
 
 ![Fallübersicht mit Kennzahlen, Schritten und Arbeitsspur](docs/bilder/oberflaeche-uebersicht.png)
 
@@ -1047,7 +1067,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Klartext bleibt beim Sachbearbeiter | `tools/pseudonymisieren.py` und `tools/reidentifizieren.py` laufen nur an einem Terminal und nicht aus Claude Code heraus. Die Berechtigungen verbieten beide Befehle für Agenten. Dokument, Zuordnungstabelle und Ausgabe müssen ausserhalb des Projektordners liegen. Das Pseudonymisieren sperrt sich selbst jede Netzverbindung. | `.claude/settings.json`, `tools/pseudonymisieren.py` |
 | Etiketten nur aus der geprüften Liste | Das Gateway liest die lokale Etikettenliste nur, wenn ihre Prüfsumme zum Verzeichnis passt. Sonst gilt sie als «nicht geprüft». | `gateway/krypto_listen.py` |
 | Protokoll und Rohdaten für die Schreibwerkzeuge gesperrt | Die Berechtigungen verbieten `Edit` und `Write` auf `fall.json`, Protokoll, Rohdaten und Eingang. Ein Shell-Befehl, der dort schreibt, steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. Veränderungen zeigt die Kette. | `.claude/settings.json` |
-| Die Oberfläche ändert nur für den Sachbearbeiter | Ändernde Anfragen brauchen das Geheimnis des Starts (nur im Speicher des Servers und im Browserfenster). Ohne Terminal oder aus Claude Code gestartet, läuft sie «nur lesen». Eine hochgeladene Datei liest der Server erst ein, wenn das Geheimnis stimmt. Sie ruft die bestehenden Werkzeuge auf und schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Die Ablage mit Klartext und Zuordnungstabellen liegt ausserhalb des Projekts. Die Vorgabe `OSINT-Ablage` im Benutzerordner sperren die Berechtigungen für Agenten. | `tools/ui/bedienung.py`, `tools/oberflaeche.py`, `.claude/settings.json` |
+| Die Oberfläche ändert nur für den Sachbearbeiter | Ändernde Anfragen brauchen das Geheimnis des Starts (nur im Speicher des Servers und im Browserfenster). Ohne Terminal oder aus Claude Code gestartet, läuft sie «nur lesen». Eine hochgeladene Datei nimmt der Server erst an, wenn das Geheimnis stimmt: Den Inhalt einer abgewiesenen Anfrage verwirft er, ohne ihn auszuwerten. Sie ruft die bestehenden Werkzeuge auf und schreibt nie selbst in Protokoll, Rohdaten, Eingang oder `fall.json`. Die Ablage mit Klartext und Zuordnungstabellen liegt ausserhalb des Projekts. Die Vorgabe `OSINT-Ablage` im Benutzerordner sperren die Berechtigungen für Agenten. | `tools/ui/bedienung.py`, `tools/oberflaeche.py`, `.claude/settings.json` |
 | Die Oberfläche führt nichts Fremdes aus | Der Server hört nur auf 127.0.0.1 und weist fremde Host-Köpfe ab. Inhalte aus Quellen erscheinen als Text, Rohdateien als Text oder Bild, eine Content-Security-Policy verbietet alles von aussen. Adressen aus dem Fall sind nie anklickbar. | `tools/ui/server.py`, `tools/ui/seiten.py` |
 | Gleichzeitige Schreiber brechen die Kette nicht | Dateisperre um jeden Protokolleintrag, auf jedem System. | `gateway/plattform.py` |
 | Veränderungen fallen auf | Jeder Eintrag enthält die Prüfsumme des Vorgängers, jede Rohdatei ist per SHA-256 gebunden. Eine Kürzung am Ende erkennt die Kette allein nicht: Dafür steht der letzte Kettenwert in Rapport und Protokoll, und `tools/audit_pruefen.py --erwartet <Wert>` prüft später, ob er noch in der Kette steht. | `gateway/akte.py`, `tools/audit_pruefen.py` |
@@ -1148,7 +1168,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 97 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 100 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1287,6 +1307,45 @@ PowerShell 7:
   fehlt, und behauptet nichts, wenn der Mensch Claude Code ohne Ja verlässt. Die drei Schritte in der Oberfläche
   stehen auf ihrer ersten Seite. Das alles steckt in zwei bestehenden Selbsttests, die dafür erweitert wurden.
   **Nicht geprüft:** der neue Schluss an einem echten Terminal, mit dem echten Claude Code und einem echten Browser.
+- «Alles abschalten» gibt es seit dem 19.11.2026: als Befehl (`tools/dienste.py`) und als Knopf auf der Seite
+  «Arbeitsplatz». Zwei Selbsttests gelten dem. Der eine prüft mit Stellvertretern für Docker und den Dienst Tor, was
+  gestoppt wird und was nicht: Robin und Web-Check immer, Tor nur am Terminal und nur, wenn der Arbeitsplatz es als
+  Proxy nutzt, Docker selbst nie, und kein Befehl löscht etwas. Er startet dazu eine echte Oberfläche, findet sie von
+  aussen und bittet sie ums Ende. Der andere prüft den Knopf: Er verlangt das Geheimnis, hält laufende Ermittlungen an,
+  vermerkt das im Sitzungsprotokoll und beendet die Oberfläche.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux, echter Docker mit dem Container von Web-Check): Eine laufende
+  Oberfläche wurde über ihren Merker gefunden, gebeten und endete in weniger als einer Sekunde von selbst
+  (Rückgabewert 0). Der Container wurde gestoppt (0,3 Sekunden), beim zweiten Mal hiess es «war schon aus», der Start
+  der Oberfläche schaltete ihn wieder ein. Im Browser (Chromium): Wer die Rückfrage abbricht, schaltet nichts ab. Nach dem Ja stand
+  der Container still, das Fenster zeigte «Abgeschaltet», der Server antwortete nicht mehr, und das Fenster fragte
+  danach nichts mehr ab. Lief dabei eine Ermittlung (gespielt von dem Programm, das in den Tests für Claude Code
+  steht), wurde sie angehalten, und im Sitzungsprotokoll stand «Ermittlung angehalten» mit dem Grund.
+  Hart beendet wird nur ein Prozess, der sich auf dem Port seines Merkers eben noch als diese Oberfläche ausgewiesen
+  hat (Prozess und Projekt). So trifft der Befehl nie einen fremden Prozess, dessen Nummer in einem alten Merker steht.
+  Die Merker liegen in einem Ordner, der nur dem eigenen Konto gehört. Das Beenden geht über eine Bitte, die die
+  Oberfläche selbst liest. So soll sie auch unter Windows sauber enden, wo es das Signal dafür nicht gibt: Ein
+  Selbsttest prüft das mit einer echten Oberfläche, in der CI auch unter Windows und macOS.
+  **Nicht geprüft:** der Befehl an einem echten Terminal (er verlangt einen Menschen: Aufgerufen wurden die Funktionen
+  dahinter). Tor an einem echten System abschalten und starten. Robin mit seinem echten Abbild: Gestoppt wurde ein
+  Container, der dafür stand. Docker Desktop unter Windows und macOS.
+- Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
+  Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
+  Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
+  Änderung bestanden dort 92 von 96 Tests, und einer wartete mitten im Lauf auf eine Bestätigung. Danach bestanden an
+  derselben Stelle 99 von 99. In der Einrichtung und in der CI fiel das nie auf, weil die Tests dort ohne Terminal
+  laufen. **Nicht geprüft:** ein echtes Terminal unter Windows und macOS.
+- Eine Absage der Oberfläche kommt seit dem 19.11.2026 an, ohne dass die Verbindung abbricht. Anlass: In der CI unter
+  Windows scheiterte am 19.11.2026 einer von drei Läufen der Selbsttests an einem Verbindungsabbruch (WinError 10053).
+  Die Ursache: Wies der Server eine Anfrage ab, bevor ihr Inhalt gelesen war (ohne Geheimnis, in falscher Form, von
+  fremder Seite, zu gross, im Modus «nur lesen»), schloss er die Verbindung sofort. Ein Betriebssystem bricht eine
+  Verbindung ab, wenn beim Schliessen noch Daten ungelesen oder unterwegs sind, und die Gegenseite kann dabei auch die
+  Antwort verlieren, die schon gesendet ist. Jetzt kündigt der Server das Ende an, verwirft den Rest der Anfrage und
+  schliesst erst dann (`ausklingen` in `tools/ui/server.py`). Vom Verworfenen wird nichts ausgewertet und nichts
+  behalten. Begrenzt ist das auf 5 Sekunden, auf 1 Sekunde ohne neue Daten und auf 120 MB. Ein Selbsttest prüft die
+  sieben Absagen in beiden Reihenfolgen (Inhalt vor und nach der Absage gesendet) und die drei Grenzen.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux): Auf dem Stand davor brach die Verbindung in 14 von 14
+  nachgestellten Abläufen ab, danach in keinem. **Nicht geprüft:** ein Browser unter Windows, und ob er je einen
+  Netzwerkfehler statt der Absage zeigte. Ob die CI unter Windows damit stabil läuft, zeigen erst mehrere Läufe.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1310,8 +1369,8 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026: Jede der 25 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
-  seiner Stelle mit 403 und ändert nichts. Eine Datei liest der Server erst ein, wenn das Geheimnis stimmt. Der
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten»: Jede der 26 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,
   ein ZIP mit einem ZIP darin, ein ZIP mit Passwort, eine E-Mail mit Anhängen, Word, ein Bild, gleicher Inhalt zweimal,

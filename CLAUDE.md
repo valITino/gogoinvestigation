@@ -46,6 +46,8 @@ Sie gelten für die Hauptsitzung und für jeden Subagenten.
 - Die Oberfläche bedienen: ihre Bedienschicht aufrufen (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`), sie anders starten als mit `--nur-lesen`
   oder die Ablage des Sachbearbeiters anfassen (`OSINT-Ablage`, Zuordnungstabellen, zurückgeführte Dokumente).
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
+- Den Arbeitsplatz abschalten oder wieder einschalten (`tools/dienste.py aus`, `tools/dienste.py ein`, der Knopf «Alles abschalten»).
+  Das entscheidet der Sachbearbeiter. Zeigen, was läuft, ist erlaubt: `python3 tools/dienste.py`.
 
 ## Ohne Wächter
 
@@ -109,6 +111,7 @@ python3 tools/anhang.py <Fall-ID>                                   Datenblätte
 python3 tools/oberflaeche.py [Fall-ID]                              Oberfläche im Browser: zeigt die Fallakte. Bedienen kann sie nur der Sachbearbeiter, ein Agent startet sie nur mit --nur-lesen
 python3 tools/audit_pruefen.py <Fall-ID>                            Protokollkette prüfen
 python3 tools/pruefen.py                                            Einrichtung prüfen
+python3 tools/dienste.py                                            Zeigt, was läuft (Oberfläche, Web-Check, Robin, Tor). Abschalten und einschalten nur der Sachbearbeiter
 ```
 
 Unter Windows heisst der Interpreter `python` statt `python3`. Die Einrichtung selbst (`./setup.sh`, unter Windows

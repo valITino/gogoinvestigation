@@ -47,7 +47,9 @@ if "OSINT_SELBSTTEST" not in os.environ:
     python = str(venv) if venv.is_file() else sys.executable
     umgebung = {k: v for k, v in os.environ.items()
                 if not k.endswith(("_API_KEY", "_TOKEN")) and k not in ("OSINT_PROXY", "OSINT_PYTHON", "OSINT_ZEITZONE")}
-    code = subprocess.run([python, str(tmp / "tools" / "selbsttest.py")],
+    # Ohne Eingabe: Mehrere Tests prüfen, dass ein Werkzeug ohne Terminal ablehnt. Wer die Selbsttests selbst an einem Terminal
+    # startet, bekäme sonst dessen Eingabe vererbt: Vier Tests scheiterten dort, und einer wartete auf eine Bestätigung.
+    code = subprocess.run([python, str(tmp / "tools" / "selbsttest.py")], stdin=subprocess.DEVNULL,
                           env={**umgebung, "OSINT_SELBSTTEST": "1", "OSINT_PROJEKT": str(tmp),
                                "CLAUDE_PROJECT_DIR": str(tmp), "OSINT_ECHT": str(ECHT)}).returncode
     with contextlib.suppress(OSError):
@@ -1691,7 +1693,7 @@ def _():
         einrichten.weiter_zeigen()
         text = aus.getvalue()
         stellen = [text.index(s) for s in ("Noch offen", "Schlüssel eintragen", "So geht es weiter", "Terminal schliessen", "Oberfläche starten",
-                                           "Ausserdem", "Stand prüfen", "Einstellungen ändern")]
+                                           "Ausserdem", "Stand prüfen", "Einstellungen ändern", "Alles abschalten", "tools/dienste.py aus")]
         assert stellen == sorted(stellen), f"die Schritte stehen nicht in der Reihenfolge, in der sie zu tun sind: {stellen}"
         assert text.count("Terminal schliessen") == 1, "das neue Terminal steht als Schritt da, nicht zusätzlich unter «Noch offen»"
         assert "«Neuer Fall»" not in text and "MUSTER-2026-001" not in text and "tools/fall.py" not in text, "der Abschluss bleibt kurz"
@@ -2105,6 +2107,321 @@ def _():
         einrichten.lauf, einrichten.root_praefix, einrichten.ui, einrichten.subprocess, sys.stdin, shutil.which = echt
         einrichten.paketverwaltung_belegt = echt_belegt
         einrichten.stand = einrichten.Stand()
+
+
+@test("Alles abschalten: Robin und Web-Check stoppen, Tor nur am Terminal und nur, wo es zum Arbeitsplatz gehört. Die Oberfläche lässt sich von aussen finden und beenden, gelöscht wird nichts, und wieder einschalten geht auch")
+def _():
+    import time
+    from tools import dienste
+    echt = (einrichten.lauf, einrichten.root_praefix, einrichten.warten_auf_port, einrichten.system, einrichten.ui, plattform.einstellung, plattform.proxy_antwortet,
+            plattform.systemd, shutil.which, dienste._auskunft)
+    rufe: list[list[str]] = []
+    lage = {"docker": True, "webcheck": "true", "robin": "abc123\ndef456", "proxy": plattform.TOR_PROXY, "tor": True, "tor_geht": True, "rechte": True}
+
+    def lauf(befehl, *mehr, **angaben) -> tuple[int, str]:       # steht für Docker und für den Dienst Tor
+        rufe.append(list(befehl))
+        kern = [x for x in befehl if x not in ("sudo", "-n")]
+        if kern[:2] == ["docker", "version"]:
+            return (0, "29.0") if lage["docker"] else (1, "Cannot connect to the Docker daemon")
+        if kern[:2] == ["docker", "inspect"]:
+            return (0, lage["webcheck"]) if lage["webcheck"] else (1, "No such object")
+        if kern[:2] == ["docker", "ps"]:
+            return 0, lage["robin"]
+        if kern[:2] == ["docker", "stop"]:
+            lage.update(webcheck="false") if dienste.WEBCHECK in kern else lage.update(robin="")
+            return 0, ""
+        if kern[:2] == ["docker", "start"]:
+            lage["webcheck"] = "true"
+            return 0, ""
+        if kern[:1] == ["systemctl"] and kern[2:] == ["tor"]:
+            if lage["tor_geht"]:
+                lage["tor"] = kern[1] == "start"
+            return (0, "") if lage["tor_geht"] else (1, "Failed to stop tor.service")
+        raise AssertionError(f"unerwarteter Befehl: {befehl}")
+    try:
+        einrichten.lauf = lauf
+        einrichten.root_praefix = lambda wofuer: ["sudo", "-n"] if lage["rechte"] else None
+        einrichten.warten_auf_port = lambda port, hoechstens: lage["tor"]
+        einrichten.system = lambda: {"art": "linux", "name": "Linux", "paketverwaltung": "apt", "wsl": False, "id": "ubuntu"}
+        plattform.einstellung = lambda name, standard="": {"OSINT_PROXY": lage["proxy"]}.get(name, standard)
+        plattform.proxy_antwortet = lambda adresse, zeit=1.5: lage["tor"]
+        plattform.systemd = lambda: True
+        shutil.which = lambda name, *mehr, **angaben: f"/usr/bin/{name}" if name in ("docker", "sudo") else None
+        befehle = lambda: [" ".join(b) for b in rufe]       # noqa: E731
+
+        # ---- Abschalten aus der Oberfläche: Robin und Web-Check stoppen, Tor läuft weiter, denn ein Browser kann nicht nach dem Passwort fragen
+        zeilen, gelungen = dienste.aus(mit_tor=False)
+        text = " | ".join(f"{zeichen} {was}: {wie}" for zeichen, was, wie in zeilen)
+        assert gelungen and "docker stop abc123 def456" in befehle() and f"docker stop {dienste.WEBCHECK}" in befehle(), befehle()
+        assert "Robin: gestoppt (2 Container)" in text and "Web-Check: gestoppt" in text and "Tor (Proxy): läuft weiter" in text, text
+        assert f"{plattform.PY} tools/dienste.py aus" in text and not any("systemctl" in b for b in befehle()), "aus der Oberfläche wird Tor nie angefasst"
+        geloescht = [b for b in befehle() if any(wort in b.split() for wort in ("rm", "rmi", "down", "prune", "kill"))]
+        assert not geloescht, f"abschalten heisst stoppen, nicht löschen: {geloescht}"
+        # ein zweites Mal: nichts mehr zu tun, und das ist kein Fehler
+        rufe.clear()
+        zeilen, gelungen = dienste.aus(mit_tor=False)
+        text = " | ".join(f"{was}: {wie}" for _, was, wie in zeilen)
+        assert gelungen and "Robin: läuft nicht" in text and "Web-Check: war schon aus" in text and not any("docker stop" in b for b in befehle()), (text, befehle())
+
+        # ---- Am Terminal auch Tor, wenn der Arbeitsplatz es als Proxy nutzt. Dafür braucht es das Passwort
+        rufe.clear()
+        zeilen, gelungen = dienste.aus(mit_tor=True)
+        text = " | ".join(f"{was}: {wie}" for _, was, wie in zeilen)
+        assert gelungen and "sudo -n systemctl stop tor" in befehle() and "Tor (Proxy): abgeschaltet" in text and lage["tor"] is False, (text, befehle())
+        rufe.clear()
+        zeilen, gelungen = dienste.aus(mit_tor=True)
+        assert gelungen and not any("systemctl" in b for b in befehle()) and any(wie == "läuft nicht" for _, was, wie in zeilen if was == "Tor (Proxy)"), zeilen
+        lage.update(tor=True, tor_geht=False)          # lässt sich nicht abschalten: Die Zeile sagt es und nennt den Befehl von Hand
+        zeilen, gelungen = dienste.aus(mit_tor=True)
+        assert not gelungen and any(zeichen == plattform.FEHLT and "Von Hand: sudo systemctl stop tor" in wie for zeichen, was, wie in zeilen), zeilen
+        lage.update(tor_geht=True, rechte=False)        # kein Passwort: nichts versucht
+        rufe.clear()
+        zeilen, gelungen = dienste.aus(mit_tor=True)
+        assert not gelungen and not any("systemctl" in b for b in befehle()) and any("Von Hand: sudo systemctl stop tor" in wie for _, _, wie in zeilen), zeilen
+        lage.update(rechte=True, proxy="socks5h://proxy.example:1080")      # ein eigener Proxy: Tor auf diesem Rechner gehört dann nicht dazu
+        rufe.clear()
+        zeilen, gelungen = dienste.aus(mit_tor=True)
+        assert gelungen and not any("Tor" in was for _, was, _ in zeilen) and not any("systemctl" in b for b in befehle()), zeilen
+        lage["proxy"] = ""
+        assert dienste.tor() == {"gehoert": False, "laeuft": False}
+
+        # ---- Wieder einschalten: Web-Check und Tor. Robin startet mit jeder Ermittlung von selbst
+        lage.update(proxy=plattform.TOR_PROXY, tor=False, webcheck="false")
+        rufe.clear()
+        zeilen, gelungen = dienste.ein()
+        text = " | ".join(f"{was}: {wie}" for _, was, wie in zeilen)
+        assert gelungen and f"docker start {dienste.WEBCHECK}" in befehle() and "sudo -n systemctl start tor" in befehle(), befehle()
+        assert "Web-Check: gestartet" in text and "Tor (Proxy): gestartet" in text and lage["webcheck"] == "true" and lage["tor"] is True, text
+        lage["webcheck"] = ""                       # nie eingerichtet: Dann startet nichts, und die Zeile nennt die Einrichtung
+        zeilen, gelungen = dienste.ein()
+        assert gelungen and any(was == "Web-Check" and plattform.SETUP in wie for _, was, wie in zeilen), zeilen
+
+        # ---- Der Start der Oberfläche schaltet Web-Check wieder ein und sagt, wenn Tor fehlt. Nach einem Passwort fragt er nie
+        lage.update(webcheck="false", tor=False)
+        rufe.clear()
+        saetze = dienste.beim_start()
+        assert len(saetze) == 2 and "Web-Check war abgeschaltet und läuft wieder" in saetze[0] and f"{plattform.PY} tools/dienste.py ein" in saetze[1], saetze
+        assert f"docker start {dienste.WEBCHECK}" in befehle() and not any("sudo" in b or "systemctl" in b for b in befehle()), befehle()
+        lage["tor"] = True
+        assert dienste.beim_start() == [], "läuft alles, sagt der Start nichts dazu"
+
+        # ---- Docker ist nicht erreichbar: Das ist eine Auskunft, kein Fehlschlag. Ohne Docker gibt es Web-Check und Robin nicht
+        lage["docker"] = False
+        zeilen, gelungen = dienste.aus(mit_tor=False)
+        assert gelungen and zeilen[0][1] == "Docker" and zeilen[0][0] == plattform.AUS, zeilen
+        assert dienste.docker_kurz() == {"installiert": True, "laeuft": False, "vor": []}
+        shutil.which = lambda name, *mehr, **angaben: None
+        assert dienste.docker_kurz() == {"installiert": False, "laeuft": False, "vor": []}
+        shutil.which = lambda name, *mehr, **angaben: f"/usr/bin/{name}" if name in ("docker", "sudo") else None
+        lage["docker"] = True
+        if not WINDOWS:         # Docker nur über sudo erreichbar (das Konto ist noch nicht in der Gruppe): Dann schaltet auch dienste über sudo
+            echt_geteuid, echt_lauf = os.geteuid, einrichten.lauf
+            try:
+                os.geteuid = lambda: 1000
+                einrichten.lauf = lambda befehl, *mehr, **angaben: (1, "permission denied") if befehl[:2] == ["docker", "version"] else lauf(befehl, *mehr, **angaben)
+                assert dienste.docker_kurz() == {"installiert": True, "laeuft": True, "vor": ["sudo", "-n"]}
+                lage.update(webcheck="true", robin="")
+                rufe.clear()
+                dienste.aus(mit_tor=False)
+                assert f"sudo -n docker stop {dienste.WEBCHECK}" in befehle(), befehle()
+            finally:
+                os.geteuid, einrichten.lauf = echt_geteuid, echt_lauf
+            einrichten.lauf = lauf
+
+        # ---- Die Oberfläche finden: Sie hält beim Start fest, dass es sie gibt: ausserhalb des Projekts, ohne Geheimnis, in einem Ordner nur für dieses Konto
+        port = 54321
+        dienste.MERKER_BASIS = Path(tempfile.mkdtemp(prefix="osint-merker-"))
+        merker, bitte = dienste._merker(port), dienste._merker(port, "ende")
+        assert merker is not None and plattform.PROJEKT not in merker.parents and merker.name == f"oberflaeche-{dienste.kennung()}-{port}.json", "der Merker liegt nie im Projekt"
+        ausweis = {"aktiv": True, "claude": "", "prozess": os.getpid(), "projekt": dienste.kennung()}        # so weist sich die Oberfläche auf ihrem Port aus
+        dienste._auskunft = lambda p: dict(ausweis) if p == port else None
+        dienste.oberflaeche_merken(port)
+        assert json.loads(lesen(merker)) == {"pid": os.getpid(), "port": port, "projekt": str(plattform.PROJEKT)}, "im Merker steht kein Geheimnis"
+        assert dienste.oberflaechen() == [{"pid": os.getpid(), "port": port}]
+        zeilen = dienste.stand_zeilen()
+        assert zeilen[0] == (plattform.GUT, "Oberfläche", f"läuft auf Port {port}"), zeilen
+        assert dienste.oberflaeche_beenden() == [] and not bitte.exists(), "die eigene Oberfläche beendet niemand von aussen"
+        # Ein Merker gilt nur, wenn sich auf dem Port dieselbe Oberfläche ausweist: derselbe Prozess, dasselbe Projekt. Sonst wird er aufgeräumt
+        kind = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(120)\n"])       # steht für einen Prozess, der mit der Oberfläche nichts zu tun hat
+        try:
+            for falsch in ({"projekt": "ein-anderes"}, {"prozess": os.getpid()}, None):
+                merker.write_text(json.dumps({"pid": kind.pid, "port": port, "projekt": str(plattform.PROJEKT)}), encoding="utf-8")
+                dienste._auskunft = lambda p, falsch=falsch: {**ausweis, "prozess": kind.pid, **falsch} if falsch is not None else None
+                assert dienste.oberflaeche_beenden(1) == [] and not merker.exists() and kind.poll() is None, \
+                    f"ein Merker von früher, hinter dem etwas anderes antwortet ({falsch}), beendet keinen fremden Prozess"
+            # Reagiert die Oberfläche auf die Bitte nicht, beendet das System den Prozess hart, und die Zeile sagt, was dann fehlt
+            merker.write_text(json.dumps({"pid": kind.pid, "port": port, "projekt": str(plattform.PROJEKT)}), encoding="utf-8")
+            dienste._auskunft = lambda p: {**ausweis, "prozess": kind.pid} if p == port and kind.poll() is None else None
+            zeilen = dienste.oberflaeche_beenden(1)
+            assert kind.wait(10) != 0 and len(zeilen) == 1 and zeilen[0][0] == plattform.AUS and "hart beendet" in zeilen[0][2], zeilen
+            assert "steht ihr Ende nicht im Sitzungsprotokoll" in zeilen[0][2] and not merker.exists() and not bitte.exists(), zeilen
+        finally:
+            if kind.poll() is None:
+                kind.kill()
+                kind.wait()
+        # Der gewöhnliche Weg: Die Oberfläche liest die Bitte und endet selbst. Hier steht ein Kindprozess für sie
+        kind = subprocess.Popen([sys.executable, "-c", "import pathlib, sys, time\nwhile not pathlib.Path(sys.argv[1]).exists():\n    time.sleep(0.1)\n", str(bitte)])
+        try:
+            merker.write_text(json.dumps({"pid": kind.pid, "port": port, "projekt": str(plattform.PROJEKT)}), encoding="utf-8")
+            assert not dienste.oberflaeche_soll_enden(port)
+            zeilen = dienste.oberflaeche_beenden(20)
+            assert kind.wait(10) == 0 and zeilen == [(plattform.GUT, "Oberfläche", f"auf Port {port} beendet. Lief eine Ermittlung, ist sie angehalten")], zeilen
+            assert not merker.exists() and not bitte.exists(), "nach dem Ende liegt weder Merker noch Bitte mehr da"
+        finally:
+            if kind.poll() is None:
+                kind.kill()
+                kind.wait()
+        # Eine Oberfläche, die die Bitte annimmt und dann aufräumt (Ermittlungen anhalten braucht Zeit), antwortet eine Weile nicht.
+        # Sie bekommt dafür mehr Zeit und wird nicht hart beendet
+        raeumt = ("import pathlib, sys, time\nbitte = pathlib.Path(sys.argv[1])\npathlib.Path(sys.argv[2]).write_text('')\n"
+                  "while not bitte.exists():\n    time.sleep(0.05)\nbitte.unlink()\ntime.sleep(3)\n")
+        bereit = merker.with_name("bereit")
+        kind = subprocess.Popen([sys.executable, "-c", raeumt, str(bitte), str(bereit)])
+        try:
+            frist = time.monotonic() + 30
+            while not bereit.exists() and time.monotonic() < frist:
+                time.sleep(0.05)
+            merker.write_text(json.dumps({"pid": kind.pid, "port": port, "projekt": str(plattform.PROJEKT)}), encoding="utf-8")
+            # Solange die Bitte daliegt, weist sie sich aus. Hat sie sie angenommen, schweigt sie, bis sie fertig ist
+            dienste._auskunft = lambda p: None if kind.poll() is not None else ({**ausweis, "prozess": kind.pid} if bitte.exists() else dienste.STUMM)
+            beginn = time.monotonic()
+            zeilen = dienste.oberflaeche_beenden(1.5, 30)
+            assert zeilen == [(plattform.GUT, "Oberfläche", f"auf Port {port} beendet. Lief eine Ermittlung, ist sie angehalten")] and kind.wait(10) == 0, (zeilen, kind.poll())
+            assert time.monotonic() - beginn > 2.5, "sie durfte fertig aufräumen, länger als die Frist für eine Oberfläche, die nicht reagiert"
+        finally:
+            if kind.poll() is None:
+                kind.kill()
+                kind.wait()
+            bereit.unlink(missing_ok=True)
+        # Antwortet sie gar nicht (beschäftigt, ohne die Bitte anzunehmen), bleibt ihr Merker liegen, die Anzeige sagt es, und beendet wird nichts:
+        # Wer sich nicht ausweist, wird nicht hart beendet
+        kind = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(120)\n"])
+        try:
+            merker.write_text(json.dumps({"pid": kind.pid, "port": port, "projekt": str(plattform.PROJEKT)}), encoding="utf-8")
+            dienste._auskunft = lambda p: dienste.STUMM
+            assert dienste.oberflaechen() == [{"pid": kind.pid, "port": port, "stumm": True}] and merker.exists()
+            assert dienste.stand_zeilen()[0] == (plattform.GUT, "Oberfläche", f"läuft auf Port {port} (antwortet gerade nicht)")
+            zeilen = dienste.oberflaeche_beenden(0.5, 30)
+            assert len(zeilen) == 1 and zeilen[0][0] == plattform.FEHLT and "liess sich nicht beenden" in zeilen[0][2] and kind.poll() is None, (zeilen, kind.poll())
+            assert not bitte.exists(), "die Bitte bleibt nicht liegen: Sonst endete die Oberfläche später ohne Zutun"
+            if not WINDOWS:         # gibt es den Prozess nicht mehr, ist ein stummer Port kein Grund, den Merker zu behalten
+                kind.kill()
+                kind.wait()
+                assert dienste.oberflaechen() == [] and not merker.exists()
+        finally:
+            if kind.poll() is None:
+                kind.kill()
+                kind.wait()
+            dienste.oberflaeche_vergessen(port)
+        # Wer neu startet, räumt weg, was abgestürzte Oberflächen liegen liessen, auch die anderer Projekte. Frische Merker bleiben: Die Oberfläche dahinter startet vielleicht gerade
+        alt, frisch = merker.with_name("oberflaeche-abcdefabcdef-40001.json"), merker.with_name("oberflaeche-abcdefabcdef-40002.json")
+        for datei, wann in ((alt, time.time() - 3600), (frisch, time.time())):
+            datei.write_text(json.dumps({"pid": 1, "port": int(datei.stem.rsplit("-", 1)[1]), "projekt": "/anderswo"}), encoding="utf-8")
+            os.utime(datei, (wann, wann))
+        dienste._auskunft = lambda p: None
+        bitte.write_text("", encoding="utf-8")          # eine Bitte von früher gilt der neuen Oberfläche nicht
+        dienste.oberflaeche_merken(port)
+        assert merker.exists() and not alt.exists() and frisch.exists() and not dienste.oberflaeche_soll_enden(port)
+        dienste.oberflaeche_vergessen(port)
+        assert not merker.exists()
+        if not WINDOWS:         # der Ordner der Merker gehört diesem Konto allein. Sonst könnte ein anderes Konto einen fremden Prozess zum Beenden unterschieben
+            ordner = merker.parent.stat()
+            assert ordner.st_uid == os.getuid() and not ordner.st_mode & 0o077, oct(ordner.st_mode)
+            os.chmod(merker.parent, 0o777)
+            assert dienste._merker(port) is None and dienste.oberflaechen() == [] and not dienste.oberflaeche_soll_enden(port), "in einen Ordner, in den andere schreiben dürfen, schaut niemand"
+            dienste.oberflaeche_merken(port)
+            assert not merker.exists(), "und niemand legt etwas hinein"
+            os.chmod(merker.parent, 0o700)
+            fremd = dienste.MERKER_BASIS / "anderswo"
+            fremd.mkdir()
+            shutil.rmtree(merker.parent)
+            os.symlink(fremd, merker.parent)
+            assert dienste._merker(port) is None, "ein Verweis an der Stelle des Ordners gilt nicht"
+        shutil.rmtree(dienste.MERKER_BASIS, ignore_errors=True)
+
+        # ---- Der Befehl: zeigen darf jeder, schalten nur ein Mensch am Terminal
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        dienste._auskunft = lambda p: None
+        assert dienste.main([]) == 0 and "Web-Check" in aus.getvalue() and "Alles abschalten" in aus.getvalue(), aus.getvalue()
+        # Schalten: nur mit Terminal und nicht aus Claude Code heraus. Der Selbsttest kann selbst an einem Terminal oder in einer Sitzung laufen: Beides wird hier gestellt
+        echt_terminal, echt_beenden = plattform.terminal, dienste.oberflaeche_beenden
+        alt = {k: os.environ.pop(k, None) for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")}
+        try:
+            for terminal, in_claude in ((False, ""), (True, "CLAUDECODE"), (True, "CLAUDE_CODE_ENTRYPOINT")):
+                plattform.terminal = lambda *stroeme, terminal=terminal: terminal
+                if in_claude:
+                    os.environ[in_claude] = "1"
+                rufe.clear()
+                for wunsch in ("aus", "ein"):
+                    with contextlib.redirect_stderr(io.StringIO()) as fehler:
+                        assert dienste.main([wunsch]) == 2, f"ohne Terminal und aus Claude Code heraus schaltet niemand: {terminal} {in_claude}"
+                    assert "entscheidet ein Mensch am Terminal" in fehler.getvalue() and not any("stop" in b or "start" in b for b in befehle()), (fehler.getvalue(), befehle())
+                os.environ.pop(in_claude, None)
+            # Ein Mensch am Terminal: «aus» beendet zuerst die Oberfläche, dann Robin, Web-Check und Tor. Danach steht da, wie es wieder angeht
+            plattform.terminal = lambda *stroeme: True
+            dienste.oberflaeche_beenden = lambda warten=20.0: [(plattform.GUT, "Oberfläche", "auf Port 8765 beendet. Lief eine Ermittlung, ist sie angehalten")]
+            lage.update(docker=True, webcheck="true", robin="abc123", proxy=plattform.TOR_PROXY, tor=True, tor_geht=True, rechte=True)
+            rufe.clear()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            assert dienste.main(["aus"]) == 0, aus.getvalue()
+            text = aus.getvalue()
+            stellen = [text.index(s) for s in ("Alles abschalten", "Gelöscht wird nichts", "auf Port 8765 beendet", "Robin", "Web-Check", "Tor (Proxy)", "Wieder einschalten", "Oberfläche starten")]
+            assert stellen == sorted(stellen), f"«aus» am Terminal: {text}"
+            assert "docker stop abc123" in befehle() and f"docker stop {dienste.WEBCHECK}" in befehle() and "sudo -n systemctl stop tor" in befehle(), befehle()
+            lage.update(tor=True, tor_geht=False)       # lässt sich etwas nicht schalten, sagt es auch der Rückgabewert
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            assert dienste.main(["aus"]) == 1 and "liess sich nicht abschalten" in aus.getvalue(), aus.getvalue()
+            dienste.oberflaeche_beenden = lambda warten=20.0: []
+            lage.update(tor=False, tor_geht=True, webcheck="false")
+            rufe.clear()
+            einrichten.ui, aus = oberflaeche([], interaktiv=False)
+            assert dienste.main(["ein"]) == 0 and f"docker start {dienste.WEBCHECK}" in befehle() and "sudo -n systemctl start tor" in befehle(), (aus.getvalue(), befehle())
+            assert "Oberfläche starten" in aus.getvalue(), "nach dem Einschalten steht da, wie die Oberfläche startet"
+        finally:
+            plattform.terminal, dienste.oberflaeche_beenden = echt_terminal, echt_beenden
+            for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
+                os.environ.pop(k, None)
+            os.environ.update({k: w for k, w in alt.items() if w is not None})
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert dienste.main(["quatsch"]) == 2 and dienste.main(["aus", "zuviel"]) == 2 and dienste.main(["--hilfe"]) == 0
+        quelle = lesen(PROJEKT / "tools" / "dienste.py")
+        assert "plattform.terminal(sys.stdin, sys.stdout)" in quelle and "CLAUDECODE" in quelle, "aus und ein verlangen ein echtes Terminal, auch gegenüber einem Agenten"
+        assert "rmtree" not in quelle and '"rm"' not in quelle and '"down"' not in quelle and "prune" not in quelle, "abschalten löscht nichts"
+        regeln = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]["deny"]
+        for regel in ("Bash(python3 tools/dienste.py aus*)", "Bash(python tools/dienste.py aus*)", "Bash(python3 tools/dienste.py ein*)", "Bash(python tools/dienste.py ein*)"):
+            assert regel in regeln, f"Einstellungen des Projekts: Regel fehlt: {regel}"
+        readme = lesen(REPO / "README.md")
+        for stueck in ("tools/dienste.py", "Alles abschalten", "Gelöscht wird dabei nichts"):
+            assert stueck in readme, f"README nennt «{stueck}» nicht"
+        assert "tools/dienste.py" in lesen(REPO / "CLAUDE.md"), "CLAUDE.md sagt dem Agenten, dass er nicht schaltet"
+    finally:
+        (einrichten.lauf, einrichten.root_praefix, einrichten.warten_auf_port, einrichten.system, einrichten.ui, plattform.einstellung, plattform.proxy_antwortet,
+         plattform.systemd, shutil.which, dienste._auskunft) = echt
+        dienste.MERKER_BASIS = None
+
+    # ---- Dasselbe mit einer echten Oberfläche, auf jedem System: starten, von aussen finden, bitten. Sie endet selbst, wie mit Strg+C
+    p = subprocess.Popen([sys.executable, "-u", str(PROJEKT / "tools" / "oberflaeche.py"), "--ohne-browser", "--port", "0"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         stdin=subprocess.DEVNULL, text=True, encoding="utf-8", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    try:
+        m = re.search(r"http://(?:127\.0\.0\.1|localhost):(\d+)/", p.stdout.readline())
+        assert m, "die Oberfläche nennt beim Start ihre Adresse"
+        port = int(m.group(1))
+        ende = time.monotonic() + 30
+        while not any(o["port"] == port for o in dienste.oberflaechen()) and time.monotonic() < ende:
+            time.sleep(0.2)
+        assert any(o["port"] == port for o in dienste.oberflaechen()), "eine laufende Oberfläche dieses Projekts findet der Befehl über ihren Merker"
+        ausweis = dienste._auskunft(port)       # so weist sie sich aus: Prozess und Kennung des Projekts, nicht sein Pfad
+        assert ausweis and ausweis["projekt"] == dienste.kennung() and isinstance(ausweis["prozess"], int) and str(PROJEKT) not in json.dumps(ausweis), ausweis
+        zeilen = dienste.oberflaeche_beenden(30)
+        assert zeilen == [(plattform.GUT, "Oberfläche", f"auf Port {port} beendet. Lief eine Ermittlung, ist sie angehalten")], zeilen
+        rest = p.communicate(timeout=30)[0]
+        assert p.returncode == 0 and "Beendet." in rest, f"sie endet selbst und sauber, nicht hart: {p.returncode} {rest!r}"
+        assert not dienste._merker(port).exists() and not dienste._merker(port, "ende").exists(), "nach dem Ende liegt weder Merker noch Bitte mehr da"
+        assert dienste.oberflaechen() == []
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait(timeout=20)
 
 
 # --------------------------------------------------------------------------- Blockchain-Analyse
@@ -4064,6 +4381,9 @@ def _():
         for name in ("pseudonymisieren", "reidentifizieren"):
             assert f"Bash({py} tools/{name}.py *)" in verbote, f"Verbot für {py} tools/{name}.py fehlt in settings.json"
     assert "pseudonymisieren.py" in lesen(REPO / "CLAUDE.md"), "CLAUDE.md nennt das Verbot nicht"
+    # Die Selbsttests laufen selbst ohne Eingabe, auch wenn ein Mensch sie an einem Terminal startet. Sonst prüfte «ohne Terminal
+    # lehnt das Werkzeug ab» dort nichts, und ein Werkzeug wartete mitten im Test auf eine Bestätigung (gesehen am 19.11.2026)
+    assert not plattform.terminal(sys.stdin, sys.stdout), "die Selbsttests haben ein Terminal als Eingabe geerbt"
 
 
 @test("Prüfsatz: über 200 synthetische Rapporte, immer gleich, jede Feldmarke kommt vor, nichts darin kann echt sein")
@@ -5206,6 +5526,151 @@ def _():
     finally:
         p.terminate()
         p.wait(timeout=20)
+
+
+@test("Bedienung: Eine Absage kommt an. Der Server bricht die Verbindung nicht ab, wenn der Inhalt der Anfrage noch unterwegs ist, und er wartet darauf nicht endlos")
+def _():
+    import socket
+    u = bedien_vorbereiten()
+    b, port = u["b"], u["port"]
+    lesend = ui_server.starten(0)       # dieselbe Oberfläche im Modus «nur lesen»
+    threading.Thread(target=lesend.serve_forever, daemon=True).start()
+    inhalt = b"x" * 300_000
+    grenzen = ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE
+    assert 0 < grenzen[1] <= grenzen[0] <= 30 and ui_bedienung.DATEI_GROESSE <= grenzen[2] <= 4 * ui_bedienung.DATEI_GROESSE, grenzen
+
+    def antwort_lesen(s: socket.socket) -> tuple[int, dict]:
+        daten = b""
+        while b"\r\n\r\n" not in daten:
+            stueck = s.recv(65536)
+            assert stueck, "die Verbindung endete vor der Antwort"
+            daten += stueck
+        kopf, _, rest = daten.partition(b"\r\n\r\n")
+        zeilen = {n.strip().lower(): w.strip() for n, _, w in (z.partition(":") for z in kopf.decode("latin-1").split("\r\n")[1:])}
+        while len(rest) < int(zeilen.get("content-length", "0")):
+            stueck = s.recv(65536)
+            assert stueck, "die Verbindung endete mitten in der Antwort"
+            rest += stueck
+        return int(kopf.split(b" ", 2)[1]), zeilen
+
+    def ablauf(ziel: int, weg: str, kopf: dict, spaet: bool) -> tuple[int, dict]:
+        """Eine Anfrage über einen rohen Socket. `spaet`: Der Inhalt geht erst hinaus, wenn die Absage schon da ist. Sonst geht alles
+        zusammen hinaus, und gelesen wird nach einer Pause. Beide Male muss die Verbindung ordentlich enden: Ein Abbruch ist ein Fehler."""
+        anfang = (f"POST {weg} HTTP/1.1\r\n" + "".join(f"{n}: {w}\r\n" for n, w in {"Host": f"127.0.0.1:{ziel}", "Content-Length": str(len(inhalt)), **kopf}.items())
+                  + "\r\n").encode("latin-1")
+        with socket.create_connection(("127.0.0.1", ziel), timeout=60) as s:
+            if spaet:
+                s.sendall(anfang)
+                antwort = antwort_lesen(s)
+                for i in range(0, len(inhalt), 30_000):
+                    s.sendall(inhalt[i:i + 30_000])
+                    time.sleep(0.01)
+            else:
+                s.sendall(anfang + inhalt)
+                time.sleep(0.1)
+                antwort = antwort_lesen(s)
+            s.shutdown(socket.SHUT_WR)
+            while s.recv(65536):
+                pass
+        return antwort
+
+    geheim = {"X-OSINT-Geheimnis": b.geheimnis}
+    datei = {"Content-Type": "application/octet-stream", "X-OSINT-Name": "a.txt"}
+    absagen = [("Hochladen ohne Geheimnis", port, "/api/hochladen?ziel=", datei, 403),
+               ("Hochladen in falscher Form", port, "/api/hochladen?ziel=", {**datei, **geheim, "Content-Type": "application/json"}, 400),
+               ("Hochladen einer zu grossen Datei", port, "/api/hochladen?ziel=", {**datei, **geheim}, 413),
+               ("Aktion in falscher Form", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "text/plain"}, 400),
+               ("Aktion mit fremdem Host-Kopf", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "application/json", "Host": "boese.example"}, 403),
+               ("Aktion von fremder Seite", port, "/api/aktion/freigabe", {**geheim, "Content-Type": "application/json", "Origin": "https://boese.example"}, 403),
+               ("POST im Modus «nur lesen»", lesend.server_address[1], "/api/aktion/freigabe", {"Content-Type": "application/json"}, 405)]
+    gross = ui_bedienung.DATEI_GROESSE
+    try:
+        # Solange die Gegenseite sendet, wartet der Server: Eine träge Prüfumgebung darf daraus keinen Abbruch machen
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_bedienung.DATEI_GROESSE = 120.0, 60.0, len(inhalt) - 1
+        for name, ziel, weg, kopf, erwartet in absagen:
+            for spaet in (True, False):
+                wann = "nach" if spaet else "vor"
+                try:
+                    status, zeilen = ablauf(ziel, weg, kopf, spaet)
+                except OSError as e:
+                    raise AssertionError(f"{name}, Inhalt {wann} der Absage gesendet: Die Verbindung wurde abgebrochen ({type(e).__name__}: {e})") from e
+                assert status == erwartet and zeilen.get("connection") == "close", f"{name}, Inhalt {wann} der Absage gesendet: {status} {zeilen}"
+        assert not b.koerbe, "von einer abgewiesenen Anfrage darf nichts im Akten-Eingang liegen"
+        ui_bedienung.DATEI_GROESSE = gross
+        # Ist der Inhalt gelesen, bleibt die Verbindung für die nächste Anfrage: zwei Absagen über dieselbe Verbindung
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+        try:
+            leitungen = []
+            for i in (1, 2):
+                c.request("POST", "/api/aktion/freigabe", body=json.dumps({"fall": OBERFL}), headers={"Content-Type": "application/json", "X-OSINT-Geheimnis": "falsch"})
+                r = c.getresponse()
+                assert r.status == 403 and b"nichts ge" in r.read() and r.getheader("Connection") is None and c.sock is not None, (i, r.status, r.getheaders())
+                leitungen.append(c.sock)
+            assert leitungen[0] is leitungen[1], "die zweite Anfrage brauchte eine neue Verbindung"
+        finally:
+            c.close()
+
+        # Der Ausklang selbst, an einem Paar verbundener Sockets. Er endet: mit der Gegenseite, nach der Pause, nach der Dauer, nach der Menge
+        def gemessen(a: socket.socket) -> float:
+            beginn = time.monotonic()
+            ui_server.ausklingen(a)
+            return time.monotonic() - beginn
+
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE = 120.0, 60.0, 10_000_000
+        a, g = socket.socketpair()
+        with a:
+            g.close()
+            assert gemessen(a) < 20, "die Gegenseite hat geschlossen: Der Ausklang muss sofort enden"
+        ui_server.AUSKLANG_PAUSE = 0.2
+        a, g = socket.socketpair()
+        with a, g:
+            dauer = gemessen(a)
+            assert 0.15 <= dauer < 20, f"die Gegenseite schweigt: Der Ausklang endet nach der Pause, nicht nach {dauer:.2f} s"
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE = 0.5, 60.0
+        a, g = socket.socketpair()
+        with a, g:
+            genug = threading.Event()
+
+            def endlos() -> None:
+                try:
+                    while not genug.is_set():
+                        g.sendall(b"x")
+                        time.sleep(0.005)
+                except OSError:
+                    pass
+            faden = threading.Thread(target=endlos, daemon=True)
+            faden.start()
+            try:
+                dauer = gemessen(a)
+            finally:
+                genug.set()
+                faden.join(timeout=20)
+            assert 0.4 <= dauer < 20, f"die Gegenseite sendet endlos: Der Ausklang endet nach der Dauer, nicht nach {dauer:.2f} s"
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_MENGE = 120.0, 1000
+        a, g = socket.socketpair()
+        with a:
+            def alles_senden() -> None:
+                # In einem eigenen Faden: Der Puffer eines Socket-Paars fasst je nach System nur wenige Kilobyte (macOS: 8 kB).
+                # Wer mehr sendet, als hineinpasst, wartet, bis die Gegenseite liest.
+                try:
+                    g.sendall(b"x" * 20_000)
+                except OSError:
+                    pass
+                finally:
+                    g.close()
+            sender = threading.Thread(target=alles_senden, daemon=True)
+            sender.start()
+            assert gemessen(a) < 20
+            rest = 0
+            while stueck := a.recv(65536):
+                rest += len(stueck)
+            sender.join(timeout=20)
+            assert rest == 19_000 and not sender.is_alive(), f"der Ausklang verwirft höchstens die erlaubte Menge: Es blieben {rest} von 20000 Bytes"
+    finally:
+        ui_server.AUSKLANG_DAUER, ui_server.AUSKLANG_PAUSE, ui_server.AUSKLANG_MENGE = grenzen
+        ui_bedienung.DATEI_GROESSE = gross
+        lesend.shutdown()
+        lesend.server_close()
 
 
 @test("Oberfläche starten: Unter WSL öffnet sich der Browser von Windows, und wo sich keiner öffnen lässt, steht die Adresse im Terminal")
@@ -6533,6 +6998,95 @@ def _():
     v = ps.Vorgang("Erreichbar unter 079 123 45 67.", belegt={"TEL": 3})
     assert "[TEL_04]" in v.ergebnis().text and "[TEL_01]" not in v.ergebnis().text, v.ergebnis().text
     assert "[TEL_01]" in ps.Vorgang("Erreichbar unter 079 123 45 67.").ergebnis().text
+
+
+@test("Bedienung, Arbeitsplatz: Die Seite zeigt, was läuft. «Alles abschalten» verlangt das Geheimnis, hält die Ermittlung an, stoppt die Dienste und beendet die Oberfläche. Gelöscht wird nichts")
+def _():
+    from tools import dienste
+    from tools.ui import formulare as ui_formulare
+    u = bedien_vorbereiten()
+    echt = (dienste.stand, dienste.aus)
+    vorher = {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)}
+    try:
+        dienste.stand = lambda mit_oberflaeche=True: {"docker": {"installiert": True, "laeuft": True, "vor": []}, "webcheck": "laeuft", "robin": ["abc"],
+                                                      "tor": {"gehoert": True, "laeuft": True}, "oberflaechen": None}
+        # ---- Die Seite: was zum Arbeitsplatz gehört und läuft, dazu der Knopf. Sie fragt sich dabei nicht selbst
+        status, _kopf, inhalt = ui_anfrage(u["port"], "/api/arbeitsplatz")
+        seite = json.loads(inhalt)
+        assert status == 200 and seite["titel"] == "Arbeitsplatz", (status, seite.get("titel"))
+        text = seite["html"]
+        for stueck in ("Web-Check", "Robin", "Tor (Proxy)", "Ermittlung", 'data-aktion="abschalten"', 'data-danach="abgeschaltet"', "Gelöscht wird nichts",
+                       "tools/dienste.py aus", "tools/dienste.py ein", "tools/oberflaeche.py"):
+            assert stueck in text, f"Seite «Arbeitsplatz» nennt «{stueck}» nicht"
+        assert not verstoesse(text, OBERFL), verstoesse(text, OBERFL)
+        assert "data-frage=" in text and "Alles abschalten?" in text, "vor dem Abschalten fragt das Fenster nach"
+        nur_lesen = ui_formulare.arbeitsplatz_seite(None)
+        assert "data-aktion" not in nur_lesen and "nur lesen" in nur_lesen and "Web-Check" in nur_lesen, "im Modus «nur lesen» gibt es die Anzeige, aber keinen Knopf"
+
+        # ---- Der Knopf, an einer eigenen Oberfläche: Die gemeinsame der übrigen Tests soll weiterlaufen
+        b = ui_bedienung.Bedienung(u["aussen"] / "ablage-abschalten")
+        server = ui_server.starten(0, bedienung=b)
+        faden = threading.Thread(target=server.serve_forever, daemon=True)
+        faden.start()
+        port = server.server_address[1]
+
+        class Ermittlung:           # steht für eine laufende Sitzung von Claude Code
+            angehalten = False
+            kennung = "sitzung-abc"
+            endet_von_selbst = False        # geht zu Ende, während «Alles abschalten» läuft
+
+            def laeuft(self) -> bool:
+                return not self.angehalten
+
+            def anhalten(self) -> None:
+                self.angehalten = True
+                if self.endet_von_selbst:
+                    raise ui_bedienung.Fehler("Es läuft keine Ermittlung.")
+        laufend, fertig, endet = Ermittlung(), Ermittlung(), Ermittlung()
+        fertig.angehalten = endet.endet_von_selbst = True
+        b.ermittlungen.update({"FALL-LAEUFT": laufend, "FALL-FERTIG": fertig, "FALL-ENDET": endet})
+        vermerkt: list[tuple] = []
+        b.vermerken = lambda fall, schritt, angabe="", sitzung=None: vermerkt.append((fall, schritt, angabe, sitzung))
+        gestoppt: list[bool] = []
+        dienste.aus = lambda mit_tor=True: (gestoppt.append(mit_tor), ([(plattform.GUT, "Robin", "läuft nicht"), (plattform.GUT, "Web-Check", "gestoppt"),
+                                                                        (plattform.AUS, "Tor (Proxy)", "läuft weiter")], True))[1]
+        for geheimnis in (None, "falsch", u["b"].geheimnis):       # auch das Geheimnis einer anderen Oberfläche gilt hier nicht
+            status, _kopf, inhalt = ui_anfrage(port, "/api/aktion/abschalten", "POST", {}, **({"X_OSINT_Geheimnis": geheimnis} if geheimnis else {}))
+            assert status == 403 and not gestoppt and not laufend.angehalten and faden.is_alive(), (geheimnis, status)
+        status, _kopf, inhalt = ui_anfrage(port, "/api/aktion/abschalten", "POST", {}, X_OSINT_Geheimnis=b.geheimnis)
+        antwort = json.loads(inhalt)
+        assert status == 200 and antwort["abgeschaltet"] is True and antwort["gelungen"] is True, antwort
+        assert gestoppt == [False], "aus der Oberfläche wird Tor nie angefasst: Ein Browser kann nicht nach dem Passwort fragen"
+        assert laufend.angehalten and antwort["punkte"][0].startswith("Ermittlung angehalten: FALL-LAEUFT.") and "FALL-FERTIG" not in antwort["punkte"][0], antwort["punkte"]
+        assert "FALL-ENDET" not in antwort["punkte"][0], "eine Ermittlung, die in dem Augenblick von selbst endet, gilt nicht als angehalten, und das Abschalten läuft weiter"
+        assert vermerkt == [("FALL-LAEUFT", "Ermittlung angehalten", "«Alles abschalten» in der Oberfläche", "sitzung-abc")], \
+            f"das Anhalten steht im Sitzungsprotokoll des Falls, mit dem Grund: {vermerkt}"
+        assert "Web-Check: gestoppt" in antwort["punkte"] and "Tor (Proxy): läuft weiter" in antwort["punkte"], antwort["punkte"]
+        assert "Gelöscht wurde nichts" in antwort["meldung"] and antwort["start"] == f"{plattform.PY} tools/oberflaeche.py", antwort
+        faden.join(15)
+        assert not faden.is_alive(), "nach «Alles abschalten» beendet sich die Oberfläche selbst"
+        server.server_close()
+        assert ui_anfrage(u["port"], "/api/bedienung")[0] == 200, "eine andere Oberfläche läuft weiter"
+        assert {f: akte_abdruck(PROJEKT / "faelle" / f) for f in (OBERFL, MUSTER)} == vorher, "abschalten ändert keine Fallakte"
+        assert b.alles_anhalten() == [], "was schon angehalten ist, hält niemand ein zweites Mal an"
+    finally:
+        dienste.stand, dienste.aus = echt
+    # ---- Das Fenster danach: nichts mehr abfragen, das Geheimnis vergessen, sagen, wie es wieder startet
+    js = lesen(PROJEKT / "tools" / "ui" / "app.js")
+    for stueck in ("function abgeschaltet(daten)", "if (daten.abgeschaltet) return abgeschaltet(daten);", 'sessionStorage.removeItem("geheimnis")', "clearTimeout(zustand.spurTimer)",
+                   "if (!fall || zustand.aus) return;", '"Arbeitsplatz", "#/arbeitsplatz"', '["quellen", "neu", "arbeitsplatz"].includes(a.ansicht)'):
+        assert stueck in js, f"app.js: {stueck} fehlt"
+    # ---- Wer die Oberfläche startet, räumt auch auf: Ermittlungen anhalten, Merker entfernen, auf das Signal von aussen hören
+    start = lesen(PROJEKT / "tools" / "oberflaeche.py")
+    assert "dienste.oberflaeche_soll_enden(port)" in start and "threading.Thread(target=anlauf, daemon=True).start()" in start, \
+        "die Oberfläche liest die Bitte ums Ende, und der Browser wartet beim Start nicht auf Docker"
+    stellen = [start.index(s) for s in ("dienste.oberflaeche_merken(port)", "signal.signal(signal.SIGTERM, enden)", "server.serve_forever()\n    except KeyboardInterrupt:",
+                                        'bedienung.alles_anhalten("Die Oberfläche wurde beendet")', "dienste.oberflaeche_vergessen(port)", 'server.server_close()\n    print("\\nBeendet.")')]
+    assert stellen == sorted(stellen), f"Reihenfolge beim Start und beim Ende der Oberfläche: {stellen}"
+    assert '"/api/arbeitsplatz"' in start, "die Selbstprüfung ruft die neue Seite ab"
+    doku = lesen(REPO / "docs" / "OBERFLAECHE.md")
+    for stueck in ("Arbeitsplatz", "Alles abschalten", "tools/dienste.py"):
+        assert stueck in doku, f"docs/OBERFLAECHE.md nennt «{stueck}» nicht"
 
 
 @test("Bedienung, Quellen: Bereitschaft, Testabfrage je Quelle und Stand der Listen. Von Schlüsseln zeigt die Seite nur den Namen der Variablen")

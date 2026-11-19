@@ -940,5 +940,38 @@ class Bedienung:
                 if gut else f"{q.name}: {e.get('fehler') or 'keine verwertbare Antwort'}"}
 
 
+    # ---- 8. Arbeitsplatz: alles abschalten
+    def alles_anhalten(self, grund: str = "") -> list[str]:
+        """Hält jede laufende Ermittlung an und vermerkt es im Sitzungsprotokoll ihres Falls, mit dem Grund. Sie lässt sich
+        später fortsetzen. Gibt die Fälle zurück, die es betraf. Aufgerufen auch, wenn die Oberfläche endet: Eine Sitzung
+        ohne Oberfläche könnte niemanden mehr fragen."""
+        with self.sperre:
+            laufend = [(fall, sitzung) for fall, sitzung in self.ermittlungen.items() if sitzung.laeuft()]
+        betroffen = []
+        for fall, sitzung in laufend:
+            try:
+                sitzung.anhalten()
+            except Fehler:
+                continue        # in der Zwischenzeit von selbst zu Ende gegangen
+            betroffen.append(fall)
+            try:
+                self.vermerken(fall, "Ermittlung angehalten", grund, sitzung=getattr(sitzung, "kennung", None))
+            except (OSError, subprocess.SubprocessError):
+                pass            # das Anhalten zählt. Der Verlauf im Arbeitsstand des Falls hält es ebenfalls fest
+        return betroffen
+
+    def abschalten(self, d: dict) -> dict:
+        """Schaltet ab, was zum Arbeitsplatz gehört: hält laufende Ermittlungen an, stoppt Robin und Web-Check. Danach beendet
+        sich die Oberfläche selbst: Der Server stösst das an, sobald diese Antwort draussen ist. Gelöscht wird nichts.
+        Tor läuft weiter: Es gehört zum System, und ein Browser kann nicht nach dem Passwort fragen."""
+        from tools import dienste
+        faelle = self.alles_anhalten("«Alles abschalten» in der Oberfläche")
+        zeilen, gelungen = dienste.aus(mit_tor=False)
+        punkte = ([f"Ermittlung angehalten: {', '.join(faelle)}. Sie lässt sich später fortsetzen."] if faelle else []) + [f"{was}: {wie}" for _, was, wie in zeilen]
+        return {"abgeschaltet": True, "gelungen": gelungen, "punkte": punkte, "start": f"{plattform.PY} tools/oberflaeche.py",
+                "meldung": "Die Oberfläche ist beendet. Gelöscht wurde nichts: Fallakten, Schlüssel und Einstellungen sind, wie sie waren."}
+
+
 AKTIONEN = ("korb_entfernen", "korb_rolle", "korb_verschieben", "korb_umbenennen", "korb_pseudo", "korb_aufnehmen", "pseudo_entscheid", "pseudo_uebernehmen", "pseudo_verwerfen",
-            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente", "zurueckfuehren", "quelle_testen")
+            "eingang_entfernen", "eingang_pruefen", "eingang_verschieben", "fall_loeschen", "freigabe", "pflichtquellen", "beleg", "dokumente", "zurueckfuehren", "quelle_testen",
+            "abschalten")
