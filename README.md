@@ -175,7 +175,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 109 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 111 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -266,6 +266,37 @@ In der Oberfläche steht derselbe Knopf auf der Seite «Arbeitsplatz». Er läss
 nach dem Passwort fragen. Die Oberfläche startet wieder mit `python3 tools/oberflaeche.py` und schaltet dabei einen
 abgeschalteten Web-Check von selbst wieder ein. Abschalten und einschalten kann nur ein Mensch am Terminal oder im
 bedienbaren Fenster: Ohne Terminal und aus Claude Code heraus zeigt das Werkzeug nur den Stand.
+
+**Alles löschen**
+
+```bash
+python3 tools/loeschen.py                             # zeigt, was gelöscht würde und was bleibt. Ändert nichts
+python3 tools/loeschen.py alles                       # entfernt den Arbeitsplatz von diesem Rechner
+python3 tools/loeschen.py alles --sicherung <Ordner>  # legt die Sicherung der Fallakten in diesen Ordner
+```
+
+Für den Fall, dass ein Rechner den Arbeitsplatz nicht mehr führen soll. Was geschieht, in dieser Reihenfolge:
+
+1. Was läuft, wird beendet: die Oberfläche samt laufender Ermittlung.
+2. Fallakten und Sitzungsprotokolle werden gesichert: ein Archiv im Ordner `OSINT-Sicherung` in eurem Benutzerordner, mit
+   der Prüfsumme jeder Datei. Das Archiv wird geprüft, bevor irgendetwas gelöscht wird. Scheitert die Sicherung, bleibt
+   alles, wie es ist.
+3. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
+   die Container und Abbilder von Web-Check und Robin, und am Schluss der Projektordner selbst.
+
+Fallakten und Protokolle sind Beweismittel. Einen Weg, sie ohne Sicherung zu löschen, gibt es deshalb nicht. Wer auch die
+Sicherung nicht mehr braucht, entfernt sie selbst, bewusst und nach den Regeln seiner Dienststelle. Zurückspielen lässt
+sie sich in einen neu eingerichteten Arbeitsplatz: Archiv im Projektordner entpacken, dann je Fall
+`python3 tools/audit_pruefen.py <Fall-ID>`.
+
+Es bleiben: die Sicherung, die Ablage des Sachbearbeiters (Klartext und Zuordnungstabellen), Claude Code mit seinen eigenen
+Gesprächsverläufen, und was die Einrichtung im System installiert hat (Docker, Tor, ein Browser). Ein Bericht im Ordner
+der Sicherung nennt, was gelöscht wurde und wo alles Übrige liegt.
+
+Löschen kann nur ein Mensch: am Terminal, wo er zur Bestätigung den Namen des Projektordners eintippt, oder im bedienbaren
+Fenster der Oberfläche auf der Seite «Arbeitsplatz», dort ebenso. Ohne Terminal und aus Claude Code heraus zeigt das
+Werkzeug nur den Plan. Den Projektordner selbst entfernt ein kleiner Helfer, sobald das Werkzeug beendet ist. Steht noch
+ein Terminal in dem Ordner, bleibt unter Windows der leere Ordner zurück, und der Bericht sagt es.
 
 ### Windows
 
@@ -490,6 +521,7 @@ python3 tools/fall.py loeschen 2026-0412 --durch "…"                         #
 python3 tools/anhang.py 2026-0412              # Datenblätter aller Indikatoren als HTML und PDF
 python3 tools/audit_pruefen.py 2026-0412       # Protokollkette prüfen
 python3 tools/musterfall.py                    # Musterfall neu bauen
+python3 tools/loeschen.py                      # zeigt, was «Alles löschen» entfernen würde (löschen: … alles)
 ```
 
 In Claude Code: `/ermittlung <Fall-ID> [Dokument]`, `/abschlussrapport <Fall-ID>`, `/protokoll <Fall-ID>`.
@@ -509,7 +541,9 @@ python3 tools/oberflaeche.py MUSTER-2026-001     # öffnet gleich diesen Fall
 Ein Befehl, auf Linux, macOS und Windows. Dahinter steht ein kleiner Server in Python, der nur die
 Standardbibliothek braucht: kein Bauschritt, kein zusätzliches Paket, kein Internet. Beenden mit Strg+C, oder mit
 «Alles abschalten» auf der Seite «Arbeitsplatz»: Sie zeigt, was läuft (Oberfläche, Ermittlung, Web-Check, Robin, Tor),
-und hält mit einem Knopf alles an. Siehe [Abschalten und einschalten](#einrichten).
+und hält mit einem Knopf alles an. Eingeklappt darunter steht «Arbeitsplatz löschen»: Es entfernt den Arbeitsplatz von diesem
+Rechner, nachdem Fallakten und Sitzungsprotokolle gesichert sind. Siehe [Abschalten und einschalten](#einrichten) und
+«Alles löschen» gleich danach.
 
 ![Fallübersicht mit Kennzahlen, Schritten und Arbeitsspur](docs/bilder/oberflaeche-uebersicht.png)
 
@@ -650,6 +684,16 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
   die die PII-Prüfung erkennt, sind darin ersetzt. Namen erkennt die Bereinigung nicht: vor dem Weitergeben durchsehen.
 
 ![Fehlerprotokoll: Zahlen, kopieren und speichern, Einträge mit Einzelheiten](docs/bilder/oberflaeche-fehlerprotokoll.png)
+
+- **Arbeitsplatz löschen.** Auf der Seite «Arbeitsplatz», eingeklappt: entfernt den Arbeitsplatz von diesem Rechner. Der
+  Abschnitt zeigt zuerst, was gelöscht würde und was bleibt. Fallakten und Sitzungsprotokolle werden vorher in ein Archiv
+  ausserhalb des Projekts gesichert, und das Archiv wird geprüft. Zur Bestätigung tippt ihr den Namen des Projektordners
+  ein. Danach beendet sich die Oberfläche und sagt, wo Sicherung und Bericht liegen. Siehe «Alles löschen» unter
+  [Einrichten](#einrichten).
+
+![Arbeitsplatz löschen: der Plan, was bleibt, und die Bestätigung von Hand](docs/bilder/oberflaeche-loeschen.png)
+
+![Nach dem Löschen: was gelöscht wurde, wo die Sicherung liegt, was bleibt](docs/bilder/oberflaeche-geloescht.png)
 
 Die Sitzung von Claude Code läuft im Projektordner und ohne Schalter, die Einstellungen, Hooks oder MCP-Server
 abschalten. Berechtigungen und Protokoll-Hooks gelten wie am Terminal, die Modelle bleiben, wie das Projekt sie
@@ -1191,6 +1235,8 @@ Was ihr wissen müsst:
 | Ein Werkzeug meldet «… ist an diesem Arbeitsplatz ausgeschaltet», oder `pruefen.py` führt eine Quelle als «ausgeschaltet» | Die Quelle steht in `OSINT_QUELLEN_AUS` | Oberfläche, Seite «Quellen»: «Einschalten». Es gilt für Ermittlungen, die danach starten oder fortgesetzt werden |
 | Auf der Seite «Quellen» fehlt bei einer Quelle das Feld für den Schlüssel, es steht «aus der Umgebung des Terminals» | Der Schlüssel ist im Terminal als Umgebungsvariable gesetzt und gilt vor `.env` | Die Variable im Terminal entfernen und die Oberfläche neu starten, oder den Schlüssel dort ändern, wo er gesetzt wird |
 | Ein neu eingetragener Schlüssel wirkt in der laufenden Ermittlung nicht | Das Gateway liest Schlüssel und Schalter bei seinem Start | Die Ermittlung anhalten und fortsetzen, oder die nächste starten |
+| «Alles löschen» bricht ab mit «Während der Sicherung hat sich … verändert» | Eine Sitzung von Claude Code schreibt noch in eine Fallakte | Die Sitzung beenden (`/exit` oder «Anhalten» in der Oberfläche) und noch einmal versuchen. Gelöscht wurde nichts |
+| Nach «Alles löschen» steht der Projektordner noch da, leer oder mit Resten | Ein Terminal steht noch in dem Ordner, oder ein Programm hielt Dateien offen | Der Bericht im Ordner `OSINT-Sicherung` nennt den Grund und den Befehl. Das Terminal in einen anderen Ordner wechseln, dann den Ordner von Hand entfernen |
 | Einrichtung oder `pruefen.py` meldet «Proxy … antwortet nicht», die Testabfragen werden ausgelassen | In `.env` steht ein Proxy, hinter dem nichts läuft, etwa Tor, das nicht gestartet ist | `./setup.sh` und «Prüfen und auffrischen»: Ist Tor gewählt, installiert und startet die Einrichtung es. Oder «Einstellungen ändern», «Proxy», «Kein Proxy» |
 | «Tor läuft, baut aber noch keine Verbindungen auf» | Tor ist eben gestartet (bis zwei Minuten), oder das Netz lässt Tor nicht zu | kurz warten, dann `python3 tools/pruefen.py --live`. Bleibt es dabei: ohne Proxy oder mit einem eigenen arbeiten |
 | WSL: `docker ps` meldet nach der Einrichtung auch im neuen Fenster «permission denied» | Das Konto kam eben erst in die Gruppe `docker`, und sie gilt erst ab der nächsten Anmeldung. Unter WSL ist das nicht in jedem Fall schon das nächste Fenster | in PowerShell `wsl --shutdown` ausführen, WSL neu öffnen |
@@ -1235,7 +1281,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 109 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 111 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1430,6 +1476,26 @@ PowerShell 7:
   **Nicht geprüft:** eine Testabfrage gegen die echte Quelle mit einem Schlüssel, der in der Oberfläche eingetragen
   wurde. Wie das Team in einer echten Ermittlung mit einer ausgeschalteten Quelle umgeht. Die Rechte der Datei unter
   Windows. Andere Browser als Chromium.
+- «Alles löschen» gibt es seit dem 19.11.2026, als Befehl (`tools/loeschen.py`) und als Knopf auf der Seite «Arbeitsplatz».
+  Anlass war der Wunsch des Eigentümers vom selben Tag. Fallakten und Sitzungsprotokolle werden vorher ausserhalb des
+  Projekts gesichert, und die Sicherung wird geprüft: Einen Weg ohne Sicherung gibt es nicht. Zwei Selbsttests gelten
+  dem, an Wegwerf-Projekten. Der eine prüft das Werkzeug: den Plan, der nichts ändert. Das Archiv mit der Prüfsumme jeder
+  Datei, Byte für Byte. Den Abbruch, wenn sich eine Datei während der Sicherung ändert oder ein Verweis in den
+  Fallakten liegt: Dann ist nichts gelöscht. Die Reihenfolge beim Löschen. Den Helfer, der den Projektordner erst
+  entfernt, wenn das aufrufende Programm beendet ist, der nach Ablauf seiner Frist nichts unter ihm wegräumt und der
+  einen fremden Ordner und den Benutzerordner nicht anfasst. Und dass am Terminal nur ein Mensch löscht, mit dem Namen
+  des Ordners als Bestätigung. Der andere prüft den Knopf: ohne Geheimnis 403, ohne den Namen des Ordners eine Absage,
+  bei gescheiterter Sicherung läuft die Oberfläche weiter, sonst beendet sie sich.
+  **Gesehen** in der Prüfumgebung (19.11.2026, Linux): Im Browser (Chromium) wurde ein Wegwerf-Projekt mit zwei
+  erfundenen Fällen über den Knopf gelöscht. Die Sicherung lag danach mit Prüfsumme im Ordner der Sicherung, nur für das
+  eigene Konto lesbar. Schlüsseldatei und Fallakten waren weg, die Oberfläche beendete sich, und der Projektordner
+  verschwand. Dabei fiel auf und ist behoben: Der Helfer wartete zuerst auf eine Prozessnummer und blieb hängen, solange
+  das System den beendeten Prozess noch führte. Jetzt erkennt er das Ende an einer Leitung, die sich mit dem Programm
+  schliesst. An einem echten Docker (29.9.2) entfernte das Werkzeug drei eigens angelegte Container und zwei eigens
+  angelegte Abbilder. Der laufende Container von Web-Check und sein Abbild blieben dabei unberührt.
+  **Nicht geprüft:** das Löschen eines echten, eingerichteten Arbeitsplatzes. Der Befehl an einem echten Terminal: Er
+  verlangt einen Menschen, aufgerufen wurden die Funktionen dahinter. Windows und macOS: Dort läuft derselbe Selbsttest
+  in der CI, gesehen ist dort nichts. Unter Windows bleibt der leere Ordner zurück, solange ein Terminal darin steht.
 - Die Selbsttests laufen seit dem 19.11.2026 ohne Eingabe. Anlass: Mehrere Tests prüfen, dass ein Werkzeug ohne
   Terminal ablehnt, und erbten bis dahin die Eingabe dessen, der die Tests startet. **Gesehen** am 19.11.2026 in der
   Prüfumgebung, an einem nachgestellten Terminal und ohne die Variablen von Claude Code: Auf dem Stand vor dieser
@@ -1519,7 +1585,7 @@ PowerShell 7:
   (gemessen an einem Fall mit 1058 Einträgen: jede Ansicht unter einer Sekunde), und die Darsteller der Werkzeuge,
   zu denen keine echte Antwort vorlag (siehe [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md)).
 - Acht gelten der Bedienung der Oberfläche (`tools/ui/bedienung.py`, `tools/ui/sitzung.py`, `tools/ui/paket.py`), Stand
-  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen», «nachbessern», dem Fehlerprotokoll und der Verwaltung der Quellen: Jede der 32 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
+  17.11.2026, seit dem 19.11.2026 mit «Alles abschalten», «Risiko übernehmen», «nachbessern», dem Fehlerprotokoll, der Verwaltung der Quellen und «Alles löschen»: Jede der 33 ändernden Aktionen antwortet ohne Geheimnis, mit falschem Geheimnis und mit dem Startcode an
   seiner Stelle mit 403 und ändert nichts. Eine Datei nimmt der Server erst an, wenn das Geheimnis stimmt. Der
   Startcode gilt einmal. Das Geheimnis steht in keiner Datei des Projekts und in keiner Umgebung. Ohne Terminal oder aus
   Claude Code gestartet, gibt es kein POST. Der Akten-Eingang mit erfundenen Dokumenten: einzelne Dateien, ein Ordner,

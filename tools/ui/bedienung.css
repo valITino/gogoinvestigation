@@ -37,7 +37,19 @@ form.abschalten{max-width:78ch}
 form.abschalten .knoepfe button{border-color:var(--kritisch,#b3261e);color:var(--kritisch,#b3261e);font-weight:600}
 main.abgeschaltet{max-width:70ch;min-height:0;margin:12vh auto;padding:22px 26px 18px;border:1px solid var(--rand);border-radius:10px;line-height:1.5}
 main.abgeschaltet h1{margin-bottom:10px}
-main.abgeschaltet li{margin:4px 0}
+main.abgeschaltet li{margin:4px 0;overflow-wrap:anywhere}
+main.abgeschaltet h2{font-size:16px;margin:16px 0 4px;padding:0;border:0}
+main.abgeschaltet code{overflow-wrap:anywhere}
+/* Arbeitsplatz löschen: eingeklappt, damit niemand den Knopf im Vorbeigehen trifft. Aufgeklappt mit rotem Rand */
+details.gefahrenbereich{max-width:104ch;border:1px solid var(--rand);border-radius:10px;padding:10px 14px;margin:8px 0 14px}
+details.gefahrenbereich[open]{border-color:var(--kritisch,#b3261e)}
+details.gefahrenbereich>summary{cursor:pointer;font-weight:600}
+details.gefahrenbereich h3{font-size:15px;margin:14px 0 4px}
+details.gefahrenbereich ul{margin:4px 0 10px;padding-left:22px}
+details.gefahrenbereich li{margin:3px 0;overflow-wrap:anywhere}
+form.loeschen{max-width:78ch}
+form.loeschen .feld input{max-width:340px}
+form.loeschen .knoepfe button{background:var(--kritisch,#b3261e);border-color:var(--kritisch,#b3261e);color:#fff;font-weight:600}
 
 /* Knöpfe, und Verweise, die wie Knöpfe aussehen */
 a.knopf,label.knopf{display:inline-block;font:inherit;color:inherit;background:var(--flaeche);border:1px solid var(--achse);border-radius:6px;padding:4px 12px;text-decoration:none;cursor:pointer}
@@ -306,5 +318,5 @@ details.quellen-hinweis ul{margin:6px 0;padding-left:22px}
 #hinweis[hidden]{display:none}
 #hinweis button{background:none;border:0;color:inherit;font-size:18px;line-height:1;padding:0 4px}
 
-@media print{#rand,#rueckfrage-ebene,#hinweis,.auswahlleiste,.ablegen,.dialog-ebene,.listenfilter,.quelle-knoepfe,.quelle-verwalten,details.quellen-hinweis{display:none}
+@media print{#rand,#rueckfrage-ebene,#hinweis,.auswahlleiste,.ablegen,.dialog-ebene,.listenfilter,.quelle-knoepfe,.quelle-verwalten,details.quellen-hinweis,details.gefahrenbereich{display:none}
   #mitte[aria-busy=true]::before{display:none}}

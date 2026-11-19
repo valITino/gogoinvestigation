@@ -630,7 +630,8 @@ def arbeitsplatz_seite(bedienung) -> str:
     Dasselbe am Terminal: python3 tools/dienste.py"""
     from tools import dienste
     farbe = {dienste.GUT: "gut", dienste.FEHLT: "kritisch"}
-    zeilen = [[esc(was), f'<span class="marke z-{farbe.get(zeichen, "leer")}">{esc(wie)}</span>'] for zeichen, was, wie in dienste.stand_zeilen(dienste.stand(False))]
+    stand = dienste.stand(False)
+    zeilen = [[esc(was), f'<span class="marke z-{farbe.get(zeichen, "leer")}">{esc(wie)}</span>'] for zeichen, was, wie in dienste.stand_zeilen(stand)]
     laufend = sorted(fall for fall, sitzung in (bedienung.ermittlungen.items() if bedienung is not None else ()) if sitzung.laeuft())
     zeilen.insert(0, ["Oberfläche", '<span class="marke z-gut">läuft</span>' + ("" if bedienung is not None else " <span class='klein'>im Modus «nur lesen»</span>")])
     zeilen.insert(1, ["Ermittlung", f'<span class="marke z-gut">läuft</span> {esc(", ".join(laufend))}' if laufend else '<span class="marke z-leer">läuft keine</span>'])
@@ -639,11 +640,47 @@ def arbeitsplatz_seite(bedienung) -> str:
                       danach="abgeschaltet", klasse="abschalten", frage=ABSCHALTEN_FRAGE, gefahr=True)
              if bedienung is not None else NUR_LESEN)
     return ("<h1>Arbeitsplatz</h1><p class='unter'>Was zu diesem Arbeitsplatz gehört und gerade läuft.</p>"
-            + tabelle(["Was", "Stand"], zeilen, "Was läuft")
+            + "<div data-ohne-leiste>" + tabelle(["Was", "Stand"], zeilen, "Was läuft") + "</div>"      # eine Handvoll Zeilen: ohne Filter und CSV
             + "<h2>Alles abschalten</h2>" + knopf
             + "<p class='klein'>Tor läuft dabei weiter, wenn der Arbeitsplatz es als Proxy nutzt: Es gehört zum System und braucht euer Passwort. "
               f"Am Terminal schaltet <code>{dienste.PY} tools/dienste.py aus</code> auch Tor ab, <code>{dienste.PY} tools/dienste.py ein</code> schaltet "
-              f"Web-Check und Tor wieder ein. Die Oberfläche startet wieder mit <code>{dienste.PY} tools/oberflaeche.py</code>. Docker selbst bleibt an.</p>")
+              f"Web-Check und Tor wieder ein. Die Oberfläche startet wieder mit <code>{dienste.PY} tools/oberflaeche.py</code>. Docker selbst bleibt an.</p>"
+            + arbeitsplatz_loeschen(bedienung, stand))
+
+
+LOESCHEN_FRAGE = ("Den Arbeitsplatz von diesem Rechner löschen? Fallakten und Sitzungsprotokolle werden zuerst gesichert. Danach verschwinden Schlüssel, "
+                  "Fallakten, Einstellungen und der Projektordner. Das lässt sich nicht rückgängig machen.")
+
+
+def arbeitsplatz_loeschen(bedienung, stand: dict | None = None) -> str:
+    """Der Abschnitt «Arbeitsplatz löschen» der Seite «Arbeitsplatz»: eingeklappt, mit dem Plan (was gelöscht wird, wohin gesichert
+    wird, was bleibt), einem Feld für die Bestätigung von Hand und dem Knopf. Im Modus «nur lesen» nur der Hinweis auf den Weg.
+    `stand`: was läuft, wenn die Seite es schon erfragt hat."""
+    from tools import loeschen
+    kopf = "<h2>Arbeitsplatz löschen</h2>"
+    if bedienung is None:
+        return (kopf + "<p class='klein'>Den Arbeitsplatz von diesem Rechner entfernen kann nur der Sachbearbeiter: in der bedienbaren Oberfläche "
+                f"oder am Terminal mit <code>{loeschen.PY} tools/loeschen.py alles</code>. Was dabei geschähe, zeigt <code>{loeschen.PY} tools/loeschen.py</code>, "
+                "ohne etwas zu ändern.</p>")
+    p = loeschen.plan(mit_oberflaeche=False, laeuft=stand)
+    plan = ("<div data-ohne-leiste>"
+            + tabelle(["Was", "Was geschieht"], [[esc(was), ('<span class="marke z-kritisch">Achtung</span> ' if zeichen == loeschen.FEHLT else "") + esc(wie)]
+                                                 for zeichen, was, wie in loeschen.plan_zeilen(p)], "Was gelöscht wird") + "</div>")
+    bleibt = "<ul>" + "".join(f"<li><b>{esc(was)}:</b> {esc(wo)}</li>" for was, wo in p["bleibt"]) + "</ul>"
+    if p["hindernis"]:
+        knopf = f'<p class="banner">So lässt sich der Arbeitsplatz nicht löschen: {esc(p["hindernis"])}</p>'
+    else:
+        knopf = formular("arbeitsplatz_loeschen", '<div class="felder-raster">'
+                         + feld("bestaetigung", f"Zur Bestätigung den Namen des Projektordners eintippen: {p['name']}", pflicht=True, platzhalter=p["name"], breit=True)
+                         + "</div>",
+                         "Alles löschen", danach="abgeschaltet", klasse="loeschen", frage=LOESCHEN_FRAGE, gefahr=True)
+    return (kopf + '<details class="gefahrenbereich"><summary>Den Arbeitsplatz von diesem Rechner entfernen</summary>'
+            "<p>Für den Fall, dass dieser Rechner den Arbeitsplatz nicht mehr führen soll. Zuerst werden Fallakten und Sitzungsprotokolle in ein Archiv "
+            "ausserhalb des Projekts gesichert, mit der Prüfsumme jeder Datei, und das Archiv wird geprüft. Erst dann wird gelöscht. Scheitert die Sicherung, "
+            "bleibt alles, wie es ist. Fallakten und Protokolle sind Beweismittel: Einen Weg, sie ohne Sicherung zu löschen, gibt es nicht.</p>"
+            + plan + "<h3>Was bleibt</h3>" + bleibt + knopf
+            + f"<p class='klein'>Dasselbe am Terminal: <code>{loeschen.PY} tools/loeschen.py alles</code>. Nur abschalten, ohne etwas zu löschen: «Alles abschalten» oben.</p>"
+              "</details>")
 
 
 # --------------------------------------------------------------------------- Fehlerprotokoll

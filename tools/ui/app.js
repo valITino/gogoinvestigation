@@ -195,6 +195,18 @@ function abgeschaltet(daten) {
   try { sessionStorage.removeItem("geheimnis"); } catch (e) { /* ohne Speicher gibt es nichts zu räumen */ }
   const liste = el("ul");
   for (const punkt of daten.punkte || []) liste.append(el("li", { text: punkt }));
+  if (daten.geloescht) {
+    // «Alles löschen»: Der Arbeitsplatz ist weg. Die Seite sagt, was gelöscht wurde, wo die Sicherung liegt und was bleibt
+    const bleibt = el("ul");
+    for (const punkt of daten.bleibt || []) bleibt.append(el("li", { text: punkt }));
+    document.body.replaceChildren(el("main", { klasse: "abgeschaltet" }, el("h1", { text: "Arbeitsplatz gelöscht" }),
+      el("p", { text: daten.meldung || "Der Arbeitsplatz ist von diesem Rechner gelöscht." }), liste,
+      el("h2", { text: "Was bleibt" }), bleibt,
+      el("p", {}, "Der Bericht dazu: ", el("code", { text: daten.bericht || "" })),
+      el("p", { text: "Dieses Fenster kann geschlossen werden." })));
+    document.title = "Gelöscht · OSINT-Arbeitsplatz";
+    return;
+  }
   document.body.replaceChildren(el("main", { klasse: "abgeschaltet" }, el("h1", { text: "Abgeschaltet" }),
     el("p", { text: daten.meldung || "Die Oberfläche ist beendet." }), liste,
     el("p", {}, "Dieses Fenster kann geschlossen werden. Wieder starten, im Terminal: ", el("code", { text: daten.start || "python3 tools/oberflaeche.py" }))));

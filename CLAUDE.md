@@ -69,6 +69,8 @@ die Angaben der Täterseite (Namen, Rufnummern, Konten, E-Mail-Adressen, Benutze
 - Prüfregeln von `tools/rapport.py` umgehen. Fehlt ein Beleg, wird die Aussage herabgestuft oder gestrichen.
 - Den Arbeitsplatz abschalten oder wieder einschalten (`tools/dienste.py aus`, `tools/dienste.py ein`, der Knopf «Alles abschalten»).
   Das entscheidet der Sachbearbeiter. Zeigen, was läuft, ist erlaubt: `python3 tools/dienste.py`.
+- Den Arbeitsplatz löschen (`tools/loeschen.py alles`, der Knopf «Alles löschen»), eine Sicherung der Fallakten anfassen oder
+  Fallakten, Protokolle und Schlüssel auf einem anderen Weg entfernen. Auch das entscheidet nur der Sachbearbeiter.
 
 ## Ohne Wächter
 
@@ -133,6 +135,7 @@ python3 tools/oberflaeche.py [Fall-ID]                              Oberfläche 
 python3 tools/audit_pruefen.py <Fall-ID>                            Protokollkette prüfen
 python3 tools/pruefen.py                                            Einrichtung prüfen
 python3 tools/dienste.py                                            Zeigt, was läuft (Oberfläche, Web-Check, Robin, Tor). Abschalten und einschalten nur der Sachbearbeiter
+python3 tools/loeschen.py                                           Zeigt, was «Alles löschen» entfernen würde. Löschen nur der Sachbearbeiter
 ```
 
 Unter Windows heisst der Interpreter `python` statt `python3`. Die Einrichtung selbst (`./setup.sh`, unter Windows
