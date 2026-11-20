@@ -434,20 +434,38 @@ async def ermitteln(uhr: Uhr) -> tuple[dict[str, str], dict[str, dict]]:
 
     async def schritt(name: str, agent: str, fn, sekunden: int = 7, **argumente) -> dict:
         zeit = uhr.weiter(sekunden)
+        # Wie Claude Code: ein Ereignis vor dem Aufruf (was verlangt wurde), eines danach (was zurückkam), mit derselben Kennung
+        aufruf = {"tool_name": f"mcp__osint__{fn.__name__}", "agent_type": agent, "agent_id": f"agent-{agent}", "tool_use_id": f"toolu_muster_{len(ids) + 1:03d}",
+                  "tool_input": {"fall": FALL, **argumente}}
+        hook({"hook_event_name": "PreToolUse", **aufruf}, zeit)
         ergebnis = await fn(FALL, **argumente)
         ids[name] = ergebnis["protokoll_id"]
         ergebnisse[name] = ergebnis
-        hook({"hook_event_name": "PostToolUse", "tool_name": f"mcp__osint__{fn.__name__}", "agent_type": agent,
-              "agent_id": f"agent-{agent}", "tool_use_id": f"toolu_muster_{len(ids):03d}",
-              "tool_input": {"fall": FALL, **argumente}, "duration_ms": 400 + 37 * len(ids),
+        hook({"hook_event_name": "PostToolUse", **aufruf, "duration_ms": 400 + 37 * len(ids),
               "tool_response": [{"type": "text", "text": json.dumps(ergebnis, ensure_ascii=False)}]}, zeit)
         return ergebnis
+
+    async def versuch(nr: int, agent: str, fn, sekunden: int = 4, **argumente) -> None:
+        """Ein Aufruf, den das Gateway zurückweist, ohne etwas abzufragen. Er bekommt keine Nummer im Abfrageprotokoll und steht im
+        Ermittlungsprotokoll unter «Aufrufe, die nicht ausgeführt wurden»."""
+        zeit = uhr.weiter(sekunden)
+        aufruf = {"tool_name": f"mcp__osint__{fn.__name__}", "agent_type": agent, "agent_id": f"agent-{agent}", "tool_use_id": f"toolu_muster_v{nr:02d}",
+                  "tool_input": {"fall": FALL, **argumente}}
+        hook({"hook_event_name": "PreToolUse", **aufruf}, zeit)
+        ergebnis = await fn(FALL, **argumente)
+        if ergebnis.get("ergebnis") != "nicht_ausgefuehrt" or ergebnis.get("protokoll_id"):
+            raise RuntimeError(f"Der Musterfall erwartet hier eine Absage des Gateways ohne Protokolleintrag: {ergebnis}")
+        hook({"hook_event_name": "PostToolUse", **aufruf, "duration_ms": 3,
+              "tool_response": [{"type": "text", "text": json.dumps(ergebnis, ensure_ascii=False)}]}, zeit)
 
     A, M, D, B = "infrastruktur-analyst", "malware-url-analyst", "darkweb-analyst", "blockchain-analyst"
     for agent in (A, M, D, B):
         hook({"hook_event_name": "SubagentStart", "agent_type": agent, "agent_id": f"agent-{agent}"}, uhr.weiter(2))
 
-    await schritt("shodan_server", A, infra.shodan_host, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: Dienste und Betreiber klären")
+    # Der erste Versuch nennt keinen brauchbaren Zweck: Das Gateway fragt nichts ab und sagt, weshalb. Danach folgt die Abfrage mit Zweck.
+    # Die beiden teilen sich die sieben Sekunden, die der erste Schritt sonst braucht: So bleibt jede Zeit im Abfrageprotokoll, wie sie war
+    await versuch(1, A, infra.shodan_host, sekunden=3, ip=IP_SERVER, zweck="Hosting")
+    await schritt("shodan_server", A, infra.shodan_host, sekunden=4, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: Dienste und Betreiber klären")
     await schritt("abuse_server", A, infra.abuseipdb_pruefen, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: frühere Missbrauchsmeldungen prüfen")
     await schritt("vt_ip_server", A, infra.virustotal_ip, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: Einschätzung der Sicherheitsanbieter")
     await schritt("spur_server", A, infra.spur_kontext, ip=IP_SERVER, zweck="Einliefernder Host aus Rapport Ziff. 5: Rechenzentrum oder Anonymisierungsdienst?")

@@ -28,7 +28,7 @@ SITZUNGEN = PROJEKT / "protokoll" / "sitzungen"
 FREIGABEN = ("aktiv", "darkweb", "personenbezug")
 FREIGABE_TEXT = {
     "aktiv": "Aktive Massnahmen: Das Ziel wird aufgerufen und kann das bemerken.",
-    "darkweb": "Dark-Web-Recherche über Tor (Robin).",
+    "darkweb": "Dark-Web-Recherche über Tor (Robin): suchen und Seiten lesen, im gewählten Untersuchungsbereich.",
     "personenbezug": "Abfragen zu Konten und Benutzernamen (Mastodon, Telegram).",
 }
 FALL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$")
@@ -147,6 +147,21 @@ def kette_pruefen(fall_id: str) -> dict:
     f2, n2, h2 = _kette_einer_datei(pfad, pfad / "protokoll" / "extern.jsonl", ursprung_extern(fall_id), "X")
     return {"ok": not (f1 or f2), "anzahl": n1, "letzter_hash": h1, "anzahl_extern": n2,
             "letzter_hash_extern": h2, "fehler": f1 + f2}
+
+
+# Einträge, die keine Anfrage bei einer Quelle sind: Auswertungen des Gateways, lokal befragte Listen, und was Robin im Container
+# erledigt, ohne nach aussen zu gehen (Suchtext schärfen, Treffer filtern, Bereitschaft melden). Abschlussrapport,
+# Ermittlungsprotokoll und Oberfläche zählen mit derselben Regel.
+KEINE_ABFRAGE = ("auswertung", "lokal", "robin_lokal")
+
+
+def ist_abfrage(e: dict) -> bool:
+    """Zählt der Eintrag als Abfrage bei einer Quelle? Nein, wenn er seiner Art nach keine ist (KEINE_ABFRAGE), und nein, wenn der
+    Aufruf nicht ausgeführt wurde: Robin antwortet auch dann, wenn Tor nicht bereit war oder der Untersuchungsbereich fehlte, und
+    die Antwort liegt als Beleg in der Fallakte. Gefragt wurde damit niemand. So gilt für Robin dasselbe wie für das Gateway: Was
+    dort nicht ausgeführt wird, bekommt keinen Eintrag und zählt nicht. Eine Abfrage, die das Gateway mangels Freigabe ablehnt,
+    zählt wie bisher mit und steht unter «abgelehnt»."""
+    return e.get("art") not in KEINE_ABFRAGE and e.get("ergebnis") != "nicht_ausgefuehrt"
 
 
 def belege_lesen(fall_id: str) -> list[dict]:

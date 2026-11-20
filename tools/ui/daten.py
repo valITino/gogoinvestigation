@@ -25,8 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from gateway import pflichtquellen as pq, plattform  # noqa: E402
-from gateway.akte import FAELLE, FREIGABEN, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
+from gateway import pflichtquellen as pq, plattform, robin  # noqa: E402
+from gateway.akte import FAELLE, FREIGABEN, KEINE_ABFRAGE, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
 from gateway.quellen import EINSTELLUNG_AUS, NICHT_SCHALTBAR, QUELLEN, aus_namen, schaltbar  # noqa: E402
 from tools import protokoll as protokollwerkzeug, rapport  # noqa: E402
 from tools.ui import blaetter, darsteller as ds  # noqa: E402
@@ -35,7 +35,12 @@ ds.ZONE = rapport.ZONE
 BILD = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 GROSS = 3 * 1024 * 1024         # Rohdateien bis zu dieser Grösse werden als Baum gezeigt und durchsucht
 SCHRITTE = ("Fall angelegt", "Indikatoren", "Plan", "Abfragen", "Gegenprüfung", "Rapport")
-ZUSTAND = {"ok": "Treffer", "kein_treffer": "kein Treffer", "fehler": "Fehlschlag", "abgelehnt": "abgelehnt"}
+ZUSTAND = {"ok": "Treffer", "kein_treffer": "kein Treffer", "fehler": "Fehlschlag", "abgelehnt": "abgelehnt", "nicht_ausgefuehrt": "nicht ausgeführt"}
+# Arbeitsspur: das Wort zur Art eines Eintrags, und Zeichen und Farbe zu seinem Ergebnis. Ein Aufruf von Robin über Tor ist nicht
+# «passiv»: Eine gelesene Seite wurde aufgerufen, wenn auch über Tor. Was nicht ausgeführt wurde, ist weder Treffer noch Fehlschlag.
+SPUR_ART = {"auswertung": "Auswertung", "lokal": "lokale Liste", "aktiv": "aktiv", "von_hand": "von Hand", "tor": "über Tor", "robin_lokal": "Robin, lokal",
+            "extern": "weiteres Werkzeug"}
+SPUR_ZEICHEN = {"ok": ("●", "gut"), "kein_treffer": ("○", "neutral"), "fehler": ("✕", "kritisch"), "abgelehnt": ("⊘", "kritisch"), "nicht_ausgefuehrt": ("⊘", "warnung")}
 
 
 class NichtGefunden(Exception):
@@ -264,7 +269,8 @@ class Fall:
     def kennzahlen(self) -> dict:
         eintraege = self.eintraege()
         abfragen = [e for e in eintraege if str(e.get("id", "")).startswith("P-")]
-        return {"rapport": rapport.kennzahlen(self.befunde() or {}, eintraege), "protokoll": protokollwerkzeug.kennzahlen(abfragen)}
+        extern = [e for e in eintraege if not str(e.get("id", "")).startswith("P-")]
+        return {"rapport": rapport.kennzahlen(self.befunde() or {}, eintraege), "protokoll": protokollwerkzeug.kennzahlen(abfragen, extern)}
 
     def schritte(self) -> list[dict]:
         """Wo der Fall steht. Jeder Schritt nennt, woran die Oberfläche das erkennt."""
@@ -289,7 +295,8 @@ class Fall:
         aus = []
         for name in FREIGABEN:
             e = (self.daten.get("freigaben") or {}).get(name) or {}
-            aus.append({"name": name, "erteilt": freigabe_erteilt(self.daten, name), "durch": e.get("durch") or "", "am": e.get("am") or "", "vermerk": e.get("vermerk") or ""})
+            aus.append({"name": name, "erteilt": freigabe_erteilt(self.daten, name), "durch": e.get("durch") or "", "am": e.get("am") or "", "vermerk": e.get("vermerk") or "",
+                        **({"bereich": robin.bereich(self.daten)} if name == "darkweb" else {})})      # der Untersuchungsbereich für Robin
         return aus
 
     def pflichtquellen(self) -> dict | None:
@@ -376,7 +383,7 @@ class Fall:
         verzeichnis = {q["name"]: q for q in quellen()}
         zellen: dict[tuple[str, str], dict] = {}
         spalten: list[str] = []
-        rang = {"ok": 0, "kein_treffer": 1, "fehler": 2, "abgelehnt": 3}
+        rang = {"ok": 0, "kein_treffer": 1, "fehler": 2, "abgelehnt": 3, "nicht_ausgefuehrt": 3}
         for ind in indikatoren:
             for e in self.zu_indikator(ind):
                 if e.get("art") in ("auswertung",):
@@ -478,12 +485,7 @@ class Fall:
         """Welcher Analyst (Subagent) welche Abfrage ausgelöst hat, laut den Sitzungsprotokollen."""
         nur = set(self.daten["sitzungen"]) if self.daten.get("muster") and self.daten.get("sitzungen") else None
         sitzung, _ = protokollwerkzeug.sitzungen_laden(self.id, nur)
-        wer = {z["protokoll_id"]: str(z.get("agent") or "hauptsitzung") for z in sitzung if z.get("protokoll_id") and z.get("fall") == self.id}
-        for e in self.eintraege():
-            if e.get("art") == "auswertung" and e["id"] in wer:
-                for teil in e.get("grundlage") or []:
-                    wer.setdefault(teil, wer[e["id"]])
-        return wer
+        return {nummer: str(z.get("agent") or "hauptsitzung") for nummer, z in protokollwerkzeug.akteure_aus(sitzung, self.eintraege(), self.id).items()}
 
     # ---- Arbeitsspur und Suche
     def spur(self, ab: int = 0) -> dict:
@@ -492,8 +494,11 @@ class Fall:
         aus = []
         for nr, e in enumerate(eintraege[ab:], ab + 1):
             antwort = e.get("antwort") or {}
-            klasse = "auswertung" if e.get("art") in ("auswertung", "lokal") else {"kein_treffer": "kein_treffer", "fehler": "fehlschlag", "abgelehnt": "fehlschlag"}.get(e.get("ergebnis"), "abfrage")
+            klasse = "auswertung" if e.get("art") in KEINE_ABFRAGE else {"kein_treffer": "kein_treffer", "fehler": "fehlschlag", "abgelehnt": "fehlschlag",
+                                                                          "nicht_ausgefuehrt": "fehlschlag"}.get(e.get("ergebnis"), "abfrage")
             aus.append({"id": e.get("id"), "zeit": e.get("zeit_utc"), "zeit_anzeige": ds.zeit(e.get("zeit_utc"))[0] if e.get("zeit_utc") else "", "art": e.get("art"), "klasse": klasse, "quelle": e.get("quelle"), "werkzeug": e.get("werkzeug"),
+                        "art_wort": SPUR_ART.get(e.get("art"), "passiv"), "zeichen": SPUR_ZEICHEN.get(e.get("ergebnis"), ("?", "kritisch"))[0],
+                        "farbe": SPUR_ZEICHEN.get(e.get("ergebnis"), ("?", "kritisch"))[1],
                         "ziel": e.get("ziel"), "ergebnis": e.get("ergebnis"), "freigabe": e.get("freigabe"), "aus_cache": antwort.get("aus_cache") or "",
                         "fehler": e.get("fehler") or "", "stelle": nr})
         kette = self.kette()

@@ -7,7 +7,8 @@ darüber, wann was wo und wozu abgefragt wurde.
 
 > [!WARNING]
 > **Noch nicht an echten Fällen erprobt.** Geprüft ist mit dem Musterfall und mit erfundenen Dokumenten. Die
-> Steuerung von Claude Code aus der Oberfläche ist mit dem echten Claude Code nicht geprüft. Den Wächter-Hook gibt
+> Steuerung von Claude Code aus der Oberfläche ist mit dem echten Claude Code nicht geprüft. Das Dark Web (Robin) ist
+> geprüft bis an die Grenze des Tor-Netzes: Eine Suche über Tor und das Lesen einer echten Seite sind nicht gesehen. Den Wächter-Hook gibt
 > es seit dem 17.11.2026 nicht mehr: Was Agenten dürfen, regeln die Berechtigungen von Claude Code, die Werkzeuge
 > selbst und das Gateway. Was damit gilt und was nicht mehr: [Schutzmechanismen](#schutzmechanismen) und
 > [Stand der Prüfung](#stand-der-prüfung-und-grenzen).
@@ -24,7 +25,7 @@ darüber, wann was wo und wozu abgefragt wurde.
 ![Abschlussrapport des Musterfalls](docs/bilder/abschlussrapport.png)
 
 **Muster ansehen:** [Abschlussrapport (PDF, 21 Seiten)](muster/Abschlussrapport.pdf) ·
-[Ermittlungsprotokoll (PDF, 28 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
+[Ermittlungsprotokoll (PDF, 29 Seiten)](muster/Ermittlungsprotokoll.pdf) ·
 [Datenblätter (PDF, 94 Seiten)](muster/Datenblaetter.pdf) ·
 [was der Musterfall zeigt](muster/README.md). Der Fall ist frei erfunden.
 
@@ -81,6 +82,8 @@ Die Ergebnisse einer Ermittlung:
 - `Abschlussrapport.html`: Zusammenfassung, Indikatoren, Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss
   mit Flussbild, Zeitachse, Lücken, Empfehlungen, Glossar. Eine Datei, ohne Abhängigkeiten, aus dem Browser als PDF druckbar.
 - `Ermittlungsprotokoll.html` und `.csv`: jede Abfrage mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und Agent.
+  Dazu, was verlangt, aber nicht ausgeführt wurde (vom Gateway zurückgewiesen, von einer Berechtigung verboten, vom
+  Sachbearbeiter abgelehnt), mit dem Grund.
 - `indikatoren.csv`: die Indikatorliste zum Weitergeben.
 - Beide Dokumente als PDF im Format A4: `python3 tools/pdf.py <Fall-ID>`.
 
@@ -175,7 +178,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 111 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 122 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -443,18 +446,38 @@ python3 tools/fall.py neu 2026-0412 --titel "Phishing Kundenportal" --kuerzel AB
 Oberfläche unter «Bedienen» oder am Terminal:
 
 ```bash
-python3 tools/fall.py freigabe 2026-0412 darkweb       --durch "Kürzel/Funktion" --vermerk "Grundlage"
+python3 tools/fall.py freigabe 2026-0412 darkweb       --durch "Kürzel/Funktion" --vermerk "Grundlage" --bereich ransomware_malware
 python3 tools/fall.py freigabe 2026-0412 aktiv         --durch "…" --vermerk "…"
 python3 tools/fall.py freigabe 2026-0412 personenbezug --durch "…" --vermerk "…"
 ```
 
 | Freigabe | Schaltet frei |
 |---|---|
-| `darkweb` | Suche und Lektüre von Onion-Seiten über Robin. |
+| `darkweb` | Suchen und Seiten lesen im Dark Web über Robin, im Untersuchungsbereich, den ihr mit der Freigabe wählt (siehe unten). |
 | `aktiv` | Massnahmen, die das Ziel bemerken kann: URL bei urlquery oder urlscan.io einreichen, Seite in der Wayback Machine sichern, aktive Web-Check-Prüfungen. Jede einzelne verlangt zusätzlich eine Bestätigung in der Sitzung. Bei urlscan.io reicht das Gateway nur mit der Sichtbarkeit «private» ein. |
 | `personenbezug` | Kontoabfragen: Mastodon-Konto, Telegram-Benutzer und -Suche. |
 
 Der Befehl verlangt eine Bestätigung am Terminal. Ein Agent kann sich keine Freigabe selbst erteilen.
+
+**Dark Web: der Untersuchungsbereich.** Robin sucht nur in einem Bereich, den ein Mensch gewählt hat. Fehlt die Angabe,
+fragt es nach, und eine laufende Ermittlung erreicht euch dafür nicht: Es würde nie gesucht. Deshalb gehört der Bereich
+zur Freigabe `darkweb`, in der Oberfläche als Auswahl, am Terminal mit `--bereich`. Die Ermittlung übernimmt ihn
+unverändert. Ändern lässt er sich später, ohne die Freigabe neu zu erteilen: in der Oberfläche unter «Bedienen», am
+Terminal mit `python3 tools/fall.py freigabe <Fall-ID> darkweb --bereich <Bereich>`.
+
+| Bereich | Wofür |
+|---|---|
+| `threat_intel` | Allgemeine Lage: Spuren, Akteure und Ansatzpunkte ohne festen Schwerpunkt |
+| `ransomware_malware` | Ransomware und Schadsoftware: Gruppen, Leak-Seiten, Schadsoftware-Familien, Infrastruktur |
+| `corporate_espionage` | Datenabfluss bei Organisationen: angebotene oder veröffentlichte Daten von Firmen und Behörden |
+| `personal_identity` | Personen und Konten der Täterseite. Braucht zusätzlich die Freigabe `personenbezug` |
+
+Was die Ermittlung im Dark Web tut und was nicht (Entscheid des Eigentümers vom 20.11.2026): Sie sucht, liest die Seiten,
+die zum Auftrag gehören, und hält fest, was dort steht: wer was anbietet oder behauptet, wann, zu welchem Preis, mit
+welchen Kontaktwegen, Wallet-Adressen und Verweisen. Der Text jeder gelesenen Seite liegt als Beleg in der Fallakte. Sie
+ruft keine Bilder und keine Dateien ab, kauft nichts, meldet sich nirgends an, schreibt niemandem und greift nichts an.
+Vor jeder Seite prüft sie die Adresse gegen die Sperrliste von Ahmia. Steht die Adresse darauf, wird die Seite nicht
+geöffnet. Personendaten Unbeteiligter aus einem Leak schreibt sie nicht in den Rapport: Dort stehen Art, Umfang und Beleg.
 
 **Pflichtquellen vorgeben, falls gewünscht.** Ohne Vorgabe wählt das Team die Quellen selbst, nach den Indikatoren
 und den Fragen des Auftrags. Wer sicher sein will, dass bestimmte Quellen gefragt werden, gibt sie vor: in der
@@ -587,6 +610,13 @@ geht verloren. Die Rohdatei steht daneben, mit Prüfsumme und der Auskunft, ob s
 
 ![Rohdatei mit Prüfsumme und Kettenprüfung](docs/bilder/oberflaeche-rohdatei.png)
 
+Bei Robin (Dark Web) sagt der Beleg, was die Antwort belegt: wie viele Treffer, wie viele Seiten gelesen, oder dass nichts
+ausgeführt wurde. Zu jeder gelesenen Seite steht, ob ihre Adresse vorher gegen die Sperrliste geprüft war, mit dem Beleg
+der Prüfung. Hielt ein Aufruf die Regeln des Falls nicht ein, steht das über der Tabelle. Adressen aus dem Dark Web sind
+nie anklickbar.
+
+![Beleg von Robin: gelesene Seiten mit dem Stand der Sperrliste. Der Aufruf lief ohne Freigabe, der Beleg sagt es (erfundene Adressen)](docs/bilder/oberflaeche-robin.png)
+
 **Suche und Ergebnisse.** Die Suche geht über den ganzen Fall, samt Rohdaten. Unter «Ergebnisse» stehen
 Abschlussrapport, Ermittlungsprotokoll und Datenblätter, als HTML und PDF, mit dem Vermerk, ob sie noch zum Stand
 der Daten passen, und alles zusammen als Archiv. Jede Tabelle lässt sich sortieren, filtern und als CSV ausgeben, jede
@@ -668,7 +698,7 @@ Browserfenster bedienen, das sich dabei öffnet. Der Ablauf:
   nichts abgefragt wurde. Per Klick oder Formular, über die bestehenden Werkzeuge. Jeder Schritt steht im
   Sitzungsprotokoll, mit Zeit und dem Vermerk «über die Oberfläche».
 
-![Bedienen: Freigaben, Abklärung von Hand, Dokumente](docs/bilder/oberflaeche-bedienen.png)
+![Bedienen: Freigaben, hier das Dark Web mit dem gewählten Untersuchungsbereich](docs/bilder/oberflaeche-bedienen.png)
 
 ![Zurückführen: der Rapport mit echten Angaben, nur auf diesem Bildschirm (erfundene Angaben)](docs/bilder/oberflaeche-zurueck.png)
 
@@ -768,8 +798,10 @@ Akten-Eingang lebt im Speicher: Was hochgeladen, aber nicht aufgenommen ist, ist
 Bilder, Ton, gescannte PDF und die alten Office-Formate liest er nicht, sie bleiben bei euch. Die PII-Prüfung erkennt
 Muster, keine Namen: Ein Name, der in einem Dokument oder im Chat stehen bleibt, erreicht das Sprachmodell. Rohdateien
 über 3 MB zeigt die Oberfläche nur im Anfang und durchsucht sie nicht. Für Werkzeuge, zu denen keine
-echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Spur, Telegram über RapidAPI, Shodan-DNS, Wayback Machine,
-Robin), ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
+echte Antwort vorlag (aktive Massnahmen, Kontoabfragen, Spur, Telegram über RapidAPI, Shodan-DNS, Wayback Machine),
+ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Passt er nicht, stehen die Angaben unter «Weitere Angaben».
+Robins Antworten zeigt die Oberfläche zerlegt in Stand, Treffer und gelesene Seiten. Die Form ist die der echten Antwort
+(gesehen am 20.11.2026), echte Seiten aus dem Dark Web waren in der Prüfumgebung nicht erreichbar.
 
 Alle Einzelheiten, die Abschnitte je Art des Indikators, die Regeln der Darstellung und die Tabelle der
 Darsteller: [docs/OBERFLAECHE.md](docs/OBERFLAECHE.md).
@@ -988,6 +1020,16 @@ Subagent benutzt hat, gelesen aus den Transkripten von Claude Code. Das Ermittlu
 «Sitzungsverlauf» als Zeile «Eingesetzte Sprachmodelle», ebenso jeden Wechsel mit `/model`. Während der Arbeit
 zeigt `/tasks` das Modell jedes laufenden Subagenten.
 
+**Das Ermittlungsprotokoll hat sechs Abschnitte:** Aufträge des Sachbearbeiters, Abfragen bei externen Quellen
+(Gateway, Belege `P-…`), Abfragen über weitere Werkzeuge (Robin und von Hand Erfasstes, Belege `X-…`), Aufrufe, die
+nicht ausgeführt wurden, Sitzungsverlauf, Integrität. Abschnitt 4 gibt es seit dem 20.11.2026: Vorher hinterliess ein
+Aufruf, den eine Berechtigung verbot oder den der Sachbearbeiter ablehnte, keine Spur, und was das Gateway ohne Abfrage
+zurückwies (Zweck fehlt, Quelle ausgeschaltet, Schlüssel fehlt, Angabe ungültig), stand nirgends.
+
+Die Zahlen im Kopf gehen auf: Treffer, ohne Treffer, fehlgeschlagen und abgelehnt ergeben zusammen die Zahl der Abfragen.
+Was nicht ausgeführt wurde, zählt nicht als Abfrage und steht daneben, mit dem Verweis auf die Abschnitte 3 und 4. Der
+Abschlussrapport und die Oberfläche zählen mit derselben Regel (`ist_abfrage` in `gateway/akte.py`).
+
 Die geltende Zuteilung zeigt `python3 tools/pruefen.py` unter «Konfiguration». Selbsttests schlagen an, wenn ein
 Agent des Abschlusses nicht auf Fable 5.2 steht oder das Projekt Mythos von sich aus zuliesse. Wie Claude Code
 Modelle ausserhalb der Liste behandelt, steht in dessen Dokumentation:
@@ -1130,7 +1172,7 @@ So sind die gewünschten Werkzeuge eingebunden. Details und Endpunkte: [docs/QUE
 | Einordnung einer IP: proxycheck.io, ipapi.is, RIPEstat, dazu AbuseIPDB und Spur | Gateway: `ip_einordnung`. Netz und Inhaber (mit Tatzeit: wer das Netz damals ankündigte und hielt), Art des Anschlusses je Quelle, und ob die Adresse der Ausgang eines Anonymisierungsdienstes ist: «ja», «kein Hinweis» oder «nicht geprüft». Der Rapport verlangt den Wert für jede IP. | passiv |
 | urlscan.io | Gateway: `urlscan_suche`, `urlscan_ergebnis` (mit Seitentext und Bildschirmfoto), `urlscan_kontingent` und `urlscan_einreichen` | passiv, Einreichen aktiv und nur «private» |
 | web-check | Eigene Instanz per Docker. Gateway: `webcheck_passiv` (13 Prüfungen), `webcheck_aktiv` (27 Prüfungen) | passiv und aktiv |
-| Robin | Eigener MCP-Server des Projekts, läuft als Container mit Tor. Jeder Aufruf braucht die Zustimmung des Sachbearbeiters. Die Oberfläche lehnt ihn ohne Freigabe `darkweb` von selbst ab. Der Hook sichert jede Antwort als Beleg `X-…`. | Tor |
+| Robin | Eigener MCP-Server des Projekts, läuft als Container mit Tor: suchen (16 Suchmaschinen) und Seiten lesen. Jeder Aufruf braucht die Zustimmung des Sachbearbeiters. Die Oberfläche prüft ihn stattdessen gegen die Freigabe `darkweb` und die Regeln für Robin (Untersuchungsbereich, Sperrliste vor dem Lesen). Der Hook sichert jede Antwort als Beleg `X-…` und hält fest, was sie belegt. `robin_investigate` und `robin_save_investigation` sind verboten: Sie öffneten Seiten ohne Prüfung gegen die Sperrliste und legten Ergebnisse ausserhalb der Fallakte ab. | Tor |
 | Darkus | Menügesteuert, deshalb nicht agentenfähig. Seine Suchmaschinen deckt Robin ab. Die Prüfung gegen die Ahmia-Sperrliste ist als `onion_sperrliste` nachgebaut und Pflicht vor jedem Öffnen einer Onion-Seite. | passiv |
 | ransomware.live | Gateway: `ransomware_opfer`, `_gruppe`, `_iocs`, `_aktuell` | passiv |
 | urlquery | Gateway: `urlquery_suche`, `_bericht`, `_reputation`, `_status` und `urlquery_einreichen` | passiv, Einreichen aktiv und nur «private» |
@@ -1162,7 +1204,9 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Geprüft ist nur, was die PII-Prüfung aufgenommen hat | `fall_status` nennt den Agenten nur Dokumente, deren Prüfsumme im Register der PII-Prüfung steht. Von Hand Kopiertes und nachträglich Verändertes meldet es als ungeprüft, ohne den Namen zu nennen. Die Oberfläche warnt im Kopf des Falls. Dass ein Agent ein solches Dokument liest, verhindert seit dem Wegfall des Wächters keine Sperre mehr. | `gateway/akte.py` (`eingang_stand`), `gateway/server.py` |
 | Keine Abfrage ohne Fall und Zweck | Das Gateway weist sie ab. | `gateway/kern.py` |
 | Aktiv und Personenbezug nur mit Freigabe | Das Gateway prüft `fall.json`. Abgelehnte Versuche stehen im Protokoll. Aktive Werkzeuge fragen zudem jedes Mal nach. | `gateway/kern.py`, `.claude/settings.json` |
-| Dark Web nur mit Zustimmung | Jeder Aufruf von Robin fragt nach (Regel «ask»). Die Oberfläche lehnt ihn ohne Freigabe `darkweb` von selbst ab und lässt ihn mit Freigabe zu. Am Terminal entscheidet der Mensch je Aufruf: Dort prüft niemand mehr die Freigabe. | `.claude/settings.json`, `tools/ui/sitzung.py` |
+| Dark Web nur mit Zustimmung | Jeder Aufruf von Robin fragt nach (Regel «ask»). Die Oberfläche entscheidet an eurer Stelle nach festen Regeln: Freigabe `darkweb`, der Untersuchungsbereich aus der Freigabe, kein Platzhalter im Suchtext, und eine Seite nur, wenn ihre Adresse in diesem Fall gegen die Sperrliste geprüft wurde und nicht darauf steht. Was die Regeln verletzt, lehnt sie mit dem Grund ab. Am Terminal entscheidet der Mensch je Aufruf: Dort erzwingt niemand die Regeln, sie sind dem Analysten aufgetragen. Der Sitzungs-Hook hält aber im Beleg fest, wenn ein Aufruf sie nicht einhielt: Im Ermittlungsprotokoll trägt er die Marke «Regel verletzt» mit dem Grund, und zu jeder gelesenen Seite steht, ob ihre Adresse vorher geprüft war. | `.claude/settings.json`, `gateway/robin.py`, `tools/ui/sitzung.py` |
+| Ein abgelehnter Aufruf hinterlässt eine Spur | Claude Code meldet einen abgelehnten oder verbotenen Aufruf nicht eigens. Der Sitzungs-Hook schreibt deshalb mit, was verlangt wird, bevor es ausgeführt wird, und das Ende jeder Antwort. Er prüft dabei nichts und lehnt nichts ab, auch nicht, wenn er ausfällt: Sein Starter gibt nie den Rückgabewert weiter, den Claude Code als Absage liest. Das Ermittlungsprotokoll führt in Abschnitt 4, was verlangt, aber nicht ausgeführt wurde. Endete die Sitzung ohne Abschluss, sagt der Eintrag, dass der Aufruf noch gelaufen sein kann. | `.claude/hooks/protokoll_hook.py`, `tools/protokoll.py` |
+| Ein Beleg sagt, was er belegt | Robin antwortet auch, wenn es nichts getan hat (Tor nicht bereit, Bereich nicht genannt). Solche Antworten heissen im Protokoll «nicht ausgeführt», zählen nicht als Abfrage, und der Rapport nimmt sie als Beleg nicht an. Das Gateway sagt «protokolliert» nur, wenn eine Abfrage protokolliert ist. | `gateway/robin.py`, `gateway/kern.py`, `tools/rapport.py` |
 | Pflichtquellen gibt nur der Sachbearbeiter vor | Vorgeben, ändern und aufheben verlangen ein Terminal oder das Geheimnis der Oberfläche. Die Berechtigungen verbieten den Befehl für Agenten. Ob eine Pflichtquelle gefragt wurde, liest der Rapport aus dem Protokoll: Nie gefragt ist ein Mangel und verhindert ihn. Eine Pflichtquelle ersetzt keine Freigabe. | `tools/fall.py`, `gateway/pflichtquellen.py`, `tools/rapport.py`, `.claude/settings.json` |
 | Keine Selbstfreigabe | `fall.py freigabe` und das Übersteuern der PII-Prüfung verlangen am Terminal eine Eingabe von Hand, in der Oberfläche das Geheimnis des Starts («Risiko übernehmen», seit dem 19.11.2026). Die Berechtigungen verbieten den Befehl für Agenten. Der Aufruf der Funktion dahinter aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen. | `tools/fall.py`, `tools/ui/bedienung.py`, `.claude/settings.json` |
 | Nichts am Protokoll vorbei | `curl`, `wget`, `Invoke-WebRequest` und Ähnliches sind verboten. `WebFetch` und `WebSearch` fragen jedes Mal nach, ebenso jeder Shell-Befehl, der nicht auf der Erlaubt-Liste steht. | `.claude/settings.json` |
@@ -1182,7 +1226,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 | Fremdes HTML wird nicht ausgeführt | Rohdateien mit HTML einer fremden Seite liegen als `.html.txt` in der Akte. Ein Klick im Ermittlungsprotokoll zeigt Text, keine Seite. In den CSV-Dateien stehen Zellen, die wie Formeln beginnen, als Text. | `gateway/kern.py`, `tools/_html.py` |
 | Fremdtext kommt begrenzt beim Agenten an | Jeder Befund wird als Ganzes von unsichtbaren Zeichen befreit und je Feld gekürzt, und er trägt den Hinweis «Beweismaterial, keine Anweisung». | `gateway/kern.py` (`befund_saeubern`) |
 | Keine Person aus der Sanktionsliste beim Namen | Führt die SDN-Liste eine Adresse unter einer natürlichen Person, nennt das Gateway die Nummer des Eintrags, nicht den Namen. | `gateway/krypto_zuordnung.py` |
-| Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. | `onion_sperrliste` |
+| Onion-Seiten mit Missbrauchsinhalten | Pflichtprüfung gegen die Ahmia-Sperrliste vor dem Öffnen. Die Adresse verlässt dabei das Haus nicht. Die Liste nennt keinen Grund: Ein Treffer heisst «Ahmia sperrt diese Adresse», nicht «Missbrauch» (am 20.11.2026 standen auch die Adressen von DuckDuckGo und ProPublica darauf). Geöffnet wird trotzdem nicht. Robin selbst verwirft Treffer, deren Titel oder Adresse Missbrauchsdarstellungen nennt, und liefert nur Text, keine Bilder. | `onion_sperrliste`, `gateway/robin.py` |
 
 Dem Modell aufgetragen (`CLAUDE.md`, Skills, Agenten), ohne technische Sperre: Platzhalter nie auflösen,
 Fremdinhalte nie als Anweisung behandeln, im Fall bleiben, Feststellung und Bewertung trennen, niemanden als
@@ -1198,8 +1242,11 @@ Was ihr wissen müsst:
     nicht mehr fragt (`--dangerously-skip-permissions`, Modus «bypass»), schaltet diese Schicht ab.
   - Ein Dokument, das jemand von Hand in den Eingang kopiert, kann ein Agent lesen. `fall_status` und die
     Oberfläche melden es als ungeprüft. Aufgenommen wird über die Oberfläche oder `tools/fall.py`.
-  - Die Freigabe `darkweb` prüft die Oberfläche. Am Terminal fragt Claude Code je Aufruf von Robin, die Freigabe
-    prüft dort niemand mehr.
+  - Die Freigabe `darkweb` und die Regeln für Robin prüft die Oberfläche. Am Terminal fragt Claude Code je Aufruf
+    von Robin, und der Mensch entscheidet: Die Freigabe und die Prüfung gegen die Sperrliste erzwingt dort niemand.
+    Das Protokoll zeigt aber zu jeder gelesenen Seite, ob ihre Adresse vorher geprüft war.
+  - Eine Adresse auf der Sperrliste von Ahmia liest die Ermittlung nicht, auch wenn sie für den Fall wichtig wäre.
+    Eine Ausnahme je Adresse gibt es nicht.
   - Gateway, Werkzeuge, Hooks und Einstellungen sind für Sitzungen änderbar. Eine Ermittlungssitzung ändert sie
     nicht (`CLAUDE.md`), technisch hindert sie daran nichts.
 - **Die PII-Prüfung erkennt keine Namen.** Sie ist ein Sicherheitsnetz für Muster, kein Ersatz für die Pseudonymisierung.
@@ -1272,7 +1319,9 @@ Was ihr wissen müsst:
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
 | Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
 | `rapport.py` meldet «Pflichtquelle …: nicht abgefragt für …» oder «… im Fall nie abgefragt» | Eine vorgegebene Quelle wurde für einen passenden Indikator nie gefragt, eine Suchquelle im ganzen Fall nie | Die Ermittlung fortsetzen: Sie holt die Abfrage nach. Fehlt dafür eine Freigabe oder ein Schlüssel: erteilen, einrichten oder die Quelle aus der Vorgabe nehmen (`python3 tools/fall.py quellen <Fall-ID>`, oder in der Oberfläche) |
-| Robin meldet `tor_bootstrapping` | Tor startet noch (bis zwei Minuten nach Beginn der Sitzung), oder das Netz lässt Tor nicht zu | Kurz warten und noch einmal fragen. Bleibt es dabei: Der Container muss das Tor-Netz direkt erreichen, siehe `docs/QUELLEN.md` |
+| Robin meldet `tor_bootstrapping` | Tor startet noch (bis zwei Minuten nach Beginn der Sitzung), oder das Netz lässt Tor nicht zu | Kurz warten und noch einmal fragen. Ob Tor an diesem Rechner überhaupt hochkommt, zeigt `python3 tools/pruefen.py --live`: Es startet Robin und fragt nach. Bleibt es dabei: Der Container muss das Tor-Netz direkt erreichen, siehe `docs/QUELLEN.md` |
+| Robin sucht nicht und meldet `needs_domain` | Der Fall hat die Freigabe `darkweb` aus der Zeit vor dem 20.11.2026, ohne Untersuchungsbereich | Den Bereich wählen: in der Oberfläche unter «Bedienen», am Terminal `python3 tools/fall.py freigabe <Fall-ID> darkweb --bereich <Bereich>` |
+| `python3 tools/dienste.py` zeigt «Ablage von Robin» | Ein Docker-Volume aus einer früheren Einrichtung. Robin verwendet es nicht mehr | Ist es leer, entfernt es die nächste Einrichtung. Sonst ansehen und von Hand entfernen: `docker volume rm robin-investigations` |
 | «Protokoll … ABWEICHUNGEN» | Protokoll oder Rohdatei wurde verändert | Nicht reparieren. Vorfall klären. |
 
 Meldungen der Einrichtung: `/tmp/osint-setup/` (unter Windows `%TEMP%\osint-setup\`), je Schritt eine Datei:
@@ -1291,7 +1340,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 111 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 122 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1581,6 +1630,55 @@ PowerShell 7:
   der Selbsttests. Unter Linux nachgestellt (Zwischenordner hinter einem Verweis): Der Test scheiterte an derselben
   Stelle, nach der Korrektur bestand er. Für Windows ist die Ursache daraus geschlossen (dort wohl ein Kurzname im
   Pfad). Jetzt werden beide Seiten aufgelöst, und der Selbsttest prüft den Fall mit einem Verweis.
+- Das Dark Web ist seit dem 20.11.2026 voll nutzbar, und das Protokoll sagt zu jedem Aufruf, was geschah. Anlass war ein
+  Test von Robin am selben Tag im Auftrag des Eigentümers. Er zeigte sechs Mängel: Robin suchte nie, weil ihm der
+  Untersuchungsbereich fehlte, den ein Mensch wählen muss. Das Protokoll führte Antworten als «gesichert», bei denen
+  nichts gesucht worden war. Ein abgelehnter oder verbotener Aufruf hinterliess keine Spur. Robins Ablage lag in einem
+  Docker-Volume ausserhalb der Fallakte. `tools/pruefen.py` nannte Robin bereit, sobald das Abbild geladen war. Und ein
+  Treffer auf der Sperrliste von Ahmia hiess «Missbrauchsinhalte», obwohl die Liste keinen Grund nennt.
+  **Geändert:** Der Untersuchungsbereich gehört zur Freigabe `darkweb`. Die Regeln für Robin stehen an einer Stelle
+  (`gateway/robin.py`): Die Oberfläche entscheidet danach, und der Sitzungs-Hook hält im Beleg fest, wenn ein Aufruf
+  sie nicht einhielt. Der Hook schreibt mit, was verlangt wird, bevor es ausgeführt wird, dazu das Ende jeder Antwort.
+  Das Ermittlungsprotokoll hat dafür den neuen Abschnitt 4. Fällt der Hook aus (kein Python, Datei fehlt), geht die
+  Arbeit weiter: Sein Starter gibt den Rückgabewert 2, den Claude Code als Absage liest, nie weiter. Robins Antworten
+  heissen nach dem, was sie belegen. Das
+  Gateway sagt «protokolliert» nur, wenn etwas protokolliert ist, und eine Fehlerseite an Stelle der Sperrliste gilt als
+  Fehlschlag. Was nicht ausgeführt wurde, zählt nirgends als Abfrage. `robin_investigate` und
+  `robin_save_investigation` sind verboten, das Volume wird nicht mehr eingehängt, und «Alles löschen» sichert es, bevor
+  es entfernt wird. Elf neue Selbsttests gelten dem. Einer ruft jedes der 47 Werkzeuge des Gateways mit zu knappem
+  Zweck, bei ausgeschalteter Quelle und zu einem Fall auf, den es nicht gibt: Nichts geht hinaus, nichts bekommt eine
+  Nummer, keine Meldung behauptet einen Protokolleintrag, und jeder Versuch steht in Abschnitt 4. Gegenprobe am
+  20.11.2026: In 30 Kopien des Codes fehlte je eine der Korrekturen, in jeder schlug mindestens ein Selbsttest an.
+  **Gesehen** in der Prüfumgebung (20.11.2026, Linux) mit dem echten Claude Code 2.1.329, ohne Fenster, mit einem eigenen
+  Testkonto, in einer Wegwerf-Kopie des Projekts mit einem erfundenen Fall ohne Freigabe `darkweb`, drei Läufe: Ein
+  Aufruf des Gateways mit dem Zweck «x» kam ohne Nummer zurück. `robin_health` ohne Zustimmung, `curl` und `wget` wurden
+  nicht ausgeführt. Alle vier stehen in Abschnitt 4 mit dem Grund. `robin_investigate` stand dem Modell gar nicht zur
+  Verfügung. Mit Zustimmung liefen sechs Aufrufe von Robin: Die Belege heissen «Tor nicht bereit» und «nicht
+  ausgeführt», nie «gesichert», und der Hinweis des Hooks kam beim Modell wörtlich an. Im dritten Lauf tragen beide
+  Belege die Marke «Regel verletzt» (der Fall hat keine Freigabe), und das Modell meldete es von sich aus. Der Kopf des
+  Protokolls dazu: 3 Abfragen, 3 mit Treffer, 8 nicht ausgeführt (4 mit Beleg, 4 ohne Nummer), Kette unverändert. Ein
+  Protokoll, das in der Sitzung selbst erzeugt wurde, führte den eigenen laufenden Aufruf nicht als Versuch.
+  An einem echten Docker (29.9.2) mit dem festgelegten Abbild: Die Bereitschaftsprüfung startete Robin, meldete nach
+  63 Sekunden «Tor nicht bereit» und hinterliess keinen Container. Ein eigens angelegtes Volume mit zwei Dateien wurde
+  gezählt, als Archiv mit beiden Dateien gesichert und entfernt. Die Sperrliste von Ahmia am selben Tag über das
+  Gateway (Fall `SELBSTTEST`): 60'394 Einträge. Sieben öffentlich gelistete Adressen von Leak-Seiten zweier
+  Ransomware-Gruppen standen nicht darauf, die Onion-Adressen von DuckDuckGo und ProPublica schon.
+  Im Browser (Chromium, ohne Fenster, 20.11.2026), in einem Wegwerf-Projekt mit einem erfundenen Fall und erfundenen
+  Adressen, 36 Prüfpunkte: Die Karte «Dark Web» bietet die vier Bereiche an. Ohne Bereich sendet der Browser das
+  Formular nicht ab, «Personen und Konten» ohne die Freigabe für Kontoabfragen lehnt der Server mit dem Grund ab. Mit
+  Bereich ist die Freigabe erteilt, der Bereich lässt sich ändern, und beides steht im Sitzungsverlauf. Die Belege von
+  Robin zeigen Treffer, gelesene Seiten mit dem Stand der Sperrliste und «nicht ausgeführt». Vier Aufrufe vor der
+  Freigabe tragen den Regelverstoss, zwei danach nicht. Keine Onion-Adresse ist anklickbar, kein Fehler in der Konsole,
+  keine Anfrage nach aussen. Das Protokoll dazu: 6 Abfragen, die vier Ergebnisse ergeben zusammen 6, daneben 4 nicht
+  ausgeführt (1 mit Beleg, 3 ohne Nummer). Dabei fiel auf und ist behoben: Die Arbeitsspur nannte Robins Aufrufe
+  «passiv» und zeigte für «nicht ausgeführt» ein Fragezeichen. Eine Liste von vier Adressen brach im Feld «Ziel» mitten
+  in einer Adresse ab. Und «Letzte Abfrage» im Kopf des Protokolls übersah die Aufrufe von Robin.
+  **Nicht geprüft:** Suchen und Lesen über Tor (mehr dazu weiter unten unter «Nicht geprüft»). Der Weg über die Oberfläche mit
+  dem echten Claude Code und erteilter Freigabe `darkweb`: Freigaben erteilt nur der Sachbearbeiter, eine
+  Entwicklungssitzung erteilt keine. Diesen Weg prüfen die Selbsttests gegen ein Programm, das Claude Code spielt. Ob
+  ein Analyst die Regeln für Robin am Terminal einhält: Sie sind ihm aufgetragen, erzwungen werden sie dort nicht, das
+  Protokoll weist Verstösse aus. Das Ende einer Antwort und die Rückfrage eines MCP-Servers in einer Sitzung mit Fenster:
+  Gesehen sind beide nur ohne Fenster. Windows und macOS: Dort laufen die Selbsttests in der CI, gesehen ist dort nichts.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
@@ -1822,8 +1920,11 @@ MCP-Server als Belege in die Fallakte.
 - **Die Installation fehlender Systempakete** über dnf, yum, pacman, zypper und apk sowie die Installation von
   Docker, ob über `--docker-installieren` oder über die Frage «Dienste».
   Geprüft ist, welche Befehle die Einrichtung je Paketverwaltung absetzt. Ausgeführt wurden apt und Homebrew.
-- **Robin im Betrieb.** Robin ist nie gelaufen. Was es vom Rechner und vom Netz braucht, steht in
-  `docs/QUELLEN.md` nach den Unterlagen des Projekts (gelesen am 17.11.2026), nicht nach eigener Beobachtung.
+- **Robin: suchen und lesen über Tor.** In der Prüfumgebung kam Tor im Container nicht hoch (das Netz dort lässt
+  nur die Ports 80 und 443 zu und öffnet verschlüsselte Verbindungen). Eine Suche im Dark Web und das Lesen einer
+  echten Seite sind deshalb nicht gesehen. Gesehen ist am 20.11.2026: Start des Containers, alle neun Werkzeuge ohne
+  Tor, die Form jeder Antwort (mit Robins eigenem Servercode und gestelltem Netz), der Weg über Claude Code bis zum
+  Beleg in der Fallakte. Ob Tor an eurem Rechner hochkommt, zeigt `python3 tools/pruefen.py --live`.
 - **Web-Check mit einem bösartigen Ziel.** Die Prüfungen liefen gegen example.com. Wie `threats`, `block-lists` und
   `breaches` bei einem Treffer antworten, ist nicht gesehen.
 

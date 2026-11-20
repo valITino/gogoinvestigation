@@ -52,7 +52,7 @@ auf 127.0.0.1 und nimmt beide Namen an. Den Browser öffnet der Befehl über Pro
 | Oben: Kopf des Falls | Fall-ID, Titel, Freigaben (erteilt oder nicht, durch wen, wann) und die Schrittleiste. |
 | Schrittleiste | Fall angelegt, Indikatoren, Plan, Abfragen, Gegenprüfung, Rapport. Jeder Schritt sagt, woran die Oberfläche ihn erkennt (zum Beispiel «12 von 13 Befunden gegengeprüft»). Fehlt ein Schritt in der Akte, steht «nicht abgelegt». |
 | Mitte | Die Ansichten, siehe unten. |
-| Rechts: Arbeitsspur | Das Abfrageprotokoll, laufend nachgeführt (alle drei Sekunden). Filter: Abfragen, «kein Treffer», Fehlschläge, Auswertungen, Freigaben. Darunter Zahl der Einträge und Stand der Protokollkette. |
+| Rechts: Arbeitsspur | Das Abfrageprotokoll, laufend nachgeführt (alle drei Sekunden). Je Eintrag steht, wie gefragt wurde: passiv, aktiv, über Tor (Robin), «Robin, lokal» (im Container, nichts ging hinaus), lokale Liste, Auswertung, von Hand. Was nicht ausgeführt wurde, trägt «⊘» und den Grund. Filter: Abfragen, «kein Treffer», Fehlschläge, Auswertungen, Freigaben. Darunter Zahl der Einträge und Stand der Protokollkette. |
 | Rechts unten: Chat | Nur bedienbar: der Chat mit der Ermittlung, klein und einklappbar. In der Ansicht «Ermittlung» steht er gross in der Mitte. |
 | Über allem: Rückfrage | Nur bedienbar: Braucht Claude Code eine Zustimmung, erscheint ein Fenster, in jeder Ansicht. |
 
@@ -223,9 +223,15 @@ davon einem benannten Feld zugeordnet sind und wie viele unter «Weitere Angaben
   Prüfungen von Web-Check, beim Kanal auf Telegram und bei der Sperrliste von Ahmia.
 - **Erfunden nach Dokumentation:** Für diese Werkzeuge lag keine echte Antwort vor. Die Vorlage folgt der Dokumentation
   der Quelle. Das betrifft die aktiven Massnahmen (nie ausgelöst), die Abfragen mit Personenbezug, die Werkzeuge ohne
-  Schlüssel (Spur, Telegram über RapidAPI, Shodan-DNS), die Wayback Machine (am Prüftag nicht erreichbar) und Robin
-  (Dark Web). **Ob diese Darsteller zur echten Antwort passen, ist nicht geprüft.** Passen sie nicht, stehen die
+  Schlüssel (Spur, Telegram über RapidAPI, Shodan-DNS) und die Wayback Machine (am Prüftag nicht erreichbar).
+  **Ob diese Darsteller zur echten Antwort passen, ist nicht geprüft.** Passen sie nicht, stehen die
   Angaben unter «Weitere Angaben».
+- **Robin (Dark Web)** antwortet als Text, nicht als JSON: In der ersten Zeile steht der Stand, was von fremden Seiten
+  stammt, steht zwischen Begrenzern. Die Oberfläche zerlegt den Text in Stand, Treffer und gelesene Seiten
+  (`gateway/robin.py`) und zeigt die Zerlegung. Der Wortlaut steht unverändert in der Rohdatei. Die beiden Vorlagen
+  (Trefferliste, gelesene Seiten) haben die Form der echten Antwort: erzeugt am 20.11.2026 mit Robins eigenem
+  Servercode aus dem festgelegten Abbild und einem gestellten Netz. Eine Suche über Tor war in der Prüfumgebung nicht
+  möglich: Wie echte Seiten aus dem Dark Web in dieser Ansicht aussehen, ist nicht gesehen.
 
 `fall_status` hat keine Vorlage: Es fragt keine Quelle ab und hinterlässt keinen Protokolleintrag.
 
@@ -268,8 +274,8 @@ davon einem benannten Feld zugeordnet sind und wie viele unter «Weitere Angaben
 | `ransomware_gruppe` | ja | 285 | 243 | 42 | Inhalt erfunden, Form der echten Antwort |
 | `ransomware_iocs` | ja | 8 | 6 | 2 | Inhalt erfunden, Form der echten Antwort |
 | `ransomware_opfer` | ja | 64 | 37 | 27 | Inhalt erfunden, Form der echten Antwort |
-| `robin_scrape` | ja | 3 | 3 | 0 | erfunden nach Dokumentation |
-| `robin_search` | ja | 8 | 8 | 0 | erfunden nach Dokumentation |
+| `robin_scrape` | ja | 36 | 36 | 0 | Inhalt erfunden, Form der echten Antwort |
+| `robin_search` | ja | 20 | 20 | 0 | Inhalt erfunden, Form der echten Antwort |
 | `shodan_dns` | ja | 13 | 13 | 0 | erfunden nach Dokumentation |
 | `shodan_host` | ja | 86 | 22 | 64 | echte Antwort |
 | `shodan_internetdb` | ja | 8 | 8 | 0 | echte Antwort |
@@ -583,7 +589,14 @@ wozu, und warum es fragt. Die Eingabe im Wortlaut und der Name des Werkzeugs ste
 - Eine Rückfrage stellt Claude Code für jeden Aufruf, den die Einstellungen des Projekts weder erlauben noch verbieten.
   Erlaubt sind die passiven Abfragen, die Werkzeuge für Fall, Rapport und Protokoll und das Schreiben der Arbeitsdateien
   eines Falls (`arbeitsstand/`, `befunde.json`, `rapport/`). Aktive Massnahmen, die Websuche und alles Übrige fragen nach.
-- Über Aufrufe von Robin (Dark Web) entscheidet die Freigabe «darkweb» des Falls, ohne Fenster.
+- Über Aufrufe von Robin (Dark Web) entscheiden die Freigabe «darkweb» des Falls und die Regeln für Robin, ohne
+  Fenster: Gesucht wird nur im Untersuchungsbereich, den ihr mit der Freigabe gewählt habt, und nie mit einem
+  Platzhalter. Eine Seite wird nur gelesen, wenn ihre Adresse in diesem Fall mit `onion_sperrliste` geprüft wurde und
+  nicht auf der Liste steht. Was die Regeln verletzt, lehnt die Oberfläche ab und sagt der Ermittlung den Grund. Jeder
+  Grund steht einmal im Sitzungsprotokoll, jeder einzelne Versuch im Ermittlungsprotokoll (Abschnitt 4).
+  Den Bereich wählt ihr unter «Bedienen» mit der Freigabe: Ohne ihn sendet der Browser das Formular nicht ab. Ändern
+  lässt er sich dort später, ohne die Freigabe neu zu erteilen. Der Bereich «Personen und Konten» braucht zusätzlich
+  die Freigabe für Kontoabfragen. Gesehen im Browser am 20.11.2026 (Chromium), mit einem erfundenen Fall.
 
 ### Ergebnisse und Archiv
 
@@ -1111,7 +1124,8 @@ oder Brave, ohne Fenster). Das Dokument nennt am Schluss den Stand der Daten (le
 - **Suche.** Höchstens 200 Treffer. Bilder werden nicht durchsucht.
 - **Analyst je Abfrage.** Wer eine Abfrage ausgelöst hat, steht nur da, wenn das Sitzungsprotokoll des Falls auf dem Rechner liegt.
 - **Darsteller ohne echte Vorlage.** Siehe oben: Für aktive Massnahmen, Abfragen mit Personenbezug, Spur, Telegram
-  über RapidAPI, Shodan-DNS, die Wayback Machine und Robin ist nicht geprüft, ob der Darsteller zur echten Antwort passt.
+  über RapidAPI, Shodan-DNS und die Wayback Machine ist nicht geprüft, ob der Darsteller zur echten Antwort passt. Bei Robin
+  hat die Antwort die echte Form, echte Seiten aus dem Dark Web sind in dieser Ansicht nicht gesehen.
 - **Keine Anmeldung, kein Mehrbenutzerbetrieb.** Siehe Schutz.
 - **Fehlerprotokoll.** Geprüft am 19.11.2026 unter Linux und im Browser (Chromium): die Zahl in der Navigation, die
   Seite mit Filter, «Alles kopieren», «Als Datei speichern», «Leeren», ein Fenster ohne Geheimnis. Die Ermittlung

@@ -13,8 +13,6 @@
         "run",
         "-i",
         "--rm",
-        "-v",
-        "robin-investigations:/app/investigations",
         "${ROBIN_IMAGE:-apurvsg/robin@sha256:579aae11b9100078ecd0d700f4057117e3ded6f37a37d7dfdf773bfcceded5c0}",
         "mcp"
       ],

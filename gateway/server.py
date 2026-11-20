@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from . import (kern, quellen_infrastruktur, quellen_ip, quellen_krypto, quellen_szene, quellen_urlscan,  # noqa: F401  (registrieren die Werkzeuge)
                quellen_web)
-from . import pflichtquellen, plattform
+from . import pflichtquellen, plattform, robin
 from .akte import eingang_stand, jsonl_lesen
 from .kern import FREIGABEN, Fall, einstellung, fall_laden, protokoll_lesen, werkzeug
 from .quellen import QUELLEN
@@ -65,6 +65,24 @@ async def fall_status(fall: Fall) -> dict:
         e = (akte.daten.get("freigaben") or {}).get(name) or {}
         freigaben[name] = ({"erteilt": True, "durch": e.get("durch"), "am": e.get("am")}
                            if akte.freigabe(name) else {"erteilt": False})
+    if akte.freigabe("darkweb"):
+        # Robin sucht nur in einem Untersuchungsbereich, den ein Mensch gewählt hat. Der Sachbearbeiter wählt ihn mit der Freigabe.
+        # Der Analyst gibt ihn bei jeder Suche mit: Ohne diese Angaben sucht Robin nicht und fragt nach einem Menschen, den es
+        # in einer laufenden Ermittlung nicht erreicht.
+        angaben = robin.suchangaben(akte.daten)
+        if angaben:
+            bereich = angaben["preset"]
+            freigaben["darkweb"].update(untersuchungsbereich=robin.BEREICHE[bereich][0], robin_search=angaben,
+                                        hinweis="Jede Suche mit robin_search bekommt diese beiden Angaben mit (preset, user_chose). "
+                                                "Den Bereich hat der Sachbearbeiter gewählt.")
+            if bereich == robin.BEREICH_MIT_PERSONENBEZUG and not akte.freigabe("personenbezug"):
+                freigaben["darkweb"]["hinweis"] = ("Dieser Untersuchungsbereich braucht zusätzlich die Freigabe personenbezug. Sie ist nicht "
+                                                   "erteilt: nicht suchen, als Lücke melden.")
+                freigaben["darkweb"].pop("robin_search")
+        else:
+            freigaben["darkweb"].update(untersuchungsbereich=None,
+                                        hinweis="Der Sachbearbeiter hat keinen Untersuchungsbereich gewählt. So sucht Robin nicht: nicht "
+                                                "suchen, sondern als Lücke melden. Er wählt ihn in der Oberfläche unter «Bedienen» oder am Terminal.")
     # Genannt werden nur Dokumente, die die PII-Prüfung aufgenommen hat. Was von Hand in den Eingang kopiert oder danach
     # verändert wurde, ist nicht geprüft: Der Agent bekommt die Zahl, nicht den Namen (ein Dateiname kann eine Person nennen).
     eingang, ungeprueft = eingang_stand(akte.pfad)

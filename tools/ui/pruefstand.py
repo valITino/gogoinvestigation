@@ -69,7 +69,8 @@ def messen() -> list[dict]:
     for v in vorlagen():
         roh, form = lesen(v)
         b = ds.darstellen(eintrag(v), roh, form)
-        zeilen.append({"name": v["name"], "werkzeug": v["werkzeug"], "quelle": v["quelle"], "form": form, "eigen": b.eigen, "titel": b.titel, "gesamt": b.gesamt,
+        # Robin antwortet als Text, gezeigt wird seine Zerlegung: Gezählt werden deren Angaben
+        zeilen.append({"name": v["name"], "werkzeug": v["werkzeug"], "quelle": v["quelle"], "form": "json" if b.zerlegt else form, "eigen": b.eigen, "titel": b.titel, "gesamt": b.gesamt,
                        "zugeordnet": b.zugeordnet, "weitere": len(b.weitere), "art": v["art"], "herkunft": v["herkunft"]})
     return zeilen
 

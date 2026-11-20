@@ -46,7 +46,7 @@ if __name__ == "__main__":
     plattform.start()
 
 from gateway.akte import (FREIGABE_TEXT, FREIGABEN, IP_VORBEHALT, IP_WERTE, VON_HAND, belege_lesen, fall_daten, fall_pfad,  # noqa: E402
-                          freigabe_erteilt, kette_pruefen)
+                          freigabe_erteilt, ist_abfrage, kette_pruefen)
 from tools._html import (FLUSS_KLASSEN, STATUS, TYPEN, _FLUSS_ART, _FLUSS_WORT, balken, csv_sicher, esc, geldfluss, graf,  # noqa: E402
                          graf_legende, kachel, kuerzen, kurz_adresse, seite, verteilung, zahl_ch)
 
@@ -181,7 +181,9 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | Non
             if not e:
                 maengel.append(f"{wo}: Beleg {pid} steht nicht im Abfrageprotokoll.")
             elif e.get("ergebnis") not in BRAUCHBAR:
-                maengel.append(f"{wo}: Beleg {pid} war eine {e.get('ergebnis')}e Abfrage und belegt nichts.")
+                was = {"fehler": "fehlgeschlagene", "abgelehnt": "abgelehnte", "nicht_ausgefuehrt": "nicht ausgeführte"}.get(e.get("ergebnis"), str(e.get("ergebnis")))
+                maengel.append(f"{wo}: Beleg {pid} war eine {was} Abfrage und belegt nichts."
+                               + (f" ({e['fehler']})" if e.get("ergebnis") == "nicht_ausgefuehrt" and e.get("fehler") else ""))
             elif e.get("art") == "auswertung":      # das Gateway hat gerechnet: Es zählen die Quellen der Tatsachen
                 quellen.update(e.get("quellen") or [])
             else:
@@ -316,8 +318,9 @@ def pruefen(b: dict, protokoll: dict[str, dict], entwurf: bool, pfad: Path | Non
         maengel.extend(pflichtquellen.maengel(pflicht))
         hinweise.extend(pflichtquellen.hinweise(pflicht))
     genutzt = verwendete_belege(b, protokoll)
+    # Was Robin im Container erledigt (Bereitschaft melden, Suchtext schärfen), ist keine Abfrage: Es muss im Rapport nicht vorkommen
     ungenutzt = [p for p, e in protokoll.items() if p not in genutzt and e.get("ergebnis") in BRAUCHBAR
-                 and not (e.get("antwort") or {}).get("aus_cache")]
+                 and not (e.get("antwort") or {}).get("aus_cache") and e.get("art") != "robin_lokal"]
     if ungenutzt:
         hinweise.append(f"{len(ungenutzt)} Abfrage(n) tauchen im Rapport nicht auf: {', '.join(ungenutzt[:12])}"
                         f"{' …' if len(ungenutzt) > 12 else ''}. Auch Abfragen ohne Treffer sind ein Ergebnis.")
@@ -587,10 +590,11 @@ def pflicht_abschnitt(s: dict | None, protokoll: dict[str, dict]) -> str:
 
 def kennzahlen(b: dict, eintraege: list[dict]) -> dict:
     """Die Zahlen aus Abschnitt 3 des Rapports. Auch die Oberfläche nimmt sie von hier, damit beide nie voneinander abweichen.
-    «Abfragen» sind Anfragen bei Quellen. Auswertungen des Gateways und lokal befragte Listen zählen nicht dazu."""
+    «Abfragen» sind Anfragen bei Quellen. Auswertungen des Gateways, lokal befragte Listen, was Robin im Container erledigt,
+    ohne nach aussen zu gehen, und was Robin nicht ausgeführt hat, zählen nicht dazu (akte.ist_abfrage)."""
     indikatoren = b.get("indikatoren") or []
     befunde = b.get("befunde") or []
-    abfragen = [e for e in eintraege if e.get("art") not in ("auswertung", "lokal")]
+    abfragen = [e for e in eintraege if ist_abfrage(e)]
     return {"indikatoren": len(indikatoren),
             "bewertung": Counter((i.get("bewertung") or "unbekannt") for i in indikatoren),
             "abfragen": abfragen,
@@ -600,8 +604,28 @@ def kennzahlen(b: dict, eintraege: list[dict]) -> dict:
             "ohne_treffer": sum(1 for e in abfragen if e.get("ergebnis") == "kein_treffer"),
             "fehlgeschlagen": sum(1 for e in abfragen if e.get("ergebnis") == "fehler"),
             "abgelehnt": sum(1 for e in abfragen if e.get("ergebnis") == "abgelehnt"),
+            "nicht_ausgefuehrt": [e for e in eintraege if e.get("ergebnis") == "nicht_ausgefuehrt"],      # Robin: verlangt, es ging nichts hinaus
             "befunde": len(befunde),
             "gegengeprueft": sum(1 for f in befunde if f.get("gegenpruefung") in ("bestaetigt", "eingeschraenkt"))}
+
+
+def abfragen_zusatz(k: dict) -> str:
+    """Die zweite Zeile der Kachel «Abfragen». Auch die Oberfläche nimmt sie von hier. Was nicht ausgeführt wurde, zählt nicht zu den
+    Abfragen und steht deshalb nicht hier, sondern in einem eigenen Satz (``ohne_ausfuehrung_satz``)."""
+    return f"{k['ohne_treffer']} ohne Treffer, {k['fehlgeschlagen']} fehlgeschlagen" + (f", {k['abgelehnt']} abgelehnt" if k["abgelehnt"] else "")
+
+
+def ohne_ausfuehrung_satz(k: dict) -> str:
+    """Ein Satz zu den Aufrufen, die einen Beleg haben, aber nichts ausgeführt haben (Robin: Tor nicht bereit, Bereich nicht genannt).
+    Leer, wenn es keine gibt. Auch die Oberfläche nimmt ihn von hier."""
+    nie = k["nicht_ausgefuehrt"]
+    if not nie:
+        return ""
+    gruende = Counter((e.get("fehler") or "ohne Meldung").strip() for e in nie)
+    return (f"Verlangt, aber nicht ausgeführt: {len(nie)} {'Aufruf' if len(nie) == 1 else 'Aufrufe'} ({', '.join(e['id'] for e in nie[:12])}{' …' if len(nie) > 12 else ''}). "
+            + " ".join(f"{n}-mal: {g}" for g, n in gruende.most_common(3))
+            + " Sie zählen nicht als Abfrage und belegen keine Suche und keine gelesene Seite. Einzelheiten und weitere nicht ausgeführte "
+              "Aufrufe: Ermittlungsprotokoll, Abschnitte 3 und 4.")
 
 
 def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand: dict,
@@ -657,10 +681,12 @@ def bauen(fall_id: str, fall: dict, b: dict, eintraege: list[dict], kettenstand:
     ohne_treffer, fehlgeschlagen, abgelehnt, geprueft = k["ohne_treffer"], k["fehlgeschlagen"], k["abgelehnt"], k["gegengeprueft"]
     h.append("<h2>3 Überblick in Zahlen</h2><div class='kacheln'>")
     h.append(kachel(len(indikatoren), "Indikatoren", f"{zaehler['boesartig']} bösartig, {zaehler['verdaechtig']} verdächtig"))
-    h.append(kachel(len(eintraege), "Abfragen", f"{ohne_treffer} ohne Treffer, {fehlgeschlagen} fehlgeschlagen" + (f", {abgelehnt} abgelehnt" if abgelehnt else "")))
+    h.append(kachel(len(eintraege), "Abfragen", abfragen_zusatz(k)))
     h.append(kachel(len(quellen), "Quellen genutzt", f"{len(auswertungen)} Auswertungen daraus" if auswertungen else ""))
     h.append(kachel(len(befunde), "Befunde", f"{geprueft} gegengeprüft"))
     h.append("</div>")
+    if k["nicht_ausgefuehrt"]:
+        h.append(f"<p class='klein'>{esc(ohne_ausfuehrung_satz(k))}</p>")
     if indikatoren:
         zeilen = [{"name": f"{STATUS[s][2]} {STATUS[s][0]}", "wert": zaehler[s], "anzeige": str(zaehler[s]), "farbe": STATUS[s][1]}
                   for s in ("boesartig", "verdaechtig", "unauffaellig", "unbekannt") if zaehler[s]]

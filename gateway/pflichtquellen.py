@@ -218,12 +218,22 @@ def _zu_indikator(ind: dict, eintraege: list[dict], je_id: dict) -> list[dict]:
     return list(aus.values())
 
 
+def _nie_gesendet(e: dict) -> bool:
+    """Ging diese Anfrage gar nicht hinaus? Dann wurde die Quelle nie gefragt, und die Pflicht bleibt offen.
+    Robin: Stimmte der Aufruf selbst nicht (Untersuchungsbereich fehlte, Adresse zurückgewiesen), wurde nie gesucht. War nur Tor
+    noch nicht bereit, gilt der Versuch als gefragt und gescheitert: Das liegt nicht am Analysten und gehört unter Lücken."""
+    if e.get("ergebnis") in NIE_GESENDET:
+        return True
+    return e.get("ergebnis") == "nicht_ausgefuehrt" and (e.get("robin") or {}).get("status") != "tor_bootstrapping"
+
+
 def _gelungen(e: dict, pfad: Path | None) -> bool:
-    """Hat die Quelle auf diese Abfrage geantwortet? Robin meldet auch dann eine Antwort, wenn Tor noch startet: Das zählt nicht."""
+    """Hat die Quelle auf diese Abfrage geantwortet? Robin meldet auch dann eine Antwort, wenn Tor noch startet: Das zählt nicht.
+    Seit dem 20.11.2026 steht das im Eintrag selbst (ergebnis). Bei älteren Einträgen sagt es nur die Rohdatei."""
     if e.get("ergebnis") not in BRAUCHBAR:
         return False
     roh = (e.get("antwort") or {}).get("rohdaten")
-    if e.get("art") == "tor" and pfad is not None and roh:
+    if e.get("art") == "tor" and "robin" not in e and pfad is not None and roh:
         try:
             with open(pfad / roh, "rb") as f:
                 if b"tor_bootstrapping" in f.read(200_000):
@@ -279,7 +289,7 @@ def stand(fall: dict, indikatoren: list[dict], eintraege: list[dict], pfad: Path
                            "grund": "Diese Quelle steht nicht im Verzeichnis. Der Sachbearbeiter nimmt sie aus der Vorgabe."})
             continue
         namen = {name, *v.im_protokoll}
-        gilt = lambda e: (e.get("quelle") in namen and e.get("art") != "auswertung" and e.get("ergebnis") not in NIE_GESENDET  # noqa: E731
+        gilt = lambda e: (e.get("quelle") in namen and e.get("art") != "auswertung" and not _nie_gesendet(e)  # noqa: E731
                           and (not v.werkzeuge or e.get("werkzeug") in v.werkzeuge))
         passend = [i for i in eingang if passt(v, i)]
         zeile = {"quelle": name, "einmal": v.einmal, "faellig": [], "erfuellt": [], "fehlgeschlagen": [], "offen": [], "belege": {}, "grund": ""}

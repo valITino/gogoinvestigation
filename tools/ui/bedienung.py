@@ -36,7 +36,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from gateway import plattform
+from gateway import plattform, robin
 from gateway.akte import FALL_RE, FREIGABE_TEXT, FREIGABEN, PROJEKT, eingang_stand, fall_daten, fall_pfad
 from gateway.quellen import EINSTELLUNG_AUS, NICHT_SCHALTBAR, QUELLEN, aus_namen, aus_wert, schaltbar
 from tools import _pseudo as ps, beleg as belegwerkzeug, fall as fallwerkzeug, reidentifizieren as rueck
@@ -942,16 +942,26 @@ class Bedienung:
         fall, art = self._fall_id(str(d.get("fall") or "")), str(d.get("art") or "")
         if art not in FREIGABEN:
             raise Fehler("Diese Freigabe gibt es nicht.")
+        # Dark Web: Robin sucht nur in einem Untersuchungsbereich, den ein Mensch gewählt hat. Er gehört zur Freigabe.
+        bereich = str(d.get("bereich") or "").strip()
+        if art == "darkweb" and not d.get("entziehen") and bereich not in robin.BEREICHE:
+            raise Fehler("Für das Dark Web bitte einen Untersuchungsbereich wählen. Robin sucht nur in einem Bereich, den der Sachbearbeiter gewählt hat.")
         try:
             if d.get("entziehen"):
                 fallwerkzeug.freigabe_setzen(fall, art, entziehen=True, weg="Oberfläche")
                 self.vermerken(fall, f"Freigabe entzogen: {art}")
                 return {"meldung": f"Freigabe «{art}» entzogen."}
-            eintrag = fallwerkzeug.freigabe_setzen(fall, art, durch=str(d.get("durch") or ""), vermerk=str(d.get("vermerk") or ""), weg="Oberfläche")
+            if art == "darkweb" and d.get("bereich_aendern"):
+                fallwerkzeug.bereich_setzen(fall, bereich, weg="Oberfläche")
+                self.vermerken(fall, "Untersuchungsbereich für das Dark Web gewählt", robin.BEREICHE[bereich][0])
+                return {"meldung": f"Untersuchungsbereich: {robin.BEREICHE[bereich][0]}. Das gilt für Suchen, die danach starten."}
+            eintrag = fallwerkzeug.freigabe_setzen(fall, art, durch=str(d.get("durch") or ""), vermerk=str(d.get("vermerk") or ""), weg="Oberfläche",
+                                                   bereich=bereich if art == "darkweb" else "")
         except (fallwerkzeug.Fehler, FileNotFoundError) as e:
-            raise Fehler(str(e).replace("--durch", "«Durch»").replace("--vermerk", "«Grundlage»")) from e
-        self.vermerken(fall, f"Freigabe erteilt: {art}", f"durch {eintrag['durch']}, Grundlage: {eintrag['vermerk']}")
-        return {"meldung": f"Freigabe «{art}» erteilt durch {eintrag['durch']}. {FREIGABE_TEXT[art]}"}
+            raise Fehler(str(e).replace("--durch", "«Durch»").replace("--vermerk", "«Grundlage»").replace("Freigabe personenbezug", "Freigabe «Kontoabfragen»")) from e
+        zusatz = f" Untersuchungsbereich: {robin.BEREICHE[bereich][0]}." if art == "darkweb" else ""
+        self.vermerken(fall, f"Freigabe erteilt: {art}", f"durch {eintrag['durch']}, Grundlage: {eintrag['vermerk']}" + zusatz.rstrip("."))
+        return {"meldung": f"Freigabe «{art}» erteilt durch {eintrag['durch']}. {FREIGABE_TEXT[art]}{zusatz}"}
 
     def pflichtquellen(self, d: dict) -> dict:
         """Gibt die Pflichtquellen eines Falls vor oder hebt die Vorgabe auf (leere Liste): Was vorgegeben ist, muss die Ermittlung

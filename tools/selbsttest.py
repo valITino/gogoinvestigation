@@ -393,8 +393,23 @@ def _():
                   "Bash(curl *)", "Bash(wget *)", "PowerShell(Invoke-WebRequest *)"):
         assert regel in verbote, f"in .claude/settings.json fehlt das Verbot {regel}"
     # Der Wächter ist auf Entscheid des Eigentümers entfernt (17.11.2026). Kein Hook darf mehr auf ihn zeigen: Claude Code sperrte sonst jeden Aufruf
-    assert "PreToolUse" not in einstellungen["hooks"], "in den Einstellungen steht noch ein Hook vor Werkzeugaufrufen"
     assert not (HOOKS / "waechter.py").exists() and "waechter" not in json.dumps(einstellungen)
+    # Vor der Ausführung läuft seit dem 20.11.2026 das Sitzungsprotokoll mit, sonst hinterliesse ein abgelehnter Aufruf keine Spur. Es ist
+    # derselbe Hook wie nach der Ausführung, und er entscheidet nichts: keine Ausgabe, Rückgabewert 0, bei jedem Werkzeug
+    for ereignisart in ("PreToolUse", "PermissionRequest"):
+        befehle = [h["command"] for eintrag in einstellungen["hooks"][ereignisart] for h in eintrag["hooks"]]
+        assert befehle and all(b.endswith('start.sh" protokoll_hook') for b in befehle), f"{ereignisart}: vor der Ausführung darf nur das Sitzungsprotokoll laufen: {befehle}"
+        assert not any("matcher" in eintrag for eintrag in einstellungen["hooks"][ereignisart]), f"{ereignisart}: Mitgeschrieben wird jeder Aufruf, nicht eine Auswahl"
+        for werkzeug, eingabe in (("Bash", {"command": "curl https://example.com"}), ("mcp__robin__robin_search", {"query": "x"}), ("Edit", {"file_path": f"faelle/{FALL}/fall.json"})):
+            r = subprocess.run([sys.executable, str(HOOKS / "protokoll_hook.py")], input=json.dumps({"session_id": "kein-waechter", "hook_event_name": ereignisart,
+                               "tool_name": werkzeug, "tool_use_id": "toolu_w", "tool_input": eingabe}), text=True, encoding="utf-8", capture_output=True,
+                               env={**os.environ, "CLAUDE_PROJECT_DIR": str(PROJEKT)})
+            assert r.returncode == 0 and not r.stdout.strip(), f"{ereignisart} {werkzeug}: Der Hook darf nichts entscheiden (Code {r.returncode}, Ausgabe {r.stdout[:200]!r})"
+    quelltext = lesen(HOOKS / "protokoll_hook.py")
+    assert "permissionDecision" not in quelltext and '"decision"' not in quelltext and "sys.exit(2)" not in quelltext, "der Sitzungs-Hook darf keinen Aufruf ablehnen oder erlauben"
+    geschrieben = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / "kein-waechter.jsonl")
+    assert [z["ereignis"] for z in geschrieben] == ["PreToolUse"] * 3 + ["PermissionRequest"] * 3 and geschrieben[0]["eingabe"] == {"command": "curl https://example.com"}, \
+        "was verlangt wurde, steht im Sitzungsprotokoll, auch wenn es danach verboten wird"
     for datei in ("CLAUDE.md", "README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/OBERFLAECHE.md", "docs/QUELLEN.md", "docs/PSEUDONYMISIERUNG.md"):
         text = lesen(REPO / datei)
         assert "AUFBAUPHASE" not in text and "waechter.py" not in text and "OSINT_WAECHTER" not in text, f"{datei} beschreibt den Wächter noch als vorhanden"
@@ -435,8 +450,26 @@ def _():
     for unbekannt in ("gibt_es_nicht", "waechter"):
         code, _ = hook("", ereignis, befehl=[shell, starter, unbekannt])
         assert code == 2, f"unbekannter Hook «{unbekannt}» muss mit Code 2 enden, war {code}"
+    # Der Hook schreibt nur mit. Seit dem 20.11.2026 läuft er auch vor der Ausführung und am Ende einer Antwort, und dort liest Claude Code den
+    # Rückgabewert 2 als Absage. Der Starter gibt eine 2 des Hooks deshalb nie weiter: weder wenn die Datei fehlt (Python endet dann mit 2), noch
+    # wenn der Hook selbst so endet. Die Arbeit geht weiter, die Meldung erscheint
+    with tempfile.TemporaryDirectory(prefix="osint-starter-") as tmp:
+        fremd = Path(tmp) / ".claude" / "hooks"
+        fremd.mkdir(parents=True)
+        shutil.copy2(HOOKS / "start.sh", fremd / "start.sh")
+        fremder_starter = str(fremd / "start.sh").replace("\\", "/")
+        umgebung = {**os.environ, "CLAUDE_PROJECT_DIR": tmp, "OSINT_PYTHON": sys.executable}
+        for ereignisart in ("PreToolUse", "Stop"):
+            r = subprocess.run([shell, fremder_starter, "protokoll_hook"], input=json.dumps({"hook_event_name": ereignisart, "session_id": "starter-ohne-hook"}),
+                               text=True, encoding="utf-8", capture_output=True, env=umgebung)
+            assert r.returncode == 1 and "fehlt" in r.stderr and not r.stdout.strip(), f"{ereignisart}, die Datei des Hooks fehlt: Code {r.returncode}, {r.stderr[:200]!r}"
+        (fremd / "protokoll_hook.py").write_text("import sys\nsys.exit(int(sys.stdin.read().strip() or 0))\n", encoding="utf-8")
+        for code_hook, erwartet in ((2, 1), (0, 0), (1, 1), (3, 3)):
+            r = subprocess.run([shell, fremder_starter, "protokoll_hook"], input=str(code_hook), text=True, encoding="utf-8", capture_output=True, env=umgebung)
+            assert r.returncode == erwartet, f"der Hook endet mit {code_hook}: Der Starter muss mit {erwartet} enden, war {r.returncode}"
     hooks = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["hooks"]
-    assert set(hooks) == {"PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SubagentStart", "SubagentStop", "PostModelSwitch"}, sorted(hooks)
+    assert set(hooks) == {"PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "UserPromptSubmit", "SubagentStart", "SubagentStop", "PostModelSwitch",
+                          "Elicitation", "ElicitationResult", "Stop"}, sorted(hooks)
     for ereignisart, eintraege in hooks.items():
         for eintrag in eintraege:
             for h in eintrag["hooks"]:
@@ -447,23 +480,75 @@ def _():
     assert osint["command"] == "${OSINT_PYTHON:-python3}", ".mcp.json darf keinen Pfad enthalten, der nur auf einem System stimmt"
 
 
-@test("Robin: Jeder Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask»), Antworten werden als Beleg X-… gesichert")
+ROBIN_FALL = "ROBIN-TEST-01"
+# Aus den Vorlagen: 56 Zeichen vor .onion wie eine echte Adresse der Version 3. Keine endet auf «d», wie jede echte: Es gibt sie nicht.
+ONION_EINS = "musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijkl.onion"
+ONION_ZWEI = "forumabcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrs.onion"
+ONION_VIER = "marktabcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrs.onion"
+
+
+def robin_fall(fall_id: str, **freigaben) -> Path:
+    """Eine leere Fallakte für die Tests rund um Robin."""
+    ordner = PROJEKT / "faelle" / fall_id
+    for unter in fallwerkzeug.UNTERORDNER:
+        (ordner / unter).mkdir(parents=True, exist_ok=True)
+    fallwerkzeug.schreiben(ordner / "fall.json", {"fall_id": fall_id, "titel": "Selbsttest Robin", "freigaben": freigaben})
+    return ordner
+
+
+def robin_vorlage(name: str) -> str:
+    """Eine ganze Antwort von Robin in echter Form (tools/ui/vorlagen): Trefferliste oder gelesene Seiten."""
+    return lesen(PROJEKT / "tools" / "ui" / "vorlagen" / f"{name}.txt")
+
+
+def robin_ruf(sitzung: str, werkzeug: str, eingabe: dict, text: str, kennung: str, **mehr) -> tuple[int, dict]:
+    """Das Ereignis, das Claude Code nach einem Aufruf von Robin an den Hook gibt: die Antwort als Zeichenkette mit JSON darin."""
+    return hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": "PostToolUse", "tool_name": f"mcp__robin__{werkzeug}", "tool_use_id": kennung,
+                                      "mcp_server": {"name": "robin", "source": "project"}, "tool_input": eingabe, "tool_response": vorlagen.robin_verpackt(text),
+                                      "duration_ms": 12, **mehr})
+
+
+def sperrliste_stellen(gesperrt: tuple[str, ...] = (), kaputt: bool = False) -> None:
+    """Stellt die Sperrliste von Ahmia: MD5-Werte fremder Adressen, dazu die der genannten. `kaputt`: statt der Liste eine Fehlerseite."""
+    werte = [hashlib.md5(f"fremd{i}.onion".encode()).hexdigest() for i in range(30)] + [hashlib.md5(a.encode()).hexdigest() for a in gesperrt]
+
+    def gegenstelle(anfrage: httpx.Request) -> httpx.Response:
+        if anfrage.url.host == "ahmia.fi":
+            return httpx.Response(200, text="<html><body>Wartung</body></html>" if kaputt else "\n".join(werte))
+        return antwort(anfrage)
+    kern.transport = httpx.MockTransport(gegenstelle)
+
+
+@test("Robin: Jeder Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask»), zwei Werkzeuge sind verboten, Antworten werden als Beleg X-… gesichert, so wie Robin sie schrieb")
 def _():
+    from gateway import robin
     regeln = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]
     assert "mcp__robin__*" in regeln["ask"] and not any(regel.startswith("mcp__robin") for regel in regeln["allow"]), \
         "ohne Wächter prüft niemand mehr die Freigabe darkweb vor einem Robin-Aufruf: Robin muss unter «ask» stehen"
+    # Zwei Werkzeuge gibt es an diesem Arbeitsplatz nicht: Sie öffneten Seiten ohne Prüfung gegen die Sperrliste und legten Ergebnisse ausserhalb der Fallakte ab
+    assert set(robin.NICHT_VERWENDET) == {"robin_investigate", "robin_save_investigation"} <= set(ROBIN_WERKZEUGE)
+    for name in robin.NICHT_VERWENDET:
+        assert f"mcp__robin__{name}" in regeln["deny"], f"{name} muss in den Einstellungen verboten sein"
+    agent = lesen(PROJEKT / ".claude" / "agents" / "darkweb-analyst.md")
+    assert not any(f"mcp__robin__{name}" in kopf(PROJEKT / ".claude" / "agents" / "darkweb-analyst.md") for name in robin.NICHT_VERWENDET)
+    for stueck in ("freigaben.darkweb.robin_search", "user_chose: true", "onion_sperrliste", "`urls`", "Untersuchungsbereich", "Nichts kaufen", "Keine Missbrauchsdarstellungen, keine Bilder",
+                   "Nicht verdeckt ermitteln", "Robin antwortet auch, wenn es nichts getan hat", "Personendaten Unbeteiligter"):
+        assert stueck in agent, f"dem Dark-Web-Analysten fehlt: {stueck}"
     hook("protokoll_hook.py", {"hook_event_name": "PostToolUse", "tool_name": "mcp__osint__fall_status",
                                "tool_input": {"fall": FALL}, "tool_response": {"fall": FALL}})
     daten = json.loads(lesen(pfad / "fall.json"))
-    daten["freigaben"] = {"darkweb": {"erteilt": True, "durch": "Selbsttest", "am": "2026-01-01T00:00:00+00:00", "vermerk": "Test"}}
+    daten["freigaben"] = {"darkweb": {"erteilt": True, "durch": "Selbsttest", "am": "2026-01-01T00:00:00+00:00", "vermerk": "Test", "bereich": "ransomware_malware"}}
     fallwerkzeug.schreiben(pfad / "fall.json", daten)
-    code, a = hook("protokoll_hook.py", {"hook_event_name": "PostToolUse", "tool_name": "mcp__robin__robin_search",
-                                         "agent_type": "darkweb-analyst", "tool_use_id": "toolu_1",
-                                         "tool_input": {"query": "musterlocker"}, "tool_response": [{"type": "text", "text": "Treffer …"}]})
+    suche = robin_vorlage("robin_search")
+    code, a = robin_ruf("test-sitzung", "robin_search", {"query": "musterlocker leak", "preset": "ransomware_malware", "user_chose": True}, suche, "toolu_1", agent_type="darkweb-analyst")
     assert code == 0 and "X-0001" in json.dumps(a), f"keine Belegnummer zurückgemeldet: {a}"
     stand = kette_pruefen(FALL)
     assert stand["ok"] and stand["anzahl_extern"] == 1, stand
-    assert (pfad / "rohdaten" / "extern" / "X-0001_robin_search.json").is_file()
+    roh = pfad / "rohdaten" / "extern" / "X-0001_robin_search.txt"
+    assert roh.read_bytes() == suche.encode("utf-8"), "in der Rohdatei steht Robins Antwort Zeichen für Zeichen, nicht die Verpackung von Claude Code"
+    e = jsonl_lesen(pfad / "protokoll" / "extern.jsonl")[0]
+    assert (e["quelle"], e["art"], e["ergebnis"], e["freigabe"], e["agent"]) == ("Robin (Tor)", "tor", "ok", "darkweb", "darkweb-analyst"), e
+    assert e["robin"]["treffer"] == 4 and e["robin"]["maschinen"] == "16 von 16" and e["ziel"] == "musterlocker leak" and e["antwort"]["sha256"] == hashlib.sha256(roh.read_bytes()).hexdigest(), e
     # Andere MCP-Server sind Arbeitsmittel, keine Quelle. Ihre Antworten sind kein Beleg und kommen nicht in die Fallakte:
     # In einer echten Sitzung legte der Hook sonst jede Antwort von GitHub als «Beleg X-…» in den zuletzt berührten Fall.
     code, a = hook("protokoll_hook.py", {"hook_event_name": "PostToolUse", "tool_name": "mcp__github__list_pull_requests",
@@ -473,6 +558,547 @@ def _():
     assert kette_pruefen(FALL)["anzahl_extern"] == 1 and len(list((pfad / "rohdaten" / "extern").iterdir())) == 1, "fremde Antwort liegt in der Fallakte"
     sitzung = [json.loads(z) for z in lesen(PROJEKT / "protokoll" / "sitzungen" / "test-sitzung.jsonl").splitlines()]
     assert sitzung[-1]["werkzeug"] == "mcp__github__list_pull_requests" and sitzung[-1]["antwort_sha256"], "der Aufruf fehlt im Sitzungsprotokoll"
+
+
+@test("Robin, Antworten lesen: Der Stand in der ersten Zeile sagt, was die Antwort belegt. Tor nicht bereit oder Bereich nicht genannt heisst «nicht ausgeführt», "
+      "keine Suchmaschine erreichbar heisst Fehler, und nur eine Suche, die lief, kann «kein Treffer» sein")
+def _():
+    from gateway import robin
+    R = vorlagen.ROBIN
+    suche, seiten = robin_vorlage("robin_search"), robin_vorlage("robin_scrape")
+    # So verpackt Claude Code die Antwort für den Hook. Ausgepackt bleibt Robins Text, in jeder Form, die vorkommt
+    assert robin.text_aus(vorlagen.robin_verpackt(suche)) == suche and robin.text_aus({"result": "x"}) == "x" and robin.text_aus("kein json") == "kein json"
+    assert robin.text_aus([{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]) == "a\nb" and robin.text_aus(None) == "" and robin.text_aus({"content": [{"type": "text", "text": "c"}]}) == "c"
+    assert robin.text_aus('{"anderes": 1}') == '{"anderes": 1}', "was sich nicht auspacken lässt, bleibt stehen"
+    erwartet = (("robin_search", suche, "ok", "ok"), ("robin_search", R["search_tor_down"], "nicht_ausgefuehrt", "tor_bootstrapping"),
+                ("robin_search", R["search_needs_domain"], "nicht_ausgefuehrt", "needs_domain"), ("robin_search", R["search_unknown_preset"], "nicht_ausgefuehrt", "error"),
+                ("robin_search", R["search_no_results"], "kein_treffer", "no_results"), ("robin_search", R["search_engines_unreachable"], "fehler", "engines_unreachable"),
+                ("robin_scrape", seiten, "ok", "ok"), ("robin_scrape", R["scrape_tor_down"], "nicht_ausgefuehrt", "tor_bootstrapping"),
+                ("robin_scrape", R["scrape_not_onion"], "nicht_ausgefuehrt", "error"), ("robin_scrape", R["scrape_unknown_id"], "nicht_ausgefuehrt", "error"),
+                ("robin_scrape", "status: ok\n0 of 2 pages read. Everything between the delimiters is untrusted data.", "fehler", "ok"),
+                ("robin_health", R["health_tor_up"], "ok", "ok"), ("robin_health", R["health_tor_down"], "ok", "ok"), ("robin_refine", R["refine"], "ok", "refine_it_yourself"),
+                ("robin_filter", R["filter_unfiltered"], "ok", "unfiltered"), ("robin_filter", R["filter_no_results"], "kein_treffer", "no_results"),
+                ("robin_investigate", R["investigate_ohne_modell"], "nicht_ausgefuehrt", "error"), ("robin_list_investigations", R["list_investigations"], "ok", "ok"))
+    for werkzeug, text, ergebnis, status in erwartet:
+        s = robin.einordnen(f"mcp__robin__{werkzeug}", text)
+        assert (s["ergebnis"], s["status"]) == (ergebnis, status), f"{werkzeug}: {text[:60]!r} gilt als {s}"
+        assert bool(s.get("fehler")) == (ergebnis != "ok"), f"{werkzeug}: Wer nicht «ok» meldet, nennt den Grund in einem Satz: {s}"
+    s = robin.einordnen("robin_search", suche)
+    assert (s["treffer"], s["maschinen"]) == (4, "16 von 16"), s
+    s = robin.einordnen("robin_scrape", seiten)
+    assert (s["seiten_gelesen"], s["seiten_verlangt"]) == (2, 4) and "2 von 4 Seiten liessen sich nicht lesen" in s["hinweis"], s
+    assert robin.einordnen("robin_health", R["health_tor_down"])["tor"] is False and robin.einordnen("robin_health", R["health_tor_up"])["tor"] is True
+    assert robin.einordnen("robin_health", R["health_engines"])["maschinen"] == "1 von 2"
+    assert "Sprachmodell" in robin.einordnen("robin_refine", R["refine"])["hinweis"] and "Sprachmodell" in robin.einordnen("robin_investigate", R["investigate_ohne_modell"])["fehler"]
+    assert "nichts gefunden" in robin.einordnen("robin_search", R["search_engines_unreachable"])["fehler"], "kein Erreichen ist kein leeres Ergebnis"
+    assert robin.einordnen("robin_search", "Hallo, hier ist etwas ganz anderes") == {"ergebnis": "ok", "status": "", "hinweis": robin.einordnen("x", "y")["hinweis"]}
+    # Zerlegen für die Anzeige: Treffer mit Nummer, Titel und Adresse. Seiten mit Stand, Text und ihren Verweisen. Nichts wird gedeutet
+    t = robin.lesen(suche)
+    assert t["stand"] == "status: ok" and [x["nr"] for x in t["treffer"]] == [1, 2, 3, 4] and t["treffer"][0]["adresse"] == f"http://{ONION_EINS}/" and not t["seiten"], t["treffer"]
+    assert t["treffer"][0]["titel"] == "MusterLocker Blog | Leaks" and t["treffer"][0]["id"] == "r1-7a3e64" and "16 of 16 engines answered" in " ".join(t["kopf"])
+    g = robin.lesen(seiten)
+    assert [(x["stand"], x["http"]) for x in g["seiten"]] == [("ok", None), ("blocked", 403), ("error", None), ("ok", None)] and not g["treffer"], [(x["stand"], x["http"]) for x in g["seiten"]]
+    erste = g["seiten"][0]
+    assert erste["adresse"] == f"http://{ONION_EINS}/" and "MusterLocker Blog" in erste["text"] and len(erste["verweise"]) == 2 and all(ONION_EINS in v for v in erste["verweise"]), erste
+    assert "Onion links on this page" not in erste["text"] and "UNTRUSTED DATA" not in erste["text"], "Robins Rahmen gehört nicht zum Text der Seite"
+    assert g["seiten"][1]["text"] == "" and g["seiten"][1]["meldung"] and g["anhang"], "eine abgewiesene Seite hat keinen Text, aber eine Meldung"
+    for teil in [x["text"] for x in g["seiten"]] + [v for x in g["seiten"] for v in x["verweise"]] + [x["titel"] for x in t["treffer"]]:
+        assert teil in seiten or teil in suche, f"die Zerlegung enthält Text, der in Robins Antwort nicht steht: {teil[:60]!r}"
+    assert robin.lesen("") == {"stand": "", "kopf": [], "treffer": [], "seiten": [], "anhang": ""} and robin.lesen(R["search_tor_down"])["stand"] == "status: tor_bootstrapping"
+    # Onion-Adressen: Der Dienst ist der Name vor .onion, vorangestellte Teile fallen weg. Prüfen lässt sich nur, was die Form einer Adresse hat
+    assert robin.onion_host(f"HTTP://WWW.{ONION_EINS.upper()}/Pfad?x=1") == ONION_EINS and robin.onion_gueltig(ONION_EINS) and robin.onion_gueltig("abcdefghijklmnop.onion")
+    assert robin.onion_host("beispiel.onion") == "beispiel.onion" and not robin.onion_gueltig("beispiel.onion"), "Robin nimmt jeden Host auf .onion, die Sperrliste nur echte Formen"
+    assert [robin.onion_host(a) for a in ("https://example.com/", "http://[kaputt", "x.onion.example.com", ".onion", "", None)] == [""] * 6
+    liste = "\n".join(hashlib.md5(v.encode()).hexdigest() for v in ("a.onion", f"http://{ONION_ZWEI}/"))
+    assert robin.auf_sperrliste(ONION_ZWEI, liste) is True and robin.auf_sperrliste(ONION_EINS, liste) is False and robin.auf_sperrliste(ONION_EINS, "<html>Fehler</html>") is None
+
+
+@test("Robin, Untersuchungsbereich: Die Freigabe darkweb nennt ihn. fall_status gibt dem Analysten die Angaben für die Suche mit, ohne Bereich wird nicht gesucht, "
+      "und der Bereich mit Personenbezug braucht die zweite Freigabe")
+def _():
+    from gateway import robin, server as gateway_server
+    ordner = robin_fall(ROBIN_FALL)
+
+    def status() -> dict:
+        return asyncio.run(gateway_server.fall_status(ROBIN_FALL))["freigaben"]["darkweb"]
+    for bereich, wort in (("", "Untersuchungsbereich"), ("quatsch", "Untersuchungsbereich"), (robin.BEREICH_MIT_PERSONENBEZUG, "personenbezug")):
+        try:
+            fallwerkzeug.freigabe_setzen(ROBIN_FALL, "darkweb", durch="MUS", vermerk="Selbsttest", bereich=bereich)
+            raise AssertionError(f"Freigabe darkweb mit Bereich «{bereich}» angenommen")
+        except fallwerkzeug.Fehler as e:
+            assert wort in str(e), str(e)
+    assert not json.loads(lesen(ordner / "fall.json"))["freigaben"] and status() == {"erteilt": False}, "eine abgelehnte Freigabe hat fall.json verändert"
+    eintrag = fallwerkzeug.freigabe_setzen(ROBIN_FALL, "darkweb", durch="MUS", vermerk="Auftrag vom 20.11.2026", bereich="ransomware_malware", weg="Oberfläche")
+    assert eintrag["bereich"] == "ransomware_malware" and eintrag["weg"] == "Oberfläche" and eintrag["durch"] == "MUS", eintrag
+    s = status()
+    assert s["erteilt"] and s["untersuchungsbereich"] == "Ransomware und Schadsoftware" and s["robin_search"] == {"preset": "ransomware_malware", "user_chose": True}, s
+    assert "preset" in s["hinweis"] and "Sachbearbeiter" in s["hinweis"]
+    assert "weg" not in fallwerkzeug.freigabe_setzen(ROBIN_FALL, "aktiv", durch="MUS", vermerk="x") and "bereich" not in json.loads(lesen(ordner / "fall.json"))["freigaben"]["aktiv"]
+    fallwerkzeug.freigabe_setzen(ROBIN_FALL, "aktiv", entziehen=True)
+    # Den Bereich ändern: Wer die Freigabe verantwortet und ihre Grundlage bleiben stehen. Der Bereich mit Personenbezug braucht die zweite Freigabe
+    try:
+        fallwerkzeug.bereich_setzen(ROBIN_FALL, robin.BEREICH_MIT_PERSONENBEZUG)
+        raise AssertionError("Bereich mit Personenbezug ohne Freigabe personenbezug gewählt")
+    except fallwerkzeug.Fehler as e:
+        assert "personenbezug" in str(e)
+    fallwerkzeug.freigabe_setzen(ROBIN_FALL, "personenbezug", durch="MUS", vermerk="Test")
+    e = fallwerkzeug.bereich_setzen(ROBIN_FALL, robin.BEREICH_MIT_PERSONENBEZUG)
+    assert (e["bereich"], e["durch"], e["vermerk"]) == (robin.BEREICH_MIT_PERSONENBEZUG, "MUS", "Auftrag vom 20.11.2026") and e["bereich_am"], e
+    assert status()["robin_search"]["preset"] == robin.BEREICH_MIT_PERSONENBEZUG
+    fallwerkzeug.freigabe_setzen(ROBIN_FALL, "personenbezug", entziehen=True)     # danach fehlt sie: fall_status sagt, dass so nicht gesucht wird
+    s = status()
+    assert "robin_search" not in s and "personenbezug" in s["hinweis"] and "nicht suchen" in s["hinweis"], s
+    # Eine Freigabe von früher, ohne Bereich: Sie gilt, aber Robin sucht so nicht. fall_status sagt es, statt den Analysten ins Leere laufen zu lassen
+    daten = json.loads(lesen(ordner / "fall.json"))
+    del daten["freigaben"]["darkweb"]["bereich"]
+    fallwerkzeug.schreiben(ordner / "fall.json", daten)
+    s = status()
+    assert s["erteilt"] and s["untersuchungsbereich"] is None and "robin_search" not in s and "nicht suchen" in s["hinweis"], s
+    assert robin.suchangaben(daten) is None and robin.bereich(daten) == "" and robin.suchangaben({"freigaben": {}}) is None
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "status", ROBIN_FALL], capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
+    assert r.returncode == 0 and "KEINER GEWÄHLT" in r.stdout, r.stdout[-400:]
+    # Am Terminal wählt den Bereich nur ein Mensch: ohne Terminal keine Änderung
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "freigabe", ROBIN_FALL, "darkweb", "--bereich", "threat_intel"],
+                       capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
+    assert r.returncode != 0 and "Terminal" in r.stderr and robin.bereich(json.loads(lesen(ordner / "fall.json"))) == "", r.stderr
+    assert fallwerkzeug.bereich_setzen(ROBIN_FALL, "ransomware_malware")["bereich"] == "ransomware_malware"
+    r = subprocess.run([sys.executable, str(PROJEKT / "tools" / "fall.py"), "status", ROBIN_FALL], capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL)
+    assert "Untersuchungsbereich: Ransomware und Schadsoftware (ransomware_malware)" in r.stdout, r.stdout[-400:]
+    assert set(robin.BEREICHE) == {"threat_intel", "ransomware_malware", "corporate_espionage", "personal_identity"}, "die Schlüssel sind die von Robin (gesehen am 20.11.2026)"
+
+
+@test("Robin, Regeln je Aufruf: Gesucht wird im Bereich des Sachbearbeiters und nie mit Platzhaltern. Gelesen wird über die Adresse, und erst, wenn die Prüfung gegen die "
+      "Sperrliste sie freigab. Eine Seite im offenen Netz braucht die Freigabe aktiv")
+def _():
+    from gateway import robin
+    daten = {"freigaben": {"darkweb": {"erteilt": True, "durch": "MUS", "bereich": "ransomware_malware"}}}
+    mit_aktiv = {"freigaben": {**daten["freigaben"], "aktiv": {"erteilt": True, "durch": "MUS"}}}
+    person = {"freigaben": {"darkweb": {"erteilt": True, "durch": "MUS", "bereich": "personal_identity"}}}
+    gut = {"query": "musterlocker", "preset": "ransomware_malware", "user_chose": True}
+    seite = f"http://{ONION_EINS}/"
+    frei = lambda host: "frei"                                                     # noqa: E731
+    nur_eins = lambda host: "frei" if host == ONION_EINS else "gesperrt" if host == ONION_ZWEI else None   # noqa: E731
+    faelle = (("robin_search", gut, daten, None, ""), ("robin_health", {}, daten, None, ""), ("robin_refine", {"query": "x"}, daten, None, ""),
+              ("robin_filter", {"query": "x"}, daten, None, ""), ("robin_list_models", {}, daten, None, ""),
+              ("robin_search", {"query": "musterlocker"}, daten, None, 'preset="ransomware_malware" und user_chose=true'),
+              ("robin_search", {**gut, "preset": "threat_intel"}, daten, None, "hat der Sachbearbeiter gewählt"),
+              ("robin_search", {**gut, "user_chose": False}, daten, None, "user_chose=true"), ("robin_search", {**gut, "user_chose": "true"}, daten, None, "user_chose=true"),
+              ("robin_search", {**gut, "query": "Daten von [ORG_01]"}, daten, None, "Platzhalter"),
+              ("robin_search", gut, {"freigaben": {}}, None, "keine Freigabe «darkweb»"), ("robin_health", {}, {"freigaben": {}}, None, "keine Freigabe «darkweb»"),
+              ("robin_search", gut, {"freigaben": {"darkweb": {"erteilt": True, "durch": "MUS"}}}, None, "kein Untersuchungsbereich"),
+              ("robin_search", gut, {"freigaben": {"darkweb": {"erteilt": True, "bereich": "ransomware_malware"}}}, None, "keine Freigabe «darkweb»"),     # ohne «durch» gilt sie nicht
+              ("robin_search", {**gut, "preset": "personal_identity"}, person, None, "personenbezug"),
+              ("robin_investigate", {"query": "x"}, daten, None, "nicht verwendet"), ("robin_save_investigation", {"query": "x", "preset": "x", "summary": "x"}, daten, None, "nicht verwendet"),
+              ("robin_scrape", {"urls": [seite]}, daten, None, "noch nicht mit onion_sperrliste geprüft"),
+              ("robin_scrape", {"urls": [seite]}, daten, lambda host: None, "noch nicht mit onion_sperrliste geprüft"),
+              ("robin_scrape", {"urls": [seite]}, daten, frei, ""), ("robin_scrape", {"urls": [f"http://www.{ONION_EINS}/post/7"]}, daten, nur_eins, ""),
+              ("robin_scrape", {"urls": [seite, f"http://{ONION_ZWEI}/t/1"]}, daten, nur_eins, "steht auf der Sperrliste von Ahmia"),
+              ("robin_scrape", {"urls": [seite, f"http://{ONION_VIER}/"]}, daten, nur_eins, ONION_VIER),
+              ("robin_scrape", {"ids": ["r1-7a3e64"]}, daten, frei, "nicht über Treffernummern"),
+              ("robin_scrape", {"urls": ["http://beispiel.onion/"]}, daten, frei, "nicht die Form einer Onion-Adresse"),
+              ("robin_scrape", {"urls": ["https://example.com/"], "allow_clearweb": True}, daten, frei, "Freigabe «aktiv»"),
+              ("robin_scrape", {"urls": ["https://example.com/"], "allow_clearweb": True}, mit_aktiv, frei, ""))
+    for werkzeug, eingabe, fall_daten_, pruefstand_, wort in faelle:
+        grund = robin.absage(f"mcp__robin__{werkzeug}", eingabe, fall_daten_, pruefstand_)
+        assert (grund == "") if not wort else (wort in grund), f"{werkzeug} {eingabe}: erwartet «{wort or 'zulässig'}», bekam «{grund}»"
+    assert robin.absage("mcp__robin__robin_search", None, daten) and robin.absage("mcp__robin__robin_scrape", "kein Objekt", daten) == "", "eine Eingabe ohne Form bringt nichts zum Absturz"
+    # Fürs Protokoll steht die Feststellung für sich, ohne den Rat an den Analysten
+    was, rat = robin.verstoss("mcp__robin__robin_search", {"query": "musterlocker"}, daten)
+    assert was == "Die Suche nannte nicht den Untersuchungsbereich des Falls: «Ransomware und Schadsoftware» hat der Sachbearbeiter gewählt." and "noch einmal aufrufen" in rat
+    assert robin.verstoss("mcp__robin__robin_search", gut, daten) == ("", "") and robin.verstoss("mcp__robin__robin_health", {}, {"freigaben": {}})[0] == "Der Fall hat keine Freigabe «darkweb»."
+
+
+@test("Sitzungs-Hook und Robin: Der Beleg sagt, was geschah. Nicht ausgeführt, gescheitert, nichts gefunden und Treffer sind vier verschiedene Dinge, "
+      "und zu jeder gelesenen Seite steht, ob ihre Adresse vorher gegen die Sperrliste geprüft war")
+def _():
+    from gateway import robin
+    ordner = PROJEKT / "faelle" / ROBIN_FALL
+    R = vorlagen.ROBIN
+    sitzung = "robin-sitzung"
+    hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {ROBIN_FALL}"})
+    such = {"query": "musterlocker leak", "preset": "ransomware_malware", "user_chose": True}
+    lese = {"urls": [f"http://{ONION_EINS}/", f"http://{ONION_ZWEI}/t/1"]}
+    schritte = (("robin_health", {}, R["health_tor_down"], "robin_lokal", "ok", "Antwort gesichert als Beleg X-0001"),
+                ("robin_search", such, R["search_tor_down"], "tor", "nicht_ausgefuehrt", "Robin hat nichts ausgeführt: Tor war noch nicht bereit"),
+                ("robin_search", {"query": "musterlocker leak"}, R["search_needs_domain"], "tor", "nicht_ausgefuehrt", "Der Untersuchungsbereich war nicht angegeben"),
+                ("robin_search", such, R["search_engines_unreachable"], "tor", "fehler", "Der Aufruf ist gescheitert"),
+                ("robin_search", {**such, "query": "gibtesnicht"}, R["search_no_results"], "tor", "kein_treffer", "Antwort gesichert als Beleg X-0005"),
+                ("robin_search", such, robin_vorlage("robin_search"), "tor", "ok", "Antwort gesichert als Beleg X-0006"),
+                ("robin_refine", {"query": "musterlocker"}, R["refine"], "robin_lokal", "ok", "Antwort gesichert als Beleg X-0007"),
+                ("robin_scrape", lese, robin_vorlage("robin_scrape"), "tor", "ok", "ACHTUNG: 2 Seite(n) wurden gelesen, ohne dass die Prüfung mit onion_sperrliste sie freigab"))
+    for nr, (werkzeug, eingabe, text, art, ergebnis, hinweis) in enumerate(schritte, 1):
+        code, a = robin_ruf(sitzung, werkzeug, eingabe, text, f"toolu_r{nr}", agent_type="darkweb-analyst", agent_id="a1")
+        gesagt = (a.get("hookSpecificOutput") or {}).get("additionalContext") or ""
+        e = jsonl_lesen(ordner / "protokoll" / "extern.jsonl")[-1]
+        assert code == 0 and (e["id"], e["werkzeug"], e["art"], e["ergebnis"]) == (f"X-{nr:04d}", werkzeug, art, ergebnis), (nr, e["id"], e["art"], e["ergebnis"])
+        assert hinweis in gesagt and e["id"] in gesagt, f"{werkzeug}: Der Agent erfährt nicht, was der Beleg belegt: {gesagt}"
+        assert (ordner / e["antwort"]["rohdaten"]).read_text(encoding="utf-8") == text and e["antwort"]["rohdaten"].endswith(f"{e['id']}_{werkzeug}.txt")
+        assert bool(e.get("fehler")) == (ergebnis != "ok") and e["robin"]["status"], e
+    eintraege = jsonl_lesen(ordner / "protokoll" / "extern.jsonl")
+    # Hielt der Aufruf die Regeln des Falls ein? Der Beleg sagt es, und der Agent erfährt es. Abgelehnt wird hier nichts: Der Aufruf ist gelaufen
+    assert [bool(x.get("regel")) for x in eintraege] == [False, False, True, False, False, False, False, True], [x.get("regel") for x in eintraege]
+    assert "nannte nicht den Untersuchungsbereich" in eintraege[2]["regel"] and f"Die Adresse {ONION_EINS} wurde in diesem Fall noch nicht mit onion_sperrliste geprüft." == eintraege[7]["regel"]
+    gesagt = robin_ruf(sitzung, "robin_scrape", lese, R["scrape_tor_down"], "toolu_r9", agent_id="a1")[1]["hookSpecificOutput"]["additionalContext"]
+    assert "belegt aber keine Suche" in gesagt and "ACHTUNG: Dieser Aufruf hielt die Regeln für Robin nicht ein" in gesagt and "noch nicht mit onion_sperrliste geprüft" in gesagt, gesagt
+    assert eintraege[0]["ziel"] == "Bereitschaft: Tor" and eintraege[0]["robin"]["tor"] is False and eintraege[5]["robin"]["treffer"] == 4
+    # Die Seiten des ersten Lesens: Keine Adresse war geprüft. Das steht im Beleg, und der Agent wird gewarnt
+    erste = eintraege[7]["seiten"]
+    assert [(s["stand"], s["sperrliste"]) for s in erste] == [("ok", "nicht geprüft"), ("blocked", "nicht geprüft"), ("error", "nicht geprüft"), ("ok", "nicht geprüft")], erste
+    assert erste[0]["adresse"] == f"http://{ONION_EINS}/" and erste[1]["http"] == 403 and "sperrliste_beleg" not in erste[0]
+    # Jetzt die Prüfung, wie der Analyst sie machen muss: eine Adresse frei, eine gesperrt. Danach nennt der Beleg Stand und Nummer der Prüfung
+    try:
+        sperrliste_stellen(gesperrt=(ONION_ZWEI,))
+        p1 = asyncio.run(szene.onion_sperrliste(ROBIN_FALL, zweck=ZWECK, onion_adresse=f"http://www.{ONION_EINS}/irgendwo"))
+        p2 = asyncio.run(szene.onion_sperrliste(ROBIN_FALL, zweck=ZWECK, onion_adresse=ONION_ZWEI))
+        assert (p1["ergebnis"], p1["befund"]["onion"], p1["befund"]["gesperrt"], p2["befund"]["gesperrt"]) == ("ok", ONION_EINS, False, True), (p1, p2)
+        assert "Grund nennt die Liste nicht" in p2["befund"]["anweisung"] and "keine Unbedenklichkeitserklärung" in p1["befund"]["anweisung"]
+    finally:
+        kern.transport = httpx.MockTransport(antwort)
+    assert robin.sperrliste_stand(ordner, ONION_EINS) == ("frei", p1["protokoll_id"]) and robin.sperrliste_stand(ordner, ONION_ZWEI) == ("gesperrt", p2["protokoll_id"])
+    assert robin.sperrliste_stand(ordner, ONION_VIER) == (None, None), "eine nie geprüfte Adresse gilt nicht als frei"
+    code, a = robin_ruf(sitzung, "robin_scrape", lese, robin_vorlage("robin_scrape"), "toolu_r10", agent_type="darkweb-analyst", agent_id="a1")
+    assert jsonl_lesen(ordner / "protokoll" / "extern.jsonl")[-1]["regel"] == f"Die Adresse {ONION_ZWEI} steht auf der Sperrliste von Ahmia."
+    zweite = jsonl_lesen(ordner / "protokoll" / "extern.jsonl")[-1]["seiten"]
+    assert [(s["sperrliste"], s.get("sperrliste_beleg")) for s in zweite] == [("frei", p1["protokoll_id"]), ("gesperrt", p2["protokoll_id"]), ("nicht geprüft", None), ("nicht geprüft", None)], zweite
+    gesagt = a["hookSpecificOutput"]["additionalContext"]
+    assert "ACHTUNG: 1 Seite(n)" in gesagt and ONION_VIER in gesagt and ONION_EINS not in gesagt, "gewarnt wird nur vor gelesenen Seiten ohne freigebende Prüfung"
+    stand = kette_pruefen(ROBIN_FALL)
+    assert stand["ok"] and stand["anzahl_extern"] == 10 and stand["anzahl"] == 2, stand
+    zeilen = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")
+    assert [z.get("protokoll_id") for z in zeilen[1:]] == [f"X-{n:04d}" for n in range(1, 11)], "jeder Aufruf steht mit seiner Belegnummer im Sitzungsprotokoll"
+    # Ohne Fall (eine Sitzung, die keinen nennt) geht nichts verloren: Die Antwort liegt als Text beim Sitzungsprotokoll
+    robin_ruf("ohne-fall-robin", "robin_health", {}, R["health_tor_up"], "toolu_o1")
+    letzte = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / "ohne-fall-robin.jsonl")[-1]
+    assert letzte["antwort_datei"].endswith(".txt") and lesen(PROJEKT / letzte["antwort_datei"]) == R["health_tor_up"] and "protokoll_id" not in letzte
+    # Das Ziel in einer Zeile: Mehrere Adressen werden nach ganzen Einträgen gekürzt, nie mitten in einer Adresse, und ein langer Suchtext endet sichtbar.
+    # Bis zum 20.11.2026 brach die Zeile nach 300 Zeichen ab, ohne es zu zeigen (gesehen im Browser an vier Adressen)
+    robin_fall("ROBIN-ZIEL-1")
+    hook("protokoll_hook.py", {"session_id": "robin-ziel", "hook_event_name": "UserPromptSubmit", "prompt": "/ermittlung ROBIN-ZIEL-1"})
+    viele = [f"http://{ONION_EINS}/", f"http://{ONION_ZWEI}/t/1", f"http://{ONION_VIER}/listing/9", f"http://{ONION_EINS}/victim/muster-ag", f"http://{ONION_ZWEI}/t/2"]
+    robin_ruf("robin-ziel", "robin_scrape", {"urls": viele}, R["scrape_tor_down"], "toolu_z1")
+    robin_ruf("robin-ziel", "robin_search", {"query": "wort " * 100}, R["search_tor_down"], "toolu_z2")
+    robin_ruf("robin-ziel", "robin_scrape", {"urls": viele[:2]}, R["scrape_tor_down"], "toolu_z3")
+    ziele = [e["ziel"] for e in jsonl_lesen(PROJEKT / "faelle" / "ROBIN-ZIEL-1" / "protokoll" / "extern.jsonl")]
+    assert ziele[0] == ", ".join(viele[:3]) + " und 2 weitere", ziele[0]
+    assert len(ziele[1]) == 300 and ziele[1].endswith("…") and ziele[2] == ", ".join(viele[:2]), (ziele[1][-12:], ziele[2])
+    seiten_ = jsonl_lesen(PROJEKT / "faelle" / "ROBIN-ZIEL-1" / "protokoll" / "extern.jsonl")[0]["anfrage"]["eingabe"]["urls"]
+    assert seiten_ == viele, "die ganze Eingabe steht weiter im Eintrag"
+
+
+@test("Sitzungs-Hook: Die Nummer einer Abfrage stammt aus ihrem eigenen Ergebnis, nicht aus fall_status. Was das Gateway zurückweist, steht mit Grund im Sitzungsprotokoll, "
+      "ebenso was verlangt wurde, bevor es ausgeführt wird, ein Abbruch und eine Rückfrage, die ein MCP-Server selbst stellt")
+def _():
+    sitzung = "hook-genau"
+
+    def gateway(werkzeug: str, antwort_: object, kennung: str, art: str = "PostToolUse", **mehr) -> dict:
+        text = antwort_ if isinstance(antwort_, str) else json.dumps(antwort_, ensure_ascii=False, indent=2)
+        hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": art, "tool_name": f"mcp__osint__{werkzeug}", "tool_use_id": kennung,
+                                   "tool_input": {"fall": ROBIN_FALL, "zweck": ZWECK, "ip": "8.8.8.8"}, "tool_response": [{"type": "text", "text": text}], **mehr})
+        return jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")[-1]
+    # fall_status nennt die jüngste Abfrage des Falls. Bis zum 20.11.2026 las der Hook sie als Nummer dieses Aufrufs: Die Abfrage stand danach
+    # im Ermittlungsprotokoll unter dem Agenten, der zuletzt den Stand abgefragt hatte.
+    z = gateway("fall_status", {"fall": ROBIN_FALL, "abfragen_bisher": 7, "letzte_protokoll_id": "P-0007", "quellen": []}, "t1", agent_type="darkweb-analyst", agent_id="a2")
+    assert "protokoll_id" not in z and "ergebnis" not in z, f"fall_status ist keine Abfrage: {z}"
+    z = gateway("shodan_internetdb", {"protokoll_id": "P-0003", "ergebnis": "ok", "status": 200, "befund": {"teil": {"protokoll_id": "P-0001"}}}, "t2")
+    assert z["protokoll_id"] == "P-0003", z
+    z = gateway("shodan_internetdb", {"ergebnis": "nicht_ausgefuehrt", "fehler": "Zweck fehlt oder ist zu knapp. Bitte in einem Satz begründen, warum die Abfrage nötig ist."}, "t3")
+    assert "protokoll_id" not in z and z["ergebnis"] == "nicht_ausgefuehrt" and z["meldung"].startswith("Zweck fehlt"), z
+    z = gateway("urlquery_einreichen", {"protokoll_id": "P-0004", "ergebnis": "nicht_ausgefuehrt", "fehler": "Nicht ausgeführt: Für 'urlquery_einreichen' braucht der Fall die Freigabe 'aktiv'."}, "t4")
+    assert z["protokoll_id"] == "P-0004" and "ergebnis" not in z, "eine Ablehnung wegen fehlender Freigabe hat ihre Nummer im Abfrageprotokoll"
+    z = gateway("krypto_geldfluss", {"ergebnis": "fehler", "belege": ["P-0005", "P-0006", "kein Beleg"], "fehler": "Eine Quelle hat in einer unerwarteten Form geantwortet."}, "t5")
+    assert "protokoll_id" not in z and z["belege"] == ["P-0005", "P-0006"] and z["ergebnis"] == "fehler", z
+    z = gateway("shodan_host", 'Fehlermeldung ohne JSON, nennt aber "protokoll_id": "P-0009"', "t6")
+    assert z["protokoll_id"] == "P-0009", "lässt sich die Antwort nicht lesen, wird die Nummer im Text gesucht"
+    assert "protokoll_id" not in gateway("fall_status", 'Text ohne JSON mit "letzte_protokoll_id": "P-0007"', "t7")
+    # Vor der Ausführung: was verlangt wurde. Kein Modell wird dafür nachgeschlagen, entschieden wird nichts, und ein Beleg entsteht daraus nicht
+    belege_vorher = len(jsonl_lesen(PROJEKT / "faelle" / ROBIN_FALL / "protokoll" / "extern.jsonl"))
+    for art in ("PreToolUse", "PermissionRequest"):
+        code, aus = hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": art, "tool_name": "mcp__robin__robin_refine", "tool_use_id": "t8" if art == "PreToolUse" else None,
+                                               "tool_input": {"query": "musterlocker"}, "transcript_path": str(PROJEKT / "gibt-es-nicht.jsonl")})
+        z = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")[-1]
+        assert code == 0 and aus == {} and (z["ereignis"], z["werkzeug"], z["eingabe"]) == (art, "mcp__robin__robin_refine", {"query": "musterlocker"}) and "modell" not in z, z
+        assert z["fall"] == ROBIN_FALL, "der Aufruf gehört zum Fall der Sitzung, auch wenn er ihn nicht nennt"
+    assert len(jsonl_lesen(PROJEKT / "faelle" / ROBIN_FALL / "protokoll" / "extern.jsonl")) == belege_vorher, "ein Aufruf, der nur verlangt ist, ist kein Beleg"
+    hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": "PostToolUseFailure", "tool_name": "Bash", "tool_use_id": "t9", "tool_input": {"command": "sleep 600"},
+                               "error": "Interrupted by user", "is_interrupt": True})
+    z = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")[-1]
+    assert z["abgebrochen"] is True and z["fehler"] == "Interrupted by user", z
+    hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": "Elicitation", "mcp_server_name": "robin", "mode": "form", "message": "Which research domain is this investigation for?"})
+    hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": "ElicitationResult", "mcp_server_name": "robin", "mode": "form", "action": "cancel"})
+    frage, entscheid = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")[-2:]
+    assert (frage["server"], frage["frage"]) == ("robin", "Which research domain is this investigation for?") and (entscheid["server"], entscheid["entscheid"]) == ("robin", "cancel")
+    zeilen = jsonl_lesen(PROJEKT / "protokoll" / "sitzungen" / f"{sitzung}.jsonl")
+    vorher = hashlib.sha256(f"sitzung|{sitzung}".encode()).hexdigest()
+    for z in zeilen:
+        assert z["vorher"] == vorher and kette(z["vorher"], z) == z["kette"], f"Kette gebrochen bei Eintrag {z['nr']}"
+        vorher = z["kette"]
+
+
+@test("Gateway, ehrliche Meldung: «Die Abfrage ist protokolliert» sagt es nur, wenn eine protokolliert ist. Scheitert ein Aufruf vorher, heisst er «nicht ausgeführt». "
+      "Kommt statt der Sperrliste eine Fehlerseite, steht die Prüfung als Fehler im Protokoll, und die Adresse gilt nicht als geprüft")
+def _():
+    from types import SimpleNamespace
+    from gateway import robin
+    vorher = len(kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl"))
+
+    @kern.werkzeug
+    async def probe_frueh(fall: str, zweck: str, liste: object = None) -> dict:
+        return {"wert": liste["gibt"]["es"]["nicht"]}       # scheitert an der Eingabe, bevor irgendetwas hinausgeht
+    kern.REGISTER.remove(probe_frueh)
+    r = aufruf(probe_frueh, zweck=ZWECK)
+    assert r["ergebnis"] == "nicht_ausgefuehrt" and "nichts protokolliert" in r["fehler"] and "TypeError" in r["fehler"] and "protokoll_id" not in r, r
+    assert "Die Abfrage ist protokolliert" not in r["fehler"] and len(kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl")) == vorher
+
+    @kern.werkzeug
+    async def probe_spaet(fall: str, zweck: str) -> dict:
+        await kern.abfrage(fall, zweck, werkzeug="probe_spaet", quelle="Probe", ziel="eins", ziel_typ="probe", url="https://internetdb.shodan.io/8.8.8.8", cache_h=0)
+        a = await kern.abfrage(fall, zweck, werkzeug="probe_spaet", quelle="Probe", ziel="zwei", ziel_typ="probe", url="https://internetdb.shodan.io/1.1.1.1", cache_h=0)
+        return a.als_dict({"wert": a.daten["ports"]["kein"]["objekt"]})
+    kern.REGISTER.remove(probe_spaet)
+    r = aufruf(probe_spaet, zweck=ZWECK)
+    eintraege = kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl")
+    assert len(eintraege) == vorher + 2 and r["ergebnis"] == "fehler" and r["protokoll_id"] == eintraege[-1]["id"] and r["belege"] == [e["id"] for e in eintraege[-2:]], r
+    assert f"Die Abfrage ist protokolliert ({eintraege[-1]['id']})" in r["fehler"]
+    # Zwei Aufrufe zugleich: Jeder nennt nur seine eigenen Einträge
+    async def beide() -> list[dict]:
+        return list(await asyncio.gather(probe_spaet(FALL, ZWECK), probe_frueh(FALL, ZWECK)))
+    spaet, frueh = asyncio.run(beide())
+    assert len(spaet["belege"]) == 2 and frueh["ergebnis"] == "nicht_ausgefuehrt" and "protokoll_id" not in frueh, (spaet, frueh)
+    # Die gebündelten Krypto-Werkzeuge haben ihre eigene Hülle: derselbe Satz, dieselbe Regel
+    async def kaputt() -> dict:
+        raise KeyError("feld")
+    r = asyncio.run(krypto._ausfuehren(SimpleNamespace(belege=[]), kaputt()))
+    assert r["ergebnis"] == "nicht_ausgefuehrt" and "nichts protokolliert" in r["fehler"] and "belege" not in r, r
+    r = asyncio.run(krypto._ausfuehren(SimpleNamespace(belege=["P-0001"]), kaputt()))
+    assert r["ergebnis"] == "fehler" and r["belege"] == ["P-0001"] and "protokolliert" in r["fehler"], r
+    # Die Sperrliste: Kommt eine Fehlerseite mit Status 200, ist die Prüfung gescheitert. So steht es auch im Protokoll
+    fall_id = "ROBIN-TEST-02"
+    ordner = robin_fall(fall_id)
+    try:
+        sperrliste_stellen(kaputt=True)
+        r = asyncio.run(szene.onion_sperrliste(fall_id, zweck=ZWECK, onion_adresse=ONION_EINS))
+        e = kern.protokoll_lesen(ordner / "protokoll" / "abfragen.jsonl")[-1]
+        assert r["ergebnis"] == "fehler" == e["ergebnis"] and "NICHT öffnen" in r["fehler"] and "befund" not in r, (r, e["ergebnis"])
+        assert robin.sperrliste_stand(ordner, ONION_EINS) == (None, None) and robin.sperrliste_urteil(ordner, e) is None, "eine gescheiterte Prüfung gibt keine Adresse frei"
+        r = asyncio.run(szene.onion_sperrliste(fall_id, zweck=ZWECK, onion_adresse="beispiel.onion"))
+        assert r["ergebnis"] == "nicht_ausgefuehrt" and "keine gültige Onion-Adresse" in r["fehler"] and len(kern.protokoll_lesen(ordner / "protokoll" / "abfragen.jsonl")) == 1, r
+        sperrliste_stellen()
+        r = asyncio.run(szene.onion_sperrliste(fall_id, zweck=ZWECK, onion_adresse=ONION_EINS))
+        assert r["ergebnis"] == "ok" and r["befund"]["gesperrt"] is False and robin.sperrliste_stand(ordner, ONION_EINS) == ("frei", r["protokoll_id"]), r
+    finally:
+        kern.transport = httpx.MockTransport(antwort)
+    assert kette_pruefen(FALL)["ok"] and kette_pruefen(fall_id)["ok"]
+
+
+@test("Protokoll, alle Werkzeuge des Gateways: Ein Aufruf mit zu knappem Zweck, bei ausgeschalteter Quelle oder zu einem Fall, den es nicht gibt, geht nicht hinaus, "
+      "bekommt keine Nummer und behauptet nicht, protokolliert zu sein. Der Sitzungs-Hook hält Ergebnis und Grund fest: So steht der Versuch im Ermittlungsprotokoll")
+def _():
+    import inspect
+    from gateway import quellen as verzeichnis
+    # Je Angabe ein öffentlich bekannter, unpersönlicher Wert. Kommt ein Werkzeug mit einer neuen Pflichtangabe dazu, verlangt der Test hier einen Eintrag
+    muster = {"ip": "8.8.8.8", "domain": "example.com", "url": "https://example.com/", "hashwert": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+              "gruppe": "musterlocker", "kanal": "breachdetect", "suchtext": "example.com", "onion_adresse": vorlagen.ONION[:56] + ".onion", "ziel": "example.com", "pruefung": "dns",
+              "typ": "ip", "wert": "8.8.8.8", "beziehung": "resolutions", "board": "g", "nummer": 1, "benutzername": "beispiel", "instanz": "mastodon.example",
+              "bericht_id": "0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44", "queue_id": "0f6c2b1e-5d1a-4c7e-9a3b-7e2d5c9b1a44", "uuid": vorlagen.US_UUID,
+              "adresse": "1BoatSLRHtKNngkdXEeobR76b53LETtpyT", "adressen": ["1BoatSLRHtKNngkdXEeobR76b53LETtpyT"],
+              "tx": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16", "start": "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16",
+              "datum": "2026-11-01", "abfrage_text": "ssl.cert.subject.cn:example.com", "name": "beispielkanal", "zeitstempel": "20261101000000"}
+    je_quelle = {w: q.name for q in verzeichnis.QUELLEN for w in q.werkzeuge}
+    werkzeuge = [fn for fn in kern.REGISTER if fn.__name__ != "fall_status"]
+    assert {fn.__name__ for fn in werkzeuge} == alle_werkzeuge(), "der Audit muss jedes Werkzeug des Gateways sehen"
+    vorher = kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl")
+    sitzung = PROJEKT / "protokoll" / "sitzungen" / "audit-alle.jsonl"
+    alt_aus = os.environ.pop(verzeichnis.EINSTELLUNG_AUS, None)
+    geschaltet = 0
+    try:
+        for fn in werkzeuge:
+            name = fn.__name__
+            pflicht = [n for n, par in inspect.signature(fn).parameters.items() if n not in ("fall", "zweck") and par.default is inspect.Parameter.empty]
+            assert all(n in muster for n in pflicht), f"{name}: Der Audit kennt für {[n for n in pflicht if n not in muster]} keinen Musterwert"
+            a = {n: muster[n] for n in inspect.signature(fn).parameters if n in muster}
+            # 1. Zweck zu knapp: nichts geht hinaus, nichts steht im Protokoll, und die Meldung behauptet es nicht
+            r = asyncio.run(fn(FALL, zweck="x", **a))
+            assert r.get("ergebnis") == "nicht_ausgefuehrt" and "protokoll_id" not in r and r.get("fehler"), f"{name} mit Zweck «x»: {r}"
+            assert "ist protokolliert" not in r["fehler"] and "sind protokolliert" not in r["fehler"], f"{name}: Die Meldung behauptet einen Protokolleintrag: {r['fehler']}"
+            hook("protokoll_hook.py", {"session_id": "audit-alle", "hook_event_name": "PostToolUse", "tool_name": f"mcp__osint__{name}", "tool_use_id": f"toolu_{name}",
+                                       "tool_input": {"fall": FALL, "zweck": "x", **a}, "tool_response": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, indent=2)}]})
+            z = jsonl_lesen(sitzung)[-1]
+            assert (z["werkzeug"], z.get("ergebnis")) == (f"mcp__osint__{name}", "nicht_ausgefuehrt") and z.get("meldung") and "protokoll_id" not in z, f"{name}: Der Hook hält die Absage nicht fest: {z}"
+            # 2. Die Quelle ist ausgeschaltet
+            quelle = je_quelle.get(name)
+            if quelle and verzeichnis.schaltbar(quelle):
+                os.environ[verzeichnis.EINSTELLUNG_AUS] = quelle
+                try:
+                    r = asyncio.run(fn(FALL, zweck=ZWECK, **a))
+                finally:
+                    del os.environ[verzeichnis.EINSTELLUNG_AUS]
+                assert r.get("ergebnis") == "nicht_ausgefuehrt" and "ausgeschaltet" in r.get("fehler", "") and "protokoll_id" not in r, f"{name}, Quelle {quelle} aus: {r}"
+                geschaltet += 1
+            # 3. Den Fall gibt es nicht
+            r = asyncio.run(fn("GIBT-ES-NICHT-1", zweck=ZWECK, **a))
+            assert r.get("ergebnis") == "nicht_ausgefuehrt" and "protokoll_id" not in r, f"{name}, Fall fehlt: {r}"
+    finally:
+        if alt_aus is not None:
+            os.environ[verzeichnis.EINSTELLUNG_AUS] = alt_aus
+    assert kern.protokoll_lesen(pfad / "protokoll" / "abfragen.jsonl") == vorher and not (PROJEKT / "faelle" / "GIBT-ES-NICHT-1").exists(), "ein abgewiesener Aufruf hat etwas hinterlassen"
+    assert geschaltet >= 30, f"nur {geschaltet} Werkzeuge mit schaltbarer Quelle geprüft"
+    # Im Ermittlungsprotokoll steht jeder dieser Versuche in Abschnitt 4, mit dem Grund
+    versuche = protokollwerkzeug.nicht_ausgefuehrt([z for z in jsonl_lesen(sitzung) if z.get("fall") == FALL])
+    assert len(versuche) == len(werkzeuge) and all(v["art"] == "gateway" and v["grund"] for v in versuche), (len(versuche), len(werkzeuge))
+
+
+@test("Ermittlungsprotokoll: Was verlangt, aber nicht ausgeführt wurde, steht in einem eigenen Abschnitt, mit dem Grund. Robins Einträge sagen, was sie belegen, "
+      "die Prüfung gegen die Sperrliste sagt, was sie ergab, und der Sitzungsverlauf nennt auch Aufrufe ohne Nummer. Rapport und Protokoll zählen gleich")
+def _():
+    import csv
+    from html import unescape
+    ordner = PROJEKT / "faelle" / ROBIN_FALL
+    R = vorlagen.ROBIN
+    s1, s2 = "protokoll-sitzung-1", "protokoll-sitzung-2"
+
+    def ereignis(sitzung: str, art: str, werkzeug: str, eingabe: dict, kennung: str | None, **mehr) -> None:
+        code, aus = hook("protokoll_hook.py", {"session_id": sitzung, "hook_event_name": art, "tool_name": werkzeug, "tool_use_id": kennung, "tool_input": eingabe, **mehr})
+        assert code == 0 and (aus == {} or art == "PostToolUse"), (art, werkzeug, aus)
+
+    def paar(sitzung: str, werkzeug: str, eingabe: dict, kennung: str, antwort_: object = None, **mehr) -> None:
+        ereignis(sitzung, "PreToolUse", werkzeug, eingabe, kennung, **mehr)
+        ereignis(sitzung, "PostToolUse", werkzeug, eingabe, kennung, tool_response=antwort_ if antwort_ is not None else {}, **mehr)
+    hook("protokoll_hook.py", {"session_id": s1, "hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {ROBIN_FALL}"})
+    paar(s1, "mcp__osint__fall_status", {"fall": ROBIN_FALL}, "u1", [{"type": "text", "text": json.dumps({"fall": ROBIN_FALL, "letzte_protokoll_id": "P-0002"})}])
+    paar(s1, "Read", {"file_path": f"faelle/{ROBIN_FALL}/eingang/rapport.txt"}, "u2")
+    ereignis(s1, "PreToolUse", "Bash", {"command": "curl https://example.com/verboten"}, "u3")                       # eine Berechtigung verbietet es: Danach kommt nichts mehr
+    paar(s1, "Read", {"file_path": f"faelle/{ROBIN_FALL}/befunde.json"}, "u4")
+    lesen_ = {"urls": [f"http://{ONION_VIER}/listing/9"]}
+    ereignis(s1, "PreToolUse", "mcp__robin__robin_scrape", lesen_, "u5")                                             # Rückfrage, vom Sachbearbeiter abgelehnt
+    ereignis(s1, "PermissionRequest", "mcp__robin__robin_scrape", lesen_, None)
+    paar(s1, "mcp__osint__shodan_internetdb", {"fall": ROBIN_FALL, "zweck": "x", "ip": "8.8.8.8"}, "u6",
+         [{"type": "text", "text": json.dumps({"ergebnis": "nicht_ausgefuehrt", "fehler": "Zweck fehlt oder ist zu knapp. Bitte in einem Satz begründen."})}])
+    ereignis(s1, "PreToolUse", "mcp__robin__robin_search", {"query": "musterlocker"}, "u7", agent_type="darkweb-analyst", agent_id="a7")   # abgelehnt, danach endet der Analyst
+    hook("protokoll_hook.py", {"session_id": s1, "hook_event_name": "SubagentStop", "agent_type": "darkweb-analyst", "agent_id": "a7"})
+    paar(s1, "mcp__robin__robin_search", {"query": "musterlocker", "preset": "ransomware_malware", "user_chose": True}, "u8", vorlagen.robin_verpackt(R["search_tor_down"]))
+    ereignis(s1, "PreToolUse", "Agent", {"subagent_type": "rapportfuehrer", "description": "Rapport erzeugen"}, "u9")           # läuft noch: Der Rapportführer erzeugt gerade dieses Protokoll
+    ereignis(s1, "PreToolUse", "Bash", {"command": f"python3 tools/protokoll.py {ROBIN_FALL}"}, "u10", agent_type="rapportfuehrer", agent_id="a8")
+    # Eine zweite Sitzung brach nach einem angekündigten Aufruf ab: Ob er abgelehnt wurde oder noch lief, lässt sich an ihrem offenen Ende nicht unterscheiden. Der Eintrag sagt das
+    hook("protokoll_hook.py", {"session_id": s2, "hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {ROBIN_FALL}"})
+    ereignis(s2, "PreToolUse", "WebFetch", {"url": "https://example.com/", "prompt": "lies"}, "v1")
+    ereignis(s2, "PermissionRequest", "WebFetch", {"url": "https://example.com/", "prompt": "lies"}, None)
+    # Eine dritte endete ordentlich: Auf den abgelehnten Aufruf folgt das Ende der Antwort. Dann läuft er sicher nicht mehr, und der Eintrag sagt es ohne Vorbehalt
+    s3 = "protokoll-sitzung-3"
+    hook("protokoll_hook.py", {"session_id": s3, "hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {ROBIN_FALL}"})
+    ereignis(s3, "PreToolUse", "mcp__robin__robin_health", {}, "w1")
+    ereignis(s3, "PermissionRequest", "mcp__robin__robin_health", {}, None)
+    ereignis(s3, "PreToolUse", "Bash", {"command": "wget https://example.com/auch-verboten"}, "w2")
+    code, aus = hook("protokoll_hook.py", {"session_id": s3, "hook_event_name": "Stop", "stop_hook_active": False})
+    assert code == 0 and aus == {}, "das Ende einer Antwort wird mitgeschrieben, entschieden wird nichts"
+
+    sitzung, meldungen = protokollwerkzeug.sitzungen_laden(ROBIN_FALL)
+    assert not meldungen, meldungen
+    versuche = protokollwerkzeug.nicht_ausgefuehrt([z for z in sitzung if z.get("fall") == ROBIN_FALL and z.get("sitzung") in (s1, s2, s3)])
+    assert [(v["sitzung"], v.get("tool_use_id"), v["art"], v["am_ende"]) for v in versuche] == [
+        (s1, "u3", "verboten", False), (s1, "u5", "rueckfrage", False), (s1, "u6", "gateway", False), (s1, "u7", "verboten", False), (s2, "v1", "rueckfrage", True),
+        (s3, "w1", "rueckfrage", False), (s3, "w2", "verboten", False)], \
+        [(v["sitzung"], v.get("tool_use_id"), v["art"], v["am_ende"]) for v in versuche]
+    assert versuche[2]["grund"].startswith("Zweck fehlt") and "Berechtigung" in versuche[0]["grund"] and "nachgefragt" in versuche[1]["grund"]
+    assert "Letzter Schritt dieser Sitzung" in versuche[4]["grund"] and "Letzter Schritt" not in versuche[3]["grund"], "ein Subagent, der beendet ist, läuft nicht mehr"
+    # Ohne den laufenden Aufruf des Erzeugers wären auch die offenen Aufrufe am Ende der ersten Sitzung Versuche
+    ohne = protokollwerkzeug.nicht_ausgefuehrt([z for z in sitzung if z.get("sitzung") == s1 and z.get("tool_use_id") != "u10"])
+    assert [v.get("tool_use_id") for v in ohne][-1] == "u9" and ohne[-1]["am_ende"], [v.get("tool_use_id") for v in ohne]
+
+    assert protokollwerkzeug.main([ROBIN_FALL]) == 0
+    seite_html = lesen(ordner / "rapport" / "Ermittlungsprotokoll.html")
+    teile = re.split(r"(?=<h2>)", seite_html)
+    titel = [re.sub(r"<[^>]+>", "", t.split("</h2>")[0]) for t in teile[1:]]
+    assert titel == ["1 Aufträge des Sachbearbeiters", "2 Abfragen bei externen Quellen", "3 Abfragen über weitere Werkzeuge", "4 Aufrufe, die nicht ausgeführt wurden",
+                     "5 Sitzungsverlauf", "6 Integrität und Aufbewahrung"], titel
+    kopf_, _eins, zwei, drei, vier, fuenf, _sechs = teile
+    text = lambda h: " ".join(unescape(re.sub(r"<[^>]+>", " ", h)).split())      # noqa: E731
+    for stueck in ("curl https://example.com/verboten", "Zweck fehlt oder ist zu knapp", "mcp__robin__robin_scrape", ONION_VIER, "ip: 8.8.8.8", "abgelehnt oder nicht beantwortet",
+                   "Eine Berechtigung des Projekts verbietet den Aufruf", "https://example.com/", "Letzter Schritt dieser Sitzung"):
+        assert stueck in text(vier), f"Abschnitt 4 nennt «{stueck}» nicht"
+    assert f"tools/protokoll.py {ROBIN_FALL}" not in text(vier) and "rapportfuehrer" not in text(vier), "der Aufruf, der dieses Protokoll erzeugt, ist kein Versuch"
+    assert text(vier).count("mcp__robin__robin_search") == 1, "der Aufruf mit Abschluss (u8) steht in Abschnitt 3, nicht hier"
+    assert text(vier).count("Letzter Schritt dieser Sitzung") == 1 and "wget https://example.com/auch-verboten" in text(vier), "nur das offene Ende einer Sitzung trägt den Vorbehalt"
+    assert "Stop" not in fuenf, "das Ende einer Antwort ist kein Schritt des Verlaufs"
+    # Abschnitt 3: Robins Einträge sagen, was sie belegen
+    for stueck in ("⊘ nicht ausgeführt", "✓ 4 Treffer", "⊘ Tor nicht bereit", "✓ 2 von 4 Seiten gelesen", "○ kein Treffer", "✕ Fehler", "Tor war noch nicht bereit. Es wurde nichts gesucht",
+                   "Über Tor verlangt, es ging nichts hinaus", "Im Container von Robin, ohne Abfrage nach aussen", "Suchmaschinen, die geantwortet haben: 16 von 16",
+                   "Sperrliste: frei", "Sperrliste: gesperrt", "Sperrliste: nicht geprüft", "von der Seite abgewiesen (HTTP 403)"):
+        assert stueck in text(drei), f"Abschnitt 3 nennt «{stueck}» nicht"
+    assert "✓ gesichert" not in drei, "bei Robin steht nie bloss «gesichert»"
+    assert drei.count("Regel verletzt</span>") == 4 and "Nicht nach den Regeln für Robin:" in drei and f"Die Adresse {ONION_ZWEI} steht auf der Sperrliste von Ahmia." in text(drei), \
+        "ein Aufruf, der die Regeln des Falls nicht einhielt, ist im Protokoll als solcher zu erkennen"
+    assert "href='#P-0001'" in drei, "die Seite verweist auf die Prüfung ihrer Adresse"
+    # Abschnitt 2: Die Prüfung gegen die Sperrliste sagt, was sie ergab. «Treffer» hiesse dort das Gegenteil
+    assert "✓ nicht auf der Sperrliste" in zwei and "⊘ auf der Sperrliste" in zwei and "✓ Treffer" not in zwei, text(zwei)[:600]
+    # Abschnitt 5: Aufrufe über MCP ohne Nummer gehören zum Verlauf, was oben steht, wird nicht wiederholt
+    assert "mcp__osint__fall_status" in fuenf and "Stand des Falls abgefragt" in fuenf and "Rückfrage von robin an den Sachbearbeiter" in fuenf and "abgebrochen" in fuenf
+    assert "curl https://example.com/verboten" not in fuenf and "robin_scrape" not in fuenf and "PreToolUse" not in seite_html and "PermissionRequest" not in seite_html
+    # Der Kopf zählt Robins Aufrufe nach aussen mit, wie der Rapport, und nennt, was nicht ausgeführt wurde
+    eintraege = belege_lesen(ROBIN_FALL)
+    abfragen, extern = [e for e in eintraege if e["id"].startswith("P-")], [e for e in eintraege if e["id"].startswith("X-")]
+    k_p, k_r = protokollwerkzeug.kennzahlen(abfragen, extern), rapport.kennzahlen({}, eintraege)
+    aussen = [e for e in extern if e["art"] == "tor"]
+    assert any(e["art"] == "robin_lokal" for e in extern), "was Robin im Container erledigt, ist keine Abfrage: Der Test braucht einen solchen Eintrag"
+    nie = sum(1 for e in extern if e["ergebnis"] == "nicht_ausgefuehrt")
+    gefragt = [e for e in aussen if e["ergebnis"] != "nicht_ausgefuehrt"]
+    assert len(k_p["echte"]) == len(k_r["abfragen"]) == len(abfragen) + len(gefragt) and gefragt, "eine Abfrage ist, was hinausging: Robin im Container und nicht Ausgeführtes zählen nicht"
+    # Die Zahlen im Kopf gehen auf: Treffer, kein Treffer, Fehlschlag und abgelehnt ergeben zusammen die Abfragen. Bis zum 20.11.2026 zählte ein Aufruf, den Robin
+    # nicht ausgeführt hatte, als Abfrage und zugleich als «nicht ausgeführt»
+    assert sum(k_p["ergebnis"][w] for w in ("ok", "kein_treffer", "fehler", "abgelehnt")) == len(k_p["echte"]) and "nicht_ausgefuehrt" not in k_p["ergebnis"], dict(k_p["ergebnis"])
+    assert len(k_r["nicht_ausgefuehrt"]) == len(k_p["ohne_ausfuehrung"]) == nie >= 4, (len(k_r["nicht_ausgefuehrt"]), nie)
+    assert "nicht ausgeführt" not in rapport.abfragen_zusatz(k_r), "die Kachel «Abfragen» des Rapports nennt nur, was zu den Abfragen zählt"
+    satz = rapport.ohne_ausfuehrung_satz(k_r)
+    assert satz.startswith(f"Verlangt, aber nicht ausgeführt: {nie} Aufrufe (") and "Tor war noch nicht bereit" in satz and "zählen nicht als Abfrage" in satz, satz
+    assert all(e["id"] in satz for e in k_r["nicht_ausgefuehrt"]) and rapport.ohne_ausfuehrung_satz(rapport.kennzahlen({}, abfragen)) == "", satz
+    alle_versuche = protokollwerkzeug.nicht_ausgefuehrt([z for z in sitzung if z.get("fall") == ROBIN_FALL])
+    assert f'<div class="wert">{nie + len(alle_versuche)}</div><div class="name">nicht ausgeführt</div>' in kopf_, "die Kachel nennt beides zusammen"
+    assert f'<div class="wert">{len(k_p["echte"])}</div><div class="name">Abfragen</div>' in kopf_, "die Kachel «Abfragen» zählt nur, was gefragt wurde"
+    assert f"{nie} mit Beleg in Abschnitt 3, {len(alle_versuche)} ohne Nummer in Abschnitt 4" in text(kopf_), "der Kopf sagt, wo das nicht Ausgeführte steht"
+    assert "Robin (Tor)" in k_p["je_quelle"] and k_p["je_quelle"]["Robin (Tor)"] == len([e for e in gefragt if e["quelle"] == "Robin (Tor)"]), dict(k_p["je_quelle"])
+    # Im Abschlussrapport steht derselbe Satz unter den Kacheln
+    assert satz in " ".join(unescape(re.sub(r"<[^>]+>", " ", rapport.bauen(ROBIN_FALL, {"titel": "x"}, {}, eintraege, kette_pruefen(ROBIN_FALL), [], [], True))).split()), \
+        "der Rapport nennt, was verlangt und nicht ausgeführt wurde"
+    # Erste und letzte Abfrage im Kopf: Robins Suchen zählen dazu, ein nicht ausgeführter Aufruf nicht. Bis zum 20.11.2026 standen dort nur die Zeiten des Gateways
+    spaet = [dict(e) for e in extern]
+    next(e for e in reversed(spaet) if e["art"] == "tor" and e["ergebnis"] == "ok")["zeit_utc"] = "2026-11-21T12:34:56Z"
+    next(e for e in reversed(spaet) if e["ergebnis"] == "nicht_ausgefuehrt")["zeit_utc"] = "2026-11-21T13:00:00Z"
+    kopf_spaet = protokollwerkzeug.bauen(ROBIN_FALL, {"titel": "x"}, abfragen, [], kette_pruefen(ROBIN_FALL), [], {}, spaet, ordner).split("<h2>")[0]
+    assert f"<b>Letzte Abfrage</b>{protokollwerkzeug.lokal('2026-11-21T12:34:56Z')}</div>" in kopf_spaet, re.findall(r"<b>Letzte Abfrage</b>[^<]*", kopf_spaet)
+    from gateway.akte import ist_abfrage
+    fruehste = min(e["zeit_utc"] for e in abfragen + spaet if e["id"].startswith("P-") or ist_abfrage(e))     # Robins erste Suche lief vor der ersten Abfrage des Gateways
+    assert f"<b>Erste Abfrage</b>{protokollwerkzeug.lokal(fruehste)}</div>" in kopf_spaet, (fruehste, re.findall(r"<b>Erste Abfrage</b>[^<]*", kopf_spaet))
+    # Ein nicht ausgeführter Aufruf belegt nichts: Der Rapport nimmt ihn als Beleg nicht an
+    tor_aus = next(e["id"] for e in extern if e["ergebnis"] == "nicht_ausgefuehrt")
+    maengel, _hinweise = rapport.pruefen({"zusammenfassung": ["x"], "luecken": ["x"], "indikatoren": [{"id": "I-01", "typ": "gruppe", "wert": "musterlocker", "herkunft": "Test",
+                                           "bewertung": "verdaechtig", "belege": [tor_aus]}]}, {e["id"]: e for e in eintraege}, True)
+    assert any(f"Beleg {tor_aus} war eine nicht ausgeführte Abfrage und belegt nichts" in m for m in maengel), maengel
+    # Die Tabelle: dieselben Aussagen, maschinenlesbar
+    with open(ordner / "rapport" / "Ermittlungsprotokoll.csv", encoding="utf-8", newline="") as f:
+        zeilen = list(csv.DictReader(f, delimiter=";"))
+    je = {z["nr"]: z for z in zeilen if z["nr"]}
+    assert je[tor_aus]["ergebnis"] == "nicht_ausgefuehrt" and je[tor_aus]["meldung"] and je["X-0006"]["ergebnis"] == "ok" and je["X-0001"]["art"] == "robin_lokal", je[tor_aus]
+    assert "Nicht nach den Regeln für Robin: Die Suche nannte nicht den Untersuchungsbereich" in je["X-0003"]["meldung"] and "Regeln" not in je["X-0006"]["meldung"], je["X-0003"]["meldung"]
+    ohne_nr = [z for z in zeilen if not z["nr"]]
+    assert len(ohne_nr) == len(alle_versuche) and all(z["art"] == "versuch" and z["ergebnis"] == "nicht_ausgefuehrt" and z["meldung"] and z["sitzung"] for z in ohne_nr), ohne_nr[:2]
+    assert any(z["werkzeug"] == "Bash" and z["ziel"] == "curl https://example.com/verboten" for z in ohne_nr)
+    # Ein Eintrag von vor dem 20.11.2026: Dort stand bei jeder Antwort «ok». Was er belegt, sagt die gesicherte Antwort
+    alt_roh = ordner / "rohdaten" / "extern" / "X-9999_robin_search.json"
+    alt_roh.write_text(json.dumps(vorlagen.robin_verpackt(R["search_tor_down"])), encoding="utf-8")
+    try:
+        alt = {"id": "X-9999", "werkzeug": "robin_search", "quelle": "Robin (Tor)", "art": "tor", "ergebnis": "ok", "fehler": None, "anfrage": {"server": "robin", "eingabe": {"query": "x"}},
+               "antwort": {"rohdaten": "rohdaten/extern/X-9999_robin_search.json"}}
+        s = protokollwerkzeug.extern_stand(alt, ordner)
+        assert (s["ergebnis"], s["text"]) == ("nicht_ausgefuehrt", "⊘ nicht ausgeführt") and "Tor war noch nicht bereit" in s["meldung"], s
+        assert protokollwerkzeug.extern_stand({**alt, "antwort": {"rohdaten": "rohdaten/extern/fehlt.json"}}, ordner)["text"] == "", "ohne Rohdatei bleibt es bei «gesichert»"
+        assert protokollwerkzeug.extern_stand({"id": "X-1", "werkzeug": "anderes", "anfrage": {"server": "github"}, "ergebnis": "ok"}, ordner)["text"] == ""
+    finally:
+        alt_roh.unlink()
+    # Ein Fall ohne Sitzungsprotokoll oder mit einem von früher sagt, weshalb der Abschnitt leer ist
+    leer = protokollwerkzeug.bauen("X", {"titel": "x"}, [], [], {"ok": True, "anzahl": 0, "anzahl_extern": 0, "fehler": []}, [], {}, [])
+    assert "Kein Sitzungsprotokoll vorhanden" in leer.split("4 Aufrufe, die nicht ausgeführt wurden")[1].split("<h2>")[0]
+    frueher = protokollwerkzeug.bauen("X", {"titel": "x"}, [], [{"ereignis": "PostToolUse", "werkzeug": "Read", "fall": "X", "sitzung": "s", "nr": 1, "eingabe": {}}],
+                                      {"ok": True, "anzahl": 0, "anzahl_extern": 0, "fehler": []}, [], {}, [])
+    assert "erst seit dem 20.11.2026" in frueher
 
 
 @test("Sitzungs-Hook ordnet Abfragen dem Agenten zu, auch bei Windows-Pfaden")
@@ -2209,13 +2835,17 @@ def _():
     echt = (einrichten.lauf, einrichten.root_praefix, einrichten.warten_auf_port, einrichten.system, einrichten.ui, plattform.einstellung, plattform.proxy_antwortet,
             plattform.systemd, shutil.which, dienste._auskunft)
     rufe: list[list[str]] = []
-    lage = {"docker": True, "webcheck": "true", "robin": "abc123\ndef456", "proxy": plattform.TOR_PROXY, "tor": True, "tor_geht": True, "rechte": True}
+    lage = {"docker": True, "webcheck": "true", "robin": "abc123\ndef456", "proxy": plattform.TOR_PROXY, "tor": True, "tor_geht": True, "rechte": True, "ablage": None}
 
     def lauf(befehl, *mehr, **angaben) -> tuple[int, str]:       # steht für Docker und für den Dienst Tor
         rufe.append(list(befehl))
         kern = [x for x in befehl if x not in ("sudo", "-n")]
         if kern[:2] == ["docker", "version"]:
             return (0, "29.0") if lage["docker"] else (1, "Cannot connect to the Docker daemon")
+        if kern[:3] == ["docker", "volume", "inspect"]:     # das Volume, in das Robin früher eigene Recherchen ablegen konnte
+            return (0, "[]") if lage["ablage"] is not None else (1, "no such volume")
+        if kern[:2] == ["docker", "run"] and "find /v -type f | wc -l" in kern:
+            return 0, str(lage["ablage"])
         if kern[:2] == ["docker", "inspect"]:
             return (0, lage["webcheck"]) if lage["webcheck"] else (1, "No such object")
         if kern[:2] == ["docker", "ps"]:
@@ -2255,6 +2885,15 @@ def _():
         zeilen, gelungen = dienste.aus(mit_tor=False)
         text = " | ".join(f"{was}: {wie}" for _, was, wie in zeilen)
         assert gelungen and "Robin: läuft nicht" in text and "Web-Check: war schon aus" in text and not any("docker stop" in b for b in befehle()), (text, befehle())
+        # Die Ablage von Robin: Ein Volume aus einer früheren Einrichtung zeigt der Stand an. Abschalten fasst es nicht an. Eingehängt wird es nicht mehr
+        assert not any(was == "Ablage von Robin" for _, was, _ in dienste.stand_zeilen(dienste.stand(False))), "ohne Volume gibt es die Zeile nicht"
+        for dateien, wort in ((0, "leer"), (3, "3 Dateien")):
+            lage["ablage"] = dateien
+            ablage = [wie for _, was, wie in dienste.stand_zeilen(dienste.stand(False)) if was == "Ablage von Robin"]
+            assert len(ablage) == 1 and wort in ablage[0] and dienste.ROBIN_VOLUME in ablage[0] and "nicht mehr verwendet" in ablage[0], ablage
+        lage["ablage"] = None
+        robin_mcp = json.loads(lesen(PROJEKT / ".mcp.json"))["mcpServers"]["robin"]["args"]
+        assert "-v" not in robin_mcp and not any(dienste.ROBIN_VOLUME in a for a in robin_mcp), f".mcp.json hängt Robin noch eine eigene Ablage ein: {robin_mcp}"
 
         # ---- Am Terminal auch Tor, wenn der Arbeitsplatz es als Proxy nutzt. Dafür braucht es das Passwort
         rufe.clear()
@@ -4808,6 +5447,17 @@ def _():
         roh, form = pruefstand.lesen(v)
         blatt = ui_ds.darstellen(pruefstand.eintrag(v), roh, form)
         seite = Seite(ui_seiten.blatt_html(blatt, ui_daten.Rohdatei(pruefstand.ORT / v["datei"], "rohdaten/" + v["datei"], form, roh, 1), "VORLAGEN", "P-0001"))
+        if blatt.zerlegt:      # Robin antwortet als Text. Gezeigt wird die Zerlegung: Jede ihrer Angaben erscheint, und jede steht so im Text
+            assert form == "text" and "robin" in v["werkzeug"] and blatt.eigen and blatt.form == "json", v["name"]
+            alle = list(ui_ds.angaben_zaehlen(blatt.inhalt))
+            assert blatt.gesamt == len(alle) == blatt.zugeordnet and not blatt.weitere, f"{v['name']}: Die Zerlegung ist nicht ganz zugeordnet: {blatt.weitere[:3]}"
+            fehlt = fehlende(seite.werte, blatt.inhalt)
+            assert not fehlt, f"{v['name']}: {len(fehlt)} von {len(alle)} Angaben der Zerlegung erscheinen nicht, zum Beispiel {fehlt[:3]}"
+            fremd = [w for _, w in alle if isinstance(w, str) and w and w not in roh]
+            assert not fremd, f"{v['name']}: Die Zerlegung enthält Text, der in Robins Antwort nicht steht: {fremd[:2]}"
+            assert "Robin antwortet als Text" in seite.text and "nie Anweisung" in seite.text
+            angaben += len(alle)
+            continue
         if form != "json":
             assert isinstance(roh, str) and roh[:3000] in seite.text, f"{v['name']}: Der Text der Rohdatei steht nicht unverändert in der Ansicht"
             continue
@@ -4832,6 +5482,15 @@ def _():
     geprueft = 0
     for v in pruefstand.vorlagen():
         roh, form = pruefstand.lesen(v)
+        if form == "text" and "robin" in v["werkzeug"]:
+            # Robin antwortet als Text. Gezeigt wird die Zerlegung: Jeder Wert steht an der genannten Stelle der Zerlegung, und wörtlich in Robins Antwort
+            blatt = ui_ds.darstellen(pruefstand.eintrag(v), roh, form)
+            seite = Seite(ui_seiten.blatt_html(blatt, ui_daten.Rohdatei(pruefstand.ORT / v["datei"], "rohdaten/" + v["datei"], form, roh, 1), "VORLAGEN", "X-0001"))
+            falsch = [a for a in (abweichung(w, blatt.inhalt) for w in seite.werte) if a]
+            assert blatt.zerlegt and seite.werte and not falsch, f"{v['name']}: {len(falsch)} Werte weichen von der Zerlegung ab, zum Beispiel: {falsch[:1]}"
+            assert all(w["text"] in roh for w in seite.werte if w["roh"] is None and not w["gekuerzt"] and w["text"] != "leer"), f"{v['name']}: gezeigter Text steht nicht in Robins Antwort"
+            geprueft += len(seite.werte)
+            continue
         if form != "json":
             continue
         blatt = ui_ds.darstellen(pruefstand.eintrag(v), roh, form)
@@ -6267,7 +6926,7 @@ def _():
     assert "aktiv: erteilt durch MUS, Sachbearbeiter" in kopf
     assert aktion("freigabe", {"fall": fall, "art": "aktiv", "entziehen": "1"})[0] == 200 and not json.loads(lesen(pfad / "fall.json"))["freigaben"]["aktiv"]["erteilt"]
     # Der Weg am Terminal bleibt, wie er war: ohne Terminal keine Freigabe, kein Entfernen und kein Löschen, und fall.json trägt dort keinen Vermerk «Oberfläche»
-    for befehl, angaben in ((fallwerkzeug.cmd_freigabe, argparse.Namespace(fall=fall, art="darkweb", durch="x", vermerk="y", entziehen=False)),
+    for befehl, angaben in ((fallwerkzeug.cmd_freigabe, argparse.Namespace(fall=fall, art="darkweb", durch="x", vermerk="y", entziehen=False, bereich="threat_intel")),
                             (fallwerkzeug.cmd_entfernen, argparse.Namespace(fall=fall, dateien=["nachtrag.md"], durch="x", grund="y")),
                             (fallwerkzeug.cmd_loeschen, argparse.Namespace(fall="BEDIEN-0003", durch="x"))):
         try:
@@ -6710,9 +7369,9 @@ def _():
     for _ in range(2):
         antwort = robin.fragen("mcp__robin__robin_search", {"query": "musterlocker"}, "toolu_r")
         assert antwort["erlauben"] is False and "darkweb" in antwort["grund"] and robin.frage is None, antwort
-    fallwerkzeug.freigabe_setzen(fall, "darkweb", durch="MUS", vermerk="Auftrag vom 17.11.2026", weg="Oberfläche")
+    fallwerkzeug.freigabe_setzen(fall, "darkweb", durch="MUS", vermerk="Auftrag vom 17.11.2026", weg="Oberfläche", bereich="ransomware_malware")
     try:
-        antwort = robin.fragen("mcp__robin__robin_scrape", {"url": "http://beispiel.onion/"}, "toolu_r2")
+        antwort = robin.fragen("mcp__robin__robin_health", {}, "toolu_r2")
         assert antwort["erlauben"] is True and robin.frage is None and "Freigabe" in antwort["von_selbst"], antwort
     finally:
         fallwerkzeug.freigabe_setzen(fall, "darkweb", entziehen=True, weg="Oberfläche")
@@ -6964,6 +7623,124 @@ def pflicht_umgebung(robin: bool | None = None):
         plattform.einstellung, pq._erreichbar, pq._robin_bereit = echt
 
 
+@test("Bedienung, Dark Web: Die Freigabe verlangt den Untersuchungsbereich. Einen Aufruf von Robin lässt die Oberfläche nur zu, wenn er die Regeln einhält: Bereich des "
+      "Sachbearbeiters, kein Platzhalter, Seiten erst nach der Prüfung gegen die Sperrliste. Robins Antworten zeigt sie mit dem, was sie belegen, und nie als «Treffer», wo nichts lief")
+def _():
+    from gateway import robin as robin_regeln
+    u = bedien_vorbereiten()
+    b, port, aktion = u["b"], u["port"], u["aktion"]
+    fall = "BEDIEN-ROBIN-1"
+    ordner = robin_fall(fall)
+    grund = {"fall": fall, "art": "darkweb", "durch": "MUS, Sachbearbeiter", "vermerk": "Auftrag vom 20.11.2026"}
+    R = vorlagen.ROBIN
+    try:
+        # ---- Die Freigabe: Die Karte bietet die vier Bereiche an. Ohne Bereich, und ohne Geheimnis, wird nichts erteilt
+        seite = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"])
+        optionen = [a.get("value") for t_, a in seite.elemente if t_ == "option"]
+        assert all(k in optionen for k in robin_regeln.BEREICHE) and "Untersuchungsbereich" in seite.text and "Ransomware und Schadsoftware" in seite.text, optionen
+        assert [a for t_, a in seite.elemente if t_ == "select" and a.get("name") == "bereich" and "required" in a], "ohne Bereich sendet der Browser das Formular nicht ab"
+        status, antwort_ = aktion("freigabe", grund)
+        assert status == 400 and "Untersuchungsbereich" in antwort_["fehler"], antwort_
+        status, antwort_ = aktion("freigabe", {**grund, "bereich": "quatsch"})
+        assert status == 400 and "Untersuchungsbereich" in antwort_["fehler"], antwort_
+        status, antwort_ = aktion("freigabe", {**grund, "bereich": robin_regeln.BEREICH_MIT_PERSONENBEZUG})
+        assert status == 400 and "Kontoabfragen" in antwort_["fehler"], antwort_
+        assert aktion("freigabe", {**grund, "bereich": "ransomware_malware"}, geheimnis=None)[0] in (401, 403)
+        assert not freigabe_erteilt(json.loads(lesen(ordner / "fall.json")), "darkweb"), "eine abgelehnte Freigabe hat fall.json verändert"
+        status, antwort_ = aktion("freigabe", {**grund, "bereich": "ransomware_malware"})
+        assert status == 200 and "Untersuchungsbereich: Ransomware und Schadsoftware" in antwort_["meldung"], antwort_
+        eintrag = json.loads(lesen(ordner / "fall.json"))["freigaben"]["darkweb"]
+        assert (eintrag["bereich"], eintrag["weg"], eintrag["durch"]) == ("ransomware_malware", "Oberfläche", "MUS, Sachbearbeiter"), eintrag
+        text = Seite(json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"]).text
+        assert "Untersuchungsbereich: Ransomware und Schadsoftware" in text and "Bereich ändern" in json.loads(ui_anfrage(port, f"/api/fall/{fall}/bedienen")[2])["html"]
+        # den Bereich ändern: Wer die Freigabe verantwortet, bleibt stehen. Auch das geht nur mit Geheimnis
+        assert aktion("freigabe", {"fall": fall, "art": "darkweb", "bereich_aendern": "1", "bereich": "threat_intel"}, geheimnis=None)[0] in (401, 403)
+        status, antwort_ = aktion("freigabe", {"fall": fall, "art": "darkweb", "bereich_aendern": "1", "bereich": "threat_intel"})
+        eintrag = json.loads(lesen(ordner / "fall.json"))["freigaben"]["darkweb"]
+        assert status == 200 and (eintrag["bereich"], eintrag["durch"]) == ("threat_intel", "MUS, Sachbearbeiter") and eintrag["bereich_am"], (antwort_, eintrag)
+        assert ui_daten.Fall(fall).freigaben()[1] == {"name": "darkweb", "erteilt": True, "durch": "MUS, Sachbearbeiter", "am": eintrag["am"], "vermerk": "Auftrag vom 20.11.2026",
+                                                    "bereich": "threat_intel"}
+
+        # ---- Die Regeln je Aufruf: Die Oberfläche fragt gateway/robin.py, nicht den Sachbearbeiter. Was die Regeln verletzt, lehnt sie mit dem Grund ab
+        s = ui_sitzung.Sitzung(b, fall, port)
+        gut = {"query": "musterlocker", "preset": "threat_intel", "user_chose": True}
+        erlaubt = s.fragen("mcp__robin__robin_search", gut, "t1")
+        assert erlaubt["erlauben"] is True and "Regeln für Robin" in erlaubt["von_selbst"] and s.frage is None, erlaubt
+        for eingabe, wort in (({"query": "musterlocker"}, "user_chose=true"), ({**gut, "preset": "ransomware_malware"}, 'preset="threat_intel"'),
+                              ({**gut, "query": "[ORG_01] leak"}, "Platzhalter")):
+            abgelehnt = s.fragen("mcp__robin__robin_search", eingabe, "t2")
+            assert abgelehnt["erlauben"] is False and wort in abgelehnt["grund"] and fall in abgelehnt["grund"], abgelehnt
+        seite_eins = f"http://{ONION_EINS}/"
+        abgelehnt = s.fragen("mcp__robin__robin_scrape", {"urls": [seite_eins]}, "t3")
+        assert abgelehnt["erlauben"] is False and "noch nicht mit onion_sperrliste geprüft" in abgelehnt["grund"], abgelehnt
+        try:
+            sperrliste_stellen(gesperrt=(ONION_ZWEI,))
+            p1 = asyncio.run(szene.onion_sperrliste(fall, zweck=ZWECK, onion_adresse=ONION_EINS))
+            p2 = asyncio.run(szene.onion_sperrliste(fall, zweck=ZWECK, onion_adresse=ONION_ZWEI))
+        finally:
+            kern.transport = httpx.MockTransport(antwort)
+        assert s.fragen("mcp__robin__robin_scrape", {"urls": [seite_eins + "post/1", seite_eins]}, "t4")["erlauben"] is True, "nach der Prüfung, die sie freigab, wird die Seite gelesen"
+        abgelehnt = s.fragen("mcp__robin__robin_scrape", {"urls": [seite_eins, f"http://{ONION_ZWEI}/t/1"]}, "t5")
+        assert abgelehnt["erlauben"] is False and "steht auf der Sperrliste von Ahmia" in abgelehnt["grund"] and ONION_ZWEI in abgelehnt["grund"], abgelehnt
+        assert s.fragen("mcp__robin__robin_scrape", {"ids": ["r1-7a3e64"]}, "t6")["erlauben"] is False and s.fragen("mcp__robin__robin_investigate", {"query": "x"}, "t7")["erlauben"] is False
+        assert s.fragen("mcp__robin__robin_scrape", {"urls": ["https://example.com/"], "allow_clearweb": True}, "t8")["erlauben"] is False, "offenes Netz über Tor braucht die Freigabe aktiv"
+        sitzung, _m = protokollwerkzeug.sitzungen_laden(fall)
+        vermerke = [str(z.get("angabe")) for z in sitzung if z.get("schritt") == "Dark-Web-Aufruf abgelehnt"]
+        assert len(vermerke) == len(set(vermerke)) == 7, f"jeder Grund steht einmal im Sitzungsprotokoll, auch wenn er zweimal vorkam: {vermerke}"
+        assert any("Platzhalter" in v for v in vermerke) and any("Sperrliste von Ahmia" in v for v in vermerke)
+
+        # ---- Der Chat: Robin antwortet auch, wenn es nichts getan hat. Der Schritt heisst dann «nicht ausgeführt» und steht im Fehlerprotokoll
+        vorher = b.fehlerbuch.zaehler["hinweis"]
+        for kennung, werkzeug, eingabe, text_, erwartet in (("c1", "robin_search", gut, R["search_tor_down"], "nicht_ausgefuehrt"), ("c2", "robin_search", gut, robin_vorlage("robin_search"), "ok"),
+                                                         ("c3", "robin_search", gut, R["search_no_results"], "kein_treffer"), ("c4", "robin_search", gut, R["search_engines_unreachable"], "fehler")):
+            s.ereignis({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": kennung, "name": f"mcp__robin__{werkzeug}", "input": eingabe}]}})
+            schritt = s.verlauf[-1]
+            s.ereignis({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": kennung, "content": [{"type": "text", "text": text_}]}]}})
+            assert schritt.get("ergebnis") == erwartet and "Robin (Dark Web): im Dark Web suchen" in schritt["text"], (kennung, schritt)
+        assert b.fehlerbuch.zaehler["hinweis"] == vorher + 2, "was nicht lief oder scheiterte, steht im Fehlerprotokoll: zwei von vier"
+        assert any("Tor war noch nicht bereit" in e["meldung"] for e in b.fehlerbuch.liste()), [e["meldung"] for e in b.fehlerbuch.liste()][-3:]
+
+        # ---- Die Belege: Der Hook sichert Robins Antworten, die Oberfläche zeigt sie zerlegt und sagt, was sie belegen
+        hook("protokoll_hook.py", {"session_id": "ui-robin", "hook_event_name": "UserPromptSubmit", "prompt": f"/ermittlung {fall}"})
+        robin_ruf("ui-robin", "robin_search", gut, robin_vorlage("robin_search"), "x1", agent_type="darkweb-analyst")
+        robin_ruf("ui-robin", "robin_scrape", {"urls": [seite_eins]}, robin_vorlage("robin_scrape"), "x2", agent_type="darkweb-analyst")
+        robin_ruf("ui-robin", "robin_search", gut, R["search_tor_down"], "x3", agent_type="darkweb-analyst")
+        f = ui_daten.Fall(fall)
+        suche = ui_seiten.beleg_seite(f, "X-0001")
+        gelesen, kein_lauf = ui_seiten.beleg_seite(f, "X-0002"), ui_seiten.beleg_seite(f, "X-0003")
+        st = Seite(suche).text
+        assert "Robin: Suche (Dark Web über Tor)" in st and "✓ 4 Treffer" in st and "Treffer der Suchmaschinen" in st and "MusterLocker Blog | Leaks" in st and ONION_EINS in st, st[:500]
+        assert "Robin antwortet als Text" in st and "über Tor (Robin)" in st and "Suchmaschinen, die geantwortet haben: 16 von 16" in st
+        gt = Seite(gelesen).text
+        for stueck in ("Robin: Seiten lesen", "✓ 2 von 4 Seiten gelesen", "Gelesene Seiten", "MusterLocker Blog", "frei", p1["protokoll_id"], "gesperrt", p2["protokoll_id"], "nicht geprüft",
+                       "von der Seite abgewiesen (HTTP 403)"):
+            assert stueck in gt, f"der Beleg der gelesenen Seiten nennt «{stueck}» nicht"
+        kt = Seite(kein_lauf).text
+        assert "⊘ nicht ausgeführt" in kt and "Tor war noch nicht bereit" in kt and "Treffer der Suchmaschinen" not in kt and "● Treffer" not in kt, kt[:400]
+        for h in (suche, gelesen, kein_lauf):       # Fremdinhalte: Adressen aus dem Dark Web sind nie anklickbar, und nichts von dort wird ausgeführt
+            assert not [a for t_, a in Seite(h).elemente if t_ == "a" and ".onion" in a.get("href", "")] and not verstoesse(h, fall), "eine Onion-Adresse ist anklickbar"
+        assert "✓ nicht auf der Sperrliste" in Seite(ui_seiten.beleg_seite(f, p1["protokoll_id"])).text and "⊘ auf der Sperrliste" in Seite(ui_seiten.beleg_seite(f, p2["protokoll_id"])).text
+        # Kennzahlen: Rapport, Protokoll und Oberfläche zählen gleich, und die Seite «Ergebnisse» nennt, was nicht ausgeführt wurde
+        k = f.kennzahlen()
+        assert len(k["rapport"]["abfragen"]) == len(k["protokoll"]["echte"]) == 4, (len(k["rapport"]["abfragen"]), len(k["protokoll"]["echte"]))
+        assert [e["id"] for e in k["rapport"]["nicht_ausgefuehrt"]] == [e["id"] for e in k["protokoll"]["ohne_ausfuehrung"]] == ["X-0003"], k["rapport"]["nicht_ausgefuehrt"]
+        ut = Seite(ui_seiten.uebersicht(f)).text
+        assert "Verlangt, aber nicht ausgeführt: 1 Aufruf (X-0003)." in ut and "zählen nicht als Abfrage" in ut and "nicht ausgeführt" not in rapport.abfragen_zusatz(k["rapport"]), ut[:600]
+        et = Seite(ui_seiten.ergebnisse_seite(f, True)).text
+        assert "Verlangt, aber nicht ausgeführt: 1 Aufruf. Davon 1 mit Beleg" in et and "und 0 ohne Nummer" in et, "die Seite «Ergebnisse» nennt dieselbe Summe wie das Ermittlungsprotokoll"
+        assert f.akteure() == {"X-0001": "darkweb-analyst", "X-0002": "darkweb-analyst", "X-0003": "darkweb-analyst"}, f.akteure()
+        # Die Arbeitsspur: Ein Aufruf über Tor heisst nicht «passiv», und was nicht ausgeführt wurde, trägt sein eigenes Zeichen (gesehen im Browser am 20.11.2026: «passiv» und «?»)
+        spur = {e["id"]: e for e in f.spur()["eintraege"]}
+        assert (spur["X-0001"]["art_wort"], spur["X-0001"]["zeichen"], spur["X-0001"]["farbe"]) == ("über Tor", "●", "gut"), spur["X-0001"]
+        assert (spur["X-0003"]["art_wort"], spur["X-0003"]["zeichen"], spur["X-0003"]["farbe"]) == ("über Tor", "⊘", "warnung"), spur["X-0003"]
+        assert spur[p1["protokoll_id"]]["art_wort"] == "passiv" and all(e["zeichen"] != "?" for e in spur.values())
+        skript = lesen(REPO / "tools" / "ui" / "app.js")
+        assert "e.art_wort" in skript and "e.zeichen" in skript and "SPUR_ZEICHEN" not in skript, "die Arbeitsspur nimmt Worte und Zeichen vom Server"
+        assert kette_pruefen(fall)["ok"]
+    finally:
+        kern.transport = httpx.MockTransport(antwort)
+
+
 @test("Pflichtquellen: Was der Sachbearbeiter vorgibt, muss gefragt sein. Der Stand kommt aus dem Protokoll, der Rapport verweigert Lücken, ein Agent kann die Vorgabe nicht ändern")
 def _():
     from gateway import pflichtquellen as pq, server as gateway_server
@@ -7056,6 +7833,19 @@ def _():
             assert zeile([x(1, "robin_health")])["stand"] == "offen" and "Freigabe darkweb fehlt" in zeile([])["grund"], zeile([x(1, "robin_health")])
             assert zeile([x(1, "robin_health"), x(2, "robin_search")])["stand"] == "fehlgeschlagen", "startet Tor noch, hat Robin nicht gesucht"
             assert zeile([x(2, "robin_search"), x(3, "robin_search")])["stand"] == "erfuellt"
+
+            # Seit dem 20.11.2026 sagt der Eintrag selbst, was die Antwort belegt. Tor nicht bereit: gefragt und gescheitert (eine Lücke). Stimmte der Aufruf
+            # nicht (Bereich nicht genannt, Adresse zurückgewiesen), wurde nie gesucht: Die Pflicht bleibt offen. Was Robin im Container erledigt, zählt nie
+            def neu(nr: int, werkzeug: str, ergebnis: str, status: str, art: str = "tor") -> dict:
+                return {"id": f"X-{nr:04d}", "werkzeug": werkzeug, "quelle": "Robin (Tor)", "art": art, "ziel": "musterlocker", "ergebnis": ergebnis, "robin": {"status": status},
+                        "antwort": {"rohdaten": f"rohdaten/extern/X-{nr:04d}_{werkzeug}.txt"}}
+            assert zeile([neu(4, "robin_search", "nicht_ausgefuehrt", "needs_domain")])["stand"] == "offen", "ohne Untersuchungsbereich wurde nie gesucht"
+            assert zeile([neu(4, "robin_search", "nicht_ausgefuehrt", "error"), neu(5, "robin_scrape", "nicht_ausgefuehrt", "error")])["stand"] == "offen"
+            assert zeile([neu(4, "robin_search", "nicht_ausgefuehrt", "tor_bootstrapping")])["stand"] == "fehlgeschlagen", "Tor nicht bereit: gefragt, eine Lücke"
+            assert zeile([neu(4, "robin_search", "fehler", "engines_unreachable")])["stand"] == "fehlgeschlagen"
+            assert zeile([neu(4, "robin_health", "ok", "ok", "robin_lokal"), neu(5, "robin_refine", "ok", "refine_it_yourself", "robin_lokal")])["stand"] == "offen"
+            for ergebnis, status in (("ok", "ok"), ("kein_treffer", "no_results")):
+                assert zeile([neu(4, "robin_search", "nicht_ausgefuehrt", "needs_domain"), neu(5, "robin_search", ergebnis, status)])["stand"] == "erfuellt", (ergebnis, status)
         finally:
             shutil.rmtree(ordner, ignore_errors=True)
 
@@ -7089,7 +7879,7 @@ def _():
             except fallwerkzeug.Fehler as fehler:
                 assert "Freigabe 'darkweb'" in str(fehler) and "ersetzt keine Freigabe" in str(fehler), fehler
             assert (pfad_m / "fall.json").read_bytes() == original, "eine abgelehnte Vorgabe hat fall.json verändert"
-            fallwerkzeug.freigabe_setzen(MUSTER, "darkweb", durch="MUS", vermerk="Selbsttest")
+            fallwerkzeug.freigabe_setzen(MUSTER, "darkweb", durch="MUS", vermerk="Selbsttest", bereich="ransomware_malware")
             assert fallwerkzeug.pflichtquellen_setzen(MUSTER, [ROBIN])["quellen"] == [ROBIN]
             (pfad_m / "fall.json").write_bytes(original)
 
@@ -7693,6 +8483,8 @@ def _():
 
     def lauf(befehl, zeit=900, log=None, **mehr):
         befehle.append(list(befehl))
+        if befehl[:3] == ["docker", "volume", "inspect"]:       # die Ablage von Robin aus einer früheren Einrichtung: Hier gibt es keine
+            return 1, "no such volume"
         if befehl[:3] == ["docker", "ps", "-aq"]:
             return 0, "c0ffee01\n"
         if befehl[:1] == ["git"]:
@@ -7780,7 +8572,8 @@ def _():
         assert not einrichten.LOGS.exists(), "die Protokolle der Einrichtung sind entfernt"
         docker = [" ".join(b) for b in befehle if b[:1] == ["docker"]]
         assert "docker rm -f c0ffee01 osint-webcheck" in docker and "docker image rm lissy93/web-check@sha256:1234" in docker and "docker image rm robin-abbild@sha256:abc" in docker, docker
-        assert not any(wort in b for b in docker for wort in ("prune", "volume", "system")), "entfernt wird nur, was zum Arbeitsplatz gehört"
+        assert not any(wort in b for b in docker for wort in ("prune", "system")), "entfernt wird nur, was zum Arbeitsplatz gehört"
+        assert [b for b in docker if "volume" in b] == [f"docker volume inspect {dienste.ROBIN_VOLUME}"], "ein Volume wird nur angefasst, wenn es das von Robin ist"
         text = lesen(bericht)
         for stueck in (f"Sicherung der Fallakten: {archiv}", "ERLEDIGT        Schlüsseldatei: gelöscht", "ERLEDIGT        Fallakten und Sitzungsprotokolle im Projekt: gelöscht",
                        "Was bleibt:", f"Ablage des Sachbearbeiters: {heim / loeschen.ABLAGE}", "Letzter Schritt (der Projektordner selbst):"):
@@ -7978,7 +8771,7 @@ def _():
         quelle = lesen(PROJEKT / "tools" / "loeschen.py")
         assert "plattform.terminal(sys.stdin, sys.stdout)" in quelle and "CLAUDECODE" in quelle and "plattform.start(venv=False)" in quelle
         assert "ohne-sicherung" not in quelle and "--force" not in quelle and "--ja" not in quelle, "es gibt keinen Schalter, der die Sicherung oder die Rückfrage auslässt"
-        stellen = [quelle.index(s) for s in ("    gesichert = sichern(projekt, ordner, zeit, weg)", "    entfernt, ok = docker_entfernen(projekt)", "    geloescht, ok = daten_loeschen(projekt)",
+        stellen = [quelle.index(s) for s in ("    gesichert = sichern(projekt, ordner, zeit, weg)", "    entfernt, ok = docker_entfernen(projekt, ordner, zeit)", "    geloescht, ok = daten_loeschen(projekt)",
                                              "        helfer_starten(projekt, bericht)")]
         assert stellen == sorted(stellen), "erst sichern, dann Container, dann Daten, zuletzt der Ordner"
         regeln = json.loads(lesen(PROJEKT / ".claude" / "settings.json"))["permissions"]["deny"]
@@ -8009,6 +8802,191 @@ def _():
                 os.environ[n] = w
         with contextlib.suppress(OSError):
             plattform.baum_loeschen(wurzel)
+
+
+@test("Ablage von Robin: Das Docker-Volume aus einer früheren Einrichtung wird nicht mehr eingehängt. «Alles löschen» legt seinen Inhalt in die Sicherung und entfernt es, "
+      "ein leeres verschwindet ohne Sicherung, und scheitert die Sicherung, bleibt es stehen. Die Einrichtung entfernt nur ein leeres")
+def _():
+    from tools import dienste, loeschen
+    echt = (dienste.docker_kurz, dienste.webcheck, dienste.robin_abbild, einrichten.lauf, einrichten.ui, loeschen.robin_ablage_sichern)
+    ordner = Path(tempfile.mkdtemp(prefix="osint-ablage-"))
+    lage = {"da": True, "dateien": "0", "sichern": "", "entfernen": 0}
+    rufe: list[str] = []
+
+    def lauf(befehl, zeit=900, log=None, **mehr):       # steht für Docker
+        rufe.append(" ".join(befehl))
+        if befehl[:3] == ["docker", "volume", "inspect"]:
+            return (0, "[]") if lage["da"] else (1, "no such volume")
+        if befehl[:2] == ["docker", "run"] and befehl[-1] == "find /v -type f | wc -l":
+            return (0, lage["dateien"]) if lage["dateien"] != "?" else (125, "Unable to find image")
+        if befehl[:3] == ["docker", "volume", "rm"]:
+            if lage["entfernen"] == 0:
+                lage["da"] = False
+            return lage["entfernen"], ""
+        if befehl[:3] == ["docker", "image", "inspect"]:
+            return 1, "No such image"
+        return 0, ""
+
+    def sichern(docker, ziel):                          # der echte Weg braucht Docker: gesehen am 20.11.2026 mit dem Abbild von Robin
+        rufe.append(f"sichern nach {ziel.name}")
+        if lage["sichern"]:
+            return lage["sichern"]
+        ziel.write_bytes(b"inhalt des volumes")
+        return ""
+    try:
+        dienste.docker_kurz = lambda: {"installiert": True, "laeuft": True, "vor": []}
+        dienste.webcheck = lambda docker: "fehlt"
+        dienste.robin_abbild = lambda: "robin-abbild@sha256:abc"
+        einrichten.lauf, loeschen.robin_ablage_sichern = lauf, sichern
+        zeit = datetime(2026, 11, 20, 9, 0, 0)
+        docker = dienste.docker_kurz()
+        assert dienste.robin_ablage(docker) == {"dateien": 0} and "--network none" in rufe[-1] and f"{dienste.ROBIN_VOLUME}:/v:ro" in rufe[-1], rufe[-1]
+
+        def lauf_loeschen() -> tuple[str, bool]:
+            rufe.clear()
+            zeilen, gelungen = loeschen.docker_entfernen(PROJEKT, ordner, zeit)
+            return " | ".join(f"{zeichen} {was}: {wie}" for zeichen, was, wie in zeilen if was == "Ablage von Robin"), gelungen
+        # 1. leer: ohne Sicherung entfernt
+        text, gelungen = lauf_loeschen()
+        assert gelungen and "entfernt (es war leer)" in text and not any(r.startswith("sichern") for r in rufe) and f"docker volume rm {dienste.ROBIN_VOLUME}" in rufe, (text, rufe)
+        assert not list(ordner.iterdir()) and dienste.robin_ablage(docker) is None
+        # 2. mit Inhalt, oder der Inhalt lässt sich nicht zählen: erst in die Sicherung, dann entfernt. Die Reihenfolge zählt
+        for dateien in ("3", "?"):
+            lage.update(da=True, dateien=dateien)
+            text, gelungen = lauf_loeschen()
+            archiv = ordner / "robin-ablage-20261120-090000.tar"
+            assert gelungen and archiv.read_bytes() == b"inhalt des volumes" and f"Inhalt gesichert: {archiv}" in text and not lage["da"], (dateien, text)
+            assert rufe.index(f"sichern nach {archiv.name}") < rufe.index(f"docker volume rm {dienste.ROBIN_VOLUME}"), rufe
+            archiv.unlink()
+        # 3. Die Sicherung scheitert: Das Volume bleibt, und die Zeile nennt den Weg von Hand
+        lage.update(da=True, dateien="3", sichern="OSError: kein Platz")
+        text, gelungen = lauf_loeschen()
+        assert not gelungen and lage["da"] and "liess sich nicht sichern (OSError: kein Platz). Es bleibt" in text and f"docker volume rm {dienste.ROBIN_VOLUME}" in text, text
+        assert not any(r.startswith("docker volume rm") for r in rufe), "ohne Sicherung wird nichts entfernt"
+        # 4. Gesichert, aber das Entfernen scheitert: Die Zeile sagt, wo der Inhalt liegt
+        lage.update(sichern="", entfernen=1)
+        text, gelungen = lauf_loeschen()
+        assert not gelungen and lage["da"] and "liess sich nicht entfernen (sein Inhalt ist gesichert:" in text, text
+        # 5. Ohne Sicherungsordner wird ein Volume mit Inhalt nie entfernt
+        lage.update(entfernen=0)
+        rufe.clear()
+        zeilen, gelungen = loeschen.docker_entfernen(PROJEKT)
+        assert not gelungen and lage["da"] and any("kein Sicherungsordner" in wie for _, was, wie in zeilen if was == "Ablage von Robin"), zeilen
+        # Der Plan nennt die Ablage, bevor etwas geschieht
+        plan = lambda dateien: " | ".join(wie for _, was, wie in loeschen.plan_zeilen(  # noqa: E731
+            {"faelle": [], "sichern": {"dateien": 0, "bytes": 0}, "schluessel": 0, "git_offen": 0, "projekt": "x", "sicherung": "y",
+             "laeuft": {"docker": docker, "oberflaechen": None, "robin_ablage": {"dateien": dateien}}}) if was == "Ablage von Robin")
+        assert "leer, wird entfernt" in plan(0) and "wird in die Sicherung gelegt und dann entfernt" in plan(3) and "Sicherung gelegt" in plan(None)
+
+        # Die Einrichtung räumt nur ein leeres Volume weg. Liegt etwas darin, bleibt es, und die Zeile sagt, was zu tun ist
+        for dateien, wort, bleibt in (("0", "leeres Docker-Volume", False), ("4", "liegen 4 Dateien", True), ("?", "liegt vielleicht noch etwas", True)):
+            lage.update(da=True, dateien=dateien, entfernen=0)
+            einrichten.ui, aus = oberflaeche([], interaktiv=False, breite=400)
+            einrichten.robin_ablage_aufraeumen({"laeuft": True, "vor": []})
+            gesagt = " ".join(aus.getvalue().split())
+            assert wort in gesagt and dienste.ROBIN_VOLUME in gesagt and lage["da"] is bleibt, (dateien, gesagt)
+        lage["da"] = False
+        einrichten.ui, aus = oberflaeche([], interaktiv=False)
+        einrichten.robin_ablage_aufraeumen({"laeuft": True, "vor": []})
+        assert aus.getvalue().strip() == "", "ohne Volume sagt die Einrichtung nichts dazu"
+    finally:
+        dienste.docker_kurz, dienste.webcheck, dienste.robin_abbild, einrichten.lauf, einrichten.ui, loeschen.robin_ablage_sichern = echt
+        shutil.rmtree(ordner, ignore_errors=True)
+    # Eingehängt wird das Volume nicht mehr, und abschalten löscht weiterhin nichts: Sichern und Entfernen stehen im Löschwerkzeug
+    assert "-v" not in json.loads(lesen(PROJEKT / ".mcp.json"))["mcpServers"]["robin"]["args"]
+    assert "robin_ablage_sichern" in lesen(PROJEKT / "tools" / "loeschen.py") and "robin_ablage_sichern" not in lesen(PROJEKT / "tools" / "dienste.py")
+
+
+@test("Robin, Bereitschaft: «Abbild geladen» heisst nicht «bereit». Die Prüfung startet Robin, fragt nach Tor und den Suchmaschinen und sagt klar, wenn Tor das Netz nicht erreicht. "
+      "Gesucht wird dabei nichts")
+def _():
+    from gateway import pflichtquellen as pq_
+    from tools import dienste, pruefen
+    # Ein Programm, das sich wie Robins MCP-Server verhält: Es antwortet auf initialize und auf robin_health. Tor steht nach dem dritten Fragen, oder nie
+    falsch = PROJEKT / "falscher_robin.py"
+    falsch.write_text('''import json, sys
+lage, gefragt = sys.argv[1], 0
+for zeile in sys.stdin:
+    n = json.loads(zeile)
+    if "id" not in n:
+        continue
+    if n["method"] == "initialize":
+        r = {"protocolVersion": "2025-06-18", "capabilities": {}, "serverInfo": {"name": "robin", "version": "1.30.0"}}
+    elif n["method"] == "tools/call" and n["params"]["name"] == "robin_health":
+        gefragt += 1
+        if lage == "stumm":
+            continue
+        oben = lage in ("geht", "ohne") and gefragt >= 3
+        text = "status: ok\\ntor: " + ("up" if oben else "down (tor_bootstrapping)")
+        if n["params"]["arguments"].get("check_engines"):
+            text += "\\nengines: " + ("0 of 16 up" if lage == "ohne" else "14 of 16 up")
+        r = {"content": [{"type": "text", "text": text}], "isError": False}
+    else:
+        r = {"content": [{"type": "text", "text": "error: unerwartet " + n["method"]}], "isError": True}
+    print(json.dumps({"jsonrpc": "2.0", "id": n["id"], "result": r}), flush=True)
+''', encoding="utf-8")
+    echt = (subprocess.Popen, dienste.robin_bereitschaft, einrichten.lauf, pruefen.still, list(pruefen.gemeldet), pq_._robin_bereit, dienste.docker_kurz, pruefen.lauf, dienste.robin_abbild)
+    bereitschaft = dienste.robin_bereitschaft
+    gestartet: list[list[str]] = []
+    lage = {"art": "geht"}
+
+    def popen(befehl, **angaben):
+        gestartet.append(list(befehl))
+        if lage["art"] == "kein-docker":
+            raise FileNotFoundError("docker")
+        return echt[0]([sys.executable, str(falsch), lage["art"]], **angaben)
+    docker = {"installiert": True, "laeuft": True, "vor": []}
+    try:
+        subprocess.Popen = popen
+        einrichten.lauf = lambda befehl, *a, **k: (gestartet.append(list(befehl)), (0, ""))[1]
+        dienste.robin_abbild = lambda: "robin-abbild@sha256:abc"
+        gemeldet: list[str] = []
+        r = bereitschaft(docker, frist=60, melden=gemeldet.append, pause=0.01)
+        assert r["gestartet"] and r["tor"] and r["maschinen"] == "14 von 16" and not r["fehler"], r
+        start = gestartet[0]
+        assert start[:4] == ["docker", "run", "-i", "--rm"] and start[-2:] == ["robin-abbild@sha256:abc", "mcp"] and "-v" not in start, f"gestartet wird wie in .mcp.json, ohne Ablage: {start}"
+        assert any("Tor im Container startet" in m for m in gemeldet) and gestartet[-1][:2] == ["docker", "stop"], "am Schluss wird der Container beendet, er entfernt sich selbst"
+        lage["art"] = "nie"                                   # Tor kommt nicht hoch: Die Frist endet, nach den Suchmaschinen wird nicht mehr gefragt
+        r = bereitschaft(docker, frist=0, pause=0.01)
+        assert r["gestartet"] and not r["tor"] and r["maschinen"] is None and not r["fehler"], r
+        lage["art"] = "kein-docker"
+        r = bereitschaft(docker)
+        assert not r["gestartet"] and "liess sich nicht starten" in r["fehler"], r
+
+        # Die Prüfung der Einrichtung sagt es in einer Zeile. Ohne --live behauptet sie nur, was sie weiss: Das Abbild ist geladen
+        pruefen.still = True
+        pq_._robin_bereit = lambda: (True, "")
+        dienste.docker_kurz = lambda: docker
+        pruefen.lauf = lambda befehl, zeit=20: (0, "")
+
+        def zeile_robin() -> tuple[str, str]:
+            del pruefen.gemeldet[:]
+            pruefen.live_robin({})
+            (_abschnitt, art, was, wie), = pruefen.gemeldet
+            assert was == "Robin", pruefen.gemeldet
+            return art, wie
+        dienste.robin_bereitschaft = lambda d, frist=90, **k: bereitschaft(d, frist, pause=0.01, **k)
+        lage["art"] = "geht"
+        art, wie = zeile_robin()
+        assert art == "gut" and "Tor im Container ist bereit" in wie and "Suchmaschinen erreichbar: 14 von 16" in wie and "Freigabe darkweb" in wie, wie
+        lage["art"] = "ohne"                                  # Tor steht, aber keine Suchmaschine antwortet: So findet Robin nichts
+        art, wie = zeile_robin()
+        assert art == "fehlt" and "0 von 16" in wie and "Ohne Suchmaschine findet Robin nichts" in wie, wie
+        lage["art"] = "nie"
+        dienste.robin_bereitschaft = lambda d, frist=90, **k: bereitschaft(d, 0, pause=0.01, **k)
+        art, wie = zeile_robin()
+        assert art == "fehlt" and "nicht bereit" in wie and "Tor ist noch nicht bereit" in wie and "Firewall" in wie, wie
+        pq_._robin_bereit = lambda: (False, "an diesem Arbeitsplatz abgeschaltet (ohne Robin eingerichtet)")
+        assert zeile_robin() == ("aus", "ausgelassen: an diesem Arbeitsplatz abgeschaltet (ohne Robin eingerichtet)")
+        pq_._robin_bereit = lambda: (True, "")
+        dienste.docker_kurz = lambda: {"installiert": True, "laeuft": False, "vor": []}
+        assert zeile_robin()[0] == "aus" and "Docker läuft nicht" in zeile_robin()[1]
+    finally:
+        (subprocess.Popen, dienste.robin_bereitschaft, einrichten.lauf, pruefen.still, _gemeldet, pq_._robin_bereit, dienste.docker_kurz, pruefen.lauf, dienste.robin_abbild) = echt
+        pruefen.gemeldet[:] = _gemeldet
+        falsch.unlink()
+    quelle = lesen(PROJEKT / "tools" / "pruefen.py")
+    assert "Ob Robin das Tor-Netz erreicht, zeigt" in quelle and quelle.count("live_robin(env)") == 2, "--live und --nur-live prüfen Robin mit"
 
 
 @test("Bedienung, Arbeitsplatz: Die Seite zeigt, was läuft. «Alles abschalten» verlangt das Geheimnis, hält die Ermittlung an, stoppt die Dienste und beendet die Oberfläche. Gelöscht wird nichts")

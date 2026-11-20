@@ -74,7 +74,8 @@ GATEWAY_WORT: dict[str, tuple[str, str]] = {
     "webcheck_aktiv": ("Web-Check", "das Ziel direkt aufrufen und untersuchen"),
 }
 ROBIN_WORT = {"robin_health": "Bereitschaft von Tor und Suchmaschinen prüfen", "robin_search": "im Dark Web suchen", "robin_refine": "Suchbegriff verfeinern",
-              "robin_filter": "Treffer filtern", "robin_scrape": "Onion-Seite lesen"}
+              "robin_filter": "Treffer filtern", "robin_scrape": "Seite im Dark Web lesen", "robin_list_models": "Sprachmodelle von Robin auflisten",
+              "robin_list_investigations": "bei Robin abgelegte Recherchen auflisten"}
 # Was das Ziel bemerken kann oder öffentlich sichtbar wird. Die Rückfrage-Liste des Projekts verlangt dafür eine Zustimmung je Aufruf.
 AKTIV = {"urlscan_einreichen": "urlscan.io ruft die Adresse von seinen Servern aus auf. Der Betreiber der Zielseite sieht einen Besuch.",
          "urlquery_einreichen": "urlquery ruft die Adresse in seiner Sandbox auf. Der Betreiber der Zielseite sieht einen Besuch.",
@@ -113,7 +114,11 @@ def datei(pfad: object) -> str:
 
 
 def ziel(eingabe: object) -> str:
-    return next((str(eingabe[k]) for k in ZIELE if eingabe.get(k) not in (None, "")), "") if isinstance(eingabe, dict) else ""
+    if not isinstance(eingabe, dict):
+        return ""
+    if isinstance(eingabe.get("urls"), list) and eingabe["urls"]:      # Robin liest mehrere Seiten in einem Aufruf
+        return ", ".join(str(u) for u in eingabe["urls"])
+    return next((str(eingabe[k]) for k in ZIELE if eingabe.get(k) not in (None, "")), "")
 
 
 def schritt(werkzeug: str, eingabe: object) -> dict:

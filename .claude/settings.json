@@ -95,6 +95,8 @@
       "Bash(python tools/dienste.py ein*)",
       "Bash(python3 tools/loeschen.py alles*)",
       "Bash(python tools/loeschen.py alles*)",
+      "mcp__robin__robin_investigate",
+      "mcp__robin__robin_save_investigation",
       "Bash(*.env)",
       "Bash(*.env *)",
       "Bash(*.env.local*)",
@@ -109,6 +111,28 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [
@@ -165,6 +189,39 @@
       }
     ],
     "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/start.sh\" protokoll_hook",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
       {
         "hooks": [
           {

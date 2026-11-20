@@ -15,7 +15,8 @@ Der Weg: die Kommandozeile von Claude Code im Skriptbetrieb, mit fortlaufender J
   - Braucht ein Werkzeugaufruf eine Zustimmung (Regeln unter «ask», oder der Aufruf steht auf keiner Liste), geht die Frage
     über einen kleinen MCP-Server (tools/ui/rueckfrage.py) an diesen Server und erscheint im Browser als Dialog. Erlauben
     oder ablehnen kann nur, wer das Geheimnis der Oberfläche hat. Die Karte, mit der der MCP-Server fragt, taugt nur zum Fragen.
-    Über Aufrufe von Robin (Dark Web) entscheidet die Freigabe «darkweb» des Falls, ohne Dialog.
+    Über Aufrufe von Robin (Dark Web) entscheiden die Freigabe «darkweb» des Falls und die Regeln für Robin (gateway/robin.py:
+    Untersuchungsbereich, vor dem Lesen einer Seite die Prüfung gegen die Sperrliste), ohne Dialog.
   - Der Dialog sagt in Worten, was Claude Code tun will und warum es fragt (tools/ui/worte.py). Stellt die Ermittlung dem
     Sachbearbeiter eine Frage (Werkzeug AskUserQuestion), kommt sie auf demselben Weg an und lässt sich im Dialog beantworten:
     mit einer Auswahl oder einer eigenen Antwort. Die Antwort geht als «answers» in der Eingabe des Werkzeugs zurück.
@@ -52,8 +53,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from gateway import pflichtquellen, plattform
-from gateway.akte import PROJEKT, SITZUNGEN, fall_daten, fall_pfad, freigabe_erteilt, jsonl_lesen
+from gateway import pflichtquellen, plattform, robin
+from gateway.akte import PROJEKT, SITZUNGEN, fall_daten, fall_pfad, jsonl_lesen
 from tools import schutzumfang
 from tools.pii_pruefung import bericht as pii_bericht, pruefen as pii_pruefen
 from tools.ui import bedienung as bedienung_modul, worte
@@ -256,7 +257,7 @@ class Sitzung:
         self.sperre = threading.RLock()
         self.gewollt_beendet = False
         self.abbruch = ""                       # Grund, wenn die Oberfläche die Sitzung selbst beendet hat
-        self.robin_gemeldet = False             # die Ablehnung eines Dark-Web-Aufrufs steht einmal je Sitzung im Protokoll
+        self.robin_gemeldet: set[str] = set()   # jeder Grund, einen Dark-Web-Aufruf abzulehnen, steht einmal je Sitzung im Protokoll
         self.letzte_antwort = ""
         self.unterlagen = ""                    # Stand des Abschlusses: "", "laeuft", "bereit", "fehler"
         self.liste_ruht = False                 # Claude Code fragt bei Werkzeugen der Erlaubt-Liste: Es wendet sie nicht an
@@ -560,16 +561,21 @@ class Sitzung:
                     if eintrag is not None:
                         inhalt = block.get("content")
                         text = inhalt if isinstance(inhalt, str) else json.dumps(inhalt, ensure_ascii=False)
-                        beleg = re.search(r'protokoll_id\\*"\s*:\s*\\*"([PX]-\d{4,})', text)
-                        ergebnis = re.search(r'ergebnis\\*"\s*:\s*\\*"([a-z_]+)', text)
-                        if beleg or ergebnis or block.get("is_error"):
-                            self.aendern(eintrag, **({"beleg": beleg.group(1)} if beleg else {}),
-                                         ergebnis=ergebnis.group(1) if ergebnis else ("fehler" if block.get("is_error") else ""))
+                        beleg = re.search(r'(?<![A-Za-z_])protokoll_id\\*"\s*:\s*\\*"([PX]-\d{4,})', text)
+                        ergebnis = re.search(r'(?<![A-Za-z_])ergebnis\\*"\s*:\s*\\*"([a-z_]+)', text)
+                        # Robin antwortet als Text und auch dann, wenn es nichts getan hat (Tor nicht bereit, Bereich fehlte). Was die
+                        # Antwort bedeutet, sagt gateway/robin.py: Sonst stünde im Chat ein gelungener Schritt, wo nichts gesucht wurde.
+                        stand = (robin.einordnen(ROBIN + str(eintrag.get("technik")), robin.text_aus(inhalt))
+                                 if str(eintrag.get("technik") or "").startswith("robin_") and not block.get("is_error") else None)
+                        wort = stand["ergebnis"] if stand else ergebnis.group(1) if ergebnis else "fehler" if block.get("is_error") else ""
+                        if beleg or wort:
+                            self.aendern(eintrag, **({"beleg": beleg.group(1)} if beleg else {}), ergebnis=wort)
                         # Eine Abfrage mit Fehlschlag gehört ins Fehlerprotokoll: das Werkzeug, der Beleg, was die Quelle gemeldet hat.
                         # Nur Abfragen (Gateway, Robin), nicht jeder Befehl des Agenten. Und nicht, was der Sachbearbeiter abgelehnt hat.
-                        gescheitert = (ergebnis.group(1) if ergebnis else "") in ("fehler", "nicht_ausgefuehrt") or bool(block.get("is_error"))
+                        gescheitert = wort in ("fehler", "nicht_ausgefuehrt") or bool(block.get("is_error"))
                         if gescheitert and eintrag.get("quelle") and kennung not in self.abgelehnte:
-                            grund = str(ergebnis_lesen(inhalt).get("fehler") or "") or (kurz(text, 600) if block.get("is_error") else "")
+                            grund = (str((stand or {}).get("fehler") or "") or str(ergebnis_lesen(inhalt).get("fehler") or "")
+                                     or (kurz(text, 600) if block.get("is_error") else ""))
                             self.festhalten("hinweis", f"Abfrage {eintrag.get('technik') or ''} ({worte.team(eintrag.get('wer') or 'hauptsitzung')}): Fehlschlag"
                                             + (f", Beleg {beleg.group(1)}" if beleg else "") + (f". {kurz(grund, 600)}" if grund else "."))
                 return
@@ -614,20 +620,22 @@ class Sitzung:
             if self.abbruch:
                 return {"erlauben": False, "grund": "Die Oberfläche hat diese Sitzung beendet."}
         if werkzeug.startswith(ROBIN):
-            # Dark Web: Über Robin entscheidet die Freigabe des Falls, nicht ein Dialog je Aufruf. Seit es keinen Wächter mehr gibt,
-            # ist das die Stelle, an der die Freigabe «darkweb» für eine Sitzung aus der Oberfläche geprüft wird.
+            # Dark Web: Über Robin entscheiden die Freigabe des Falls und die Regeln für Robin, nicht ein Dialog je Aufruf. Seit es
+            # keinen Wächter mehr gibt, ist das die Stelle, an der sie für eine Sitzung aus der Oberfläche geprüft werden: die Freigabe
+            # «darkweb», der Untersuchungsbereich, den der Sachbearbeiter gewählt hat, und vor dem Lesen einer Seite die Prüfung
+            # ihrer Adresse gegen die Sperrliste (gateway/robin.py, absage).
             try:
-                frei = freigabe_erteilt(fall_daten(self.fall), "darkweb")
+                daten, akte = fall_daten(self.fall), fall_pfad(self.fall)
+                grund = robin.absage(werkzeug, eingabe, daten, lambda host: robin.sperrliste_stand(akte, host)[0])
             except (OSError, ValueError):
-                frei = False
-            if frei:
-                return {"erlauben": True, "grund": "", "von_selbst": "Freigabe darkweb ist erteilt"}
-            self.notieren("oberfläche", f"{werkzeug} abgelehnt: Der Fall hat keine Freigabe «darkweb».")
-            if not self.robin_gemeldet:
-                self.robin_gemeldet = True
-                self.bedienung.vermerken(self.fall, "Dark-Web-Aufruf abgelehnt", f"{werkzeug}: keine Freigabe darkweb", sitzung=self.kennung)
-            return {"erlauben": False, "grund": f"Fall {self.fall} hat keine Freigabe «darkweb». Robin wird nicht ausgeführt. Der Sachbearbeiter erteilt sie "
-                                                "in der Oberfläche unter «Bedienen». Bis dahin nicht erneut versuchen, sondern als Lücke melden."}
+                grund = f"Die Fallakte {self.fall} liess sich nicht lesen. Robin wird nicht ausgeführt."
+            if not grund:
+                return {"erlauben": True, "grund": "", "von_selbst": "Freigabe darkweb ist erteilt, der Aufruf hält die Regeln für Robin ein"}
+            self.notieren("oberfläche", f"{werkzeug} abgelehnt: {grund}")
+            if grund not in self.robin_gemeldet:    # jeder Grund einmal je Sitzung. Den einzelnen Versuch hält der Sitzungs-Hook fest
+                self.robin_gemeldet.add(grund)
+                self.bedienung.vermerken(self.fall, "Dark-Web-Aufruf abgelehnt", f"{werkzeug}: {kurz(grund, 400)}", sitzung=self.kennung)
+            return {"erlauben": False, "grund": f"Fall {self.fall}: {grund}"}
         # Eine Frage der Ermittlung an den Sachbearbeiter: Sie braucht eine Antwort, keine Zustimmung
         gestellt = worte.fragen_lesen(eingabe) if werkzeug == worte.FRAGE_WERKZEUG else []
 

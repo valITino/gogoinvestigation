@@ -22,7 +22,7 @@ from pathlib import Path
 PROJEKT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().parents[2])
 sys.path.insert(0, str(PROJEKT))
 
-from gateway import plattform  # noqa: E402
+from gateway import plattform, robin  # noqa: E402
 from gateway.akte import FAELLE, SITZUNGEN, jsonl_lesen, kette, ursprung_extern  # noqa: E402
 
 plattform.utf8()
@@ -30,7 +30,9 @@ plattform.utf8()
 # Unter Windows stehen Pfade mit \ in den Ereignisdaten, im JSON-Text verdoppelt. Beides wird wie / gelesen.
 FALL_IM_PFAD = re.compile(r"faelle(?:/|\\{1,2})([A-Za-z0-9][A-Za-z0-9._-]{2,63})(?:/|\\)", re.I)
 FALL_IM_BEFEHL = re.compile(r"/ermittlung\s+([A-Za-z0-9][A-Za-z0-9._-]{2,63})")
-PROTOKOLL_ID = re.compile(r'protokoll_id\\*"\s*:\s*\\*"(P-\d{4,})')
+# Nur für Antworten, die sich nicht als JSON lesen lassen. Das Wort muss für sich stehen: «letzte_protokoll_id» aus fall_status
+# nennt die jüngste Abfrage des Falls, nicht die dieses Aufrufs.
+PROTOKOLL_ID = re.compile(r'(?<![A-Za-z_])protokoll_id\\*"\s*:\s*\\*"(P-\d{4,})')
 LANG = 400
 # MCP-Server, deren Antworten Beweismaterial sind und als Beleg X-… in die Fallakte kommen. Das Gateway (osint)
 # sichert seine Antworten selbst. Alle anderen Server (GitHub, Dokumente, Steuerung der Sitzung) sind Arbeitsmittel:
@@ -38,6 +40,14 @@ LANG = 400
 # landet jede Antwort irgendeines Servers als «Beleg» in dem Fall, den die Sitzung zuletzt berührt hat.
 # Wer eine weitere Quelle als MCP-Server anbindet, trägt ihren Namen hier ein.
 BELEG_SERVER = ("robin",)
+# Ereignisse vor der Ausführung: Sie halten fest, was verlangt wurde. Lehnt der Sachbearbeiter einen Aufruf ab oder verbietet ihn
+# eine Berechtigung, meldet Claude Code kein Ende dazu (gesehen am 20.11.2026 mit Claude Code 2.1.329: PreToolUse, bei einer
+# Rückfrage PermissionRequest, danach nichts). Ohne diese Einträge hinterliesse ein abgelehnter Aufruf keine Spur.
+# Dieser Hook prüft dabei nichts und lehnt nichts ab: Er schreibt nur mit.
+# Dazu gehört das Ende jeder Antwort der Hauptsitzung (Stop): Ein angekündigter Aufruf ohne Abschluss, auf den ein solches Ende
+# folgt, läuft mit Sicherheit nicht mehr. Ohne es liesse sich ein abgelehnter Aufruf am Ende einer Sitzung nicht von einem
+# unterscheiden, der noch läuft.
+VORAB = ("PreToolUse", "PermissionRequest")
 
 
 def kuerzen(wert, tiefe: int = 3):
@@ -92,45 +102,152 @@ def fall_erkennen(ereignis: dict, text: str) -> str | None:
     return None
 
 
-def ziel_aus(eingabe: object) -> str:
+ZIEL_LANG = 300
+
+
+def gekappt(text: str, n: int = ZIEL_LANG) -> str:
+    """Kürzt sichtbar: Wer die Zeile liest, sieht, dass etwas fehlt."""
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
+def ziel_aus(eingabe: object, name: str = "") -> str:
+    """Wonach gefragt wurde, in einer Zeile. Mehrere Adressen werden nach ganzen Einträgen gekürzt, nie mitten in einer Adresse:
+    «a, b und 2 weitere». Bis zum 20.11.2026 brach die Zeile nach 300 Zeichen ab, ohne es zu zeigen. Die ganze Eingabe steht
+    unter anfrage.eingabe, und bei Robin nennt der Eintrag jede Seite einzeln (seiten)."""
+    if name == "robin_health":
+        return "Bereitschaft: Tor" + (" und Suchmaschinen" if isinstance(eingabe, dict) and eingabe.get("check_engines") else "")
     if isinstance(eingabe, dict):
-        for feld in ("query", "question", "urls", "url", "targets", "refined_query"):
+        for feld in ("query", "question", "urls", "ids", "url", "targets", "refined_query"):
             if eingabe.get(feld):
                 wert = eingabe[feld]
-                return (", ".join(map(str, wert)) if isinstance(wert, list) else str(wert))[:300]
-    return json.dumps(eingabe, ensure_ascii=False)[:300]
+                if not isinstance(wert, list):
+                    return gekappt(str(wert))
+                teile, text = [str(w) for w in wert], ""
+                for i, teil in enumerate(teile):
+                    weiter = f"{text}, {teil}" if text else teil
+                    if text and len(weiter) > ZIEL_LANG - 20:        # Platz für «und n weitere»
+                        return f"{text} und {len(teile) - i} weitere"
+                    text = weiter
+                return gekappt(text)
+    return gekappt(json.dumps(eingabe, ensure_ascii=False))
 
 
-def extern_sichern(fall: str, werkzeug: str, eingabe: object, antwort_text: str, sitzungseintrag: dict,
-                   jetzt: datetime) -> str:
-    """Legt die Antwort eines fremden MCP-Servers als Rohdatei ab und verkettet sie in extern.jsonl."""
+def gateway_antwort(antwort: object, antwort_text: str) -> tuple[str | None, str | None, str, list[str]]:
+    """Was das Gateway zu einem Aufruf sagte: (Nummer im Abfrageprotokoll, ergebnis, Meldung, Nummern der Abfragen dahinter).
+
+    Das Gateway antwortet mit einem JSON-Objekt. Die Nummer ist sein Feld protokoll_id auf der obersten Ebene, und nur dieses:
+    fall_status nennt unter «letzte_protokoll_id» die jüngste Abfrage des Falls. Wer sie als Nummer dieses Aufrufs läse, schriebe
+    die Abfrage dem Agenten zu, der danach den Stand abgefragt hat (so geschah es bis zum 20.11.2026).
+    Ohne Nummer hat das Gateway nichts abgefragt (Quelle ausgeschaltet, Schlüssel fehlt, Eingabe ungültig, Zweck fehlt) oder nur
+    Auskunft gegeben. Dann sagen ergebnis und Meldung, was geschah."""
+    try:
+        daten = json.loads(robin.text_aus(antwort))
+    except ValueError:
+        daten = None
+    if not isinstance(daten, dict):
+        m = PROTOKOLL_ID.search(antwort_text)       # keine lesbare Antwort: Die Nummer wird im Text gesucht
+        return (m.group(1) if m else None), None, "", []
+    nummer = daten.get("protokoll_id")
+    ergebnis = daten.get("ergebnis")
+    # Werkzeuge, die mehrere Abfragen bündeln, nennen sie unter «belege». Scheitert ein solches Werkzeug, gibt es keine Auswertung
+    # mit eigener Nummer: Dann ordnen nur diese Nummern die Abfragen dem Agenten zu.
+    belege = [b for b in daten.get("belege") or [] if isinstance(b, str) and re.fullmatch(r"P-\d{4,}", b)][:400] \
+        if isinstance(daten.get("belege"), list) else []
+    return (nummer if isinstance(nummer, str) and re.fullmatch(r"P-\d{4,}", nummer) else None,
+            ergebnis if isinstance(ergebnis, str) else None, " ".join(str(daten.get("fehler") or "").split())[:LANG], belege)
+
+
+def seiten_pruefstand(fall: str, text: str) -> list[dict]:
+    """Zu jeder Seite, die robin_scrape gelesen oder versucht hat: ob ihre Adresse vorher gegen die Sperrliste geprüft war.
+    So zeigt das Protokoll, dass die Pflichtprüfung stattfand, und nicht nur, dass sie aufgetragen war."""
+    pfad = FAELLE / fall
+    abfragen = jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")
+    aus = []
+    for seite in robin.lesen(text)["seiten"]:
+        host = robin.onion_host(seite["adresse"])
+        stand, beleg = robin.sperrliste_stand(pfad, host, abfragen) if host else (None, None)
+        aus.append({"adresse": seite["adresse"][:300], "stand": seite["stand"], **({"http": seite["http"]} if seite["http"] else {}),
+                    "sperrliste": stand or ("offenes Netz" if not host else "nicht geprüft"), **({"sperrliste_beleg": beleg} if beleg else {})})
+    return aus
+
+
+def extern_sichern(fall: str, werkzeug: str, eingabe: object, antwort: object, sitzungseintrag: dict,
+                   jetzt: datetime) -> dict:
+    """Legt die Antwort eines fremden MCP-Servers als Rohdatei ab und verkettet sie in extern.jsonl. Gibt den Eintrag zurück.
+
+    Für Robin steht in der Rohdatei der Text, wie Robin ihn schrieb (Claude Code reicht ihn verpackt weiter), und der Eintrag
+    sagt, was die Antwort bedeutet: ausgeführt, nichts gefunden, nicht ausgeführt oder Fehler. Vorher stand bei jeder Antwort
+    «ok», auch wenn Robin nichts gesucht hatte (gesehen am 20.11.2026)."""
     pfad = FAELLE / fall
     datei = pfad / "protokoll" / "extern.jsonl"
     datei.parent.mkdir(parents=True, exist_ok=True)
     _, server, name = (werkzeug.split("__", 2) + ["", ""])[:3]
-    inhalt = antwort_text.encode("utf-8")
+    ist_robin = server == robin.SERVER
+    text = robin.text_aus(antwort) if ist_robin else json.dumps(antwort, ensure_ascii=False)
+    stand = robin.einordnen(werkzeug, text) if ist_robin else {"ergebnis": "ok"}
+    aussen = name in robin.NACH_AUSSEN or (name == "robin_health" and isinstance(eingabe, dict) and bool(eingabe.get("check_engines")))
+    inhalt = text.encode("utf-8")
     with plattform.dateisperre(datei):
         bisher = jsonl_lesen(datei)
         nr = bisher[-1]["nr"] + 1 if bisher else 1
         kennung = f"X-{nr:04d}"
         ordner = pfad / "rohdaten" / "extern"
         ordner.mkdir(parents=True, exist_ok=True)
-        roh = ordner / f"{kennung}_{re.sub(r'[^A-Za-z0-9_-]', '_', name)}.json"
+        roh = ordner / f"{kennung}_{re.sub(r'[^A-Za-z0-9_-]', '_', name)}.{'txt' if ist_robin else 'json'}"
         roh.write_bytes(inhalt)
         roh.chmod(0o444)
         e = {"nr": nr, "id": kennung, "zeit_utc": sitzungseintrag["zeit_utc"], "zeit_lokal": sitzungseintrag["zeit_lokal"],
-             "fall": fall, "werkzeug": name, "quelle": {"robin": "Robin (Tor)"}.get(server, f"MCP-Server {server}"),
-             "art": "tor" if server == "robin" else "extern", "freigabe": "darkweb" if server == "robin" else None,
-             "ziel": ziel_aus(eingabe), "ziel_typ": "extern", "zweck": None,
+             "fall": fall, "werkzeug": name, "quelle": robin.QUELLE if ist_robin else f"MCP-Server {server}",
+             # «tor»: Der Aufruf ging über Tor nach aussen. «robin_lokal»: Robin hat im Container gearbeitet, ohne Abfrage nach aussen
+             "art": ("tor" if aussen else "robin_lokal") if ist_robin else "extern", "freigabe": "darkweb" if ist_robin else None,
+             "ziel": ziel_aus(eingabe, name), "ziel_typ": "extern", "zweck": None,
              "anfrage": {"server": server, "eingabe": kuerzen(eingabe)},
              "antwort": {"bytes": len(inhalt), "sha256": hashlib.sha256(inhalt).hexdigest(),
                          "rohdaten": f"rohdaten/extern/{roh.name}"},
-             "ergebnis": "ok", "fehler": None, "agent": sitzungseintrag.get("agent"),
-             "sitzung": sitzungseintrag.get("sitzung"),
-             "vorher": bisher[-1]["kette"] if bisher else ursprung_extern(fall)}
+             "ergebnis": stand["ergebnis"], "fehler": stand.get("fehler"), "agent": sitzungseintrag.get("agent"),
+             "sitzung": sitzungseintrag.get("sitzung")}
+        if ist_robin:
+            e["robin"] = {k: v for k, v in stand.items() if k not in ("ergebnis", "fehler")}
+            if name == "robin_scrape" and stand.get("status") == "ok":
+                e["seiten"] = seiten_pruefstand(fall, text)
+            # Hielt der Aufruf die Regeln des Falls ein (Freigabe, Untersuchungsbereich, Prüfung gegen die Sperrliste)? Die Oberfläche
+            # lässt einen Aufruf gar nicht erst zu, der sie verletzt. Am Terminal entscheidet der Sachbearbeiter je Aufruf, und niemand
+            # prüft sie vorher: Dann hält der Beleg fest, was nicht stimmte. Der Hook lehnt nichts ab, der Aufruf ist schon gelaufen.
+            try:
+                daten = json.loads((pfad / "fall.json").read_text(encoding="utf-8"))
+                abfragen = jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")
+                regel = robin.verstoss(werkzeug, eingabe, daten, lambda host: robin.sperrliste_stand(pfad, host, abfragen)[0])[0]
+            except (OSError, ValueError):
+                regel = "Die Fallakte liess sich nicht lesen: Ob der Aufruf die Regeln für Robin einhielt, ist nicht geprüft."
+            if regel:
+                e["regel"] = regel[:LANG]
+        e["vorher"] = bisher[-1]["kette"] if bisher else ursprung_extern(fall)
         e["kette"] = kette(e["vorher"], e)
         plattform.zeile_anhaengen(datei, json.dumps(e, ensure_ascii=False))
-    return kennung
+    return e
+
+
+def hinweis_zum_beleg(e: dict, fall: str) -> str:
+    """Was der Agent nach einem Aufruf von Robin erfährt: die Belegnummer, und was der Beleg belegt."""
+    if e["ergebnis"] == "nicht_ausgefuehrt":
+        return (f"Robin hat nichts ausgeführt: {e.get('fehler')} Die Antwort liegt als {e['id']} in der Fallakte {fall}, "
+                "sie belegt aber keine Suche und keine gelesene Seite.") + regel_hinweis(e)
+    if e["ergebnis"] == "fehler":
+        return (f"Der Aufruf ist gescheitert: {e.get('fehler')} Die Antwort liegt als {e['id']} in der Fallakte {fall}. Das ist eine Lücke, "
+                "kein «nichts gefunden».") + regel_hinweis(e)
+    text = f"Antwort gesichert als Beleg {e['id']} in der Fallakte {fall}. Im Rapport mit dieser Nummer belegen."
+    ohne = [s["adresse"] for s in e.get("seiten") or [] if s["stand"] == "ok" and s["sperrliste"] in ("nicht geprüft", "gesperrt")]
+    if ohne:
+        text += (f" ACHTUNG: {len(ohne)} Seite(n) wurden gelesen, ohne dass die Prüfung mit onion_sperrliste sie freigab "
+                 f"({', '.join(ohne)[:300]}). Das steht im Protokoll. Unter Auffälligkeiten melden und künftig zuerst prüfen.")
+    return text + regel_hinweis(e, bool(ohne))
+
+
+def regel_hinweis(e: dict, schon_gewarnt: bool = False) -> str:
+    """Der Aufruf lief, hielt aber die Regeln des Falls nicht ein: Der Agent erfährt es, und es steht beim Beleg."""
+    if not e.get("regel") or schon_gewarnt:
+        return ""
+    return f" ACHTUNG: Dieser Aufruf hielt die Regeln für Robin nicht ein. {e['regel']} Das steht im Protokoll. Unter Auffälligkeiten melden."
 
 
 def main() -> int:
@@ -171,7 +288,7 @@ def main() -> int:
         eintrag["modell_vorher"], eintrag["anlass"] = ereignis.get("from_model"), ereignis.get("source")
     elif art == "SubagentStop":
         modell = modell_aus(ereignis.get("agent_transcript_path"))
-    elif ereignis.get("tool_name") and not ereignis.get("agent_id"):
+    elif ereignis.get("tool_name") and not ereignis.get("agent_id") and art not in VORAB:
         modell = modell_aus(ereignis.get("transcript_path"))        # Schritt der Hauptsitzung
     else:
         modell = None
@@ -184,32 +301,52 @@ def main() -> int:
         # Der Server der Oberfläche ruft dafür diesen Hook auf. So bleibt das Sitzungsprotokoll in einer Hand.
         eintrag.update({"agent": "sachbearbeiter", "weg": "Oberfläche", "schritt": kuerzen(str(ereignis.get("schritt") or "")),
                         "angabe": kuerzen(str(ereignis.get("angabe") or ""))})
+    if art in ("Elicitation", "ElicitationResult"):
+        # Ein MCP-Server (Robin) stellt dem Sachbearbeiter selbst eine Frage, etwa nach dem Untersuchungsbereich. Frage und
+        # Antwort gehören ins Protokoll: Die Antwort bestimmt, was der Server danach tut.
+        eintrag["server"] = str(ereignis.get("mcp_server_name") or "")[:80]
+        if art == "Elicitation":
+            eintrag["frage"] = kuerzen(str(ereignis.get("message") or ""))
+        else:
+            eintrag["entscheid"] = str(ereignis.get("action") or "")[:40]
+            if ereignis.get("content") is not None:
+                eintrag["angabe"] = kuerzen(json.dumps(ereignis.get("content"), ensure_ascii=False))
     if ereignis.get("tool_name"):
         werkzeug = ereignis["tool_name"]
         eintrag.update({"werkzeug": werkzeug, "tool_use_id": ereignis.get("tool_use_id"),
                         "eingabe": kuerzen(eingabe), "dauer_ms": ereignis.get("duration_ms")})
         if art == "PostToolUseFailure":
             eintrag["fehler"] = kuerzen(str(ereignis.get("error") or antwort_text or "unbekannt"))
+            if ereignis.get("is_interrupt"):        # der Sachbearbeiter hat den laufenden Aufruf abgebrochen
+                eintrag["abgebrochen"] = True
         if antwort is not None:
             eintrag["antwort_bytes"] = len(antwort_text.encode())
             eintrag["antwort_sha256"] = hashlib.sha256(antwort_text.encode()).hexdigest()
-            m = PROTOKOLL_ID.search(antwort_text)
-            if m and werkzeug.startswith("mcp__osint__"):
-                eintrag["protokoll_id"] = m.group(1)
+            if werkzeug.startswith("mcp__osint__"):
+                nummer, ergebnis, meldung, belege = gateway_antwort(antwort, antwort_text)
+                if nummer:
+                    eintrag["protokoll_id"] = nummer
+                elif ergebnis:
+                    # Kein Eintrag im Abfrageprotokoll. Was das Gateway dazu sagte, hält das Sitzungsprotokoll fest. Sonst tauchte
+                    # der Versuch im Ermittlungsprotokoll nirgends auf.
+                    eintrag["ergebnis"], eintrag["meldung"] = ergebnis, meldung
+                if belege and not nummer:
+                    eintrag["belege"] = belege
             # Antworten fremder MCP-Server (z. B. Robin) als Beleg X-… in die Fallakte legen.
             # Das Gateway sieht diese Aufrufe nicht, also übernimmt der Hook Sicherung und Verkettung.
             server = werkzeug.split("__")[1] if werkzeug.startswith("mcp__") and werkzeug.count("__") >= 2 else ""
             if server in BELEG_SERVER and art == "PostToolUse":
                 if fall:
-                    eintrag["protokoll_id"] = extern_sichern(fall, werkzeug, eingabe, antwort_text, eintrag, jetzt)
-                    hinweis = (f"Antwort gesichert als Beleg {eintrag['protokoll_id']} in der Fallakte {fall}. "
-                               "Im Rapport mit dieser Nummer belegen.")
+                    beleg = extern_sichern(fall, werkzeug, eingabe, antwort, eintrag, jetzt)
+                    eintrag["protokoll_id"] = beleg["id"]
+                    hinweis = hinweis_zum_beleg(beleg, fall)
                 else:
                     ordner = SITZUNGEN / sitzung
                     ordner.mkdir(exist_ok=True)
                     name = re.sub(r"[^A-Za-z0-9_-]", "_", str(ereignis.get("tool_use_id") or jetzt.timestamp()))
-                    plattform.text_schreiben(ordner / f"{name}.json", antwort_text)
-                    eintrag["antwort_datei"] = f"protokoll/sitzungen/{sitzung}/{name}.json"
+                    ist_robin = server == robin.SERVER
+                    plattform.text_schreiben(ordner / f"{name}.{'txt' if ist_robin else 'json'}", robin.text_aus(antwort) if ist_robin else antwort_text)
+                    eintrag["antwort_datei"] = f"protokoll/sitzungen/{sitzung}/{name}.{'txt' if ist_robin else 'json'}"
 
     datei = SITZUNGEN / f"{sitzung}.jsonl"
     with plattform.dateisperre(datei):
