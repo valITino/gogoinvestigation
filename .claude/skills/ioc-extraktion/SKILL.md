@@ -58,7 +58,10 @@ fehlt, wird nie abgefragt. Was hier falsch abgeschrieben ist, führt zu falschen
   es im Gateway keine Quelle: Sie sind keine Indikatoren, sondern Ansätze für ein Editionsbegehren beim Anbieter oder
   bei der Bank. Trage sie unter `nur_im_haus_abfragbar` ein, mit der Art und der Fundstelle.
 - **Ein Dokument ist offenbar gar nicht pseudonymisiert** (keine Platzhalter, Angaben zu Geschädigten an vielen
-  Stellen): nicht weiterverarbeiten, das Dokument nennen, anhalten.
+  Stellen): Du hältst nicht an. Der Sachbearbeiter hat es in den Fall genommen. Trage das Dokument als Ganzes in
+  `arbeitsstand/klartext.json` ein, ohne `zeile` (`{"dokument": "rapport-01.txt", "was": "Dokument ohne Platzhalter"}`),
+  nenne es ihm im ersten Satz deiner Antwort und zieh die technischen Indikatoren wie sonst. Die geschützten Angaben
+  verwendest du nicht und schreibst sie nirgends hin.
 - Ein Wert ist erkennbar verstümmelt (Hash mit 63 Zeichen, IP mit fünf Blöcken). Als `anmerkung` festhalten und nicht abfragen.
 
 ## Wallets und Transaktionen

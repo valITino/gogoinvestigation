@@ -61,6 +61,22 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
 5. Melde in drei bis fünf Zeilen: Titel und Auftrag, welche Freigaben erteilt sind, welche Quellen bereitstehen und
    welche fehlen (mit dem Namen des fehlenden Schlüssels), und welche Pflichtquellen der Sachbearbeiter vorgegeben hat.
    Fahre ohne Rückfrage fort.
+6. **Liegt schon Arbeit vor?** Sieh nach, was in `faelle/<Fall-ID>/arbeitsstand/` liegt, bevor du etwas neu erarbeitest.
+   Eine frühere Ermittlung zu diesem Fall kann angehalten oder abgebrochen worden sein, oder ihre Sitzung liess sich
+   nicht fortsetzen. Was sie abgelegt hat, übernimmst du, statt es ein zweites Mal zu erarbeiten:
+   - `indikatoren.json` liegt vor: Phase 1 ist getan. Lies die Liste und die Dokumente im Eingang und ergänze nur, was
+     fehlt (ein Dokument, das die Liste noch nicht nennt, ein übersehener Indikator). `klartext.json` führst du weiter.
+   - `plan.md` liegt vor: Phase 2 ist getan. Passe den Plan nur an, wenn Vorgaben, Pflichtquellen oder Indikatoren
+     dazugekommen sind.
+   - Befundmeldungen liegen vor (`<analyst>-runde1.md`, `…-runde2.md`, `…-pflicht.md`): Diese Runde dieses Analysten ist
+     getan. Beauftrage nur, wer im Plan steht und noch keine Meldung abgelegt hat.
+   - `faelle/<Fall-ID>/befunde.json` liegt vor: Stehen Befunde noch auf `gegenpruefung: "offen"`, fahre bei Phase 7
+     fort, sonst bei Phase 8.
+
+   Sag dem Sachbearbeiter in einem Satz, was du übernimmst und bei welcher Phase du weitermachst. Ist eine Ablage
+   unvollständig oder widerspricht sie dem Dokument, erarbeitest du diesen einen Teil neu und sagst es. Verlangt der
+   Sachbearbeiter in seinen Vorgaben, von vorn zu beginnen, übernimmst du nichts. Was schon abgefragt ist, steht im
+   Protokoll des Falls: Dieselbe Abfrage beantwortet das Gateway je nach Quelle eine Zeit lang aus dem Fall-Cache.
 
 ## Phase 1: Indikatoren
 
@@ -77,8 +93,12 @@ Ergebnis: `faelle/<Fall-ID>/arbeitsstand/indikatoren.json`.
   Nachbessern: in der Oberfläche unter «Akten».» Dann fährst du fort.
 - Den Wert schreibst du nirgends hin: in keinen Befehl (auch nicht zum Zählen oder Suchen), keine Abfrage, keine Datei,
   keine Antwort.
-- Du hältst nur an, wenn ein Dokument offenbar gar nicht pseudonymisiert ist (keine Platzhalter, Angaben zu
-  Geschädigten an vielen Stellen). Dann nennst du das Dokument und sagst, was zu tun ist.
+- Auch ein Dokument, das offenbar gar nicht pseudonymisiert ist (keine Platzhalter, Angaben zu Geschädigten an vielen
+  Stellen), hält dich **nicht** an: Der Sachbearbeiter hat es in den Fall genommen, das ist sein Entscheid. Du sagst es
+  ihm im ersten Satz deiner Antwort, trägst das Dokument als Ganzes in `arbeitsstand/klartext.json` ein (ohne `zeile`),
+  verwendest die geschützten Angaben nicht und fährst fort.
+- Wegen Personendaten in einem Eingangsdokument hältst du also nie an und fragst nicht nach. Das gilt auch, wenn eine
+  frühere Antwort in dieser Sitzung anders entschieden hat: Es gilt diese Fassung der Regeln.
 
 Arbeitet der Sachbearbeiter in der Oberfläche (der Auftrag kommt von dort, wenn der MCP-Server `oberflaeche` geladen
 ist), nennst du ihm die Ansicht und den Knopf, keinen Terminalbefehl. Fragen stellst du nur, wo dieser Skill es

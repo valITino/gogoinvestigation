@@ -7623,6 +7623,246 @@ def pflicht_umgebung(robin: bool | None = None):
         plattform.einstellung, pq._erreichbar, pq._robin_bereit = echt
 
 
+@test("Anleitungen: Wegen Personendaten in einem Eingangsdokument hält die Ermittlung nie an, auch nicht bei einem Dokument ohne Platzhalter. Die Stelle wird ohne den Wert "
+      "gemeldet, und die Oberfläche zeigt auch die Meldung zu einem ganzen Dokument")
+def _():
+    flach = lambda text: " ".join(text.split())      # noqa: E731
+    claude_md, ermittlung, ioc = (flach(lesen(REPO / d)) for d in ("CLAUDE.md", ".claude/skills/ermittlung/SKILL.md", ".claude/skills/ioc-extraktion/SKILL.md"))
+    assert "Du hältst deswegen nie an" in claude_md and "hält dich **nicht** an" in ermittlung and "Du hältst nicht an." in ioc, "die Anleitungen müssen sagen, dass die Ermittlung weiterarbeitet"
+    # Bis zum 19.11.2026 hiess es «Findest du echte Personendaten im Dokument, halte an», bis zum 20.11.2026 hielt die Ermittlung noch bei einem Dokument ohne Platzhalter an
+    for name, text in (("CLAUDE.md", claude_md), ("Skill ermittlung", ermittlung), ("Skill ioc-extraktion", ioc)):
+        for alt in ("Du hältst nur an", "nicht weiterverarbeiten", "Findest du echte Personendaten", "das Dokument nennen, anhalten", "Dann nennst du das Dokument und sagst, was zu tun ist"):
+            assert alt not in text, f"{name} lässt die Ermittlung noch anhalten: «{alt}»"
+    phase1 = lesen(REPO / ".claude" / "skills" / "ermittlung" / "SKILL.md").split("## Phase 1")[1].split("## Phase 2")[0]
+    assert "anhalten" not in phase1 and "halte an" not in phase1 and "hältst du also nie an" in flach(phase1), "in Phase 1 gibt es keinen Halt mehr"
+    for stueck in ("verwendest und wiederholst die geschützten Angaben nicht", "Was in einen Fall kommt, entscheidet er bei der Aufnahme"):
+        assert stueck in claude_md, f"CLAUDE.md nennt nicht mehr, was bleibt: «{stueck}»"
+    # Die Meldung zu einem ganzen Dokument trägt keine Zeile. Die Oberfläche zeigt sie wie jede andere, ohne eine Zeile zu erfinden
+    fall = "KLARTEXT-GANZ-1"
+    ordner = robin_fall(fall)
+    (ordner / "eingang" / "rapport-01.txt").write_text("Ein Rapport ohne Platzhalter.\n", encoding="utf-8")
+    (ordner / "arbeitsstand" / "klartext.json").write_text(json.dumps({"stellen": [
+        {"dokument": "rapport-01.txt", "was": "Dokument ohne Platzhalter"}, {"dokument": "rapport-01.txt", "zeile": 0, "was": "Angaben zu Geschädigten an vielen Stellen"},
+        {"dokument": "rapport-01.txt", "zeile": 12, "was": "Adresse im Abschnitt Geschädigte/-r"}]}), encoding="utf-8")
+    stellen = ui_daten.Fall(fall).klartext_stellen()
+    assert [(s["zeile"], s["was"]) for s in stellen] == [(None, "Dokument ohne Platzhalter"), (None, "Angaben zu Geschädigten an vielen Stellen"), (12, "Adresse im Abschnitt Geschädigte/-r")], stellen
+
+
+@test("Anleitungen: Eine neue Sitzung übernimmt, was eine frühere Ermittlung im Arbeitsstand abgelegt hat, statt es ein zweites Mal zu erarbeiten. "
+      "Die Oberfläche sagt das vor «Neu starten»")
+def _():
+    flach = lambda text: " ".join(text.split())      # noqa: E731
+    skill = lesen(REPO / ".claude" / "skills" / "ermittlung" / "SKILL.md")
+    phase0, danach = flach(skill.split("## Phase 0")[1].split("## Phase 1")[0]), skill.split("## Phase 1")[1]
+    assert "Liegt schon Arbeit vor?" in phase0 and "übernimmst du, statt es ein zweites Mal zu erarbeiten" in phase0, "Phase 0 muss sagen, dass abgelegte Arbeit übernommen wird"
+    # Jede Ablage, die der Skill in den späteren Phasen anlegt, kommt in der Übernahme vor: Sonst würde sie nach einem Neubeginn doppelt erarbeitet
+    for ablage in ("indikatoren.json", "plan.md", "-runde1.md", "-runde2.md", "-pflicht.md", "befunde.json"):
+        assert ablage in danach, f"der Skill legt {ablage} nicht mehr an: Die Übernahme in Phase 0 nachführen"
+        assert ablage in phase0, f"die Übernahme in Phase 0 nennt {ablage} nicht"
+    assert "klartext.json" in phase0, "die Meldungen zu geschützten Angaben werden weitergeführt"
+    # Der Sachbearbeiter erfährt es, kann einen Neubeginn von vorn verlangen, und eine zweifelhafte Ablage wird neu erarbeitet
+    for stueck in ("Sag dem Sachbearbeiter in einem Satz, was du übernimmst", "von vorn zu beginnen, übernimmst du nichts", "erarbeitest du diesen einen Teil neu"):
+        assert stueck in phase0, f"Phase 0 sagt nicht mehr: «{stueck}»"
+    skript, doku = lesen(REPO / "tools" / "ui" / "app.js"), flach(lesen(REPO / "docs" / "OBERFLAECHE.md"))
+    assert "übernimmt sie. Soll sie ganz von vorn beginnen, schreib das als Vorgabe ins Feld." in skript and "Sie beginnt von vorn" not in skript, "die Rückfrage vor «Neu starten» sagt, was übernommen wird"
+    assert "Die neue Sitzung übernimmt, was im Arbeitsstand schon abgelegt ist" in doku
+
+
+@test("Bedienung, Fortsetzen nach einer Aktualisierung: Begann die frühere Sitzung, bevor die Regeln des Arbeitsplatzes geändert wurden, setzt die Oberfläche sie nicht fort. "
+      "Die Ermittlung beginnt neu, mit der Nachricht als Vorgabe. Der Grund steht im Chat und im Sitzungsprotokoll")
+def _():
+    u = bedien_vorbereiten()
+    b, port, aktion, merker = u["b"], u["port"], u["aktion"], u["merker"]
+    fall = "BEDIEN-ALT-1"
+    robin_fall(fall)
+    frueher = "33333333-4444-4555-8666-777777777777"
+    regel = PROJEKT / ".claude" / "skills" / "ermittlung" / "SKILL.md"
+    vorher = regel.stat()
+
+    def stand() -> dict:
+        return json.loads(ui_anfrage(port, f"/api/fall/{fall}/verlauf")[2])
+
+    def ruhe() -> list[str]:
+        s = b.ermittlungen[fall]
+        s.prozess.wait(timeout=20)
+        s.leser.join(timeout=30)
+        assert not s.leser.is_alive(), "der Lauf wurde nicht fertig verarbeitet"
+        return json.loads(lesen(merker))["argv"]
+
+    def regeln_stellen(zeit: float) -> None:
+        os.utime(regel, (zeit, zeit))
+        ui_sitzung._VERALTET.clear()
+
+    def vermerke() -> list[tuple]:              # was die Oberfläche zu diesem Fall im Sitzungsprotokoll vermerkt hat
+        return [(z.get("schritt"), str(z.get("angabe") or "")) for z in protokollwerkzeug.sitzungen_laden(fall)[0] if z.get("ereignis") == "Oberflaeche"]
+    os.environ["OSINT_FAKE_KURZ"] = "0"         # das Programm, das Claude Code spielt, antwortet kurz und endet
+    try:
+        # Die Regeln sind älter als die Sitzung: Sie lässt sich fortsetzen wie bisher
+        regeln_stellen(time.time() - 3600)
+        for name in ui_sitzung.REGEL_DATEIEN:
+            if (PROJEKT / name).is_file():
+                os.utime(PROJEKT / name, (time.time() - 3600, time.time() - 3600))
+        for muster in ui_sitzung.REGEL_MUSTER:
+            for datei in PROJEKT.glob(muster):
+                os.utime(datei, (time.time() - 3600, time.time() - 3600))
+        hook("protokoll_hook.py", {"hook_event_name": "UserPromptSubmit", "session_id": frueher, "prompt": f"/ermittlung {fall}"})
+        beginn = ui_sitzung.sitzung_beginn(frueher)
+        assert beginn and abs(beginn - time.time()) < 120 and ui_sitzung.sitzung_beginn("gibt-es-nicht") == 0.0
+        assert ui_sitzung.regeln_stand()[0] < beginn and ui_sitzung.veraltet(frueher) == "" and ui_sitzung.veraltet("") == "" and ui_sitzung.veraltet("gibt-es-nicht") == ""
+        assert (stand()["frueher"], stand()["frueher_alt"]) == (frueher, "")
+        # Jetzt ändern sich die Regeln, wie nach «git pull»: Eine Datei der Anleitung trägt eine jüngere Zeit als der Beginn der Sitzung
+        regeln_stellen(beginn + 30)
+        zeit, datei = ui_sitzung.regeln_stand()
+        assert (round(zeit), datei) == (round(beginn + 30), ".claude/skills/ermittlung/SKILL.md"), (zeit, datei)
+        grund = ui_sitzung.veraltet(frueher)
+        assert "Seither wurden die Regeln des Arbeitsplatzes geändert (.claude/skills/ermittlung/SKILL.md" in grund and "beginnt neu" in grund, grund
+        assert stand()["frueher_alt"] == grund, "der Browser erfährt, dass die frühere Sitzung nicht fortgesetzt wird"
+        # «Fortsetzen» beginnt neu: ohne --resume, mit /ermittlung. Ohne Geheimnis geschieht nichts
+        assert aktion("ermittlung_fortsetzen", {"fall": fall}, geheimnis=None)[0] in (401, 403) and fall not in b.ermittlungen
+        status, antwort_ = aktion("ermittlung_fortsetzen", {"fall": fall})
+        assert status == 200 and antwort_.get("neu") is True and antwort_["meldung"] == grund, antwort_
+        argv = ruhe()
+        assert "--resume" not in argv and argv[argv.index("-p") + 1] == f"/ermittlung {fall}", argv
+        texte = [z["text"] for z in stand()["verlauf"]]
+        assert grund in texte and texte.index(grund) < next(i for i, x in enumerate(texte) if x.startswith("Ermittlung starten:")), texte[:4]
+        schritte = vermerke()
+        assert ("Frühere Sitzung nicht fortgesetzt", grund) in schritte and any(s == "Ermittlung gestartet" for s, _ in schritte), schritte
+        assert [s for s, _ in schritte].index("Frühere Sitzung nicht fortgesetzt") < [s for s, _ in schritte].index("Ermittlung gestartet"), "erst der Grund, dann der Start"
+        # Eine Nachricht an die ruhende Sitzung: Auch sie beginnt neu und geht als Vorgabe mit. Die neue Sitzung von eben hat kein eigenes Protokoll
+        # (das Programm, das Claude Code spielt, ruft keine Hooks): Massgebend ist dann die letzte Sitzung laut Sitzungsprotokoll
+        b.ermittlungen.pop(fall)
+        status, antwort_ = aktion("ermittlung_nachricht", {"fall": fall, "text": "Schwerpunkt auf die zweite Zahlung."})
+        assert status == 200 and antwort_.get("neu") is True and antwort_["meldung"].endswith("Deine Nachricht geht als Vorgabe mit."), antwort_
+        argv = ruhe()
+        assert "--resume" not in argv and argv[argv.index("-p") + 1] == ui_sitzung.auftrag_text(fall, "Schwerpunkt auf die zweite Zahlung."), argv
+        # Eine Nachricht mit einer Rufnummer geht auch auf diesem Weg nicht hinaus
+        b.ermittlungen.pop(fall)
+        status, antwort_ = aktion("ermittlung_nachricht", {"fall": fall, "text": "Rückruf an 079 123 45 67"})
+        assert status == 400 and fall not in b.ermittlungen, antwort_
+        # Arbeitet die Sitzung gerade, bleibt alles, wie es ist: kein Neubeginn und kein Vermerk, auch wenn sie unter älteren Regeln begann
+
+        class Arbeitet:
+            kennung = frueher
+
+            def als_dict(self) -> dict:
+                return {"status": "laeuft"}
+        b.ermittlungen[fall] = Arbeitet()
+        zahl = len(vermerke())
+        assert ui_sitzung.veraltet(frueher) == grund and ui_sitzung._neu_statt_fortsetzen(b, {"fall": fall}, fall) is None and len(vermerke()) == zahl
+        b.ermittlungen.pop(fall)
+        # Eine Sitzung, die nach der Änderung begann, wird fortgesetzt wie immer
+        regeln_stellen(beginn - 30)
+        assert ui_sitzung.veraltet(frueher) == "" and stand()["frueher_alt"] == ""
+        status, antwort_ = aktion("ermittlung_fortsetzen", {"fall": fall})
+        assert status == 200 and "neu" not in antwort_, antwort_
+        argv = ruhe()
+        assert argv[argv.index("--resume") + 1] == frueher, argv
+    finally:
+        os.environ.pop("OSINT_FAKE_KURZ", None)
+        os.utime(regel, (vorher.st_atime, vorher.st_mtime))
+        ui_sitzung._VERALTET.clear()
+    skript, doku = lesen(REPO / "tools" / "ui" / "app.js"), lesen(REPO / "docs" / "OBERFLAECHE.md")
+    assert "d.frueher_alt" in skript and "frueher_alt" in doku, "Browser und Dokumentation kennen den Fall"
+
+
+@test("Fassung des Arbeitsplatzes: Oberfläche und Prüfung zeigen, welche Fassung hier liegt. Liegt im Repository eine neuere, sagen sie es und nennen den Weg. "
+      "Ohne Netz, ohne Git oder abgestellt bleibt es bei der Angabe der Fassung")
+def _():
+    from tools import dienste, pruefen
+    echt = (einrichten.lauf, plattform.einstellung, pruefen.still, list(pruefen.gemeldet), list(pruefen.schritte))
+    rufe: list[list[str]] = []
+    lage = {"git": True, "fern": "a" * 40, "enthalten": True, "zweig": "main"}
+
+    def lauf(befehl, zeit=900, log=None, env=None, cwd=None, anzeige=None):       # steht für Git
+        rufe.append(list(befehl))
+        if befehl[:1] != ["git"] or not lage["git"]:
+            return 127, "Programm nicht gefunden: git"
+        if "log" in befehl:
+            return 0, "warning: irgendetwas\n073856c\t2026-11-18T10:23:47+01:00"
+        if "rev-parse" in befehl:
+            return 0, lage["zweig"]
+        if "ls-remote" in befehl:
+            assert env and env.get("GIT_TERMINAL_PROMPT") == "0" and env.get("GCM_INTERACTIVE") == "never", "die Nachfrage beim Git-Server darf nie nach einem Passwort fragen"
+            return (0, f"{lage['fern']}\tHEAD") if lage["fern"] else (128, "fatal: unable to access 'https://…': Could not resolve host")
+        if "merge-base" in befehl:
+            return (0 if lage["enthalten"] else 1), ""
+        return 1, ""
+    vorher_git = {name: os.environ.get(name) for name in ("GIT_TERMINAL_PROMPT", "GCM_INTERACTIVE")}
+    try:
+        os.environ.update(GIT_TERMINAL_PROMPT="1", GCM_INTERACTIVE="always")       # was die Umgebung vorgibt, zählt nicht: Die Nachfrage stellt es selbst
+        einrichten.lauf = lauf
+        dienste._FASSUNG.clear()
+        assert dienste.fassung() == {"commit": "073856c", "datum": "2026-11-18T10:23:47+01:00", "zweig": "main"}
+        assert dienste.fassung_text(dienste.fassung()) == "Fassung vom 18.11.2026 (073856c)" and dienste.fassung_text(None) == ""
+        assert dienste.fassung_text({"commit": "abc1234", "datum": "2026-11-20T09:00:00+01:00", "zweig": "claude/etwas"}) == "Fassung vom 20.11.2026 (abc1234, Zweig claude/etwas)"
+        # Ohne Nachfrage: nur die Fassung. Kein Aufruf geht ins Netz
+        rufe.clear()
+        assert dienste.fassung_stand() == {"text": "Fassung vom 18.11.2026 (073856c)", "neuer": None, "hinweis": ""} and not any("ls-remote" in r for r in rufe)
+        # Mit Nachfrage: Der Stand des Repositorys ist hier schon enthalten
+        assert dienste.fassung_stand(fern=True)["neuer"] is False and dienste.fassung_stand()["hinweis"] == ""
+        assert any(r[-3:] == ["ls-remote", "origin", "HEAD"] for r in rufe) and any("--is-ancestor" in r and r[-1] == "HEAD" for r in rufe), rufe
+        # Er ist hier nicht enthalten: Es gibt eine neuere Fassung. Auch dann, wenn sie schon geholt, aber nicht übernommen ist
+        lage["enthalten"] = False
+        s = dienste.fassung_stand(fern=True)
+        assert s["neuer"] is True and "neuere Fassung" in s["hinweis"] and "git pull" in s["hinweis"] and plattform.SETUP in s["hinweis"], s
+        assert dienste.fassung_stand() == s, "die Oberfläche zeigt, was zuletzt festgestellt wurde, ohne erneut zu fragen"
+        # Der Server ist nicht erreichbar: nicht feststellbar, und der Hinweis von vorher bleibt nicht stehen
+        lage["fern"] = ""
+        s = dienste.fassung_stand(fern=True)
+        assert s["neuer"] is None and s["hinweis"] == "" and s["text"].startswith("Fassung vom 18.11.2026"), s
+        # Beim Start der Oberfläche: fragen, ausser es ist abgestellt
+        lage.update(fern="b" * 40, enthalten=False)
+        saetze = dienste.fassung_beim_start()
+        assert saetze[0] == "Fassung vom 18.11.2026 (073856c)." and "neuere Fassung" in saetze[1], saetze
+        plattform.einstellung = lambda name, standard="": "0" if name == dienste.STAND_PRUEFEN else echt[1](name, standard)
+        dienste._FASSUNG.clear()
+        rufe.clear()
+        assert dienste.fassung_beim_start() == ["Fassung vom 18.11.2026 (073856c)."] and not any("ls-remote" in r for r in rufe), "abgestellt: keine Nachfrage beim Git-Server"
+        plattform.einstellung = echt[1]
+        # Die Prüfung der Einrichtung: ohne --live nur die Fassung, mit --live die Nachfrage
+        pruefen.still = True
+
+        def zeile_fassung(fern: bool) -> tuple[str, str]:
+            del pruefen.gemeldet[:]
+            dienste._FASSUNG.clear()
+            pruefen.fassung_melden(fern)
+            (_abschnitt, art, was, wie), = pruefen.gemeldet
+            assert was == "Fassung", pruefen.gemeldet
+            return art, wie
+        assert zeile_fassung(False) == ("gut", "Fassung vom 18.11.2026 (073856c). Ob es eine neuere gibt, zeigt --live")
+        art, wie = zeile_fassung(True)
+        assert art == "fehlt" and "neuere Fassung" in wie and "git pull" in wie, wie
+        lage["enthalten"] = True
+        assert zeile_fassung(True) == ("gut", "Fassung vom 18.11.2026 (073856c), im Repository liegt keine neuere")
+        # Abgestellt gilt auch für die Prüfung: Mit --live geht dann keine Nachfrage hinaus, und die Zeile sagt es
+        plattform.einstellung = lambda name, standard="": "0" if name == dienste.STAND_PRUEFEN else echt[1](name, standard)
+        rufe.clear()
+        assert zeile_fassung(True) == ("gut", "Fassung vom 18.11.2026 (073856c). Die Nachfrage nach einer neueren ist abgestellt (OSINT_STAND_PRUEFEN=0)")
+        assert not any("ls-remote" in r for r in rufe), "abgestellt: Auch die Prüfung fragt nicht beim Git-Server nach"
+        plattform.einstellung = echt[1]
+        lage["git"] = False
+        assert zeile_fassung(True)[0] == "aus" and dienste.fassung() is None and dienste.fassung_fern() is None
+    finally:
+        einrichten.lauf, plattform.einstellung, pruefen.still, _gemeldet, _schritte = echt
+        pruefen.gemeldet[:] = _gemeldet
+        pruefen.schritte[:] = _schritte
+        dienste._FASSUNG.clear()
+        for name, wert in vorher_git.items():
+            os.environ.pop(name, None) if wert is None else os.environ.__setitem__(name, wert)
+    # Die Oberfläche: Die Auskunft nennt die Fassung, der Browser zeigt sie und, wenn es eine neuere gibt, den Hinweis
+    u = bedien_vorbereiten()
+    dienste._FASSUNG.update(text="Fassung vom 18.11.2026 (073856c)", neuer=True, hinweis="Im Repository liegt eine neuere Fassung dieses Arbeitsplatzes. " + dienste.AKTUALISIEREN)
+    try:
+        auskunft = json.loads(ui_anfrage(u["port"], "/api/bedienung")[2])
+        assert auskunft["fassung"]["neuer"] is True and auskunft["fassung"]["text"] == "Fassung vom 18.11.2026 (073856c)", auskunft
+    finally:
+        dienste._FASSUNG.clear()
+    skript, start = lesen(REPO / "tools" / "ui" / "app.js"), lesen(REPO / "tools" / "oberflaeche.py")
+    assert "function fassungZeigen" in skript and 'id: "fassung"' in skript and "dienste.fassung_beim_start()" in start
+    for datei, stueck in (("README.md", "OSINT_STAND_PRUEFEN"), ("docs/OBERFLAECHE.md", "Fassung"), (".env.example", "OSINT_STAND_PRUEFEN")):
+        assert stueck in lesen(REPO / datei), f"{datei} nennt «{stueck}» nicht"
+
+
 @test("Bedienung, Dark Web: Die Freigabe verlangt den Untersuchungsbereich. Einen Aufruf von Robin lässt die Oberfläche nur zu, wenn er die Regeln einhält: Bereich des "
       "Sachbearbeiters, kein Platzhalter, Seiten erst nach der Prüfung gegen die Sperrliste. Robins Antworten zeigt sie mit dem, was sie belegen, und nie als «Treffer», wo nichts lief")
 def _():

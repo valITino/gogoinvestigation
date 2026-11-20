@@ -233,6 +233,70 @@ def letzte_sitzung(fall: str) -> str:
     return beste
 
 
+# Die Regeln, nach denen eine Ermittlung arbeitet. Ändern sie sich (der Arbeitsplatz wurde aktualisiert), stehen im Verlauf einer
+# Sitzung, die davor begann, noch die alte Anleitung und ihre eigenen Entscheide von damals. Eine solche Sitzung wird nicht fortgesetzt.
+REGEL_DATEIEN = ("CLAUDE.md", ".claude/settings.json")
+REGEL_MUSTER = (".claude/skills/*/SKILL.md", ".claude/agents/*.md")
+_VERALTET: dict = {}            # Kennung der Sitzung → (Zeit der Prüfung, Grund)
+
+
+def regeln_stand(projekt: Path = PROJEKT) -> tuple[float, str]:
+    """Wann die Regeln dieses Arbeitsplatzes zuletzt geändert wurden: (Sekunden seit 1970, Datei). Regeln sind CLAUDE.md, die
+    Skills, die Agenten und die Einstellungen von Claude Code. Nach «git pull» tragen geänderte Dateien die Zeit der
+    Aktualisierung. (0, «») wenn sich nichts lesen lässt."""
+    beste, name = 0.0, ""
+    for datei in [projekt / n for n in REGEL_DATEIEN] + [d for muster in REGEL_MUSTER for d in sorted(projekt.glob(muster))]:
+        try:
+            zeit = datei.stat().st_mtime
+        except OSError:
+            continue
+        if zeit > beste:
+            beste, name = zeit, datei.relative_to(projekt).as_posix()
+    return beste, name
+
+
+def sitzung_beginn(kennung: str) -> float:
+    """Wann eine Sitzung von Claude Code begann, laut ihrem Sitzungsprotokoll (Sekunden seit 1970). 0, wenn es keines gibt."""
+    try:
+        zeilen = jsonl_lesen(SITZUNGEN / f"{kennung}.jsonl")
+    except (OSError, ValueError):
+        return 0.0
+    for z in zeilen:
+        try:
+            return datetime.fromisoformat(str(z.get("zeit_utc") or "").replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+    return 0.0
+
+
+def veraltet(kennung: str | None) -> str:
+    """Leer, wenn sich die Sitzung fortsetzen lässt. Sonst der Grund in einem Satz: Seit ihrem Beginn wurden die Regeln des
+    Arbeitsplatzes geändert. Im Verlauf einer solchen Sitzung stehen der Text der alten Anleitung und ihre eigenen Entscheide von
+    damals. Anlass: Am 20.11.2026 hielt am Arbeitsplatz des Eigentümers eine fortgesetzte Sitzung erneut an (dort lag noch die
+    alte Fassung). Wie sich eine Sitzung verhielte, die nach einer Aktualisierung fortgesetzt wird, ist nicht geprüft: Die
+    Oberfläche lässt es nicht darauf ankommen. Höchstens alle fünf Sekunden neu geprüft: Der Chat fragt jede Sekunde nach dem Stand."""
+    if not kennung:
+        return ""
+    jetzt = time.monotonic()
+    zuletzt = _VERALTET.get(kennung)
+    if zuletzt and jetzt - zuletzt[0] < 5:
+        return zuletzt[1]
+    beginn, (regeln, datei) = sitzung_beginn(kennung), regeln_stand()
+    grund = ""
+    if beginn and regeln > beginn + 1:
+        try:
+            zone = plattform.zeitzone()         # die Zeitzone des Arbeitsplatzes, wie in Protokoll und Rapport
+        except plattform.Zeitzonenfehler:
+            zone = None                         # ohne Zeitzonendaten: die Zeit des Systems
+        wann = lambda zeit: datetime.fromtimestamp(zeit, zone).strftime("%d.%m.%Y, %H:%M")      # noqa: E731
+        grund = (f"Die frühere Sitzung begann am {wann(beginn)}. Seither wurden die Regeln des Arbeitsplatzes geändert ({datei}, {wann(regeln)}). "
+                 "Sie wird deshalb nicht fortgesetzt: Die Ermittlung beginnt neu und arbeitet mit dem Stand der Fallakte weiter.")
+    if len(_VERALTET) > 200:
+        _VERALTET.clear()
+    _VERALTET[kennung] = (jetzt, grund)
+    return grund
+
+
 class Sitzung:
     """Eine gesteuerte Sitzung von Claude Code zu einem Fall, samt Verlauf für den Chat."""
 
@@ -785,10 +849,12 @@ def verlauf(b: "bedienung_modul.Bedienung | None", fall: str, version: int = 0) 
     s = _sitzung(b, fall) if b is not None else None
     ordner = ordner_stand() if b is not None else None
     if s is not None:
-        return {**s.seit(version), "ordner": ordner}
+        stand_ = s.seit(version)
+        ruht = stand_.get("status") not in ("laeuft", "wartet")
+        return {**stand_, "ordner": ordner, "frueher_alt": veraltet(s.kennung) if ruht else ""}
     frueher = letzte_sitzung(fall) if b is not None else ""
     return {"status": "aus", "sitzung": "", "modell": "", "meldung": "", "lage": "", "frage": None, "wer": [], "verlauf": [], "wartend": [], "unterlagen": "", "v": 0,
-            "neu_beginnen": version > 0, "frueher": frueher, "ordner": ordner, "liste_ruht": False, "ohne_nachfrage": False}
+            "neu_beginnen": version > 0, "frueher": frueher, "frueher_alt": veraltet(frueher), "ordner": ordner, "liste_ruht": False, "ohne_nachfrage": False}
 
 
 def offene_fragen(b: "bedienung_modul.Bedienung | None") -> list[dict]:
@@ -803,7 +869,8 @@ def offene_fragen(b: "bedienung_modul.Bedienung | None") -> list[dict]:
     return aus
 
 
-def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
+def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict, hinweis: str = "") -> dict:
+    """`hinweis`: ein Satz der Oberfläche, der im Chat vor dem Start steht (weshalb die Ermittlung neu beginnt)."""
     fall = b._fall_id(str(d.get("fall") or ""))
     fall_daten(fall)
     alt = _sitzung(b, fall)
@@ -820,6 +887,8 @@ def ermittlung_starten(b: "bedienung_modul.Bedienung", d: dict) -> dict:
             b.vermerken(fall, "Nachricht nicht zugestellt", f"{kurz(w['text'], 300)} (die Ermittlung wurde neu gestartet)", sitzung=alt.kennung)
         s.verlauf, s.nummer, s.version = alt.verlauf, alt.nummer, alt.version + 1
     b.ermittlungen[fall] = s
+    if hinweis:
+        s.notieren("oberfläche", hinweis)
     pflicht = pflichtquellen.vorgabe(fall_daten(fall))      # sie stehen in fall.json. Die Ermittlung liest sie mit fall_status
     s.notieren("sachbearbeiter", f"Ermittlung starten: /ermittlung {fall}" + (f"\n\n{vorgaben}" if vorgaben else "")
                + (f"\n\nPflichtquellen: {', '.join(pflicht)}" if pflicht else ""), "sachbearbeiter")
@@ -868,9 +937,27 @@ def _fortsetzbar(b: "bedienung_modul.Bedienung", fall: str, port: int) -> Sitzun
     return s
 
 
+def _neu_statt_fortsetzen(b: "bedienung_modul.Bedienung", d: dict, fall: str, vorgaben: str = "") -> dict | None:
+    """Begann die Sitzung, die fortgesetzt würde, unter älteren Regeln, beginnt die Ermittlung stattdessen neu: mit dem Stand der
+    Fallakte und, wenn es eine gibt, mit der Nachricht des Sachbearbeiters als Vorgabe. Der Chat bleibt stehen, und der Grund
+    steht darin und im Sitzungsprotokoll. None, wenn sich die Sitzung fortsetzen lässt oder gerade arbeitet."""
+    s = _sitzung(b, fall)
+    if s is not None and s.als_dict()["status"] in ("laeuft", "wartet"):
+        return None
+    grund = veraltet((s.kennung if s is not None else "") or letzte_sitzung(fall))
+    if not grund:
+        return None
+    b.vermerken(fall, "Frühere Sitzung nicht fortgesetzt", grund)
+    ermittlung_starten(b, {**d, "vorgaben": vorgaben}, hinweis=grund)
+    return {"meldung": grund + (" Deine Nachricht geht als Vorgabe mit." if vorgaben else ""), "neu": True}
+
+
 def ermittlung_fortsetzen(b: "bedienung_modul.Bedienung", d: dict) -> dict:
     fall = b._fall_id(str(d.get("fall") or ""))
     fall_daten(fall)
+    neu = _neu_statt_fortsetzen(b, d, fall)
+    if neu:
+        return neu
     s = _fortsetzbar(b, fall, int(d.get("_port") or 0))
     s.notieren("sachbearbeiter", "Ermittlung fortsetzen.", "sachbearbeiter")
     s.starten(AUFTRAG_WEITER, fortsetzen=True)
@@ -905,6 +992,9 @@ def ermittlung_nachricht(b: "bedienung_modul.Bedienung", d: dict) -> dict:
         b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500) + " (laufender Auftrag unterbrochen)", sitzung=s.kennung)
         _trotzdem_vermerken(b, s, fall, text, trotzdem, "Nachricht")
         return {"meldung": "Der laufende Auftrag ist unterbrochen. Die Ermittlung arbeitet mit der Nachricht weiter."}
+    neu = _neu_statt_fortsetzen(b, d, fall, vorgaben=text)
+    if neu:
+        return neu
     s = _fortsetzbar(b, fall, int(d.get("_port") or 0))
     s.notieren("sachbearbeiter", text, "sachbearbeiter")
     s.starten(text, fortsetzen=True)

@@ -52,6 +52,7 @@ auf 127.0.0.1 und nimmt beide Namen an. Den Browser öffnet der Befehl über Pro
 | Oben: Kopf des Falls | Fall-ID, Titel, Freigaben (erteilt oder nicht, durch wen, wann) und die Schrittleiste. |
 | Schrittleiste | Fall angelegt, Indikatoren, Plan, Abfragen, Gegenprüfung, Rapport. Jeder Schritt sagt, woran die Oberfläche ihn erkennt (zum Beispiel «12 von 13 Befunden gegengeprüft»). Fehlt ein Schritt in der Akte, steht «nicht abgelegt». |
 | Mitte | Die Ansichten, siehe unten. |
+| Links unten: Fassung | Unter der Navigation steht, welche Fassung des Arbeitsplatzes auf dem Rechner liegt («Arbeitsplatz: Fassung vom 20.11.2026 (ac08af8)»). Beim Start fragt die Oberfläche einmal beim Git-Server nach, ob im Repository eine neuere liegt. Wenn ja, steht dort der Hinweis mit dem Weg: `git pull`, dann die Einrichtung. Die Anfrage geht direkt hinaus, wie `git pull`, nicht über `OSINT_PROXY`. Abstellen: `OSINT_STAND_PRUEFEN=0` in `.env`. |
 | Rechts: Arbeitsspur | Das Abfrageprotokoll, laufend nachgeführt (alle drei Sekunden). Je Eintrag steht, wie gefragt wurde: passiv, aktiv, über Tor (Robin), «Robin, lokal» (im Container, nichts ging hinaus), lokale Liste, Auswertung, von Hand. Was nicht ausgeführt wurde, trägt «⊘» und den Grund. Filter: Abfragen, «kein Treffer», Fehlschläge, Auswertungen, Freigaben. Darunter Zahl der Einträge und Stand der Protokollkette. |
 | Rechts unten: Chat | Nur bedienbar: der Chat mit der Ermittlung, klein und einklappbar. In der Ansicht «Ermittlung» steht er gross in der Mitte. |
 | Über allem: Rückfrage | Nur bedienbar: Braucht Claude Code eine Zustimmung, erscheint ein Fenster, in jeder Ansicht. |
@@ -502,6 +503,16 @@ lässt sich einklappen.
   senden»). Strg+Eingabe sendet.
 - **Anhalten, fortsetzen, neu starten.** Anhalten beendet den laufenden Schritt. Fortsetzen nimmt dieselbe Sitzung
   wieder auf, auch nach einem Neustart der Oberfläche: Sie findet die letzte Sitzung zum Fall im Sitzungsprotokoll.
+- **Nach einer Aktualisierung beginnt die Ermittlung neu.** Wurden die Regeln des Arbeitsplatzes geändert, seit die
+  frühere Sitzung begann (CLAUDE.md, ein Skill, ein Agent, die Einstellungen von Claude Code, etwa durch `git pull`),
+  setzt die Oberfläche sie nicht fort: Im Verlauf einer alten Sitzung stehen der Text der alten Anleitung und ihre
+  eigenen Entscheide von damals. «Fortsetzen» und eine Nachricht starten dann eine neue Sitzung mit `/ermittlung`, die
+  Nachricht geht als Vorgabe mit. Der Grund steht im Chat und im Sitzungsprotokoll («Frühere Sitzung nicht
+  fortgesetzt»). Der Browser erfährt es im Feld `frueher_alt`. Die neue Sitzung übernimmt, was im Arbeitsstand schon
+  abgelegt ist (Indikatoren, Plan, Befundmeldungen der Analysten, Befunde): So verlangt es der Skill `ermittlung`, auch
+  nach «Neu starten». Was schon abgefragt ist, bleibt im Protokoll, und dieselbe Abfrage kommt je nach Quelle eine Zeit
+  lang aus dem Fall-Cache. Nicht geprüft ist, wie sich das echte Claude Code verhielte, setzte man eine solche Sitzung
+  doch fort: Die Oberfläche lässt es nicht darauf ankommen.
 - **Was hier steht, liest das Sprachmodell.** Jede Eingabe geht durch die strenge PII-Prüfung. Findet sie etwas, geht
   nichts hinaus, und die Meldung zeigt die Stelle maskiert.
 - **«Trotzdem senden».** Einer Nachricht sieht die Prüfung nicht an, zu wem eine Angabe gehört. Gehört sie zur

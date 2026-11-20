@@ -286,6 +286,11 @@ def main() -> int:
                 return enden()
     if bedienung is not None:               # im Hintergrund: Der Browser soll nicht warten, bis Docker geantwortet hat
         threading.Thread(target=anlauf, daemon=True).start()
+
+    def fassung() -> None:                  # welche Fassung hier liegt, und ob es eine neuere gibt: eine Anfrage an den Git-Server, im Hintergrund
+        for satz in dienste.fassung_beim_start():
+            print(satz, flush=True)
+    threading.Thread(target=fassung, daemon=True).start()
     dienste.oberflaeche_merken(port)        # so findet «tools/dienste.py aus» sie, auch aus einem anderen Terminal
     threading.Thread(target=wache, daemon=True).start()
     with contextlib.suppress(ValueError, OSError, AttributeError):

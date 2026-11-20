@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import shutil
 import signal
 import stat
@@ -36,6 +37,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -238,6 +240,87 @@ def stand_zeilen(s: dict | None = None) -> list[Zeile]:
     if s["tor"]["gehoert"]:
         zeilen.append((GUT, "Tor (Proxy)", "läuft") if s["tor"]["laeuft"] else (AUS, "Tor (Proxy)", "läuft nicht"))
     return zeilen
+
+
+# --------------------------------------------------------------------------- Welche Fassung läuft hier?
+
+# Am 20.11.2026 lief am Arbeitsplatz des Eigentümers eine Fassung von vor dem 19.11., ohne dass es irgendwo stand: Die
+# Korrekturen lagen im Repository, aber nicht auf dem Rechner. Seither zeigen Oberfläche und Prüfung, welche Fassung hier
+# liegt, und die Oberfläche fragt beim Start einmal beim Git-Server nach, ob es eine neuere gibt. Die Anfrage geht direkt
+# hinaus, wie «git pull», nicht über OSINT_PROXY: Aus einem Fall steht nichts darin.
+STAND_PRUEFEN = "OSINT_STAND_PRUEFEN"       # «0», «nein» oder «aus»: Die Oberfläche fragt beim Start nicht nach einer neueren Fassung
+_FASSUNG: dict = {}                         # was fassung_stand() zuletzt festgestellt hat
+
+
+def fassung(projekt: Path | None = None) -> dict | None:
+    """Welche Fassung des Arbeitsplatzes in diesem Ordner liegt, laut Git: {"commit", "datum", "zweig"}. Fragt nichts im Netz.
+    None ohne Git oder ausserhalb eines Git-Arbeitsverzeichnisses (zum Beispiel aus einem Archiv entpackt)."""
+    ordner = str(projekt or plattform.PROJEKT)
+    code, text = einrichten.lauf(["git", "-C", ordner, "log", "-1", "--format=%h%x09%cI"], 15)
+    letzte = text.splitlines()[-1] if code == 0 and text.strip() else ""
+    if "\t" not in letzte:
+        return None
+    commit, datum = letzte.split("\t", 1)
+    code, zweig = einrichten.lauf(["git", "-C", ordner, "rev-parse", "--abbrev-ref", "HEAD"], 15)
+    return {"commit": commit.strip(), "datum": datum.strip(), "zweig": zweig.strip() if code == 0 else ""}
+
+
+def fassung_fern(projekt: Path | None = None, zeit: int = 8) -> dict | None:
+    """Gibt es im Repository, aus dem dieser Ordner stammt, eine neuere Fassung? Eine Anfrage an den Git-Server (origin), ohne
+    Anmeldedialog und mit kurzer Frist. Es geht dabei nichts aus einem Fall hinaus. {"commit": Stand des Hauptzweigs dort,
+    "neuer": bool}: «neuer» heisst, dieser Stand ist in dem, was hier ausgecheckt ist, noch nicht enthalten (auch wenn er schon
+    geholt, aber nicht übernommen wurde). None, wenn es sich nicht feststellen lässt (kein Netz, kein Git, keine Anmeldung
+    beim Server)."""
+    ordner = str(projekt or plattform.PROJEKT)
+    umgebung = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+    umgebung.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=5")
+    code, text = einrichten.lauf(["git", "-C", ordner, "ls-remote", "origin", "HEAD"], zeit, env=umgebung)
+    treffer = re.search(r"^([0-9a-f]{40})\s+HEAD\s*$", text, re.M) if code == 0 else None
+    if not treffer:
+        return None
+    commit = treffer.group(1)
+    code, _ = einrichten.lauf(["git", "-C", ordner, "merge-base", "--is-ancestor", commit, "HEAD"], 15)      # 0: hier schon enthalten
+    return {"commit": commit, "neuer": code != 0}
+
+
+def fassung_text(f: dict | None) -> str:
+    """Die Fassung in einer Zeile: «Fassung vom 20.11.2026 (ac08af8)». Leer, wenn sie sich nicht feststellen lässt."""
+    if not f:
+        return ""
+    try:
+        tag = datetime.fromisoformat(f["datum"]).strftime("%d.%m.%Y")
+    except (KeyError, ValueError):
+        tag = "unbekanntem Datum"
+    zweig = f.get("zweig") or ""
+    return f"Fassung vom {tag} ({f.get('commit', '?')}" + (f", Zweig {zweig}" if zweig not in ("", "main", "HEAD") else "") + ")"
+
+
+AKTUALISIEREN = f"Aktualisieren: die Oberfläche beenden, im Projektordner «git pull» ausführen, dann «{SETUP}» («Prüfen und auffrischen»)."
+
+
+def fassung_stand(fern: bool = False, projekt: Path | None = None) -> dict:
+    """Was Oberfläche und Prüfung zur Fassung zeigen: {"text", "neuer" (True, False oder None: nicht gefragt oder nicht feststellbar),
+    "hinweis"}. `fern`: beim Git-Server nachfragen. Ohne `fern` kommt, was zuletzt festgestellt wurde."""
+    if fern or "text" not in _FASSUNG:
+        lokal = fassung(projekt)
+        _FASSUNG.update(text=fassung_text(lokal), neuer=_FASSUNG.get("neuer"), hinweis=_FASSUNG.get("hinweis", ""))
+        if fern and lokal:
+            antwort = fassung_fern(projekt)
+            neuer = None if antwort is None else bool(antwort["neuer"])
+            _FASSUNG.update(neuer=neuer, hinweis=("Im Repository liegt eine neuere Fassung dieses Arbeitsplatzes. " + AKTUALISIEREN) if neuer else "")
+    return dict(_FASSUNG)
+
+
+def fassung_fragen() -> bool:
+    """Darf beim Git-Server nachgefragt werden? Nein, wenn es abgestellt ist (OSINT_STAND_PRUEFEN=0). Das gilt für die Oberfläche
+    und für die Prüfung der Einrichtung."""
+    return plattform.einstellung(STAND_PRUEFEN, "1").strip().lower() not in ("0", "nein", "aus", "false", "no")
+
+
+def fassung_beim_start() -> list[str]:
+    """Was die Oberfläche beim Start zur Fassung sagt. Fragt beim Git-Server nach, ausser es ist abgestellt (OSINT_STAND_PRUEFEN=0)."""
+    s = fassung_stand(fern=fassung_fragen())
+    return [satz for satz in (s["text"] and f"{s['text']}.", s["hinweis"]) if satz]
 
 
 # --------------------------------------------------------------------------- Die Oberfläche finden und beenden

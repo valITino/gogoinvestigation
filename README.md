@@ -138,6 +138,24 @@ zeigt die Übersicht und verändert nichts.
 auffrischen» (fragt nichts, die Einstellungen bleiben), «Einstellungen ändern» (führt direkt zur Übersicht) und
 «Nur den Stand zeigen». So kommt ein neuer Schlüssel dazu, ein Proxy weg oder Mythos an.
 
+**Aktualisieren.** Korrekturen und Neues kommen erst mit diesen Schritten auf euren Rechner. Ein Pull Request, der auf
+GitHub gemergt ist, ändert an eurem Arbeitsplatz noch nichts:
+
+```bash
+cd ~/gogoinvestigation      # euer Projektordner
+git pull
+./setup.sh                  # «Prüfen und auffrischen». Unter Windows: .\setup.cmd
+```
+
+Danach die Oberfläche beenden und neu starten. Welche Fassung auf dem Rechner liegt, zeigt die Oberfläche unten in der
+Navigation («Arbeitsplatz: Fassung vom …») und `python3 tools/pruefen.py`. Beim Start fragt die Oberfläche einmal beim
+Git-Server nach, ob dort eine neuere Fassung liegt, und sagt es dann im Terminal und in der Navigation. Die Prüfung tut
+dasselbe mit `--live`. Die Anfrage geht direkt hinaus, wie `git pull`, nicht über `OSINT_PROXY`. Aus einem Fall steht
+nichts darin. Wer diese Nachfrage nicht will: `OSINT_STAND_PRUEFEN=0` in `.env`. Eine Ermittlung, die vor einer
+Aktualisierung begann, setzt die Oberfläche danach nicht fort: Sie beginnt in einer neuen Sitzung und sagt es. Die neue
+Sitzung übernimmt, was im Arbeitsstand schon abgelegt ist (Indikatoren, Plan, Befundmeldungen), statt es noch einmal zu
+erarbeiten.
+
 **Ohne Rückfragen.** Ohne Terminal fragt die Einrichtung von selbst nichts, etwa in einem Skript, in einer
 CI-Umgebung oder wenn die Ausgabe in eine Datei geht. Im Terminal erreicht das `--ohne-rueckfragen`. Dann
 gelten die Optionen der Befehlszeile und die Werte aus `.env`, und Fehlendes wird ohne Nachfrage installiert. Steht
@@ -178,7 +196,7 @@ Einrichtung in der Regel ohne Administratorrechte aus. Fehlt Git for Windows, ka
 4. Web-Check per Docker auf `127.0.0.1:3000` starten und das Robin-Abbild laden, falls Docker läuft.
 5. Claude Code: MCP-Server freischalten, Mythos freischalten, wenn ihr es erklärt habt
    (`.claude/settings.local.json`), Anmeldung prüfen.
-6. Musterfall bauen und die Einrichtung mit 122 Selbsttests prüfen.
+6. Musterfall bauen und die Einrichtung mit 126 Selbsttests prüfen.
 
 Auf Wunsch folgen die Anmeldung bei Claude Code und die Testabfragen. Während längerer Arbeiten läuft eine Zeile mit,
 die sagt, was gerade geschieht. Am Ende steht, wo ihr steht: ob der Arbeitsplatz einsatzbereit ist, was neu
@@ -377,7 +395,8 @@ davon (Web-Check) braucht Docker. Die Blockchain-Analyse läuft für Bitcoin, Et
 | Robin (Dark Web) | keine | Docker-Abbild, die Einrichtung lädt es | Tor läuft im Container: Auf dem Rechner braucht es weder Tor noch SOCKS5. Der Container muss das Tor-Netz erreichen, siehe [Hinweise je Quelle](docs/QUELLEN.md#hinweise-je-quelle). Eigener Fork: `ROBIN_IMAGE` setzen. |
 
 Weitere Einstellungen in `.env`: `OSINT_PROXY` (alle Abfragen über einen Proxy leiten, damit sie nicht auf eure
-Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, und für eigene Instanzen der
+Adresse zurückführen), `OSINT_ZEITZONE`, `OSINT_USER_AGENT`, `OSINT_MYTHOS`, `OSINT_RIPESTAT_APP`, `OSINT_LISTEN`, `OSINT_STAND_PRUEFEN`
+(mit `0` fragen Oberfläche und Prüfung nicht beim Git-Server nach einer neueren Fassung), und für eigene Instanzen der
 Block-Explorer `KRYPTO_BITCOIN_API`, `KRYPTO_ETHEREUM_API` (je Kette), `KRYPTO_TRON_API`.
 
 **Quellen ausschalten.** `OSINT_QUELLEN_AUS` nennt die Quellen, die an diesem Arbeitsplatz nicht gefragt werden sollen:
@@ -1201,6 +1220,7 @@ Technisch erzwungen, nicht nur dem Modell aufgetragen:
 |---|---|---|
 | Keine übersehenen Personendaten | PII-Prüfung vor der Aufnahme. Seit dem 19.11.2026 sperrt sie nach der Vorgabe des Eigentümers: was zur Dienststelle, zur Verfasserin oder zum Verfasser (EL-Fall) und zu Geschädigten gehört und im Klartext dasteht (Rufnummer, IBAN, AHV-Nummer, Geburtsdatum, Kontrollschild, Kreditkarte, Adresse, E-Mail-Adresse, Felder wie «Heimatort»). Die Seite erkennt sie am Aufbau des Dokuments. Angaben der Täterseite und Angaben ohne Abschnitt zeigt sie an und sperrt nicht. Immer gesperrt: ein Dokument ganz ohne Platzhalter und der Rest einer Word-Feldfunktion mit Klartext. `OSINT_SCHUTZ=streng` sperrt jede Angabe wie früher. Titel, Dateinamen und Eingaben im Chat prüft die Oberfläche immer streng, bevor sie das Sprachmodell erreichen. Die Prüfung erkennt Muster, keine Namen. | `tools/pii_pruefung.py`, `tools/ui/bedienung.py`, `tools/ui/sitzung.py` |
 | In den Fall kommt die Textfassung, nie das Original | Der Akten-Eingang der Oberfläche liest jede Datei im Speicher und nimmt nur ihren Text auf, unter einem neutralen Namen. Verfasser, eingebettete Bilder und Änderungsverlauf eines Originals bleiben draussen. Was sich nicht lesen lässt (Bilder, Ton, alte Formate), geht nicht in den Fall. | `tools/ui/bedienung.py`, `tools/pii_pruefung.py` |
+| Was in einen Fall kommt, entscheidet die Aufnahme | Die PII-Prüfung sperrt bei der Aufnahme, und nur der Sachbearbeiter kann das übersteuern. Liegt ein Dokument im Fall, hält die Ermittlung wegen Personendaten darin nicht mehr an (Entscheid des Eigentümers vom 20.11.2026): Sie nennt die Stellen ohne die Werte, verwendet sie nicht und arbeitet weiter. Anhalten schützte dort nichts mehr, das Dokument ist dann schon gelesen. | `tools/pii_pruefung.py`, `CLAUDE.md`, Skills `ermittlung` und `ioc-extraktion` |
 | Geprüft ist nur, was die PII-Prüfung aufgenommen hat | `fall_status` nennt den Agenten nur Dokumente, deren Prüfsumme im Register der PII-Prüfung steht. Von Hand Kopiertes und nachträglich Verändertes meldet es als ungeprüft, ohne den Namen zu nennen. Die Oberfläche warnt im Kopf des Falls. Dass ein Agent ein solches Dokument liest, verhindert seit dem Wegfall des Wächters keine Sperre mehr. | `gateway/akte.py` (`eingang_stand`), `gateway/server.py` |
 | Keine Abfrage ohne Fall und Zweck | Das Gateway weist sie ab. | `gateway/kern.py` |
 | Aktiv und Personenbezug nur mit Freigabe | Das Gateway prüft `fall.json`. Abgelehnte Versuche stehen im Protokoll. Aktive Werkzeuge fragen zudem jedes Mal nach. | `gateway/kern.py`, `.claude/settings.json` |
@@ -1316,6 +1336,9 @@ Was ihr wissen müsst:
 | «… ist nicht durch die PII-Prüfung freigegeben» | Datei von Hand in den Eingang kopiert oder nachträglich geändert | `python3 tools/fall.py aufnehmen <Fall-ID> <Datei>` |
 | Dokument wird nicht aufgenommen (Sperrfunde) | Eine Angabe zur Dienststelle, zur Verfasserin oder zu Geschädigten steht im Klartext da, oder Fehlalarm | In der Oberfläche «nochmals pseudonymisieren»: Der lokale Bildschirm zeigt die Stelle. Wer das Dokument bewusst so aufnehmen will: in der Oberfläche «Trotzdem aufnehmen: Risiko übernehmen» (Kürzel und Begründung), am Terminal `--trotzdem "Begründung" --durch "Kürzel"` |
 | Die Prüfung sperrt auch Angaben der Täterseite | Das Dokument trägt keinen einzigen Platzhalter, oder `OSINT_SCHUTZ=streng` ist gesetzt | Ein Dokument ohne Platzhalter gilt als nicht pseudonymisiert. Sonst die Einstellung in der Schlüsseldatei prüfen |
+| Die Ermittlung hält an und schreibt «Im Eingangsdokument stehen echte Personendaten im Klartext», oder der Chat nennt Werkzeuge bei ihrem technischen Namen (`Bash`, `Read`, `fall_status`) | Auf dem Rechner liegt eine Fassung von vor dem 19.11.2026. Seither hält die Ermittlung deswegen nicht mehr an | Aktualisieren: `git pull`, dann `./setup.sh` («Prüfen und auffrischen»), die Oberfläche neu starten. Welche Fassung hier liegt, zeigt die Navigation der Oberfläche und `python3 tools/pruefen.py` |
+| Die Oberfläche meldet «Im Repository liegt eine neuere Fassung dieses Arbeitsplatzes» | Auf GitHub ist etwas dazugekommen, das auf diesem Rechner noch fehlt | Wie oben aktualisieren. Die Nachfrage abstellen: `OSINT_STAND_PRUEFEN=0` in `.env` |
+| «Fortsetzen» beginnt die Ermittlung neu | Seit dem Beginn der früheren Sitzung wurden die Regeln des Arbeitsplatzes geändert (Aktualisierung). Im Verlauf der alten Sitzung steht noch die alte Anleitung | Nichts: Die neue Sitzung übernimmt, was im Arbeitsstand schon abgelegt ist (Indikatoren, Plan, Befundmeldungen), und macht dort weiter. Was schon abgefragt ist, bleibt im Protokoll, und dieselbe Abfrage kommt je nach Quelle eine Zeit lang aus dem Fall-Cache |
 | `rapport.py` meldet Mängel | Aussage ohne Beleg, `hoch` mit nur einer Quelle, Gegenprüfung offen | An der Sache beheben. Zwischenstand mit `--entwurf`. |
 | Robin erscheint nicht | Docker fehlte bei der Einrichtung | Docker starten, Einrichtung erneut ausführen |
 | `rapport.py` meldet «Pflichtquelle …: nicht abgefragt für …» oder «… im Fall nie abgefragt» | Eine vorgegebene Quelle wurde für einen passenden Indikator nie gefragt, eine Suchquelle im ganzen Fall nie | Die Ermittlung fortsetzen: Sie holt die Abfrage nach. Fehlt dafür eine Freigabe oder ein Schlüssel: erteilen, einrichten oder die Quelle aus der Vorgabe nehmen (`python3 tools/fall.py quellen <Fall-ID>`, oder in der Oberfläche) |
@@ -1340,7 +1363,7 @@ PowerShell 7:
 
 - Die Einrichtung ohne Rückfragen in einem frischen Klon, unter Windows über `setup.ps1` und über `setup.cmd`.
   Dabei installiert sie Claude Code selbst, unter Linux und macOS auch `pdftotext`.
-- 122 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
+- 126 Selbsttests ohne Netz (`python3 tools/selbsttest.py`): Gateway über echtes MCP-stdio, Protokollkette samt
   Manipulationserkennung, Cache, Freigaben, Berechtigungen, Hook-Starter (unter Windows in
   Git Bash), Sitzungs-Hook samt Aufzeichnung der Modelle, Dateisperre und gleichzeitige Hooks, PII-Prüfung,
   Prüfregeln des Rapports, Zuteilung und Freischaltung der Modelle, Übereinstimmung der Agenten mit den
@@ -1595,7 +1618,8 @@ PowerShell 7:
   sperrte, und zeigt Angaben der Täterseite nur noch an. Bisher sperrte sie jede Rufnummer und jede IBAN, gleich auf
   welcher Seite: In der Oberfläche blieb dann nur, auch die Angaben der Täterseite zu ersetzen. Die lokale
   Pseudonymisierung lässt die Täterseite stehen, im ganzen Dokument gleich, und gibt Platzhaltern von anderer Hand
-  keinen zweiten. Die Agenten halten bei einer geschützten Angabe im Klartext nicht mehr an: Sie verwenden sie nicht,
+  keinen zweiten. Die Agenten halten bei einer geschützten Angabe im Klartext nicht mehr an (seit dem 20.11.2026 auch
+  nicht bei einem Dokument ohne Platzhalter): Sie verwenden sie nicht,
   nennen die Stelle ohne den Wert und arbeiten weiter. Der Sachbearbeiter kann in der Oberfläche das Risiko übernehmen
   und ein gesperrtes Dokument so aufnehmen, wie es ist: mit Kürzel und Begründung, vermerkt im Register des Falls und
   im Sitzungsprotokoll (Entscheid des Eigentümers vom 19.11.2026, bis dahin ging das nur am Terminal). Vier neue
@@ -1679,6 +1703,48 @@ PowerShell 7:
   ein Analyst die Regeln für Robin am Terminal einhält: Sie sind ihm aufgetragen, erzwungen werden sie dort nicht, das
   Protokoll weist Verstösse aus. Das Ende einer Antwort und die Rückfrage eines MCP-Servers in einer Sitzung mit Fenster:
   Gesehen sind beide nur ohne Fenster. Windows und macOS: Dort laufen die Selbsttests in der CI, gesehen ist dort nichts.
+- Wegen Personendaten in einem Eingangsdokument hält die Ermittlung seit dem 20.11.2026 nie mehr an, und ein veralteter
+  Arbeitsplatz fällt auf. Anlass war ein Lauf des Eigentümers an seinem Arbeitsplatz am selben Tag: Die Ermittlung hielt
+  zweimal an, weil im Rapport Reste von Word-Feldern mit Klartext standen. Sein Verlauf spricht dafür, dass auf dem
+  Rechner noch die Fassung von vor dem 19.11.2026 lag: Der Chat nannte die Werkzeuge bei ihrem technischen Namen, und die
+  Ermittlung hielt an, wie es die Anleitung jener Fassung verlangte («Findest du echte Personendaten im Dokument, halte
+  an»). Gesehen ist nur der Verlauf, nicht der Rechner. Die Korrekturen vom 19.11. lagen im Repository, und nichts zeigte
+  an, welche Fassung auf einem Rechner liegt.
+  **Geändert:** Die letzte Regel, nach der die Ermittlung noch anhielt (ein Dokument ganz ohne Platzhalter), ist entfernt
+  (Entscheid des Eigentümers vom 20.11.2026). Was in einen Fall kommt, entscheidet der Sachbearbeiter bei der Aufnahme. Die
+  Ermittlung nennt die Stellen ohne die Werte, verwendet sie nicht und arbeitet weiter. Die Oberfläche und
+  `tools/pruefen.py` zeigen, welche Fassung auf dem Rechner liegt. Beim Start fragt die Oberfläche einmal beim Git-Server
+  nach, ob es eine neuere gibt, und sagt es (direkt, nicht über den Proxy, abstellbar mit `OSINT_STAND_PRUEFEN=0`).
+  Begann eine Sitzung, bevor die
+  Regeln des Arbeitsplatzes geändert wurden, setzt die Oberfläche sie nicht fort, sondern beginnt neu: Im Verlauf einer
+  alten Sitzung stehen die alte Anleitung und ihre eigenen Entscheide von damals. Damit ein Neubeginn nicht alles ein
+  zweites Mal kostet, sieht der Skill `ermittlung` jetzt zuerst nach, was im Arbeitsstand schon liegt (Indikatoren,
+  Plan, Befundmeldungen der Analysten, Befunde), übernimmt es und macht dort weiter. Das gilt für jeden Start, auch nach
+  «Neu starten». Wer wirklich von vorn beginnen will, schreibt es als Vorgabe. Das README hat den Abschnitt
+  «Aktualisieren». Vier neue Selbsttests gelten dem. In 32 Gegenproben fehlte je eine der Korrekturen: Jede fiel in
+  einem der vier Tests auf.
+  **Gesehen** in der Prüfumgebung (20.11.2026, Linux): Mit der Fassung vom 18.11.2026 entstand aus einem erfundenen
+  Word-Rapport dieselbe Lage wie am Arbeitsplatz: Die Textfassung enthielt die Anweisungen der Felder mit den ersetzten
+  Werten, die PII-Prüfung meldete «keine Sperrfunde», und das Dokument lag im Fall. Diese Fallakte öffnete die heutige
+  Fassung ohne Einwand, die Dokumente blieben anerkannt. Mit dem echten Claude Code 2.1.329 (ohne Fenster, ohne
+  Subagenten, Abfragewerkzeuge gesperrt, ohne Mythos: auf dem Modell des Projekts) lief `/ermittlung` je einmal: an
+  diesem Fall mit den Regeln vom 19.11.2026 und, mit den Regeln dieses Pakets, an einem zweiten Fall mit einem
+  erfundenen Rapport ganz ohne Platzhalter. Beide Läufe gingen durch die Phasen 0 bis 2, ohne anzuhalten: Indikatoren
+  und Plan entstanden. Im ersten nannte `klartext.json` sieben Stellen ohne einen Wert. Im zweiten sagte die Ermittlung
+  im ersten Satz, dass das Dokument nicht pseudonymisiert ist, und trug es als Ganzes ein. Keiner der erfundenen
+  Klartexte stand im Arbeitsstand, im Protokoll, im Sitzungsprotokoll oder in der Antwort. Ein dritter Lauf startete
+  `/ermittlung` am zweiten Fall noch einmal: Die neue Sitzung übernahm Indikatoren, Plan und die Meldung zum Klartext
+  unverändert (dieselben Prüfsummen, kein neuer Eintrag im Protokoll) und sagte es. Claude Code zählte dafür 8 Schritte
+  statt 14. Drei Läufe sind eine Stichprobe, kein Nachweis für jedes Dokument. Im Browser (Chromium ohne Fenster, mit
+  einem Programm, das Claude Code spielt): Bei einer Sitzung von vor der Änderung der Regeln sagt der Chat, weshalb sie
+  nicht fortgesetzt wird, «Fortsetzen» und eine Nachricht beginnen neu (die Nachricht als Vorgabe), und eine Sitzung von
+  danach wird fortgesetzt wie immer. Die Fassung steht unter der Navigation. Die Nachfrage beim Git-Server meldete für
+  den Stand vom 18.11.2026 «neuere Fassung», für den heutigen nicht.
+  **Nicht geprüft:** dieselben Läufe mit Mythos (in der Prüfumgebung nicht freigeschaltet) und über die Oberfläche. Der
+  Rapport des Eigentümers: Gesehen sind nur zwei erfundene, einer mit derselben Art von Resten, einer ganz ohne
+  Platzhalter. Wie sich das echte Claude Code verhielte, setzte man eine Sitzung von vor einer Aktualisierung doch fort:
+  Die Oberfläche lässt es nicht darauf ankommen. Die Übernahme von Befundmeldungen und Befunden (Phasen 3 bis 8): Gesehen
+  ist sie nur für Indikatoren und Plan. Die Nachfrage beim Git-Server mit Anmeldung über SSH oder einen Anmeldehelfer.
 - Was nur ein Mensch tun darf (Freigabe, Beleg von Hand, Pseudonymisieren, Zurückführen, die bedienbare Oberfläche),
   verlangt ein echtes Terminal für Ein- und Ausgabe (`plattform.terminal`). Unter Windows genügt die übliche Abfrage
   dafür nicht: Python hält dort auch das Gerät NUL für ein Terminal, und `tools/reidentifizieren.py` lief bis zum
