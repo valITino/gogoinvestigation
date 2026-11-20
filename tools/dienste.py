@@ -26,19 +26,21 @@ import contextlib
 import hashlib
 import json
 import os
+import queue
 import shutil
 import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gateway import plattform  # noqa: E402
+from gateway import plattform, robin as robin_antwort  # noqa: E402
 
 if __name__ == "__main__":
     plattform.start()
@@ -47,6 +49,10 @@ from gateway.plattform import AUS, FEHLT, GUT, PY, SETUP, WINDOWS  # noqa: E402
 from tools import einrichten  # noqa: E402
 
 WEBCHECK = "osint-webcheck"         # so heisst der Container in docker-compose.yml
+# Bis zum 20.11.2026 hängte .mcp.json dieses Docker-Volume in Robins Container ein: Robin konnte dort eigene Recherchen ablegen,
+# ausserhalb der Fallakte. Seither wird es nicht mehr eingehängt. Wo es von früher noch da ist, zeigt der Stand es an. Entfernt
+# wird hier nichts: Das tun die Einrichtung (nur ein leeres) und «Alles löschen» (nach dem Sichern), beide über tools/loeschen.py.
+ROBIN_VOLUME = "robin-investigations"
 Zeile = tuple[str, str, str]        # Zeichen, was, wie
 MERKER_BASIS: Path | None = None    # nur für die Selbsttests: Sie legen ihre Merker nicht zu denen einer echten Oberfläche
 STUMM: dict = {"stumm": True}       # Antwort von _auskunft(): Auf dem Port hört jemand, antwortet aber nicht rechtzeitig
@@ -91,6 +97,107 @@ def robin(docker: dict) -> list[str]:
     return text.split() if code == 0 else []
 
 
+def robin_ablage(docker: dict) -> dict | None:
+    """Das Docker-Volume aus einer früheren Einrichtung, in das Robin eigene Recherchen ablegen konnte. None: Es gibt keines
+    (oder Docker ist nicht erreichbar). Sonst {"dateien": Zahl der Dateien darin, None wenn sie sich nicht zählen lassen}."""
+    if not docker["laeuft"] or einrichten.lauf(docker["vor"] + ["docker", "volume", "inspect", ROBIN_VOLUME], 10)[0] != 0:
+        return None
+    # Zählen kann nur ein Container. Robins Abbild bringt das Nötige mit. Fehlt es, bleibt die Zahl offen
+    code, text = einrichten.lauf(docker["vor"] + ["docker", "run", "--rm", "--network", "none", "--entrypoint", "sh", "-v", f"{ROBIN_VOLUME}:/v:ro",
+                                                 robin_abbild(), "-c", "find /v -type f | wc -l"], 60)
+    letzte = (text.strip().splitlines() or [""])[-1].strip()
+    return {"dateien": int(letzte) if code == 0 and letzte.isdigit() else None}
+
+
+def robin_bereitschaft(docker: dict, frist: int = 90, maschinen: bool = True, melden=None, pause: float = 5.0) -> dict:
+    """Startet Robin so, wie Claude Code es tut, und fragt, ob Tor im Container bereit ist. Es wird nichts gesucht und keine Seite
+    gelesen. Dass das Abbild geladen ist, sagt darüber nichts: Lässt das Netz Tor nicht zu, antwortet Robin auf jede Suche mit
+    «Tor ist noch nicht bereit» (gesehen am 20.11.2026).
+
+    Rückgabe: {"gestartet", "tor", "sekunden", "maschinen" ("14 von 16" oder None), "fehler"}. `melden(text)` bekommt den Stand,
+    solange gewartet wird. `maschinen`: Steht Tor, fragt Robin zusätzlich jede Suchmaschine einmal an. `pause`: Sekunden zwischen
+    zwei Fragen nach Tor."""
+    aus = {"gestartet": False, "tor": False, "sekunden": 0, "maschinen": None, "fehler": ""}
+    name = f"osint-robin-pruefung-{os.getpid()}"
+    try:
+        p = subprocess.Popen(docker["vor"] + ["docker", "run", "-i", "--rm", "--name", name, robin_abbild(), "mcp"],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError as e:
+        return {**aus, "fehler": f"Der Container liess sich nicht starten ({type(e).__name__}: {e})."}
+    antworten: queue.Queue = queue.Queue()
+
+    def lesen() -> None:
+        for zeile in p.stdout:
+            with contextlib.suppress(ValueError):
+                antworten.put(json.loads(zeile))
+
+    threading.Thread(target=lesen, daemon=True).start()
+    nummer = 0
+
+    def frage(methode: str, angaben: dict | None = None, warten: float = 30.0) -> dict | None:
+        nonlocal nummer
+        nummer += 1
+        try:
+            p.stdin.write((json.dumps({"jsonrpc": "2.0", "id": nummer, "method": methode, **({"params": angaben} if angaben is not None else {})}) + "\n").encode())
+            p.stdin.flush()
+        except OSError:
+            return None
+        ende = time.monotonic() + warten
+        while time.monotonic() < ende and p.poll() is None:
+            try:
+                antwort = antworten.get(timeout=min(1.0, max(0.05, ende - time.monotonic())))
+            except queue.Empty:
+                continue
+            if antwort.get("id") == nummer:
+                return antwort
+        return None
+
+    def bereitschaft(mit_maschinen: bool, warten: float) -> dict | None:
+        antwort = frage("tools/call", {"name": "robin_health", "arguments": {"check_engines": True} if mit_maschinen else {}}, warten)
+        if not antwort or "result" not in antwort:
+            return None
+        return robin_antwort.einordnen("robin_health", robin_antwort.text_aus((antwort["result"] or {}).get("content")))
+
+    anfang = time.monotonic()
+    try:
+        erste = frage("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "osint-pruefung", "version": "1"}}, 60.0)
+        if not erste or "result" not in erste:
+            return {**aus, "fehler": "Robin hat nach dem Start nicht geantwortet (Abbild beschädigt, oder Docker hat den Container nicht gestartet)."}
+        aus["gestartet"] = True
+        with contextlib.suppress(OSError):
+            p.stdin.write((json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n").encode())
+            p.stdin.flush()
+        while True:
+            stand_ = bereitschaft(False, 30.0)
+            aus["sekunden"] = int(time.monotonic() - anfang)
+            if stand_ is None:
+                return {**aus, "fehler": "Robin hat auf die Frage nach der Bereitschaft nicht geantwortet."}
+            if stand_.get("tor"):
+                aus["tor"] = True
+                break
+            if time.monotonic() - anfang >= frist:
+                return aus
+            if melden:
+                melden(f"Tor im Container startet ({aus['sekunden']} von höchstens {frist} Sekunden)")
+            time.sleep(pause)
+        if maschinen:
+            if melden:
+                melden("Tor steht. Robin fragt die Suchmaschinen an")
+            stand_ = bereitschaft(True, 180.0)
+            aus["maschinen"] = (stand_ or {}).get("maschinen")
+        return aus
+    finally:
+        with contextlib.suppress(OSError):
+            p.stdin.close()
+        with contextlib.suppress(OSError):
+            p.terminate()
+        try:
+            p.wait(15)
+        except subprocess.TimeoutExpired:
+            p.kill()
+        einrichten.lauf(docker["vor"] + ["docker", "stop", "-t", "2", name], 30)      # falls der Container das Ende nicht mitbekam. Er entfernt sich danach selbst
+
+
 def tor() -> dict:
     """gehoert: Der Arbeitsplatz nutzt Tor auf diesem Rechner als Proxy. laeuft: Auf dessen Adresse antwortet etwas."""
     proxy = plattform.einstellung("OSINT_PROXY")
@@ -102,7 +209,7 @@ def stand(mit_oberflaeche: bool = True) -> dict:
     """Was gerade läuft, in einem Stück: für die Anzeige im Terminal und in der Oberfläche. Die Oberfläche fragt sich dabei
     nicht selbst (mit_oberflaeche=False): Sie weiss, dass sie läuft, und eine Anfrage an sich selbst müsste auf sich warten."""
     docker = docker_kurz()
-    return {"docker": docker, "webcheck": webcheck(docker), "robin": robin(docker), "tor": tor(),
+    return {"docker": docker, "webcheck": webcheck(docker), "robin": robin(docker), "robin_ablage": robin_ablage(docker), "tor": tor(),
             "oberflaechen": oberflaechen() if mit_oberflaeche else None}
 
 
@@ -122,6 +229,12 @@ def stand_zeilen(s: dict | None = None) -> list[Zeile]:
                        "fehlt": (AUS, "Web-Check", "nicht eingerichtet")}[s["webcheck"]])
         zeilen.append((GUT, "Robin", f"{len(s['robin'])} Container, je einer pro laufender Sitzung von Claude Code") if s["robin"]
                       else (AUS, "Robin", "läuft nicht. Es startet mit jeder Ermittlung von selbst"))
+        ablage = s.get("robin_ablage")
+        if ablage:
+            n = ablage["dateien"]
+            zeilen.append((AUS, "Ablage von Robin", f"Das Docker-Volume {ROBIN_VOLUME} aus einer früheren Einrichtung gibt es noch ("
+                           + ("leer" if n == 0 else f"{n} {'Datei' if n == 1 else 'Dateien'}" if n else "Inhalt nicht gezählt")
+                           + f"). Es wird nicht mehr verwendet. {'Entfernen' if n == 0 else 'Ansehen, dann entfernen'}: docker volume rm {ROBIN_VOLUME}"))
     if s["tor"]["gehoert"]:
         zeilen.append((GUT, "Tor (Proxy)", "läuft") if s["tor"]["laeuft"] else (AUS, "Tor (Proxy)", "läuft nicht"))
     return zeilen

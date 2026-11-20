@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
 import functools
 import hashlib
 import ipaddress
@@ -197,6 +198,11 @@ def zeitstempel() -> tuple[str, str]:
             jetzt.astimezone(zeitzone()).isoformat(timespec="seconds"))
 
 
+# Was ein Werkzeugaufruf ins Abfrageprotokoll geschrieben hat. Die Hülle der Werkzeuge legt die Liste an, protokollieren() füllt
+# sie. So kann die Hülle bei einem Fehler sagen, ob eine Abfrage protokolliert ist oder nichts hinausging.
+_GESCHRIEBEN: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar("osint_geschrieben", default=None)
+
+
 def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
                    endung: str = "json") -> dict:
     """Hängt einen Eintrag an. Vergibt Nummer, legt Rohdaten ab, verkettet."""
@@ -220,6 +226,9 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
         eintrag["vorher"] = vorher
         eintrag["kette"] = kette(vorher, eintrag)
         plattform.zeile_anhaengen(akte.protokoll, json.dumps(eintrag, ensure_ascii=False))
+    geschrieben = _GESCHRIEBEN.get()
+    if geschrieben is not None:
+        geschrieben.append(eintrag["id"])
     return eintrag
 
 
@@ -731,19 +740,30 @@ def werkzeug(fn: Callable) -> Callable:
         aus = quellen.aus_werkzeuge(ausgeschaltet()).get(fn.__name__)
         if aus:         # die Quelle dieses Werkzeugs ist ausgeschaltet: Es wird nicht ausgeführt, und nichts geht hinaus
             return {"ergebnis": "nicht_ausgefuehrt", "fehler": aus_meldung(aus), "ausgeschaltet": aus}
+        geschrieben: list[str] = []
+        marke = _GESCHRIEBEN.set(geschrieben)
         try:
             return await fn(*args, **kwargs)
         except Abbruch as e:
             return {**({"protokoll_id": e.protokoll_id} if e.protokoll_id else {}),
                     "ergebnis": "nicht_ausgefuehrt", "fehler": str(e)}
         except (KeyError, TypeError, ValueError, IndexError, AttributeError) as e:
-            # Die Quelle hat anders geantwortet, als das Werkzeug sie liest (eine Liste statt eines Objekts, ein Feld anderen Typs).
-            # Die Abfrage steht im Protokoll, die Antwort in den Rohdaten. Der Agent bekommt eine Meldung statt eines Absturzes.
             if einstellung("OSINT_DEBUG"):
                 raise
-            return {"ergebnis": "fehler",
-                    "fehler": (f"Die Quelle hat in einer unerwarteten Form geantwortet ({type(e).__name__}). Die Abfrage ist protokolliert, "
-                               "die Antwort liegt in den Rohdaten. Nicht wiederholen, sondern als Auffälligkeit melden.")}
+            if not geschrieben:
+                # Gescheitert, bevor eine Abfrage hinausging (etwa an der Form der Eingabe). Nichts steht im Protokoll: Die Meldung
+                # darf es auch nicht behaupten. Bis zum 20.11.2026 hiess es hier wie unten «Die Abfrage ist protokolliert».
+                return {"ergebnis": "nicht_ausgefuehrt",
+                        "fehler": (f"Der Aufruf ist am Werkzeug gescheitert, bevor eine Abfrage hinausging ({type(e).__name__}). Es ist nichts "
+                                   "protokolliert. Namen und Form der Angaben prüfen. Bleibt der Grund unklar: nicht wiederholen, "
+                                   "sondern als Auffälligkeit melden.")}
+            # Die Quelle hat anders geantwortet, als das Werkzeug sie liest (eine Liste statt eines Objekts, ein Feld anderen Typs).
+            # Die Abfrage steht im Protokoll, die Antwort in den Rohdaten. Der Agent bekommt eine Meldung statt eines Absturzes.
+            return {"protokoll_id": geschrieben[-1], "ergebnis": "fehler", **({"belege": list(geschrieben)} if len(geschrieben) > 1 else {}),
+                    "fehler": (f"Die Quelle hat in einer unerwarteten Form geantwortet ({type(e).__name__}). Die Abfrage ist protokolliert "
+                               f"({geschrieben[-1]}), die Antwort liegt in den Rohdaten. Nicht wiederholen, sondern als Auffälligkeit melden.")}
+        finally:
+            _GESCHRIEBEN.reset(marke)
     REGISTER.append(huelle)
     return huelle
 

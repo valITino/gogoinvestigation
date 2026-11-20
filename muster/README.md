@@ -8,7 +8,7 @@ Bitcoin-Adressen und Transaktionen aus einer erfundenen Kette. Sie haben gültig
 | Dokument | Inhalt |
 |---|---|
 | [Abschlussrapport.pdf](Abschlussrapport.pdf) | Zusammenfassung, Indikatoren, Einordnung der beiden IP-Adressen (Anonymisierungsdienst ja, kein Hinweis oder nicht geprüft), dreizehn Befunde mit «Einfach erklärt», Beziehungsgraf, Geldfluss der Lösegeldzahlung mit Flussbild, Zeitachse, Lücken, Empfehlungen mit Vorbehalt zur Anmelde-IP, Glossar. 21 Seiten A4. |
-| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 81 Abfragen, 7 Auswertungen und 3 Nachschläge in der lokalen Etikettenliste mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu Sitzungsverlauf und Integritätsprüfung. 28 Seiten A4. |
+| [Ermittlungsprotokoll.pdf](Ermittlungsprotokoll.pdf) | Alle 81 Abfragen, 7 Auswertungen und 3 Nachschläge in der lokalen Etikettenliste mit Zeit, Quelle, Ziel, Zweck, Ergebnis, Prüfsumme, Rohdatei und ausführendem Agenten. Dazu, was verlangt, aber nicht ausgeführt wurde, Sitzungsverlauf und Integritätsprüfung. 29 Seiten A4. |
 | [Datenblaetter.pdf](Datenblaetter.pdf) | Anhang: je Indikator ein Datenblatt mit allem, was die Quellen geliefert haben, in festen Abschnitten. Jede Angabe nennt Quelle, Abfragezeit, Beleg und Stelle in der Rohdatei. 94 Seiten A4. |
 
 GitHub zeigt PDF direkt an. Die Originale sind HTML-Dateien, in denen jeder Beleg im Rapport auf seinen Eintrag
@@ -36,6 +36,9 @@ im Protokoll verlinkt. Sie liegen mit der ganzen Fallakte unter
   Teilabfragen der Blockchain-Werkzeuge, die dieselbe Liste oder Transaktion ein zweites Mal brauchen). Alle stehen im
   Protokoll. Die gescheiterte und die abgelehnte Abfrage nennt der Rapport unter «Lücken», den fehlenden
   Treffer im Befund B-06.
+- Ein Aufruf geht nicht hinaus: Der erste Analyst nennt als Zweck nur «Hosting», das Gateway weist ihn zurück, und
+  er fragt mit einem vollständigen Zweck noch einmal. Der zurückgewiesene Aufruf bekommt keine Nummer und zählt nicht
+  als Abfrage. Er steht im Ermittlungsprotokoll in Abschnitt 4, mit dem Grund.
 - Sicherheit «hoch» tragen nur Befunde mit mindestens zwei verschiedenen Quellen. Die Zahlung selbst ist «hoch»
   (zwei Explorer zeigen dasselbe), ihr Weg über mehrere Stationen eine Bewertung mit «mittel». Eine Hypothese ist
   als solche gekennzeichnet. Zwei Befunde sind nur «mit Einschränkung» gegengeprüft, mit Begründung.

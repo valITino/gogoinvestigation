@@ -3,7 +3,7 @@
 
     python3 tools/fall.py neu 2026-0412 --titel "Phishing Kundenportal" --rapport rapport.md
     python3 tools/fall.py aufnehmen 2026-0412 nachtrag.docx
-    python3 tools/fall.py freigabe 2026-0412 darkweb --durch "Kürzel/Funktion" --vermerk "Verfügung vom …"
+    python3 tools/fall.py freigabe 2026-0412 darkweb --durch "Kürzel/Funktion" --vermerk "Verfügung vom …" --bereich ransomware_malware
     python3 tools/fall.py quellen 2026-0412                         zeigt, welche Quellen sich vorgeben lassen und was vorgegeben ist
     python3 tools/fall.py quellen 2026-0412 --pflicht "Shodan, VirusTotal"      (oder --alle, oder --keine)
     python3 tools/fall.py entfernen 2026-0412 nachtrag.docx --durch "Kürzel" --grund "falsches Dokument"
@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gateway import pflichtquellen, plattform  # noqa: E402
+from gateway import pflichtquellen, plattform, robin  # noqa: E402
 
 if __name__ == "__main__":
     plattform.start()
@@ -248,10 +248,29 @@ def cmd_loeschen(a: argparse.Namespace) -> int:
     return 0
 
 
-def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "", entziehen: bool = False, weg: str = "Terminal") -> dict:
+def bereiche_text() -> str:
+    """Die Untersuchungsbereiche für das Dark Web, je einer in einer Zeile: für Meldungen am Terminal."""
+    return "\n".join(f"    {schluessel:<20} {name}: {wofuer}" for schluessel, (name, wofuer) in robin.BEREICHE.items())
+
+
+def bereich_pruefen(daten: dict, bereich: str) -> str:
+    """Prüft den Untersuchungsbereich für das Dark Web und gibt ihn zurück. Robin sucht nur in einem Bereich, den ein Mensch
+    gewählt hat: Der Sachbearbeiter wählt ihn mit der Freigabe darkweb."""
+    bereich = (bereich or "").strip()
+    if bereich not in robin.BEREICHE:
+        raise Fehler("Die Freigabe darkweb braucht einen Untersuchungsbereich (--bereich). Robin sucht nur in einem Bereich, den der "
+                     "Sachbearbeiter gewählt hat. Möglich:\n" + bereiche_text())
+    if bereich == robin.BEREICH_MIT_PERSONENBEZUG and not freigabe_erteilt(daten, "personenbezug"):
+        raise Fehler(f"Der Untersuchungsbereich «{robin.BEREICHE[bereich][0]}» braucht zusätzlich die Freigabe personenbezug. Zuerst diese erteilen.")
+    return bereich
+
+
+def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "", entziehen: bool = False, weg: str = "Terminal",
+                    bereich: str = "") -> dict:
     """Erteilt oder entzieht eine Freigabe und schreibt fall.json. Die Entscheidung selbst trifft ein Mensch: am Terminal
     (cmd_freigabe fragt dort nach) oder in der Oberfläche (der Server ruft diese Funktion erst, wenn die Anfrage das Geheimnis
     seines Starts trägt). `weg` steht in fall.json, damit sichtbar bleibt, wie die Freigabe zustande kam.
+    Die Freigabe darkweb verlangt dazu den Untersuchungsbereich (`bereich`, einer aus gateway/robin.py).
     Der Befehl am Terminal ist für Agenten gesperrt (er verlangt ein Terminal, und die Berechtigungen verbieten ihn). Der Aufruf
     dieser Funktion aus einem Shell-Befehl steht auf keiner Erlaubt-Liste: Claude Code fragt dafür den Menschen."""
     if art not in FREIGABEN:
@@ -267,9 +286,25 @@ def freigabe_setzen(fall_id: str, art: str, *, durch: str = "", vermerk: str = "
         durch, vermerk = " ".join((durch or "").split()), " ".join((vermerk or "").split())
         if not durch or not vermerk:
             raise Fehler("Eine Freigabe braucht --durch (wer verantwortet sie) und --vermerk (Grundlage, z. B. Auftrag oder Verfügung).")
-        freigaben[art] = {"erteilt": True, "durch": durch, "am": jetzt(), "vermerk": vermerk, **({"weg": weg} if weg != "Terminal" else {})}
+        mehr = {"bereich": bereich_pruefen(daten, bereich)} if art == "darkweb" else {}
+        freigaben[art] = {"erteilt": True, "durch": durch, "am": jetzt(), "vermerk": vermerk, **mehr, **({"weg": weg} if weg != "Terminal" else {})}
     schreiben(fall_pfad(fall_id) / "fall.json", daten)
     return freigaben[art]
+
+
+def bereich_setzen(fall_id: str, bereich: str, *, weg: str = "Terminal") -> dict:
+    """Ändert den Untersuchungsbereich einer erteilten Freigabe darkweb. Wer die Freigabe verantwortet und ihre Grundlage
+    bleiben stehen. Auch das entscheidet ein Mensch, wie die Freigabe selbst."""
+    if weg not in WEGE:
+        raise Fehler(f"Unbekannter Weg '{weg}'.")
+    daten = fall_daten(fall_id)
+    if not freigabe_erteilt(daten, "darkweb"):
+        raise Fehler("Der Fall hat keine Freigabe darkweb. Der Untersuchungsbereich wird mit der Freigabe gewählt.")
+    eintrag = daten["freigaben"]["darkweb"]
+    eintrag["bereich"] = bereich_pruefen(daten, bereich)
+    eintrag["bereich_am"] = jetzt()
+    schreiben(fall_pfad(fall_id) / "fall.json", daten)
+    return eintrag
 
 
 def cmd_freigabe(a: argparse.Namespace) -> int:
@@ -278,11 +313,21 @@ def cmd_freigabe(a: argparse.Namespace) -> int:
         freigabe_setzen(a.fall, a.art, entziehen=True)
         print(f"Freigabe '{a.art}' für {a.fall} entzogen.")
         return 0
+    daten = fall_daten(a.fall)
+    if a.art == "darkweb" and a.bereich and not a.durch and not a.vermerk and freigabe_erteilt(daten, "darkweb"):
+        # nur den Untersuchungsbereich einer erteilten Freigabe ändern
+        bereich_pruefen(daten, a.bereich)
+        am_terminal_bestaetigen(f"Untersuchungsbereich für das Dark Web in Fall {a.fall} ändern auf: {robin.BEREICHE[a.bereich][0]}", a.fall)
+        bereich_setzen(a.fall, a.bereich)
+        print(f"Untersuchungsbereich für {a.fall}: {robin.BEREICHE[a.bereich][0]}.")
+        return 0
     if not a.durch or not a.vermerk:
         raise Fehler("Eine Freigabe braucht --durch (wer verantwortet sie) und --vermerk (Grundlage, z. B. Auftrag oder Verfügung).")
-    am_terminal_bestaetigen(f"Freigabe '{a.art}' für Fall {a.fall}: {FREIGABE_TEXT[a.art]}", a.fall)
-    freigabe_setzen(a.fall, a.art, durch=a.durch, vermerk=a.vermerk)
-    print(f"Freigabe '{a.art}' für {a.fall} erteilt durch {a.durch}.")
+    bereich = bereich_pruefen(daten, a.bereich) if a.art == "darkweb" else ""
+    am_terminal_bestaetigen(f"Freigabe '{a.art}' für Fall {a.fall}: {FREIGABE_TEXT[a.art]}"
+                            + (f" Untersuchungsbereich: {robin.BEREICHE[bereich][0]}." if bereich else ""), a.fall)
+    freigabe_setzen(a.fall, a.art, durch=a.durch, vermerk=a.vermerk, bereich=bereich)
+    print(f"Freigabe '{a.art}' für {a.fall} erteilt durch {a.durch}." + (f" Untersuchungsbereich: {robin.BEREICHE[bereich][0]}." if bereich else ""))
     return 0
 
 
@@ -394,6 +439,10 @@ def cmd_status(a: argparse.Namespace) -> int:
         e = (daten.get("freigaben") or {}).get(name) or {}
         stand = f"erteilt durch {e.get('durch')} am {e.get('am')} ({e.get('vermerk')})" if freigabe_erteilt(daten, name) else "nicht erteilt"
         print(f"  Freigabe {name:<14} {stand}")
+        if name == "darkweb" and freigabe_erteilt(daten, name):
+            b = robin.bereich(daten)
+            print("    Untersuchungsbereich: " + (f"{robin.BEREICHE[b][0]} ({b})" if b else
+                                                 f"KEINER GEWÄHLT. So sucht Robin nicht. Wählen: {plattform.PY} tools/fall.py freigabe {a.fall} darkweb --bereich …"))
     print(f"  Pflichtquellen: {_pflicht_zeile(daten)}")
     eingang, ungeprueft = eingang_stand(pfad)
     print(f"  Eingang: {', '.join(eingang) or 'leer'}")
@@ -442,6 +491,9 @@ def main() -> int:
     fr.add_argument("--durch", help="wer die Freigabe verantwortet")
     fr.add_argument("--vermerk", help="Grundlage der Freigabe")
     fr.add_argument("--entziehen", action="store_true")
+    fr.add_argument("--bereich", choices=tuple(robin.BEREICHE), metavar="BEREICH",
+                    help="nur für darkweb: der Untersuchungsbereich, in dem Robin suchen darf (" + ", ".join(robin.BEREICHE)
+                         + "). Allein angegeben ändert er den Bereich einer erteilten Freigabe")
     fr.set_defaults(func=cmd_freigabe)
 
     qu = sub.add_parser("quellen", help="Pflichtquellen zeigen oder vorgeben (vorgeben nur am Terminal)")

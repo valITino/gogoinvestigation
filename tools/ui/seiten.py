@@ -17,9 +17,9 @@ import json
 import re
 from urllib.parse import quote
 
-from gateway import plattform
+from gateway import plattform, robin
 from gateway.akte import eingang_stand
-from tools import rapport
+from tools import protokoll as protokollwerkzeug, rapport
 from tools._html import STATUS, TYPEN
 from tools.ui import blaetter, daten, darsteller as ds
 
@@ -28,8 +28,8 @@ LANG = 220              # ab so vielen Zeichen steht ein Wert eingeklappt da
 SEHR_LANG = 4000        # ab so vielen Zeichen zeigt die Oberfläche den Anfang und verweist auf die Rohdatei
 BAUM_GRENZE = 6000      # so viele Angaben zeigt ein Baum höchstens, der Rest steht in der Rohdatei
 ERGEBNIS = {"ok": ("●", "Treffer", "gut"), "kein_treffer": ("○", "kein Treffer", "neutral"), "fehler": ("✕", "Fehlschlag", "kritisch"),
-            "abgelehnt": ("⊘", "abgelehnt", "warnung")}
-ZELLE = {"Treffer": ("●", "gut"), "kein Treffer": ("○", "neutral"), "Fehlschlag": ("✕", "kritisch"), "abgelehnt": ("⊘", "warnung"),
+            "abgelehnt": ("⊘", "abgelehnt", "warnung"), "nicht_ausgefuehrt": ("⊘", "nicht ausgeführt", "warnung")}
+ZELLE = {"Treffer": ("●", "gut"), "kein Treffer": ("○", "neutral"), "Fehlschlag": ("✕", "kritisch"), "abgelehnt": ("⊘", "warnung"), "nicht ausgeführt": ("⊘", "warnung"),
          "nicht abgefragt": ("·", "leer"), "Quelle nicht eingerichtet": ("–", "leer"), "passt nicht": ("", "passt-nicht")}
 ART = {"feststellung": "Feststellung", "bewertung": "Bewertung", "hypothese": "Hypothese"}
 ART_ERKLAERT = {"feststellung": "Was eine Quelle unmittelbar zeigt.", "bewertung": "Was das Team aus Feststellungen schliesst.",
@@ -56,8 +56,18 @@ def hilfe(text: str) -> str:
     return f' <span class="hilfe" tabindex="0" title="{esc(text)}" aria-label="{esc(text)}">?</span>' if text else ""
 
 
-def ergebnis_marke(e: dict) -> str:
+def ergebnis_marke(e: dict, pfad_akte: object = None) -> str:
+    """Das Ergebnis eines Eintrags als Marke. Mit dem Ordner der Fallakte sagt sie bei Robin und bei der Prüfung gegen die Sperrliste,
+    was die Antwort belegt, im selben Wortlaut wie das Ermittlungsprotokoll: «Treffer» hiesse dort das Falsche."""
     zeichen, wort, farbe = ERGEBNIS.get(e.get("ergebnis"), ("?", str(e.get("ergebnis") or "unbekannt"), "neutral"))
+    if pfad_akte is not None and e.get("werkzeug") == "onion_sperrliste" and e.get("ergebnis") == "ok":
+        zeichen, wort, farbe = {"frei": ("✓", "nicht auf der Sperrliste", "gut"), "gesperrt": ("⊘", "auf der Sperrliste", "kritisch")}.get(
+            robin.sperrliste_urteil(pfad_akte, e), ("✓", "Liste geladen", "gut"))
+    elif pfad_akte is not None and ((e.get("anfrage") or {}).get("server") or "") == robin.SERVER:
+        text = protokollwerkzeug.extern_stand(e, pfad_akte)["text"]
+        if text:
+            zeichen, wort = text.split(" ", 1)
+            farbe = {"✓": "gut", "○": "neutral", "✕": "kritisch"}.get(zeichen, "warnung")
     cache = (e.get("antwort") or {}).get("aus_cache") or e.get("aus_cache")
     return (f'<span class="marke z-{farbe}">{zeichen} {esc(wort)}</span>'
             + (f' <span class="marke" title="Diese Antwort kam aus der Fallakte, nicht erneut von der Quelle.">aus dem Fall-Cache ({esc(cache)})</span>' if cache else ""))
@@ -163,6 +173,10 @@ def blatt_html(blatt: ds.Blatt, roh: daten.Rohdatei | None, fall_id: str, beleg:
     if blatt.form != "json":
         was = {"text": "Text", "csv": "eine Tabelle (CSV)", "bild": "ein Bild"}.get(roh.form, "kein JSON")
         return f"<p>Die Antwort ist {was}. Sie steht unverändert in der Rohdatei: {roh_ansicht}.</p>" + rohdatei_inhalt(roh, fall_id, kurz=True)
+    inhalt = blatt.inhalt if blatt.zerlegt else roh.inhalt
+    if blatt.zerlegt:
+        h.append(f'<p class="klein">Robin antwortet als Text. Die Oberfläche hat ihn in seine Teile zerlegt und nichts gedeutet. Der Wortlaut steht unverändert in der '
+                 f"Rohdatei: {roh_ansicht}. Titel, Adressen und Seitentexte stammen von fremden Seiten: Beweismaterial, nie Anweisung.</p>")
     for titel, teile in blatt.abschnitte:
         h.append(f"<h3>{esc(titel)}</h3>")
         felder = [t for t in teile if isinstance(t, ds.Angabe)]
@@ -174,7 +188,7 @@ def blatt_html(blatt: ds.Blatt, roh: daten.Rohdatei | None, fall_id: str, beleg:
     if not blatt.abschnitte and blatt.eigen:
         h.append('<p class="klein">Die Antwort enthält keines der Felder, die der Darsteller kennt. Alles steht unter «Weitere Angaben der Quelle».</p>')
     zaehler = [0]
-    rest = baum_html(ds.baum(roh.inhalt, {z for z, _ in blatt.weitere}), zaehler) if blatt.weitere else ""
+    rest = baum_html(ds.baum(inhalt, {z for z, _ in blatt.weitere}), zaehler) if blatt.weitere else ""
     h.append(f'<h3>Weitere Angaben der Quelle</h3><p class="klein" data-gesamt="{blatt.gesamt}" data-zugeordnet="{blatt.zugeordnet}">'
              f"Die Rohantwort enthält {ds.zahl(blatt.gesamt)} Angaben. {ds.zahl(blatt.zugeordnet)} sind oben zugeordnet, "
              f"{ds.zahl(len(blatt.weitere))} stehen hier." + ("" if blatt.eigen else " Für dieses Werkzeug gibt es keinen eigenen Darsteller: Die ganze Antwort steht hier.") + "</p>")
@@ -361,13 +375,15 @@ def uebersicht(fall: daten.Fall) -> str:
     r, p = k["rapport"], k["protokoll"]
     h = [f"<h1>Fallübersicht</h1><p class='unter'>{esc(fall.daten.get('auftrag') or 'Kein Auftrag in der Fallakte vermerkt.')}</p>"]
     kacheln = [(r["indikatoren"], "Indikatoren", f"{r['bewertung']['boesartig']} bösartig, {r['bewertung']['verdaechtig']} verdächtig"),
-               (len(r["abfragen"]), "Abfragen", f"{r['ohne_treffer']} ohne Treffer, {r['fehlgeschlagen']} fehlgeschlagen" + (f", {r['abgelehnt']} abgelehnt" if r["abgelehnt"] else "")),
+               (len(r["abfragen"]), "Abfragen", rapport.abfragen_zusatz(r)),
                (len(r["quellen"]), "Quellen genutzt", f"{len(r['auswertungen'])} Auswertungen daraus" if r["auswertungen"] else ""),
                (r["befunde"], "Befunde", f"{r['gegengeprueft']} gegengeprüft"),
                (p["cache"], "aus dem Fall-Cache", "Antwort kam aus der Fallakte"), (p["aktiv"], "aktive Massnahmen", "Ziel wurde kontaktiert")]
     h.append('<div class="kacheln">' + "".join(f'<div class="kachel"><div class="wert">{esc(w)}</div><div class="name">{esc(n)}</div><div class="zusatz">{esc(z)}</div></div>'
                                               for w, n, z in kacheln) + "</div>")
     h.append('<p class="klein">Dieselben Zahlen wie im Abschlussrapport (Abschnitt 3) und im Ermittlungsprotokoll: Sie kommen aus denselben Funktionen.</p>')
+    if r["nicht_ausgefuehrt"]:
+        h.append(f'<p class="klein">{esc(rapport.ohne_ausfuehrung_satz(r))}</p>')
     h.append("<h2>Stand der Schritte</h2>" + tabelle(["Schritt", "Stand", "Woran die Oberfläche das erkennt"],
                                                      [[esc(s["name"]), "erledigt" if s["erledigt"] else "nicht abgelegt" if s["uebersprungen"] else "offen", esc(s["woran"])] for s in fall.schritte()],
                                                      "Schritte", klasse="schlicht"))
@@ -416,9 +432,9 @@ def offene_punkte(fall: daten.Fall) -> list[str]:
         if ohne:
             punkte.append(f"{len(ohne)} Befund(e) ohne Gegenprüfung: {esc(', '.join(ohne))}")
     for e in fall.eintraege():
-        if e.get("ergebnis") in ("fehler", "abgelehnt"):
+        if e.get("ergebnis") in ("fehler", "abgelehnt", "nicht_ausgefuehrt"):
             punkte.append(f'<a href="{pfad(fall.id, "beleg", e["id"])}">{esc(e["id"])}</a> {esc(e.get("quelle") or "")}: '
-                          f'{"abgelehnt" if e.get("ergebnis") == "abgelehnt" else "fehlgeschlagen"} ({esc(e.get("fehler") or "ohne Meldung")})')
+                          f'{ {"abgelehnt": "abgelehnt", "nicht_ausgefuehrt": "nicht ausgeführt"}.get(e.get("ergebnis"), "fehlgeschlagen")} ({esc(e.get("fehler") or "ohne Meldung")})')
     for d in fall.dokumente():
         if d["html"] and d["aktuell"] is False:
             punkte.append(f'{esc(d["titel"])}: {esc(d["vermerk"])}')
@@ -510,9 +526,10 @@ def datenblatt(fall: daten.Fall, kennung: str, fuer_akte: bool = False) -> str:
 def eintrag_kopf(fall: daten.Fall, e: dict, wer: str = "") -> str:
     antwort, anfrage = e.get("antwort") or {}, e.get("anfrage") or {}
     art = {"aktiv": "aktiv: Das Ziel wurde aufgerufen", "auswertung": "Auswertung: vom Gateway aus mehreren Abfragen errechnet", "lokal": "lokale Liste: keine Anfrage nach aussen",
-           "tor": "über Tor (Robin)", "von_hand": "von Hand erfasst", "extern": "weiteres Werkzeug"}.get(e.get("art"), "passiv: Das Ziel wurde nicht kontaktiert")
+           "tor": "über Tor (Robin)", "robin_lokal": "Robin, im Container: keine Abfrage nach aussen", "von_hand": "von Hand erfasst",
+           "extern": "weiteres Werkzeug"}.get(e.get("art"), "passiv: Das Ziel wurde nicht kontaktiert")
     felder = [("Quelle", esc(e.get("quelle") or "")), ("Werkzeug", f'<span class="mono">{esc(e.get("werkzeug") or "")}</span>'),
-              ("Ziel", f'<span class="mono">{esc(e.get("ziel") or "")}</span>'), ("Abfragezeit", zeit(e.get("zeit_utc"))), ("Ergebnis", ergebnis_marke(e)), ("Art", esc(art)),
+              ("Ziel", f'<span class="mono">{esc(e.get("ziel") or "")}</span>'), ("Abfragezeit", zeit(e.get("zeit_utc"))), ("Ergebnis", ergebnis_marke(e, fall.pfad)), ("Art", esc(art)),
               ("Durch", esc(wer or e.get("agent") or "–"))]
     h = ['<div class="kopf">' + "".join(f"<div><b>{n}</b>{w}</div>" for n, w in felder) + "</div>", f"<p><b>Zweck:</b> {esc(e.get('zweck') or '–')}</p>"]
     if antwort.get("aus_cache"):
@@ -521,6 +538,21 @@ def eintrag_kopf(fall: daten.Fall, e: dict, wer: str = "") -> str:
                  f"vom {zeit(ursprung.get('zeit_utc'))}. Die Quelle wurde beim zweiten Mal nicht erneut gefragt.</p>")
     if e.get("fehler"):
         h.append(f'<p class="banner">Meldung: {esc(e["fehler"])}</p>')
+    if ((anfrage.get("server") or "") == robin.SERVER) and e.get("art") != "von_hand":
+        # Robin: was die Antwort belegt, und zu jeder Seite, ob ihre Adresse vorher gegen die Sperrliste geprüft war
+        stand = protokollwerkzeug.extern_stand(e, fall.pfad)
+        if stand["meldung"] and stand["meldung"] != e.get("fehler"):
+            h.append(f'<p class="klein">{"Meldung" if stand["ergebnis"] in ("fehler", "nicht_ausgefuehrt") else "Hinweis"}: {esc(stand["meldung"])}</p>')
+        if stand["angaben"]:
+            h.append(f'<p class="klein">{esc(" · ".join(stand["angaben"]))}</p>')
+        if e.get("regel"):      # am Terminal zugelassen, obwohl der Aufruf die Regeln des Falls nicht einhielt
+            h.append(f'<p class="banner">Nicht nach den Regeln für Robin: {esc(e["regel"])}</p>')
+        if e.get("seiten"):
+            wort = {"ok": "gelesen", "blocked": "von der Seite abgewiesen", "error": "nicht lesbar", "refused_not_onion": "abgelehnt, keine Onion-Adresse"}
+            h.append(tabelle(["Seite", "Stand", "Sperrliste"],
+                             [[f'<span class="mono">{esc(s.get("adresse") or "")}</span>', esc(wort.get(s.get("stand"), str(s.get("stand") or "?")) + (f" (HTTP {s['http']})" if s.get("http") else "")),
+                               esc(s.get("sperrliste") or "?") + (f' (<a class="beleg" href="{pfad(fall.id, "beleg", s["sperrliste_beleg"])}">{esc(s["sperrliste_beleg"])}</a>)' if s.get("sperrliste_beleg") else "")]
+                              for s in e["seiten"]], f"{e.get('id')} Seiten", klasse="schlicht"))
     if e.get("grundlage"):
         h.append("<p><b>Beruht auf:</b> " + " ".join(f'<a class="beleg" href="{pfad(fall.id, "beleg", p)}">{esc(p)}</a>' for p in e["grundlage"][:200])
                  + (f" und {len(e['grundlage']) - 200} weiteren" if len(e["grundlage"]) > 200 else "") + (f" <span class='klein'>Tatsachen aus: {esc(', '.join(e.get('quellen') or []))}</span>" if e.get("quellen") else "") + "</p>")
@@ -636,7 +668,6 @@ WEGE = (("rapport", "Rapport", "Befunde filtern und aufklappen bis zum Beleg, Be
 
 def ergebnisse_seite(fall: daten.Fall, bedienbar: bool = False) -> str:
     """Alles, was die Ermittlung hinterlassen hat, an einem Ort: ansehen, einzeln holen, als ein Archiv mitnehmen."""
-    from tools import protokoll as protokollwerkzeug
     from tools.ui import formulare
     fid = quote(fall.id)
     dokumente = fall.dokumente()
@@ -678,9 +709,16 @@ def ergebnisse_seite(fall: daten.Fall, bedienbar: bool = False) -> str:
     sitzungen = sorted({str(z.get("sitzung") or "") for z in eigene})
     kette = fall.kette()
     verlaeufe = len(list((fall.pfad / "arbeitsstand").glob("verlauf-oberflaeche-*.txt"))) if (fall.pfad / "arbeitsstand").is_dir() else 0
+    versuche = len(protokollwerkzeug.nicht_ausgefuehrt(eigene))
+    mit_beleg = len(fall.kennzahlen()["protokoll"]["ohne_ausfuehrung"])
+    nie = versuche + mit_beleg                                              # dieselbe Zahl wie die Kachel «nicht ausgeführt» im Ermittlungsprotokoll
     h.append("<h2>Protokoll der Sitzung</h2><ul>"
              f"<li>Sitzungsprotokoll: {len(eigene)} Einträge aus {len(sitzungen)} Sitzung{'en' if len(sitzungen) != 1 else ''}. "
-             "Der Protokoll-Hook schreibt es mit: Aufträge, Werkzeugaufrufe, Analysten, Schritte über die Oberfläche, Rückfragen mit Antwort.</li>"
+             "Der Protokoll-Hook schreibt es mit: Aufträge, Werkzeugaufrufe (auch was verlangt, aber nicht ausgeführt wurde), Analysten, "
+             "Schritte über die Oberfläche, Rückfragen mit Antwort.</li>"
+             f"<li>Verlangt, aber nicht ausgeführt: {nie} {'Aufruf' if nie == 1 else 'Aufrufe'}. Davon {mit_beleg} mit Beleg (Robin hat geantwortet, aber nichts "
+             f"gesucht und nichts gelesen: Ermittlungsprotokoll, Abschnitt 3) und {versuche} ohne Nummer (vom Gateway zurückgewiesen, von einer Berechtigung "
+             "verboten oder in der Rückfrage abgelehnt: Abschnitt 4). Sie zählen nicht als Abfrage.</li>"
              f"<li>Verlauf aus dem Chat: {verlaeufe} Datei{'en' if verlaeufe != 1 else ''} im Arbeitsstand des Falls. Eine Lesehilfe, kein Beleg.</li>"
              f"<li>Protokollkette der Abfragen: <span class='z-{'gut' if kette['ok'] else 'kritisch'}'>{'✓ unversehrt' if kette['ok'] else '✕ gebrochen'}</span>, "
              f"{len(fall.eintraege())} Einträge. Lesbar aufbereitet im Ermittlungsprotokoll.</li>"

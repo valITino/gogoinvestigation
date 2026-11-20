@@ -659,3 +659,35 @@ def antwort(anfrage: httpx.Request) -> httpx.Response | None:
                      [["timestamp", "original", "statuscode", "mimetype", "digest", "length"],
                       ["20240115093000", "https://example.org/", "200", "text/html", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "1256"]])
     return None
+
+
+# --------------------------------------------------------------------------- Robin (Dark Web über Tor)
+
+# Robin antwortet als Text. Die erste Zeile nennt den Stand: «status: …» oder «error: …». Hier steht der Anfang jeder Antwortform im
+# Wortlaut, gesehen am 20.11.2026 mit dem Abbild aus gateway/plattform.py (Robin 1.30.0): Bereitschaft, Suche und Lesen ohne Tor am echten
+# Container, die übrigen Formen mit Robins eigenem Servercode und gestelltem Netz. Eine ganze Trefferliste und ganze Seiten stehen als
+# Vorlagen unter tools/ui/vorlagen (robin_search.txt, robin_scrape.txt). Eine Suche über Tor war in der Prüfumgebung nicht möglich.
+ROBIN = {
+    'health_tor_up': 'status: ok\ntor: up',
+    'health_tor_down': 'status: ok\ntor: down (tor_bootstrapping)',
+    'health_engines': 'status: ok\ntor: up\nengines: 1 of 2 up',
+    'search_needs_domain': "status: needs_domain\nNothing was searched. The research domain is the user's choice, and it decides the whole shape of the report. Ask the user which of these the investigation is for, and show them the four rather than asking them to name a key:",
+    'search_tor_down': "status: tor_bootstrapping\nTor cannot carry traffic yet: either nothing is listening on 127.0.0.1:9050, or Tor has not finished bootstrapping. Robin's container starts the server first, and bootstrapping usually takes ten to sixty seconds. Waiting for it is deliberate: a search started early reaches far fewer engines. Nothing was searched or fetched. Call robin_search again in a few seconds.",
+    'search_no_results': "status: no_results\nThe engines returned nothing for 'gibtesnicht'. That is a real answer. Try a different refinement, or tell the user the dark web has nothing on this.\nCoverage: 0 of 16 engines answered (16 returned nothing); 0 results from 0 hosts.",
+    'search_engines_unreachable': 'status: engines_unreachable\nNo engine answered: 16 of 16 failed. This is not an empty dark web, it is a search that did not run. Do not tell the user nothing was found. Check `robin_health` with check_engines, and try again.\nCoverage: 0 of 16 engines answered; 0 results from 0 hosts.',
+    'search_unknown_preset': "error: unknown preset 'quatsch', so nothing was searched. Use the key of the research domain the user chose:",
+    'scrape_unknown_id': 'error: unknown result id(s): r1-000000. Ids look like r1-7a3e64 and are valid only in the session that searched, until its next robin_search. Use an id from your latest search, or pass the onion URL directly as `urls`.',
+    'scrape_not_onion': 'error: one of the urls is not an onion host, so nothing was fetched. Robin is onion-only by default. Set allow_clearweb=true to fetch it anyway; the request still leaves through Tor. The refused url is below.',
+    'scrape_tor_down': "status: tor_bootstrapping\nTor cannot carry traffic yet: either nothing is listening on 127.0.0.1:9050, or Tor has not finished bootstrapping. Robin's container starts the server first, and bootstrapping usually takes ten to sixty seconds. Waiting for it is deliberate: a search started early reaches far fewer engines. Nothing was searched or fetched. Call robin_scrape again in a few seconds.",
+    'refine': "status: refine_it_yourself\nRobin has no model of its own here, which is the ordinary setup: you are the model. Refine the question with the rules Robin's own refiner follows, then show the refined query to the user before you search.",
+    'filter_unfiltered': "status: unfiltered\nRobin has no model of its own here, so it judged nothing and dropped nothing: all 4 results are below. Run the filter pass yourself now, before you scrape. It is a step of the investigation, not a glance at the list: go through all 4 results and keep every one on the query's topic. These are the rules Robin's own filter follows.",
+    'filter_no_results': 'status: no_results\nThe latest robin_search returned nothing, so there is nothing to filter. Try a different refinement, or tell the user the dark web has nothing on this.',
+    'investigate_ohne_modell': 'error: no model available for robin_investigate.\nYour client did not advertise MCP sampling, ROBIN_MODEL is unset, and no provider key is configured, so Robin has nothing to think with.',
+    'list_investigations': 'status: ok\nNo saved investigations yet.',
+}
+
+
+def robin_verpackt(text: str) -> str:
+    """So reicht Claude Code die Antwort eines Robin-Werkzeugs an den Hook weiter (gesehen am 20.11.2026 mit Claude Code 2.1.329):
+    als Zeichenkette, die ein JSON-Objekt mit dem Feld «result» enthält."""
+    return json.dumps({"result": text}, ensure_ascii=False)

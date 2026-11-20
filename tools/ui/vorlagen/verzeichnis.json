@@ -327,19 +327,19 @@
   "name": "robin_scrape",
   "werkzeug": "mcp__robin__robin_scrape",
   "quelle": "Robin",
-  "ziel": "musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijklmn.onion",
-  "datei": "robin_scrape.json",
-  "herkunft": "erfunden: Dark-Web-Recherche war in der Prüfung nicht erlaubt, die Form von Robin ist nicht gesehen",
-  "art": "erfunden"
+  "ziel": "http://musterlockerabcdefghijklmnopqrstuvwxyz234567abcdefghijkl.onion/",
+  "datei": "robin_scrape.txt",
+  "herkunft": "erfunden, in der Form der echten Antwort: erzeugt am 20.11.2026 mit Robins eigenem Servercode (Abbild laut gateway/plattform.py, Robin 1.30.0) und gestelltem Netz. Eine Suche über Tor war in der Prüfumgebung nicht möglich",
+  "art": "form"
  },
  {
   "name": "robin_search",
   "werkzeug": "mcp__robin__robin_search",
   "quelle": "Robin",
   "ziel": "musterlocker",
-  "datei": "robin_search.json",
-  "herkunft": "erfunden: Dark-Web-Recherche war in der Prüfung nicht erlaubt, die Form von Robin ist nicht gesehen",
-  "art": "erfunden"
+  "datei": "robin_search.txt",
+  "herkunft": "erfunden, in der Form der echten Antwort: erzeugt am 20.11.2026 mit Robins eigenem Servercode (Abbild laut gateway/plattform.py, Robin 1.30.0) und gestelltem Netz. Eine Suche über Tor war in der Prüfumgebung nicht möglich",
+  "art": "form"
  },
  {
   "name": "shodan_dns",

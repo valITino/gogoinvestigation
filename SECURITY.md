@@ -32,10 +32,14 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   (Erlaubt- und Verbotsliste, für alles andere eine Rückfrage an den Menschen), die Werkzeuge selbst (Freigabe,
   Beleg von Hand, Pseudonymisieren und Zurückführen verlangen ein Terminal oder das Geheimnis der Oberfläche) und
   das Gateway (Freigaben für aktive Massnahmen und Kontoabfragen, Schlüssel, Einreichen nur privat).
+  Seit dem 20.11.2026 schreibt der Sitzungs-Hook mit, was verlangt wird, bevor es ausgeführt wird. Er prüft dabei
+  nichts und lehnt nichts ab: Er ist kein neuer Wächter. So steht auch ein abgelehnter Aufruf im Ermittlungsprotokoll.
 - Nicht mehr technisch verhindert ist: dass ein Agent ein Dokument liest, das von Hand in den Eingang kopiert wurde,
   dass ein Shell-Befehl nach Zustimmung des Menschen Fallakte, Schlüsseldatei oder Grundlagen anfasst, und dass
   Robin am Terminal ohne Freigabe `darkweb` läuft, wenn der Mensch den Aufruf erlaubt. Wer Claude Code so startet,
-  dass es nicht mehr nachfragt, schaltet die Rückfrage ab.
+  dass es nicht mehr nachfragt, schaltet die Rückfrage ab. Verhindert wird ein solcher Aufruf von Robin nicht, aber
+  er bleibt sichtbar: Der Beleg hält fest, welche Regel er nicht einhielt (Freigabe, Untersuchungsbereich, Prüfung
+  gegen die Sperrliste), und das Ermittlungsprotokoll zeigt «Regel verletzt».
 - Ist ein Proxy eingestellt, geht jede Abfrage des Gateways über ihn. Antwortet er nicht, scheitert die Abfrage: Einen
   Weg am Proxy vorbei gibt es nicht. Ob Tor auf diesem Rechner Verbindungen aufbaut, prüfen Einrichtung und
   `tools/pruefen.py` mit einer Verbindung über Tor zu `check.torproject.org`, die sie gleich wieder schliessen. Dabei

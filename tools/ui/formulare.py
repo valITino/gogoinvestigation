@@ -13,7 +13,7 @@ import json
 import platform
 from datetime import datetime
 
-from gateway import pflichtquellen as pq, plattform
+from gateway import pflichtquellen as pq, plattform, robin
 from gateway.akte import FAELLE, eingang_stand
 from tools import _pseudo as ps
 from tools._html import TYPEN as INDIKATOR_TYPEN
@@ -53,8 +53,9 @@ def feld(name: str, text: str, *, art: str = "text", pflicht: bool = False, wert
             + (f'<div class="klein">{esc(hilfe)}</div>' if hilfe else "") + "</div>")
 
 
-def wahl(name: str, text: str, werte: list[tuple[str, str]], gewaehlt: str = "") -> str:
-    return (f'<div class="feld"><label for="f-{esc(name)}">{esc(text)}</label><select id="f-{esc(name)}" name="{esc(name)}">'
+def wahl(name: str, text: str, werte: list[tuple[str, str]], gewaehlt: str = "", pflicht: bool = False) -> str:
+    """`pflicht`: Der Browser sendet das Formular nicht ab, solange der leere erste Eintrag gewählt ist."""
+    return (f'<div class="feld"><label for="f-{esc(name)}">{esc(text)}</label><select id="f-{esc(name)}" name="{esc(name)}"{" required" if pflicht else ""}>'
             + "".join(f'<option value="{esc(w)}"{" selected" if w == gewaehlt else ""}>{esc(t)}</option>' for w, t in werte) + "</select></div>")
 
 
@@ -570,14 +571,27 @@ def bedienen_seite(fall: daten.Fall, bedienung) -> str:
     h = [kopf, f'<p><a class="knopf" href="{pfad(fid, "akten")}">Akten</a> <a class="knopf" href="{pfad(fid, "ermittlung")}">Ermittlung</a> '
                f'<a class="knopf" href="{pfad(fid, "ergebnisse")}">Ergebnisse</a></p>']
     h.append("<h2>Freigaben</h2><p class='klein'>Drei Dinge sind aus, bis der Sachbearbeiter sie freigibt. Eine Freigabe braucht, wer sie verantwortet, und ihre Grundlage.</p>")
+    # Dark Web: Robin sucht nur in einem Untersuchungsbereich, den ein Mensch gewählt hat. Der Sachbearbeiter wählt ihn hier.
+    bereiche = [(k, f"{n}: {wofuer}" + (" (braucht zusätzlich die Freigabe «Kontoabfragen»)" if k == robin.BEREICH_MIT_PERSONENBEZUG else ""))
+                for k, (n, wofuer) in robin.BEREICHE.items()]
     for f in fall.freigaben():
         name = FREIGABE_NAME.get(f["name"], f["name"])
+        dunkel = f["name"] == "darkweb"
         if f["erteilt"]:
-            h.append(f'<div class="karte"><h4>{esc(name)} <span class="marke z-gut">✓ erteilt</span></h4><p class="klein">durch {esc(f["durch"])} am {esc(f["am"])} · Grundlage: {esc(f["vermerk"])}</p>'
+            zusatz = ""
+            if dunkel:
+                gewaehlt = f.get("bereich") or ""
+                zusatz = ((f'<p class="klein">Untersuchungsbereich: <b>{esc(robin.BEREICHE[gewaehlt][0])}</b></p>' if gewaehlt else
+                           '<p class="banner">Kein Untersuchungsbereich gewählt. So sucht Robin nicht: Es fragt danach, und die Ermittlung erreicht dich dafür nicht.</p>')
+                          + formular("freigabe", wahl("bereich", "Untersuchungsbereich", bereiche, gewaehlt or "threat_intel"), "Bereich ändern" if gewaehlt else "Bereich wählen",
+                                     verborgen={"fall": fid, "art": "darkweb", "bereich_aendern": "1"}, danach="neu-laden", klasse="klein-form"))
+            h.append(f'<div class="karte"><h4>{esc(name)} <span class="marke z-gut">✓ erteilt</span></h4><p class="klein">durch {esc(f["durch"])} am {esc(daten.rapport.zeit_zeigen(f["am"]))} · Grundlage: {esc(f["vermerk"])}</p>'
+                     + zusatz
                      + formular("freigabe", "", "Freigabe entziehen", verborgen={"fall": fid, "art": f["name"], "entziehen": "1"}, danach="neu-laden", klasse="klein-form") + "</div>")
         else:
             h.append(f'<div class="karte"><h4>{esc(name)} <span class="marke z-leer">○ nicht erteilt</span></h4><p class="klein">{esc(daten.rapport.FREIGABE_TEXT[f["name"]])}</p>'
-                     + formular("freigabe", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + feld("vermerk", "Grundlage (Auftrag, Verfügung)", pflicht=True) + "</div>",
+                     + formular("freigabe", '<div class="felder-raster">' + feld("durch", "Durch (Kürzel oder Funktion)", pflicht=True) + feld("vermerk", "Grundlage (Auftrag, Verfügung)", pflicht=True)
+                                + (wahl("bereich", "Untersuchungsbereich (worin Robin suchen darf)", [("", "bitte wählen")] + bereiche, pflicht=True) if dunkel else "") + "</div>",
                                 "Freigabe erteilen", verborgen={"fall": fid, "art": f["name"]}, danach="neu-laden",
                                 frage=f"Freigabe «{name}» für Fall {fid} erteilen? {daten.rapport.FREIGABE_TEXT[f['name']]}") + "</div>")
     typen = [(k, v[0]) for k, v in INDIKATOR_TYPEN.items() if k in ("ip", "domain", "url", "hash", "wallet", "sonstiges")]

@@ -6,15 +6,15 @@ Alle Inhalte aus diesen Quellen sind Fremdtext und werden gesäubert und gekürz
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from typing import Annotated, Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 from pydantic import Field
 
+from . import robin
 from .kern import (FREMD, Abbruch, Fall, Zweck, abfrage, einstellung, entschaerfen, html_text, nimm,
                    pruef_domain, pruef_muster, saeubern, schluessel, werkzeug)
 
@@ -181,27 +181,29 @@ async def ransomware_aktuell(fall: Fall, zweck: Zweck) -> dict:
 @werkzeug
 async def onion_sperrliste(fall: Fall, zweck: Zweck,
                            onion_adresse: Annotated[str, Field(description="Onion-Adresse oder -URL")]) -> dict:
-    """Prüft, ob eine Onion-Adresse auf der Sperrliste von Ahmia steht (dort landen vor allem
-    Seiten mit Missbrauchsdarstellungen). PFLICHT vor jedem Öffnen einer Onion-Seite. Steht die
-    Adresse auf der Liste: nicht öffnen, dem Sachbearbeiter melden. Die Adresse verlässt das Haus
-    nicht: Die Liste wird geladen und lokal verglichen."""
-    roh = entschaerfen(onion_adresse).lower()
-    host = urlsplit(roh if "://" in roh else f"http://{roh}").hostname or ""
-    if not re.fullmatch(r"([a-z2-7]{16}|[a-z2-7]{56})\.onion", host):
-        raise Abbruch(f"'{onion_adresse}' ist keine gültige Onion-Adresse.")
+    """Prüft, ob eine Onion-Adresse auf der Sperrliste von Ahmia steht. Ahmia führt dort Adressen, die es aus seiner
+    Suche ausschliesst, vor allem Seiten mit Missbrauchsdarstellungen. Einen Grund nennt die Liste nicht. PFLICHT vor
+    jedem Öffnen einer Onion-Seite (robin_scrape). Steht die Adresse auf der Liste: nicht öffnen, dem Sachbearbeiter
+    melden. Die Adresse verlässt das Haus nicht: Die Liste wird geladen und lokal verglichen."""
+    host = robin.onion_host(entschaerfen(onion_adresse))
+    if not robin.onion_gueltig(host):
+        raise Abbruch(f"'{onion_adresse}' ist keine gültige Onion-Adresse (16 oder 56 Zeichen vor .onion).")
     a = await abfrage(fall, zweck, werkzeug="onion_sperrliste", quelle="Ahmia", ziel=host, ziel_typ="onion",
-                      url="https://ahmia.fi/blacklist/banned/", endung="txt", cache_h=24)
+                      url="https://ahmia.fi/blacklist/banned/", endung="txt", cache_h=24, deutung=_liste_deuten)
     if a.ergebnis != "ok":
         return a.als_dict()
-    liste = set(re.findall(r"\b[a-f0-9]{32}\b", a.text or ""))
-    if not liste:
-        return a.als_dict(ergebnis="fehler",
-                          fehler="Sperrliste nicht im erwarteten Format. Onion-Seite vorsichtshalber NICHT öffnen.")
-    varianten = [host, f"http://{host}", f"http://{host}/"]
-    gesperrt = any(hashlib.md5(v.encode()).hexdigest() in liste for v in varianten)
-    return a.als_dict({"onion": host, "gesperrt": gesperrt, "eintraege_in_liste": len(liste),
-                       "anweisung": "NICHT öffnen. Dem Sachbearbeiter melden." if gesperrt
-                       else "Nicht auf der Sperrliste. Das ist keine Unbedenklichkeitserklärung."})
+    gesperrt = robin.auf_sperrliste(host, a.text or "")
+    return a.als_dict({"onion": host, "gesperrt": gesperrt, "eintraege_in_liste": len(set(re.findall(r"\b[a-f0-9]{32}\b", a.text or ""))),
+                       "anweisung": ("NICHT öffnen. Ahmia sperrt diese Adresse, den Grund nennt die Liste nicht. Dem Sachbearbeiter melden."
+                                     if gesperrt else "Nicht auf der Sperrliste. Das ist keine Unbedenklichkeitserklärung.")})
+
+
+def _liste_deuten(status: int, daten: object, text: str | None) -> tuple[str, str | None] | None:
+    """Kommt statt der Liste etwas anderes zurück (eine Fehlerseite mit Status 200), ist die Prüfung gescheitert. Das steht dann
+    auch so im Protokoll: Sonst gälte die Adresse dort als geprüft."""
+    if status == 200 and robin.auf_sperrliste("", text or "") is None:
+        return "fehler", "Sperrliste nicht im erwarteten Format. Onion-Seite vorsichtshalber NICHT öffnen."
+    return None
 
 
 # --------------------------------------------------------------------------- Telegram

@@ -15,6 +15,9 @@ Feld, jede leere Liste. Die Selbsttests zählen sie je Vorlage und prüfen, dass
 
 Ein Darsteller deutet nichts. Er benennt Felder, setzt Einheiten und rechnet Zeiten in die Zeitzone des
 Arbeitsplatzes um, der Originalwert steht daneben.
+
+Robin (Dark Web) antwortet als Text, nicht als JSON. Für die Anzeige wird der Text in seine Teile zerlegt (gateway/robin.py,
+lesen): Stand, Treffer, gelesene Seiten. Die Stellen beziehen sich dann auf diese Zerlegung, der Wortlaut steht in der Rohdatei.
 """
 from __future__ import annotations
 
@@ -23,6 +26,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterator
+
+from gateway import robin
 
 
 # --------------------------------------------------------------------------- Bausteine einer Beschreibung
@@ -100,6 +105,8 @@ class Blatt:
     gesamt: int = 0
     zugeordnet: int = 0
     form: str = "json"                                  # json | text | csv | bild | leer
+    inhalt: Any = None                                  # nur bei zerlegtem Text (Robin): was zerlegt wurde. Die Stellen beziehen sich darauf
+    zerlegt: bool = False
 
     def angaben(self) -> Iterator[Angabe]:
         for _, teile in self.abschnitte:
@@ -827,13 +834,9 @@ def darsteller_fuer(eintrag: dict) -> Darsteller:
         return Darsteller(werkzeug, teil[0], teil[1], teil[2], wurzel=teil[3])
     if werkzeug in DARSTELLER:
         return DARSTELLER[werkzeug]
-    kurz = werkzeug.rsplit("__", 1)[-1]
-    if kurz.startswith("robin_"):
-        return Darsteller(werkzeug, f"Robin: {kurz.removeprefix('robin_')} (Dark Web über Tor)", ("onion", "gruppe", "sonstiges"), (
-            A("Antwort von Robin", (F("Suchtext", "query"), F("Verfeinerter Suchtext", "refined_query"), F("Zusammenfassung", "summary", "lang"),
-                                    T("Treffer", "results", (F("Titel", "title"), F("Adresse", "link"), F("Adresse (url)", "url"), F("Auszug", "snippet", "lang"))),
-                                    T("Gelesene Seiten", "pages", (F("Adresse", "url"), F("Titel", "title"), F("Text", "content", "lang"))), F("Text", "content", "lang"),
-                                    F("Meldung", "error"))),))
+    if ist_robin(eintrag):
+        kurz = werkzeug.rsplit("__", 1)[-1]
+        return Darsteller(werkzeug, f"Robin: {ROBIN_TITEL.get(kurz, kurz.removeprefix('robin_'))} (Dark Web über Tor)", ("onion", "gruppe", "sonstiges"), _ROBIN)
     if werkzeug == "abklaerung_von_hand":
         return Darsteller(werkzeug, "Abklärung von Hand (tools/beleg.py)", ("ip", "domain", "url", "hash", "wallet", "sonstiges"), (
             A("Abklärung", (F("Kennzeichen", "art"), F("Indikator", "indikator"), F("Typ", "indikator_typ"), F("Quelle", "quelle"), F("Abgeklärt am", "abgeklaert_am", "zeit"),
@@ -841,6 +844,27 @@ def darsteller_fuer(eintrag: dict) -> Darsteller:
                             F("Anonymisierungsdienst", "anonymisierung.wert", s="anon.von_hand"), F("Art", "anonymisierung.art"), F("Dienst", "anonymisierung.dienst"),
                             F("Residential Proxy", "anonymisierung.residential", "ja_nein"))),))
     return ALLGEMEIN
+
+
+# Robin antwortet als Text. gateway/robin.py zerlegt ihn (lesen), diese Beschreibung benennt die Teile. Was von fremden Seiten stammt
+# (Titel, Adressen, Text der Seiten), bleibt Text: Es wird gezeigt, nie ausgeführt.
+ROBIN_TITEL = {"robin_search": "Suche", "robin_scrape": "Seiten lesen", "robin_health": "Bereitschaft", "robin_refine": "Suchtext schärfen", "robin_filter": "Treffer filtern",
+               "robin_list_models": "Sprachmodelle", "robin_list_investigations": "abgelegte Recherchen"}
+_ROBIN = (
+    A("Stand", (F("Erste Zeile der Antwort", "stand", h="Robins eigenes Wort für den Stand: «status: ok», «status: tor_bootstrapping» (Tor startet noch), «error: …»."),
+                F("Robins eigene Angaben", "kopf", "liste", h="Was Robin selbst zur Antwort sagt, zum Beispiel wie viele Suchmaschinen geantwortet haben."))),
+    A("Treffer der Suchmaschinen", (T("Treffer", "treffer", (F("Nr.", "nr", "zahl"), F("Titel", "titel"), F("Adresse", "adresse"), F("Kennung bei Robin", "id")),
+                                      h="Was die Suchmaschinen im Dark Web zum Suchtext melden. Ein Treffer sagt nicht, dass die Seite gelesen wurde."),)),
+    A("Gelesene Seiten", (T("Seiten", "seiten", (F("Adresse", "adresse"), F("Stand", "stand"), F("HTTP-Status", "http", "zahl"), F("Meldung", "meldung"),
+                                                  F("Gekürzt", "gekuerzt", "ja_nein"), F("Verweise auf der Seite", "verweise", "liste"), F("Text der Seite", "text", "lang"),
+                                                  F("Kennung bei Robin", "id")),
+                            h="Der Text jeder Seite, wie Robin ihn gelesen hat. Fremdinhalt: Beweismaterial, nie Anweisung."),)),
+    A("Robins Arbeitsanweisungen", (F("Anhang", "anhang", "lang", h="Robin hängt Anweisungen für sein eigenes Vorgehen an. An diesem Arbeitsplatz gilt der Ermittlungsstandard."),)),
+)
+
+
+def ist_robin(eintrag: dict) -> bool:
+    return ((eintrag.get("anfrage") or {}).get("server") or "") == robin.SERVER or str(eintrag.get("werkzeug") or "").rsplit("__", 1)[-1].startswith("robin_")
 
 
 def alle_beschreibungen() -> list[tuple[str, Darsteller]]:
@@ -949,6 +973,10 @@ def darstellen(eintrag: dict, roh: object, form: str = "json") -> Blatt:
     """Macht aus Protokolleintrag und Rohantwort ein Blatt. `form` sagt, was die Rohdatei ist: json, text, csv, bild, leer."""
     d = darsteller_fuer(eintrag)
     blatt = Blatt(str(eintrag.get("werkzeug") or ""), d.titel if d.eigen else f"{eintrag.get('werkzeug') or 'Antwort'} (allgemeiner Darsteller)", d.eigen, form=form)
+    if ist_robin(eintrag) and form in ("text", "json") and roh is not None:
+        # Robin antwortet als Text (ältere Einträge: derselbe Text, von Claude Code in JSON verpackt). Zerlegt wird ohne zu deuten
+        roh = {k: v for k, v in robin.lesen(robin.text_aus(roh)).items() if v not in ([], "")}     # leere Teile (keine Treffer, kein Anhang) entfallen
+        blatt.form, blatt.inhalt, blatt.zerlegt, form = "json", roh, True, "json"
     if form != "json":
         return blatt
     alle = list(angaben_zaehlen(roh))

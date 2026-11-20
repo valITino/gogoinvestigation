@@ -1067,14 +1067,33 @@ def dienste(a: argparse.Namespace, docker: dict) -> bool:
         return False
     abbild = env.get("ROBIN_IMAGE") or plattform.ROBIN_ABBILD
     if lauf(docker["vor"] + ["docker", "image", "inspect", abbild], 60)[0] == 0:
-        zeile(GUT, "Robin", f"Abbild bereit ({abbild})")
+        zeile(GUT, "Robin", f"Abbild geladen ({abbild}). Ob Robin das Tor-Netz erreicht, zeigen die Testabfragen")
+        robin_ablage_aufraeumen(docker)
         return True
     if lauf(docker["vor"] + ["docker", "pull", abbild], 3600, "docker.log", anzeige=f"Robin-Abbild wird geladen ({abbild})")[0] == 0:
         zeile(NEU, "Robin", f"Abbild geladen ({abbild})")
         stand.neu.append("Robin-Abbild")
+        robin_ablage_aufraeumen(docker)
         return True
     zeile(AUS, "Robin", f"Abbild {abbild} liess sich nicht laden. Dark-Web-Suche bleibt aus. Details: {LOGS / 'docker.log'}")
     return False
+
+
+def robin_ablage_aufraeumen(docker: dict) -> None:
+    """Bis zum 20.11.2026 hängte .mcp.json ein Docker-Volume in Robins Container ein, in das Robin eigene Recherchen ablegen konnte:
+    ein zweiter Ablageort ausserhalb der Fallakte. Es wird nicht mehr eingehängt. Ist es von früher noch da und leer, verschwindet
+    es hier. Liegt etwas darin, bleibt es, und die Zeile sagt, was zu tun ist: Über Inhalte entscheidet der Sachbearbeiter."""
+    from tools import dienste as dienste_werkzeug, loeschen as loesch_werkzeug      # erst hier: Beide laden dieses Modul
+    ablage = dienste_werkzeug.robin_ablage({"laeuft": True, "vor": docker["vor"]})
+    if ablage is None:
+        return
+    name = dienste_werkzeug.ROBIN_VOLUME
+    if ablage["dateien"] == 0 and loesch_werkzeug.robin_ablage_entfernen({"laeuft": True, "vor": docker["vor"]}):
+        zeile(NEU, "Robin", f"leeres Docker-Volume {name} aus einer früheren Einrichtung entfernt (es wird nicht mehr verwendet)")
+        return
+    n = ablage["dateien"]
+    zeile(AUS, "Robin", f"Im Docker-Volume {name} aus einer früheren Einrichtung " + (f"liegen {n} Dateien" if n else "liegt vielleicht noch etwas")
+          + f". Robin verwendet es nicht mehr. Ansehen: {PY} tools/dienste.py   Entfernen: docker volume rm {name}")
 
 
 # --------------------------------------------------------------------------- Schritt 5: Claude Code

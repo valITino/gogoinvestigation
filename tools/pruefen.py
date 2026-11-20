@@ -2,7 +2,8 @@
 """Prüft die Einrichtung des Arbeitsplatzes und sagt, was noch fehlt.
 
     python3 tools/pruefen.py            Umgebung, Konfiguration, Modelle, Quellen, Selbsttests (ohne Netz)
-    python3 tools/pruefen.py --live     zusätzlich je eingerichteter Quelle eine harmlose Testabfrage und
+    python3 tools/pruefen.py --live     zusätzlich je eingerichteter Quelle eine harmlose Testabfrage, ein Start von Robin
+                                        (erreicht Tor im Container das Netz? Gesucht wird nichts) und
                                         je Modell (Fable 5.2, Mythos 5.2 wenn freigeschaltet) ein kurzer Testaufruf
     python3 tools/pruefen.py --kurz     nur die Übersicht, ohne Selbsttests
     python3 tools/pruefen.py --nur-live nur die Testabfragen und Testaufrufe
@@ -159,7 +160,9 @@ def umgebung(env: dict[str, str]) -> None:
             zeile(GUT, "Docker", "läuft")
             abbild = env.get("ROBIN_IMAGE") or plattform.ROBIN_ABBILD
             code, _ = lauf(["docker", "image", "inspect", abbild], 15)
-            zeile(GUT if code == 0 else AUS, "Robin-Abbild", abbild if code == 0 else f"{abbild} nicht geladen ({SETUP} holt es)")
+            # Das geladene Abbild sagt nicht, dass Robin sucht: Dafür muss Tor im Container das Netz erreichen. Das zeigt nur ein Start
+            zeile(GUT if code == 0 else AUS, "Robin-Abbild", f"geladen ({abbild}). Ob Robin das Tor-Netz erreicht, zeigt: {PY} tools/pruefen.py --live"
+                  if code == 0 else f"{abbild} nicht geladen ({SETUP} holt es)")
     adresse = env.get("WEBCHECK_URL", "http://127.0.0.1:3000")
     if erreichbar(adresse):
         zeile(GUT, "Web-Check", f"erreichbar unter {adresse}")
@@ -439,6 +442,40 @@ def live(bereit: list, env: dict[str, str] | None = None) -> None:
     ui.text(f"Protokoll der Testabfragen: {PY} tools/protokoll.py SELBSTTEST", "matt")
 
 
+def live_robin(env: dict[str, str] | None = None) -> None:
+    """Startet Robin einmal und fragt, ob Tor im Container bereit ist und wie viele Suchmaschinen antworten. Es wird nichts
+    gesucht und keine Seite gelesen. Ohne diesen Test hiesse «Abbild geladen» schon «bereit», auch wo das Netz Tor nicht zulässt."""
+    from gateway import pflichtquellen
+    from tools import dienste
+    abschnitt("Testaufruf Robin (Dark Web über Tor: Start des Containers, keine Suche)")
+    eingeschaltet, grund = pflichtquellen._robin_bereit()
+    if not eingeschaltet:
+        zeile(AUS, "Robin", f"ausgelassen: {grund}")
+        return
+    docker = dienste.docker_kurz()
+    if not docker["laeuft"]:
+        zeile(AUS, "Robin", "ausgelassen: Docker läuft nicht oder ist aus diesem Terminal nicht erreichbar")
+        return
+    if lauf(docker["vor"] + ["docker", "image", "inspect", dienste.robin_abbild()], 15)[0] != 0:
+        zeile(AUS, "Robin", f"ausgelassen: Das Abbild ist nicht geladen ({SETUP} holt es)")
+        return
+    frist = 120
+    with ui.arbeit("Robin wird gestartet, Tor im Container baut seine Verbindungen auf (bis zu zwei Minuten)"):
+        r = dienste.robin_bereitschaft(docker, frist)
+    if r["fehler"]:
+        zeile(FEHLT, "Robin", r["fehler"], satz=True)
+    elif not r["tor"]:
+        zeile(FEHLT, "Robin", f"Tor im Container war nach {r['sekunden']} Sekunden nicht bereit. So sucht und liest Robin nicht: Auf jede Suche antwortet es "
+                              "mit «Tor ist noch nicht bereit». Meist lässt das Netz dieses Rechners Tor nicht zu (Firewall, Proxy, der nur Port 443 "
+                              f"durchlässt). Später noch einmal: {PY} tools/pruefen.py --nur-live", satz=True)
+    else:
+        maschinen = r["maschinen"]
+        keine = bool(maschinen) and maschinen.startswith("0 ")
+        zeile(FEHLT if keine else GUT, "Robin", f"Tor im Container ist bereit (nach {r['sekunden']} Sekunden)"
+              + (f", Suchmaschinen erreichbar: {maschinen}" if maschinen else "")
+              + (". Ohne Suchmaschine findet Robin nichts" if keine else ". Gesucht wird erst in einem Fall mit Freigabe darkweb"), satz=True)
+
+
 def kurzfassung(bereit: list, tests: tuple[int, int]) -> list[list[str]]:
     """Die Prüfung in wenigen Zeilen, für die Einrichtung: Was in Ordnung ist, wird zusammengefasst,
     jeder Fehler steht einzeln da."""
@@ -482,6 +519,7 @@ def main() -> int:
         bereit = quellen(env)
         still = False
         live(bereit, env)
+        live_robin(env)
         live_modelle()
         return 1 if any(art == "fehlt" for bereich, art, _, _ in gemeldet if bereich.startswith("Test")) else 0
     ui.kopf("OSINT-Ermittlungsarbeitsplatz · Prüfung der Einrichtung")
@@ -492,6 +530,7 @@ def main() -> int:
         selbsttests()
     if "--live" in sys.argv:
         live(bereit, env)
+        live_robin(env)
         live_modelle()
     ui.leer()
     ui.linie()

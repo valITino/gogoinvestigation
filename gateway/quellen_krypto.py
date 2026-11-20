@@ -51,6 +51,10 @@ async def _ausfuehren(v: Vorgang, aufgabe: Any) -> dict:
     except (KeyError, TypeError, ValueError, IndexError, AttributeError) as e:
         if einstellung("OSINT_DEBUG"):
             raise
+        if not v.belege:        # gescheitert, bevor eine Abfrage hinausging: Im Protokoll steht nichts, also behauptet es die Meldung nicht
+            return {"ergebnis": "nicht_ausgefuehrt",
+                    "fehler": (f"Der Aufruf ist am Werkzeug gescheitert, bevor eine Abfrage hinausging ({type(e).__name__}: {e}). Es ist nichts "
+                               "protokolliert. Angaben prüfen. Bleibt der Grund unklar: nicht wiederholen, sondern als Auffälligkeit melden.")}
         return {"ergebnis": "fehler", "belege": list(v.belege),
                 "fehler": (f"Eine Quelle hat in einer unerwarteten Form geantwortet ({type(e).__name__}: {e}). Die Antworten sind "
                            "protokolliert und liegen in den Rohdaten. Nicht wiederholen, sondern als Auffälligkeit melden.")}

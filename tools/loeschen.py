@@ -13,6 +13,8 @@ Was «alles» tut, in dieser Reihenfolge:
      Datei. Das Archiv wird geprüft, bevor irgendetwas gelöscht wird. Scheitert die Sicherung, bleibt alles, wie es ist.
   4. Gelöscht werden: die Schlüsseldatei, Fallakten und Sitzungsprotokolle im Projekt, die Einstellungen des Arbeitsplatzes,
      die Container und Abbilder von Web-Check und Robin, und am Schluss der Projektordner selbst, mit Code und Python-Umgebung.
+     Gibt es aus einer früheren Einrichtung noch das Docker-Volume, in das Robin eigene Recherchen ablegen konnte, kommt sein
+     Inhalt in den Sicherungsordner, dann wird es entfernt.
 
 Was bleibt: die Sicherung der Fallakten, die Ablage des Sachbearbeiters (Klartext und Zuordnungstabellen), die
 Gesprächsverläufe, die Claude Code selbst führt, und was die Einrichtung im System installiert hat (Claude Code, Docker,
@@ -42,6 +44,7 @@ import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from datetime import datetime
@@ -284,6 +287,10 @@ def plan_zeilen(p: dict) -> list[Zeile]:
                                         "Der Bericht nennt die Befehle dafür"))
     else:
         zeilen.append((GUT, "Web-Check und Robin", "Container werden entfernt, die Abbilder ebenso"))
+        ablage = laeuft.get("robin_ablage")
+        if ablage:      # ein Docker-Volume aus einer früheren Einrichtung: Dort konnte Robin eigene Recherchen ablegen, ausserhalb der Fallakte
+            zeilen.append((GUT, "Ablage von Robin", f"Docker-Volume {dienste.ROBIN_VOLUME} aus einer früheren Einrichtung: "
+                           + ("leer, wird entfernt" if ablage["dateien"] == 0 else "wird in die Sicherung gelegt und dann entfernt")))
     zeilen.append((GUT, "Projektordner", f"{p['projekt']}: wird am Schluss entfernt, mit Code, Einstellungen und Python-Umgebung"))
     if p["git_offen"]:
         zeilen.append((FEHLT, "Achtung", f"Im Projektordner liegen {p['git_offen']} Dateien, die verändert oder neu sind und nicht im Repository stehen. "
@@ -402,8 +409,31 @@ def sichern(projekt: Path, ordner: Path, zeit: datetime, weg: str = "Terminal") 
 
 # --------------------------------------------------------------------------- Löschen
 
-def docker_entfernen(projekt: Path = PROJEKT) -> tuple[list[Zeile], bool]:
-    """Entfernt die Container und Abbilder von Web-Check und Robin. Docker selbst bleibt: Es kann auch anderem dienen."""
+def robin_ablage_sichern(docker: dict, ziel: Path) -> str:
+    """Sichert den Inhalt des Volumes als tar-Archiv nach `ziel` und prüft, dass es sich lesen lässt. Gibt den Grund zurück, wenn es
+    nicht ging, sonst ''."""
+    befehl = docker["vor"] + ["docker", "run", "--rm", "--network", "none", "--entrypoint", "tar", "-v", f"{dienste.ROBIN_VOLUME}:/v:ro", dienste.robin_abbild(), "-C", "/v", "-cf", "-", "."]
+    try:
+        with open(ziel, "wb") as f:
+            r = subprocess.run(befehl, stdout=f, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, timeout=600)
+        if r.returncode != 0:
+            raise OSError((r.stderr.decode("utf-8", "replace").strip().splitlines() or ["Docker meldet einen Fehler"])[-1])
+        with tarfile.open(ziel) as archiv:
+            archiv.getmembers()
+    except (OSError, subprocess.TimeoutExpired, tarfile.TarError) as e:
+        with contextlib.suppress(OSError):
+            ziel.unlink()
+        return f"{type(e).__name__}: {e}"
+    return ""
+
+
+def robin_ablage_entfernen(docker: dict) -> bool:
+    return einrichten.lauf(docker["vor"] + ["docker", "volume", "rm", dienste.ROBIN_VOLUME], 60, "docker.log")[0] == 0
+
+
+def docker_entfernen(projekt: Path = PROJEKT, ordner: Path | None = None, zeit: datetime | None = None) -> tuple[list[Zeile], bool]:
+    """Entfernt die Container und Abbilder von Web-Check und Robin, und das Docker-Volume, in das Robin früher eigene Recherchen
+    ablegen konnte: Was darin liegt, kommt zuerst in den Sicherungsordner (`ordner`). Docker selbst bleibt: Es kann auch anderem dienen."""
     docker = dienste.docker_kurz()
     abbilder = [a for a in (webcheck_abbild(projekt), dienste.robin_abbild()) if a]
     von_hand = f"docker rm -f {dienste.WEBCHECK}; docker image rm {' '.join(abbilder)}"
@@ -423,6 +453,28 @@ def docker_entfernen(projekt: Path = PROJEKT) -> tuple[list[Zeile], bool]:
         gelungen = gelungen and code == 0
     else:
         zeilen.append((AUS, "Container", "keine vorhanden"))
+    # Die Ablage von Robin: vor den Abbildern, denn sichern lässt sich ein Volume nur mit einem Container
+    ablage = dienste.robin_ablage(docker)
+    if ablage:
+        von_hand_ablage = f"docker volume rm {dienste.ROBIN_VOLUME}"
+        grund, archiv = "", None
+        if ablage["dateien"] != 0:      # Dateien darin, oder sie liessen sich nicht zählen: sichern, bevor etwas entfernt wird
+            if ordner is None:
+                grund = "kein Sicherungsordner"
+            else:
+                archiv = ordner / f"robin-ablage-{(zeit or datetime.now()).strftime('%Y%m%d-%H%M%S')}.tar"
+                grund = robin_ablage_sichern(docker, archiv)
+        if grund:
+            zeilen.append((FEHLT, "Ablage von Robin", f"Das Docker-Volume {dienste.ROBIN_VOLUME} liess sich nicht sichern ({grund}). Es bleibt. "
+                                                      f"Später von Hand ansehen und entfernen: {von_hand_ablage}"))
+            gelungen = False
+        elif robin_ablage_entfernen(docker):
+            zeilen.append((GUT, "Ablage von Robin", f"Docker-Volume {dienste.ROBIN_VOLUME} entfernt"
+                           + (f", Inhalt gesichert: {archiv} ({groesse(archiv.stat().st_size)})" if archiv else " (es war leer)")))
+        else:
+            zeilen.append((FEHLT, "Ablage von Robin", f"Das Docker-Volume {dienste.ROBIN_VOLUME} liess sich nicht entfernen"
+                           + (f" (sein Inhalt ist gesichert: {archiv})" if archiv else "") + f". Von Hand: {von_hand_ablage}"))
+            gelungen = False
     for abbild in abbilder:
         if einrichten.lauf(docker["vor"] + ["docker", "image", "inspect", abbild], 20)[0] != 0:
             continue                    # nie geladen
@@ -707,7 +759,7 @@ def ausfuehren(projekt: Path = PROJEKT, sicherung: str | os.PathLike | None = No
     zeilen.append((GUT, "Fallakten gesichert", f"{gesichert['archiv']} ({gesichert['dateien']} Dateien, {groesse(gesichert['bytes'])}, geprüft)") if gesichert else
                   (AUS, "Fallakten gesichert", "nichts zu sichern: Ausser dem Musterfall gab es weder Fallakten noch Sitzungsprotokolle"))
     # 3. Container und Abbilder, dann die Daten: Schlüssel zuerst
-    entfernt, ok = docker_entfernen(projekt)
+    entfernt, ok = docker_entfernen(projekt, ordner, zeit)
     zeilen += entfernt
     gelungen = gelungen and ok
     geloescht, ok = daten_loeschen(projekt)

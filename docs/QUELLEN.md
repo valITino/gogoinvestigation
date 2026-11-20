@@ -46,7 +46,7 @@ und ihr Schlüssel bleibt stehen. Einen Schalter haben 20 der 28 Quellen. Welche
 | | `webcheck_aktiv` | wie oben | nicht geprüft (aktive Massnahme) |
 | ransomware.live | `ransomware_aktuell`, `_opfer`, `_gruppe`, `_iocs` | API PRO: `api-pro.ransomware.live/{victims/recent, victims/search?q=, victims/?group=, victims/?country=, groups/{g}, iocs/{g}}`, Kopfzeile `X-API-KEY` | alle sechs Pfade geprüft am 16.11.2026 |
 | | | API v2: `api.ransomware.live/v2/{recentvictims, searchvictims/{x}, groupvictims/{g}, countryvictims/{cc}, group/{g}}` | nicht geprüft: laut Anbieter nur für private Nutzung |
-| Ahmia | `onion_sperrliste` | `GET ahmia.fi/blacklist/banned/`, Vergleich lokal | geprüft am 16.11.2026: Die Liste enthielt 60'371 Zeilen, jede ein MD5-Wert. Ein Treffer ist nicht geprüft: Dafür bräuchte es eine gesperrte Adresse. |
+| Ahmia | `onion_sperrliste` | `GET ahmia.fi/blacklist/banned/`, Vergleich lokal | geprüft am 16.11.2026: Die Liste enthielt 60'371 Zeilen, jede ein MD5-Wert. Am 20.11.2026 (60'394 Einträge): Sieben öffentlich gelistete Leak-Seiten zweier Ransomware-Gruppen standen nicht darauf. Ein Treffer ist seither gesehen, an zwei Adressen, die mit Missbrauch nichts zu tun haben (DuckDuckGo, ProPublica). |
 | Telegram | `telegram_kanal` | `GET t.me/s/{kanal}` | geprüft am 16.11.2026 mit dem Kanal `telegram` (20 Beiträge gelesen). Für `breachdetect` zeigte Telegram keine Web-Vorschau mehr, siehe [Hinweise](#hinweise-je-quelle). |
 | RapidAPI | `telegram_kanalinfo` | `GET telegram-channel.p.rapidapi.com/channel/info` | nicht geprüft, kein Schlüssel. Endpunkt aus dem Quellcode von TeleGramSint. |
 | | `telegram_entitaet`, `telegram_suche` | `GET telegram-scraper-api.p.rapidapi.com/entity/{fetch,search}` | nicht geprüft, kein Schlüssel. Kontoabfragen. |
@@ -310,7 +310,17 @@ Gateway ersetzt sie in der Rohdatei durch `***` und vermerkt das im Protokollein
 bleibt die Rohdatei, wie die Quelle sie geliefert hat.
 
 **Ahmia-Sperrliste.** Liefert die Liste nichts, was wie eine Liste von MD5-Werten aussieht, meldet das Werkzeug
-einen Fehler und rät vom Öffnen ab. «Nicht auf der Liste» ist keine Unbedenklichkeitserklärung.
+einen Fehler und rät vom Öffnen ab. Die Prüfung steht dann auch im Protokoll als Fehler, und die Adresse gilt nicht als
+geprüft (bis zum 20.11.2026 stand der Eintrag als «ok» da). «Nicht auf der Liste» ist keine Unbedenklichkeitserklärung.
+
+Was ein Treffer heisst: Ahmia führt auf der Liste Adressen, die es aus seiner Suche ausschliesst. Einen Grund nennt die
+Liste nicht. Sie ist keine reine Liste von Seiten mit Missbrauchsdarstellungen: Am 20.11.2026 standen auch die
+Onion-Adressen der Suchmaschine DuckDuckGo und der Redaktion ProPublica darauf (Fallakte SELBSTTEST, P-1159 und
+P-1160). Die Regel bleibt trotzdem: Steht eine Adresse auf der Liste, wird die Seite nicht geöffnet und dem
+Sachbearbeiter gemeldet. Für die Arbeit an Erpressungsfällen kostet das nach der Stichprobe vom selben Tag nichts:
+Sieben öffentlich gelistete Leak-Seiten von zwei Gruppen (laut ransomware.live) standen nicht auf der Liste (P-1152 bis
+P-1158). Im Ermittlungsprotokoll heisst das Ergebnis der Prüfung «nicht auf der Sperrliste» oder «auf der Sperrliste».
+«Treffer» stünde dort für das Gegenteil dessen, was ein Leser erwartet.
 
 **Telegram Breach Monitor.** Die Seite auf osintcabal.org ist eine Hinweisseite auf den Telegram-Kanal
 `breachdetect` und bietet selbst keinen maschinenlesbaren Feed. `telegram_kanal` liest die öffentliche
@@ -329,15 +339,45 @@ sind Einzelpersonen unbekannter Herkunft. Vor dem Einsatz prüfen, ob Selektoren
 dessen 16 Suchmaschinen ersetzt. Übernommen ist die Prüfung gegen die Ahmia-Sperrliste.
 
 **Robin.** Eigener MCP-Server, läuft als Container (`apurvsg/robin`), Tor inklusive. Das Abbild ist auf eine
-Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026), ebenso das von Web-Check (Stand vom 15.11.2026): Was
-läuft, ändert sich nicht von selbst. Ein neuer Stand ist ein bewusster Schritt. Der Analyst nutzt
-`robin_search` und `robin_scrape` und wertet selbst aus, dafür braucht Robin kein eigenes Sprachmodell. Nach
-Angabe des Projekts liest Robin nur Seitentext und lädt keine Dateien. Weil Robin am Gateway vorbeiläuft, gilt: Jeder
-Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask», die Oberfläche lehnt ihn ohne Freigabe `darkweb` von
-selbst ab), und der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in der
-Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
+Prüfsumme festgelegt (Stand bei Docker Hub vom 3.10.2026, Robin 1.30.0), ebenso das von Web-Check (Stand vom
+15.11.2026): Was läuft, ändert sich nicht von selbst. Ein neuer Stand ist ein bewusster Schritt. Weil Robin am Gateway
+vorbeiläuft, gilt: Jeder Aufruf braucht die Zustimmung des Sachbearbeiters (Regel «ask»; die Oberfläche entscheidet
+stattdessen nach den Regeln in `gateway/robin.py`), und der Sitzungs-Hook sichert jede Antwort als Beleg `X-0001` … in
+der Fallakte und verkettet sie. Das gilt für die Server, die der Hook als Quelle kennt (`BELEG_SERVER` in
 `.claude/hooks/protokoll_hook.py`, heute Robin). Andere MCP-Server sind Arbeitsmittel: Ihre Aufrufe stehen im
 Sitzungsprotokoll, ihre Antworten sind kein Beleg. Für eine Behörde: aus dem eigenen Fork bauen und `ROBIN_IMAGE` setzen.
+
+So arbeitet der Analyst mit Robin (alles am 20.11.2026 am festgelegten Abbild abgelesen, Suche und Lesen über Tor
+ausgenommen):
+
+| Werkzeug | Was es tut | Hier |
+|---|---|---|
+| `robin_health` | Sagt, ob Tor im Container bereit ist, auf Wunsch auch, welche der 16 Suchmaschinen antworten. | Erster Schritt jeder Recherche. |
+| `robin_search` | Fragt die Suchmaschinen über Tor und gibt Titel und Adressen der Treffer zurück. Sucht nur mit einem Untersuchungsbereich, den ein Mensch gewählt hat (`preset`, `user_chose=true`). | Den Bereich wählt der Sachbearbeiter mit der Freigabe `darkweb`. `fall_status` gibt dem Analysten die beiden Angaben mit. |
+| `robin_scrape` | Liest Seiten über Tor: nur Text (HTML und Klartext, höchstens 1 MB je Seite), keine Bilder, keine Dateien. Gibt je Seite Stand, Text und die Verweise darauf zurück. | Über `urls`, nicht über Treffernummern: Nur so lässt sich jede Adresse ihrer Prüfung gegen die Sperrliste zuordnen. `allow_clearweb` (eine Seite im offenen Netz über Tor lesen) braucht die Freigabe `aktiv`. |
+| `robin_refine`, `robin_filter` | Schärfen den Suchtext und sortieren Treffer aus, mit einem eigenen Sprachmodell. | Robin hat hier keines (Claude Code bietet ihm keines an): Beide geben die Arbeit an den Analysten zurück. Erlaubt, aber ohne Nutzen. |
+| `robin_list_models`, `robin_list_investigations` | Listen Robins Sprachmodelle und bei Robin abgelegte Recherchen. | Beides ist hier leer. |
+| `robin_investigate`, `robin_save_investigation` | Eine ganze Recherche in einem Aufruf, mit eigenem Sprachmodell. Ablage des Ergebnisses in einem Docker-Volume. | **Verboten** (`.claude/settings.json`). `robin_investigate` öffnet Seiten von sich aus, ohne Prüfung gegen die Sperrliste, und liefe hier mangels Sprachmodell ohnehin nicht. Die Ablage wäre ein zweiter Ort ausserhalb der Fallakte. Das Volume wird seit dem 20.11.2026 nicht mehr eingehängt. |
+
+Robin antwortet als Text. Die erste Zeile nennt den Stand, und der entscheidet, was der Beleg belegt:
+
+| Stand in Robins Antwort | Im Protokoll | Bedeutung |
+|---|---|---|
+| `status: ok` mit Treffern oder gelesenen Seiten | Treffer, «2 von 4 Seiten gelesen» | Die Suche lief, die Seiten wurden gelesen. |
+| `status: no_results` | kein Treffer | Die Suche lief, die Suchmaschinen fanden nichts. |
+| `status: engines_unreachable`, keine Seite lesbar | Fehler | Versucht und gescheitert. Das ist eine Lücke, kein «nichts gefunden». |
+| `status: tor_bootstrapping`, `status: needs_domain`, `error: …` | nicht ausgeführt | Es ging nichts hinaus: Tor war nicht bereit, der Untersuchungsbereich fehlte, oder Robin wies den Aufruf zurück. Ein solcher Beleg belegt keine Suche. Der Rapport nimmt ihn nicht an. |
+
+Bis zum 20.11.2026 stand jede dieser Antworten als «✓ gesichert» im Ermittlungsprotokoll. Das Protokoll liest ältere
+Einträge neu: Was sie belegen, sagt die gesicherte Antwort. Ein Aufruf, den Robin nicht ausgeführt hat, zählt nicht als
+Abfrage: Im Kopf des Protokolls steht er unter «nicht ausgeführt», zusammen mit den Aufrufen ohne Nummer.
+
+Die Regeln für einen Aufruf von Robin stehen in `gateway/robin.py` (`verstoss`): Freigabe `darkweb`, Suche im
+Untersuchungsbereich der Freigabe, kein Platzhalter im Suchtext, Seiten nur über `urls` und erst nach der Prüfung
+gegen die Sperrliste, `allow_clearweb` nur mit Freigabe `aktiv`. Die Oberfläche lehnt ab, was sie verletzt. Am
+Terminal entscheidet der Mensch. Der Sitzungs-Hook prüft denselben Aufruf nach der Ausführung und schreibt einen
+Verstoss in den Beleg (`regel`): Im Ermittlungsprotokoll steht dann «Regel verletzt» mit dem Grund, und der Analyst
+bekommt den Hinweis, es unter Auffälligkeiten zu melden.
 
 ```bash
 docker build -t robin-intern /pfad/zu/eurem/robin-fork
@@ -346,8 +386,9 @@ echo 'ROBIN_IMAGE=robin-intern' >> .env
 ```
 
 Was Robin vom Rechner und vom Netz braucht. Die Angaben stammen aus Startskript, Quelltext und Fehlerhilfe des
-Projekts (gelesen am 17.11.2026). Im Betrieb geprüft sind sie nicht, und das festgelegte Abbild ist älter als
-dieser Stand.
+Projekts (gelesen am 17.11.2026) und aus dem Betrieb des festgelegten Abbilds am 20.11.2026. Dort kam Tor nicht hoch:
+Das Netz der Prüfumgebung lässt Tor nicht zu. Der zweite Punkt der Liste ist damit bestätigt, Suchen und Lesen über Tor
+sind nicht gesehen.
 
 - **Kein Tor und kein SOCKS5 auf dem Rechner.** Tor läuft im Container. Robin spricht es dort über
   `socks5h://127.0.0.1:9050` an, der Port ist nach aussen nicht veröffentlicht. `OSINT_PROXY` hat damit nichts zu
@@ -363,6 +404,13 @@ dieser Stand.
 - **Tor braucht nach dem Start zehn Sekunden bis zwei Minuten.** Bis dahin melden `robin_search` und
   `robin_scrape` den Stand `tor_bootstrapping` und tun nichts. `robin_health` zeigt, ob Tor läuft und welche
   Suchmaschinen antworten. Bleibt es bei `tor_bootstrapping`, erreicht der Container das Tor-Netz nicht.
+- **«Abbild geladen» heisst nicht «bereit».** `python3 tools/pruefen.py` sagt ohne `--live` nur, dass das Abbild da
+  ist. Mit `--live` startet es Robin so, wie Claude Code es tut, wartet bis zu zwei Minuten auf Tor und fragt, wie
+  viele Suchmaschinen antworten. Gesucht wird dabei nichts.
+- **Robin legt nichts mehr ausserhalb der Fallakte ab.** Bis zum 20.11.2026 hängte `.mcp.json` ein Docker-Volume
+  (`robin-investigations`) in den Container ein. «Alles löschen» liess es stehen, und gesichert wurde es nicht.
+  Seither wird es nicht mehr eingehängt. Ist es von früher noch da: `python3 tools/dienste.py` zeigt es, die
+  Einrichtung entfernt es, wenn es leer ist, und «Alles löschen» legt seinen Inhalt in die Sicherung und entfernt es.
 - **Ein Schlüssel für ein Sprachmodell ist nicht nötig.** Ohne ihn fragt Robin beim Start keinen Anbieter an.
 
 **4chan.** Die Lese-API liefert den Katalog eines Boards. Gesucht wird lokal darin. Threads verschwinden nach

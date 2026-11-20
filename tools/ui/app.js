@@ -1128,7 +1128,6 @@ function einrichten(wurzel, a) {
 /* ---------- Arbeitsspur ---------- */
 
 const SPUR_FILTER = [["abfrage", "Abfragen"], ["kein_treffer", "kein Treffer"], ["fehlschlag", "Fehlschläge"], ["auswertung", "Auswertungen"], ["freigabe", "Freigaben"]];
-const SPUR_ZEICHEN = { ok: "●", kein_treffer: "○", fehler: "✕", abgelehnt: "⊘" };
 
 function spurNeu(fall) {
   clearTimeout(zustand.spurTimer);
@@ -1168,11 +1167,11 @@ async function spurHolen() {
     for (const e of daten.eintraege) {
       const klassen = [e.klasse].concat(e.freigabe || e.ergebnis === "abgelehnt" ? ["freigabe"] : []);
       const zeit = e.zeit_anzeige || "";       // Zeitzone des Arbeitsplatzes, vom Server gerechnet
-      const art = e.art === "auswertung" ? "Auswertung" : e.art === "lokal" ? "lokale Liste" : e.art === "aktiv" ? "aktiv" : e.art === "von_hand" ? "von Hand" : "passiv";
+      const art = e.art_wort || "passiv";      // das Wort kommt vom Server (tools/ui/daten.py), wie Zeichen und Farbe des Ergebnisses
       const kopf = el("div", { klasse: "spurkopf" }, el("a", { href: weg("fall", fall, "beleg", e.id), text: e.id }), el("time", { text: zeit, title: (e.zeit || "") + " (UTC)" }),
         el("span", { klasse: "marke", text: art }));
       const text = el("div", { klasse: "spurtext" });
-      text.append(el("span", { klasse: "z-" + (e.ergebnis === "ok" ? "gut" : e.ergebnis === "kein_treffer" ? "neutral" : "kritisch"), text: (SPUR_ZEICHEN[e.ergebnis] || "?") + " " }),
+      text.append(el("span", { klasse: "z-" + (e.farbe || "kritisch"), text: (e.zeichen || "?") + " " }),
         el("b", { text: e.quelle || "" }), document.createTextNode(" · "), el("span", { klasse: "mono", text: e.ziel || "" }));
       const li = el("li", { "data-klassen": klassen.join(" ") }, kopf, text);
       if (e.aus_cache) li.append(el("div", { klasse: "klein", text: `aus dem Fall-Cache (${e.aus_cache})` }));
