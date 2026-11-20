@@ -100,8 +100,26 @@ def erreichbar(url: str) -> bool:
         return False
 
 
+def fassung_melden(fern: bool = False) -> None:
+    """Welche Fassung des Arbeitsplatzes hier liegt. Mit `fern` (bei --live): ob im Repository eine neuere liegt, ausser die
+    Nachfrage beim Git-Server ist abgestellt (OSINT_STAND_PRUEFEN=0)."""
+    from tools import dienste
+    abgestellt = fern and not dienste.fassung_fragen()
+    s = dienste.fassung_stand(fern=fern and not abgestellt)
+    if not s["text"]:
+        zeile(AUS, "Fassung", "nicht feststellbar (kein Git-Arbeitsverzeichnis)")
+    elif s["neuer"]:
+        zeile(FEHLT, "Fassung", s["text"] + ". " + s["hinweis"], satz=True)
+        schritte.append("git pull ausführen, dann " + SETUP)
+    else:
+        zeile(GUT, "Fassung", s["text"] + (", im Repository liegt keine neuere" if s["neuer"] is False else
+                                          f". Die Nachfrage nach einer neueren ist abgestellt ({dienste.STAND_PRUEFEN}=0)" if abgestellt else
+                                          ". Ob es eine neuere gibt, zeigt --live" if not fern else ". Ob es eine neuere gibt, liess sich nicht feststellen"))
+
+
 def umgebung(env: dict[str, str]) -> None:
     abschnitt("Umgebung")
+    fassung_melden("--live" in sys.argv or "--nur-live" in sys.argv)
     v = sys.version_info
     if v >= (3, 10):
         zeile(GUT, "Python", f"{v.major}.{v.minor}.{v.micro}")

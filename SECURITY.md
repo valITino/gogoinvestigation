@@ -40,10 +40,18 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   dass es nicht mehr nachfragt, schaltet die Rückfrage ab. Verhindert wird ein solcher Aufruf von Robin nicht, aber
   er bleibt sichtbar: Der Beleg hält fest, welche Regel er nicht einhielt (Freigabe, Untersuchungsbereich, Prüfung
   gegen die Sperrliste), und das Ermittlungsprotokoll zeigt «Regel verletzt».
+- Wegen Personendaten in einem aufgenommenen Dokument hält die Ermittlung nicht an (Entscheid des Eigentümers vom
+  20.11.2026). Was in einen Fall kommt, entscheidet die PII-Prüfung bei der Aufnahme, und nur der Sachbearbeiter kann
+  sie übersteuern. Danach nennt die Ermittlung die Stellen ohne die Werte und verwendet sie nicht. Dass sie das einhält,
+  ist eine Anweisung an ein Sprachmodell, keine Sperre.
 - Ist ein Proxy eingestellt, geht jede Abfrage des Gateways über ihn. Antwortet er nicht, scheitert die Abfrage: Einen
   Weg am Proxy vorbei gibt es nicht. Ob Tor auf diesem Rechner Verbindungen aufbaut, prüfen Einrichtung und
   `tools/pruefen.py` mit einer Verbindung über Tor zu `check.torproject.org`, die sie gleich wieder schliessen. Dabei
   geht nichts aus einem Fall hinaus.
+- Beim Start fragt die Oberfläche einmal beim Git-Server des Repositorys nach (`git ls-remote origin HEAD`), ob dort
+  eine neuere Fassung des Arbeitsplatzes liegt. `tools/pruefen.py --live` tut dasselbe. Die Anfrage geht direkt hinaus,
+  wie `git pull`, nicht über `OSINT_PROXY`: Der Server sieht, dass und wann von diesem Anschluss gefragt wird. Aus einem
+  Fall steht nichts darin. Abstellen für beide: `OSINT_STAND_PRUEFEN=0`.
 - Den Vertrauensdialog von Claude Code für den Projektordner beantwortet immer ein Mensch. Die Einrichtung startet
   Claude Code dafür auf Wunsch, sie trägt das Vertrauen nicht selbst ein. Ob der Ordner bestätigt ist, liest sie aus
   der Datei von Claude Code ab (`~/.claude.json`, nur die Angabe `hasTrustDialogAccepted` zu diesem Ordner). Sie

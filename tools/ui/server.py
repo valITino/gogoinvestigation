@@ -409,7 +409,7 @@ class Bearbeiter(BaseHTTPRequestHandler):
             from tools import dienste
             # Prozess und Projekt: Daran prüft «tools/dienste.py aus», dass hinter einem Merker wirklich diese Oberfläche steht
             return self.json({"aktiv": self.bedienung is not None, "claude": sitzung_modul.verfuegbar() if self.bedienung is not None else "",
-                              "prozess": os.getpid(), "projekt": dienste.kennung()})
+                              "prozess": os.getpid(), "projekt": dienste.kennung(), "fassung": dienste.fassung_stand()})
         if weg == ["neu"]:
             return self.json({"titel": "Neuer Fall", "html": formulare.neu_seite(self.bedienung)})
         if weg == ["arbeitsplatz"]:     # was zum Arbeitsplatz gehört und läuft, und der Knopf «Alles abschalten»

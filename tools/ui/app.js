@@ -70,7 +70,18 @@ async function anmelden() {
       } else zustand.anmeldefehler = (daten && daten.fehler) || "Die Anmeldung ist nicht gelungen.";
     } catch (e) { zustand.anmeldefehler = e.message; }
   }
-  try { const stand = await holen("/api/bedienung"); zustand.bedienung = Boolean(stand.aktiv); } catch (e) { zustand.bedienung = false; }
+  try { const stand = await holen("/api/bedienung"); zustand.bedienung = Boolean(stand.aktiv); zustand.fassung = stand.fassung || null; } catch (e) { zustand.bedienung = false; }
+  // Ob es eine neuere Fassung gibt, fragt die Oberfläche beim Start im Hintergrund: Die Antwort kommt etwas später
+  setTimeout(async () => { try { zustand.fassung = (await holen("/api/bedienung")).fassung || null; fassungZeigen(); } catch (e) { /* bleibt, wie es ist */ } }, 12000);
+}
+
+function fassungZeigen() {
+  const ort = $("#fassung"), f = zustand.fassung;
+  if (!ort) return;
+  ort.replaceChildren();
+  if (!f || !f.text) return;
+  ort.append(el("p", { klasse: "klein", text: "Arbeitsplatz: " + f.text + "." }));
+  if (f.neuer && f.hinweis) ort.append(el("p", { klasse: "banner", text: f.hinweis }));
 }
 
 const bedienbar = () => Boolean(zustand.bedienung && zustand.geheimnis);
@@ -682,9 +693,11 @@ function chatKnoepfe(d) {
     knopf("Anhalten", () => chatSenden("ermittlung_anhalten", {}, ""), false, "Hält die Ermittlung an. Sie lässt sich fortsetzen");
   } else if (d.sitzung || d.frueher) {
     knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true, "Setzt die Sitzung mit dieser Nachricht fort (Strg+Eingabe)");
-    knopf("Fortsetzen", () => chatSenden("ermittlung_fortsetzen", {}, ""), false, "Setzt die Sitzung fort, wo sie aufgehört hat");
-    knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt von vorn, mit dem Text im Feld als Vorgabe. Was schon abgefragt ist, bleibt im Protokoll.", "Neu starten"), false,
-      "Beginnt eine neue Sitzung mit /ermittlung. Der Text im Feld geht als Vorgabe mit");
+    knopf("Fortsetzen", () => chatSenden("ermittlung_fortsetzen", {}, ""), false,
+      d.frueher_alt ? "Die frühere Sitzung begann unter älteren Regeln des Arbeitsplatzes: Die Ermittlung beginnt neu" : "Setzt die Sitzung fort, wo sie aufgehört hat");
+    knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt in einer neuen Sitzung, mit dem Text im Feld als Vorgabe. Was im Arbeitsstand schon abgelegt ist " +
+      "(Indikatoren, Plan, Befundmeldungen), übernimmt sie. Soll sie ganz von vorn beginnen, schreib das als Vorgabe ins Feld. Was schon abgefragt ist, bleibt im Protokoll.", "Neu starten"), false,
+      "Beginnt eine neue Sitzung mit /ermittlung. Sie übernimmt den Arbeitsstand. Der Text im Feld geht als Vorgabe mit");
   } else knopf("Ermittlung starten", () => chatSenden("ermittlung_starten", {}, "vorgaben"), true, "Startet Claude Code mit /ermittlung für diesen Fall. Der Text im Feld geht als Vorgabe mit");
 }
 
@@ -699,7 +712,8 @@ function chatZeigen(d) {
   }
   c.v = d.v || 0;
   const leer = $(".chat-leer", liste);
-  if (!c.knoten.size && !leer) liste.append(el("li", { klasse: "chat-leer klein", text: d.frueher ? "Zu diesem Fall gibt es eine frühere Sitzung. Eine Nachricht setzt sie fort." :
+  if (!c.knoten.size && !leer) liste.append(el("li", { klasse: "chat-leer klein", text: d.frueher_alt ? d.frueher_alt + " Das geschieht mit «Fortsetzen», mit einer Nachricht oder mit «Neu starten»." :
+    d.frueher ? "Zu diesem Fall gibt es eine frühere Sitzung. Eine Nachricht setzt sie fort." :
     "Hier erscheint jeder Schritt der Ermittlung. Vorgaben eintragen, wenn es welche gibt, und starten." }));
   else if (c.knoten.size && leer) leer.remove();
   const marke = $("[data-chat-status]", feld);
@@ -717,7 +731,7 @@ function chatZeigen(d) {
     zurueck.addEventListener("click", () => chatSenden("ermittlung_nachricht_zurueck", { nachricht: w.id }, ""));
     wartend.append(el("p", { klasse: "klein" }, document.createTextNode("Wartet: " + (w.text.length > 80 ? w.text.slice(0, 79) + "…" : w.text) + " "), zurueck));
   }
-  const merkmal = [d.status, d.claude, d.sitzung || "", d.frueher || ""].join("|");
+  const merkmal = [d.status, d.claude, d.sitzung || "", d.frueher || "", d.frueher_alt ? "alt" : ""].join("|");
   if (merkmal !== c.merkmal) {
     const vorher = c.merkmal;
     c.merkmal = merkmal;
@@ -987,7 +1001,8 @@ function navigation(a) {
   });
   const modus = !zustand.bedienung ? "Die Oberfläche liest nur." : zustand.geheimnis ? "Bedienbar aus diesem Fenster." :
     "Dieses Fenster kann nur lesen: Bedienen lässt sich die Oberfläche aus dem Fenster, das sie beim Start geöffnet hat.";
-  nav.append(farbe, el("p", { klasse: "klein", text: modus + " Adressen aus dem Fall sind nie anklickbar." }));
+  nav.append(farbe, el("p", { klasse: "klein", text: modus + " Adressen aus dem Fall sind nie anklickbar." }), el("div", { id: "fassung" }));
+  fassungZeigen();
   if (zustand.anmeldefehler) nav.append(el("p", { klasse: "banner", text: zustand.anmeldefehler }));
 }
 
