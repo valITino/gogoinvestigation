@@ -25,7 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ECHT = Path(__file__).resolve().parents[1]
@@ -1060,10 +1060,14 @@ def _():
         "der Rapport nennt, was verlangt und nicht ausgeführt wurde"
     # Erste und letzte Abfrage im Kopf: Robins Suchen zählen dazu, ein nicht ausgeführter Aufruf nicht. Bis zum 20.11.2026 standen dort nur die Zeiten des Gateways
     spaet = [dict(e) for e in extern]
-    next(e for e in reversed(spaet) if e["art"] == "tor" and e["ergebnis"] == "ok")["zeit_utc"] = "2026-11-21T12:34:56Z"
-    next(e for e in reversed(spaet) if e["ergebnis"] == "nicht_ausgefuehrt")["zeit_utc"] = "2026-11-21T13:00:00Z"
+    # Die beiden Zeiten liegen nach allem, was dieser Lauf selbst geschrieben hat: eine Stunde und zwei Stunden nach dem jüngsten Eintrag.
+    # Bis zum 23.11.2026 standen hier feste Zeiten vom 21.11.2026, und seit diesem Tag scheiterte der Test bei jedem Lauf
+    juengste = max(datetime.strptime(e["zeit_utc"], "%Y-%m-%dT%H:%M:%SZ") for e in abfragen + extern)
+    zeit_ok, zeit_nie = ((juengste + timedelta(hours=stunden)).strftime("%Y-%m-%dT%H:%M:%SZ") for stunden in (1, 2))
+    next(e for e in reversed(spaet) if e["art"] == "tor" and e["ergebnis"] == "ok")["zeit_utc"] = zeit_ok
+    next(e for e in reversed(spaet) if e["ergebnis"] == "nicht_ausgefuehrt")["zeit_utc"] = zeit_nie
     kopf_spaet = protokollwerkzeug.bauen(ROBIN_FALL, {"titel": "x"}, abfragen, [], kette_pruefen(ROBIN_FALL), [], {}, spaet, ordner).split("<h2>")[0]
-    assert f"<b>Letzte Abfrage</b>{protokollwerkzeug.lokal('2026-11-21T12:34:56Z')}</div>" in kopf_spaet, re.findall(r"<b>Letzte Abfrage</b>[^<]*", kopf_spaet)
+    assert f"<b>Letzte Abfrage</b>{protokollwerkzeug.lokal(zeit_ok)}</div>" in kopf_spaet, re.findall(r"<b>Letzte Abfrage</b>[^<]*", kopf_spaet)
     from gateway.akte import ist_abfrage
     fruehste = min(e["zeit_utc"] for e in abfragen + spaet if e["id"].startswith("P-") or ist_abfrage(e))     # Robins erste Suche lief vor der ersten Abfrage des Gateways
     assert f"<b>Erste Abfrage</b>{protokollwerkzeug.lokal(fruehste)}</div>" in kopf_spaet, (fruehste, re.findall(r"<b>Erste Abfrage</b>[^<]*", kopf_spaet))
@@ -3996,7 +4000,8 @@ def _():
     assert "tools/beleg.py" in b["erklaerung"] and "vorher nachholen" in b["ansatzpunkt"], (b["erklaerung"], b["ansatzpunkt"])
     r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, quellen=["hellseher"])
     assert r["ergebnis"] == "nicht_ausgefuehrt" and "Unbekannte Quelle" in r["fehler"], r
-    r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit="2027-01-01")
+    # Eine Tatzeit in der Zukunft, gerechnet ab heute: Ein festes Datum (bis zum 23.11.2026 stand hier der 01.01.2027) läuft ab
+    r = aufruf(ipq.ip_einordnung, zweck=ZWECK, ip=vorlagen.IP_RESI, tatzeit=(datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d"))
     assert r["ergebnis"] == "nicht_ausgefuehrt" and "Zukunft" in r["fehler"], r
     assert kette_pruefen(FALL)["ok"]
 
