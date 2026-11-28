@@ -4,9 +4,14 @@ steht an dieser einen Stelle. Nur Standardbibliothek: Auch der Sitzungs-Hook und
     BEREICHE            die vier Untersuchungsbereiche von Robin. Der Sachbearbeiter wählt einen mit der Freigabe darkweb
     text_aus()          die Antwort eines Robin-Werkzeugs als Text, so wie Robin sie schrieb
     einordnen()         was eine Antwort bedeutet: ausgeführt, nichts gefunden, nicht ausgeführt, Fehler
+    eingeordnet()       ein Protokolleintrag, so wie er auszuwerten ist: Ältere Einträge werden aus der gesicherten Antwort eingeordnet
     lesen()             Treffer und gelesene Seiten aus einer Antwort, für Oberfläche, Datenblätter und Protokoll
     absage()            weshalb ein Aufruf in diesem Fall nicht zulässig ist. Leer, wenn nichts dagegen spricht
+    aktive_massnahme()  ob ein Aufruf ein Ziel im offenen Netz berührt (robin_scrape mit allow_clearweb)
     verstoss()          dasselbe als Feststellung für das Protokoll, getrennt vom Rat an den Analysten
+    host_aus()          der Host einer Adresse, wenn sie sich auf genau eine Art lesen lässt. Sonst None
+    onion_host()        der Onion-Dienst hinter einer Adresse
+    sperrliste_werte()  die Einträge der Sperrliste von Ahmia, wenn der Text eine solche Liste ist. Sonst None
     sperrliste_stand()  ob eine Onion-Adresse in diesem Fall gegen die Sperrliste von Ahmia geprüft wurde und was herauskam
     sperrliste_urteil() was eine einzelne protokollierte Prüfung ergab
 
@@ -21,7 +26,6 @@ import json
 import re
 from pathlib import Path
 from typing import Callable
-from urllib.parse import urlsplit
 
 from .akte import freigabe_erteilt, jsonl_lesen
 
@@ -49,13 +53,28 @@ NICHT_VERWENDET = {
 # Werkzeuge, die über Tor nach aussen gehen. Die übrigen (refine, filter, die Listen) arbeiten im Container.
 NACH_AUSSEN = ("robin_search", "robin_scrape", "robin_investigate")
 
-PLATZHALTER = re.compile(r"\[[A-ZÄÖÜ][A-ZÄÖÜ_]*_\d+\]")
+# Platzhalter stehen in eckigen Klammern: [PERSON_01]. Dokumente aus Werkzeugen im Haus schreiben sie manchmal ohne Klammern (PERSON_03),
+# und die PII-Prüfung nimmt diese Form als Platzhalter an (tools/pii_pruefung.py). Bis zum 23.11.2026 erkannte die Regel für den Suchtext
+# nur Klammern und Grossbuchstaben: «PERSON_03 leak» und «[person_01]» gingen an die Suchmaschinen. Ohne Klammern gelten hier nur die
+# Typen, die dieser Arbeitsplatz vergibt (tools/_pseudo.py, TYPEN): Das breite Muster der PII-Prüfung träfe auch Suchbegriffe wie
+# «LOCKBIT_30».
+PLATZHALTER_TYPEN = ("PERSON", "ORG", "ADRESSE", "TEL", "EMAIL", "GEBDAT", "AHV", "KONTO", "KFZ", "AUSWEIS", "DOMAIN", "IP")
+PLATZHALTER = re.compile(r"(?i:\[\s*[A-ZÄÖÜ][A-ZÄÖÜ_]*_\d+\s*\])|(?<![\w\[])(?:" + "|".join(PLATZHALTER_TYPEN) + r")_\d{1,3}(?![\w\]])")
 ONION_HOST = re.compile(r"([a-z2-7]{16}|[a-z2-7]{56})\.onion")
+# Eine Adresse in der strengen Form: höchstens http oder https, im Host-Teil nur Buchstaben, Ziffern, Punkt und Bindestrich, auf Wunsch
+# ein Port, danach Pfad, Abfrage oder Anker aus sichtbaren ASCII-Zeichen ohne Rückstrich. Kein Benutzerteil («@» im Host-Teil).
+_ADRESSE = re.compile(r"(?:https?://)?([a-z0-9.-]{1,253})(?::[0-9]{1,5})?(?:[/?#][!-\[\]-~]*)?")
+# Ein Onion-Dienst im Namen eines Hosts im offenen Netz: Tor2Web-Dienste liefern die Seite <name>.onion unter <name>.onion.ly und ähnlich aus
+_DIENST_IM_HOST = re.compile(r"(?:^|\.)([a-z2-7]{16}|[a-z2-7]{56})\.onion\.")
 _STAND = re.compile(r"\A\s*(status|error)\s*:\s*([^\n]*)")
 _ZAUN = re.compile(r'<<<ROBIN_UNTRUSTED_CONTENT source="([^"\n]*)">>>\n(?:UNTRUSTED DATA:[^\n]*\n)?(.*?)\n?<<<END_ROBIN_UNTRUSTED_CONTENT>>>', re.S)
 _TREFFER = re.compile(r"^\s*(\d+)\.\s+\[([A-Za-z0-9_-]{1,40})\]\s*(.*)\n\s+(\S+)\s*$", re.M)
 _SEITE = re.compile(r"^## (\S+)\nstatus: ([a-z_]+)(?: \(http (\d{3})\))?\n", re.M)
-_VERWEISE = re.compile(r"\n\nOnion links on this page \((\d+)\)[^\n]*\n((?:- [^\n]*\n?)+)\s*\Z")
+# Die Verweisliste am Schluss einer gelesenen Seite. Jede Zeile der Liste endet am Zeilenende oder am Schluss des Inhalts, nirgends
+# sonst: So gibt es für eine Zeile genau eine Lesart. Bis zum 23.11.2026 war das Zeilenende freigestellt («\n?»). Stand die Überschrift
+# mitten im Seitentext über einer Zeile aus lauter «- », probierte der Ausdruck jede Aufteilung dieser Zeile durch (28 Wiederholungen:
+# 36 Sekunden, jede weitere das Doppelte). Der Sitzungs-Hook lief über sein Zeitlimit, und die Antwort wurde kein Beleg.
+_VERWEISE = re.compile(r"\n\nOnion links on this page \((\d+)\)[^\n]*\n((?:- [^\n]*(?:\n|\Z))+)\s*\Z")
 GEKUERZT = "...(truncated)"
 
 
@@ -176,6 +195,42 @@ def einordnen(werkzeug: str, text: str) -> dict:
     return aus
 
 
+def eingeordnet(e: dict, pfad: Path) -> dict:
+    """Ein Eintrag aus extern.jsonl, so wie er auszuwerten ist. ``pfad`` ist der Ordner der Fallakte.
+
+    Seit dem 20.11.2026 sagt ein Eintrag von Robin selbst, was die Antwort bedeutet (art, ergebnis, fehler, robin). Davor stand bei
+    jeder Antwort «ok» und als Art «tor», auch wenn Robin nichts gesucht hatte oder nur im Container gearbeitet hatte. Für solche
+    Einträge wird die gesicherte Antwort gelesen und eingeordnet wie heute. Die gespeicherte Zeile bleibt, wie sie ist: Mit ihr
+    rechnet die Protokollkette. Zurück kommt eine Kopie mit den vier Feldern und dem Vermerk ``nachgelesen``.
+
+    Wer Einträge auswertet (Ermittlungsprotokoll, Rapport, Oberfläche, fall_status), liest sie über akte.extern_lesen und bekommt
+    sie so. Bis zum 23.11.2026 las nur die Zeile im Ermittlungsprotokoll die Antwort neu: Sie sagte «nicht ausgeführt», während
+    Kacheln und Rapport denselben Eintrag als Abfrage mit Treffer zählten und der Rapport ihn als Beleg annahm.
+
+    Unverändert zurück kommt, was nicht von Robin stammt, was schon in heutiger Form dasteht, und ein älterer Eintrag, dessen
+    Rohdatei sich nicht lesen lässt: Über ihn lässt sich nicht mehr sagen, als dass eine Antwort gesichert wurde."""
+    if ((e.get("anfrage") or {}).get("server") or "") != SERVER or "robin" in e:
+        return e
+    roh = (e.get("antwort") or {}).get("rohdaten") or ""
+    try:
+        inhalt = (pfad / roh).read_text(encoding="utf-8", errors="replace") if roh else ""
+    except OSError:
+        inhalt = ""
+    if not inhalt:
+        return e
+    if roh.endswith(".json"):       # damals lag die Antwort so in der Akte, wie Claude Code sie verpackt
+        try:
+            inhalt = text_aus(json.loads(inhalt))
+        except ValueError:
+            pass
+    name = str(e.get("werkzeug") or "")
+    stand = einordnen(PRAEFIX + name, inhalt)
+    eingabe = (e.get("anfrage") or {}).get("eingabe")
+    aussen = name in NACH_AUSSEN or (name == "robin_health" and isinstance(eingabe, dict) and bool(eingabe.get("check_engines")))
+    return {**e, "art": "tor" if aussen else "robin_lokal", "ergebnis": stand["ergebnis"], "fehler": stand.get("fehler"),
+            "robin": {k: v for k, v in stand.items() if k not in ("ergebnis", "fehler")}, "nachgelesen": True}
+
+
 def lesen(text: str) -> dict:
     """Zerlegt eine Antwort von Robin, für die Anzeige. Nichts wird gedeutet: Was von fremden Seiten stammt, bleibt Text.
 
@@ -212,17 +267,38 @@ def lesen(text: str) -> dict:
 
 # --------------------------------------------------------------------------- Sperrliste
 
-def onion_host(adresse: str) -> str:
+def host_aus(adresse: object) -> str | None:
+    """Der Host einer Adresse oder URL, kleingeschrieben, wenn sie sich auf genau eine Art lesen lässt. Sonst None.
+
+    Die Regeln prüfen den Host, bevor Robin die Seite abruft. Beide müssen denselben Host meinen. Bis zum 23.11.2026 zerlegte die
+    Regel nachsichtig (urlsplit): Bei «http://A.onion\\@B.onion/» prüfte sie B, während requests und urllib3 den Host am Rückstrich
+    beenden und A öffnen. Und ein unsichtbares Zeichen im Wort «onion» machte aus der Adresse «offenes Netz», für das die Sperrliste
+    nicht gilt, während Robin solche Zeichen entfernt und die Onion-Seite liest. Deshalb gilt nur die strenge Form (_ADRESSE), in
+    der jedes Programm denselben Host liest: reines ASCII, kein Benutzerteil, kein Rückstrich, keine Leer- und Steuerzeichen.
+    Alles andere wird abgelehnt, nicht gedeutet."""
+    if not isinstance(adresse, str) or not adresse.isascii():
+        return None
+    m = _ADRESSE.fullmatch(adresse.strip(" \t\r\n").lower())
+    host = m.group(1).removesuffix(".") if m else ""        # ein Punkt am Schluss ist die ausgeschriebene Form desselben Namens
+    if not host or any(not teil or teil.startswith("-") or teil.endswith("-") for teil in host.split(".")):
+        return None
+    return host
+
+
+def onion_host(adresse: object) -> str:
     """Der Onion-Dienst hinter einer Adresse oder URL, als «<name>.onion», kleingeschrieben. Vorangestellte Teile fallen weg:
-    www.<name>.onion ist derselbe Dienst, und die Sperrliste kennt nur den Namen des Dienstes. Leer, wenn der Host nicht auf
-    .onion endet. Ob der Name die Form einer Onion-Adresse hat, sagt onion_gueltig(): Robin selbst nimmt jeden Host auf .onion."""
-    roh = (adresse or "").strip().lower()
-    try:
-        host = urlsplit(roh if "://" in roh else f"http://{roh}").hostname or ""
-    except ValueError:
+    www.<name>.onion ist derselbe Dienst, und die Sperrliste kennt nur den Namen des Dienstes. Auch hinter einem Tor2Web-Dienst
+    (<name>.onion.ly) steht der Onion-Dienst <name>.onion. Leer, wenn die Adresse nicht eindeutig zu lesen ist (host_aus) oder zu
+    keinem Onion-Dienst führt. Ob der Name die Form einer Onion-Adresse hat, sagt onion_gueltig(): Robin selbst nimmt jeden Host
+    auf .onion."""
+    host = host_aus(adresse)
+    if not host:
         return ""
-    teile = host.rstrip(".").split(".")
-    return f"{teile[-2]}.onion" if len(teile) >= 2 and teile[-1] == "onion" and teile[-2] else ""
+    teile = host.split(".")
+    if len(teile) >= 2 and teile[-1] == "onion":
+        return f"{teile[-2]}.onion"
+    m = _DIENST_IM_HOST.search(host)
+    return f"{m.group(1)}.onion" if m else ""
 
 
 def onion_gueltig(host: str) -> bool:
@@ -230,17 +306,42 @@ def onion_gueltig(host: str) -> bool:
     return bool(ONION_HOST.fullmatch(host or ""))
 
 
-def auf_sperrliste(host: str, listentext: str) -> bool | None:
-    """Steht der Host auf der Sperrliste von Ahmia? Die Liste nennt MD5-Werte. None: Der Text ist keine solche Liste."""
-    liste = set(re.findall(r"\b[a-f0-9]{32}\b", listentext or ""))
-    if not liste:
+# Unter so vielen Einträgen ist eine Antwort von Ahmia nicht die Sperrliste, auch wenn jede Zeile ein MD5-Wert ist: Gesehen wurden
+# 60'371 Einträge (16.11.2026) und 60'394 (20.11.2026). Die Grenze liegt bei einem Sechzigstel davon. Sie fängt den Rest einer
+# abgebrochenen Übertragung und eine Antwort, die nur aus einer Prüfsumme besteht, und sie lässt der Liste Raum zu schrumpfen, ohne
+# dass der Arbeitsplatz stehen bleibt. Eine zur Hälfte geladene Liste erkennt sie nicht. Sie gilt beim Laden (onion_sperrliste), auch
+# aus dem Fall-Cache. Der Musterfall stellt eine Liste mit 40 erfundenen Einträgen und setzt die Grenze für seinen Lauf darauf herab.
+SPERRLISTE_MINDESTENS = 1000
+_MD5 = re.compile(r"[a-f0-9]{32}")
+
+
+def sperrliste_werte(listentext: str | None, mindestens: int = 0) -> frozenset[str] | None:
+    """Die Einträge der Sperrliste von Ahmia, oder None, wenn der Text keine solche Liste ist. Die Liste ist reiner Text, je Zeile
+    ein MD5-Wert, sonst nichts (gesehen am 16.11.2026). Bis zum 23.11.2026 galt jeder Text als Liste, in dem irgendwo 32 Hex-Zeichen
+    standen: Eine Wartungsseite mit dem Dateinamen main.<32 Hex-Zeichen>.css war eine «Liste» mit einem Eintrag, und jede Adresse
+    des Falls war einen Tag lang «frei». `mindestens`: Mit weniger verschiedenen Einträgen ist es keine Liste."""
+    zeilen = [z.strip().lower() for z in (listentext or "").removeprefix("\ufeff").splitlines()]
+    werte = frozenset(z for z in zeilen if z)
+    if not werte or len(werte) < mindestens or not all(_MD5.fullmatch(w) for w in werte):
         return None
+    return werte
+
+
+def in_liste(host: str, liste: frozenset[str]) -> bool:
+    """Nennt die Liste diesen Host? Sie führt den MD5-Wert des Namens, mit oder ohne «http://» davor."""
     return any(hashlib.md5(v.encode()).hexdigest() in liste for v in (host, f"http://{host}", f"http://{host}/"))
+
+
+def auf_sperrliste(host: str, listentext: str | None, mindestens: int = 0) -> bool | None:
+    """Steht der Host auf der Sperrliste von Ahmia? None: Der Text ist keine solche Liste (sperrliste_werte)."""
+    liste = sperrliste_werte(listentext, mindestens)
+    return None if liste is None else in_liste(host, liste)
 
 
 def sperrliste_urteil(pfad: Path, eintrag: dict) -> str | None:
     """Was eine protokollierte Prüfung mit onion_sperrliste ergab: «frei», «gesperrt» oder None (die Prüfung schlug fehl, oder
-    die gesicherte Liste lässt sich nicht lesen). Es zählt, was die Liste in den Rohdaten sagt."""
+    die gesicherte Liste lässt sich nicht lesen oder ist keine Liste). Es zählt, was die Liste in den Rohdaten sagt. Die
+    Untergrenze für ihren Umfang galt beim Laden: Ein Eintrag mit «ok» steht nur da, wenn die Antwort sie erfüllte."""
     if eintrag.get("werkzeug") != "onion_sperrliste" or eintrag.get("ergebnis") != "ok":
         return None
     roh = (eintrag.get("antwort") or {}).get("rohdaten")
@@ -282,6 +383,13 @@ def suchangaben(daten: dict) -> dict | None:
     return {"preset": b, "user_chose": True}
 
 
+def aktive_massnahme(werkzeug: str, eingabe: object) -> bool:
+    """Berührt dieser Aufruf ein Ziel im offenen Netz? Das tut robin_scrape mit allow_clearweb: Robin ruft die Seite dann über Tor
+    auf, und ihr Betreiber sieht den Besuch. Für aktive Massnahmen ist die Freigabe «aktiv» nur die Voraussetzung: Der Sachbearbeiter
+    stimmt jedem Aufruf einzeln zu, am Terminal wie in der Oberfläche (dort bis zum 23.11.2026 nicht: Die Freigabe genügte)."""
+    return werkzeug.rsplit("__", 1)[-1] == "robin_scrape" and isinstance(eingabe, dict) and bool(eingabe.get("allow_clearweb"))
+
+
 def verstoss(werkzeug: str, eingabe: object, daten: dict, pruefstand: Callable[[str], str | None] | None = None) -> tuple[str, str]:
     """Verletzt dieser Aufruf von Robin die Regeln des Falls? Gibt (Feststellung, Rat an den Analysten) zurück, beide leer, wenn
     nichts dagegen spricht. Die Feststellung steht für sich: Der Sitzungs-Hook schreibt sie zum Beleg, wenn ein Aufruf trotzdem
@@ -309,31 +417,55 @@ def verstoss(werkzeug: str, eingabe: object, daten: dict, pruefstand: Callable[[
         if PLATZHALTER.search(str(e.get("query") or "")):
             return "Der Suchtext enthält einen Platzhalter.", "Platzhalter werden nie abgefragt."
     if name == "robin_scrape":
-        if e.get("allow_clearweb") and not freigabe_erteilt(daten, "aktiv"):
+        if not isinstance(eingabe, dict):
+            return "Die Eingabe des Aufrufs hat keine lesbare Form.", "robin_scrape braucht urls als Liste von Adressen."
+        offenes_netz = aktive_massnahme(werkzeug, eingabe)
+        if offenes_netz and not freigabe_erteilt(daten, "aktiv"):
             return ("Eine Seite im offenen Netz wurde über Robin verlangt. Das berührt das Ziel (der Aufruf kommt aus dem Tor-Netz) und "
                     "braucht zusätzlich die Freigabe «aktiv». Sie ist nicht erteilt.", "")
         if e.get("ids"):
             return ("Seiten wurden über Treffernummern verlangt (ids).",
                     "Seiten über ihre Adressen lesen (urls), nicht über Treffernummern: Nur so lässt sich jede Adresse der Prüfung gegen "
                     "die Sperrliste zuordnen.")
-        for adresse in e.get("urls") or []:
-            host = onion_host(str(adresse))
-            if not host:
-                continue                # eine Adresse im offenen Netz: Dafür gilt die Regel oben
-            if not onion_gueltig(host):
-                return (f"{host} hat nicht die Form einer Onion-Adresse (16 oder 56 Zeichen).",
+        urls = e.get("urls")
+        # Was sich nicht prüfen lässt, ist nicht zulässig. Kam «urls» als Text (auch als JSON-Text einer Liste, so senden Sprachmodelle
+        # Listenfelder gelegentlich), lief die Prüfung bis zum 23.11.2026 über die einzelnen Zeichen, fand keine Onion-Adresse und liess
+        # den Aufruf zu. Ein Server auf dem MCP-SDK macht aus dem JSON-Text die Liste und liest die Seite.
+        if urls is not None and not (isinstance(urls, list) and all(isinstance(u, str) for u in urls)):
+            return ("Die Angabe urls ist keine Liste von Adressen.",
+                    "robin_scrape mit urls als Liste aufrufen, jede Adresse ein Text für sich: Nur so lässt sich jede Adresse prüfen.")
+        for adresse in urls or []:
+            host = host_aus(adresse)
+            if host is None:
+                sichtbar = adresse.encode("ascii", "backslashreplace").decode("ascii")      # unsichtbare Zeichen werden sichtbar
+                sichtbar = "".join(z if " " < z <= "~" else f"\\x{ord(z):02x}" for z in sichtbar)[:200]
+                return (f"Die Adresse {sichtbar} ist nicht eindeutig zu lesen.",
+                        "Sie wird nicht geöffnet. Zulässig ist nur die schlichte Form http://<name>.onion/pfad: ohne Benutzerteil («@»), "
+                        "ohne Rückstrich, ohne Leer-, Sonder- und unsichtbare Zeichen. Stammt sie so von einer Seite oder aus einem "
+                        "Treffer, unter Auffälligkeiten melden.")
+            dienst = onion_host(adresse)
+            if not host.endswith(".onion"):
+                if not offenes_netz:
+                    return (f"{host} ist keine Onion-Adresse.",
+                            "Robin liest an diesem Arbeitsplatz Onion-Seiten. Für Seiten im offenen Netz gibt es die Werkzeuge des Gateways.")
+                if not dienst:
+                    continue            # eine Adresse im offenen Netz: Dafür gilt die Regel oben
+            # Ab hier steht ein Onion-Dienst hinter der Adresse, auch hinter einem Tor2Web-Dienst im offenen Netz: Für ihn gilt die Sperrliste
+            if not onion_gueltig(dienst):
+                return (f"{dienst} hat nicht die Form einer Onion-Adresse (16 oder 56 Zeichen).",
                         "Die Adresse lässt sich nicht gegen die Sperrliste prüfen und wird nicht geöffnet. Schreibweise im Eingangsdokument "
                         "oder in den Treffern nachsehen.")
-            stand = pruefstand(host) if pruefstand else None
+            stand = pruefstand(dienst) if pruefstand else None
             if stand is None:
-                return f"Die Adresse {host} wurde in diesem Fall noch nicht mit onion_sperrliste geprüft.", "Erst prüfen, dann lesen."
+                return f"Die Adresse {dienst} wurde in diesem Fall noch nicht mit onion_sperrliste geprüft.", "Erst prüfen, dann lesen."
             if stand == "gesperrt":
-                return f"Die Adresse {host} steht auf der Sperrliste von Ahmia.", "Sie wird nicht geöffnet. Unter Auffälligkeiten melden."
+                return f"Die Adresse {dienst} steht auf der Sperrliste von Ahmia.", "Sie wird nicht geöffnet. Unter Auffälligkeiten melden."
     return "", ""
 
 
 def absage(werkzeug: str, eingabe: object, daten: dict, pruefstand: Callable[[str], str | None] | None = None) -> str:
     """Weshalb dieser Aufruf von Robin in diesem Fall nicht zulässig ist, mit dem Rat an den Analysten. Leer, wenn nichts dagegen
-    spricht. Die Oberfläche fragt das vor jedem Aufruf (dort entscheiden die Regeln, nicht ein Dialog). Am Terminal entscheidet der
-    Sachbearbeiter je Aufruf selbst. Dem Analysten sind dieselben Regeln aufgetragen."""
+    spricht. Die Oberfläche fragt das vor jedem Aufruf (dort entscheiden die Regeln, nicht ein Dialog. Nur eine aktive Massnahme
+    legt sie dem Sachbearbeiter danach noch einzeln vor, siehe aktive_massnahme). Am Terminal entscheidet der Sachbearbeiter je
+    Aufruf selbst. Dem Analysten sind dieselben Regeln aufgetragen."""
     return " ".join(teil for teil in verstoss(werkzeug, eingabe, daten, pruefstand) if teil)

@@ -692,7 +692,9 @@ function chatKnoepfe(d) {
     knopf("Jetzt unterbrechen und senden", () => chatSenden("ermittlung_nachricht", { jetzt: "1" }, "text"), false, "Bricht den laufenden Schritt ab und gibt der Ermittlung die Nachricht sofort");
     knopf("Anhalten", () => chatSenden("ermittlung_anhalten", {}, ""), false, "Hält die Ermittlung an. Sie lässt sich fortsetzen");
   } else if (d.sitzung || d.frueher) {
-    knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true, "Setzt die Sitzung mit dieser Nachricht fort (Strg+Eingabe)");
+    knopf("Senden", () => chatSenden("ermittlung_nachricht", {}, "text"), true,
+      d.frueher_alt ? "Die frühere Sitzung begann unter älteren Regeln des Arbeitsplatzes: Die Ermittlung beginnt neu, die Nachricht geht als Vorgabe mit (Strg+Eingabe)"
+        : "Setzt die Sitzung mit dieser Nachricht fort (Strg+Eingabe)");
     knopf("Fortsetzen", () => chatSenden("ermittlung_fortsetzen", {}, ""), false,
       d.frueher_alt ? "Die frühere Sitzung begann unter älteren Regeln des Arbeitsplatzes: Die Ermittlung beginnt neu" : "Setzt die Sitzung fort, wo sie aufgehört hat");
     knopf("Neu starten", () => chatSenden("ermittlung_starten", {}, "vorgaben", "Eine neue Ermittlung starten? Sie beginnt in einer neuen Sitzung, mit dem Text im Feld als Vorgabe. Was im Arbeitsstand schon abgelegt ist " +
@@ -712,10 +714,13 @@ function chatZeigen(d) {
   }
   c.v = d.v || 0;
   const leer = $(".chat-leer", liste);
-  if (!c.knoten.size && !leer) liste.append(el("li", { klasse: "chat-leer klein", text: d.frueher_alt ? d.frueher_alt + " Das geschieht mit «Fortsetzen», mit einer Nachricht oder mit «Neu starten»." :
+  const leertext = d.frueher_alt ? d.frueher_alt + " Das geschieht mit «Fortsetzen», mit einer Nachricht oder mit «Neu starten»." :
     d.frueher ? "Zu diesem Fall gibt es eine frühere Sitzung. Eine Nachricht setzt sie fort." :
-    "Hier erscheint jeder Schritt der Ermittlung. Vorgaben eintragen, wenn es welche gibt, und starten." }));
+    "Hier erscheint jeder Schritt der Ermittlung. Vorgaben eintragen, wenn es welche gibt, und starten.";
+  if (!c.knoten.size && !leer) liste.append(el("li", { klasse: "chat-leer klein", text: leertext }));
   else if (c.knoten.size && leer) leer.remove();
+  else if (leer && leer.textContent !== leertext) leer.textContent = leertext;      // die Regeln wurden geändert, während die Seite offen war
+
   const marke = $("[data-chat-status]", feld);
   marke.textContent = STATUS_WORT[d.status] || d.status;
   marke.className = "marke z-" + (STATUS_FARBE[d.status] || "leer");
@@ -1106,7 +1111,10 @@ function tabelleEinrichten(tabelle) {
     dateiGeben(((zustand.fall ? zustand.fall + "_" : "") + (tabelle.dataset.name || "tabelle")).replace(/[^\w.-]+/g, "_") + ".csv",
       "﻿" + inhalt.map(z => z.map(csvSicher).join(";")).join("\r\n"), "text/csv;charset=utf-8");
   });
-  leiste.append(feld, csv, zahl);
+  // Auf einem Bildschirm mit echten Angaben (Band «lokal, Klartext») bekommt keine Tabelle den Knopf «CSV»: Die Datei läge im Ordner für
+  // Downloads, ausserhalb der geschützten Ablage. Bis zum 23.11.2026 liess sich so die Tabelle «Angaben und Platzhalter» speichern
+  const klartext = Boolean(tabelle.closest("#mitte") && $("#mitte .klartext-band"));
+  leiste.append(feld, ...(klartext ? [] : [csv]), zahl);
   (tabelle.closest(".tabelle-breit") || tabelle).before(leiste);
   Array.from(tabelle.tHead.rows[0].cells).forEach((th, spalte) => {
     if (th.querySelector("input")) return;        // die Spalte mit den Haken zum Auswählen sortiert nicht
@@ -1375,4 +1383,7 @@ addEventListener("resize", chatHoehe);
 // Was im Skript dieses Fensters schiefgeht, steht sonst nur in der Konsole des Browsers: Es geht ins Fehlerprotokoll
 addEventListener("error", (e) => fehlerMelden(e.message || "Fehler im Skript der Oberfläche", (e.filename ? `${e.filename}:${e.lineno}:${e.colno}\n` : "") + ((e.error && e.error.stack) || "")));
 addEventListener("unhandledrejection", (e) => { const g = e.reason; fehlerMelden("Unbehandelter Fehler: " + ((g && g.message) || String(g)), (g && g.stack) || ""); });
+// Der Sprungverweis «Zum Inhalt» setzt den Fokus und lässt die Adresse, wie sie ist: Im Hash stehen die Ansichten. Bis zum 23.11.2026
+// änderte er ihn auf «#mitte», und die Oberfläche zeigte statt der offenen Ansicht die Liste der Fälle
+$(".sprung").addEventListener("click", (e) => { e.preventDefault(); $("#mitte").focus(); });
 anmelden().then(() => { addEventListener("hashchange", laden); laden(); rueckfragenHolen(); });

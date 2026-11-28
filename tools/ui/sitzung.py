@@ -16,7 +16,8 @@ Der Weg: die Kommandozeile von Claude Code im Skriptbetrieb, mit fortlaufender J
     über einen kleinen MCP-Server (tools/ui/rueckfrage.py) an diesen Server und erscheint im Browser als Dialog. Erlauben
     oder ablehnen kann nur, wer das Geheimnis der Oberfläche hat. Die Karte, mit der der MCP-Server fragt, taugt nur zum Fragen.
     Über Aufrufe von Robin (Dark Web) entscheiden die Freigabe «darkweb» des Falls und die Regeln für Robin (gateway/robin.py:
-    Untersuchungsbereich, vor dem Lesen einer Seite die Prüfung gegen die Sperrliste), ohne Dialog.
+    Untersuchungsbereich, vor dem Lesen einer Seite die Prüfung gegen die Sperrliste), ohne Dialog. Die Ausnahme ist eine Seite im
+    offenen Netz über Tor (allow_clearweb): Das ist eine aktive Massnahme, sie braucht die Freigabe «aktiv» und fragt jedes Mal einzeln.
   - Der Dialog sagt in Worten, was Claude Code tun will und warum es fragt (tools/ui/worte.py). Stellt die Ermittlung dem
     Sachbearbeiter eine Frage (Werkzeug AskUserQuestion), kommt sie auf demselben Weg an und lässt sich im Dialog beantworten:
     mit einer Auswahl oder einer eigenen Antwort. Die Antwort geht als «answers» in der Eingabe des Werkzeugs zurück.
@@ -469,8 +470,14 @@ class Sitzung:
         if naechste is not None:
             self.aendern(naechste["eintrag"], wartet=False)
             try:
-                self.starten(naechste["text"], fortsetzen=True)
-                self.bedienung.vermerken(self.fall, "Nachricht an die Ermittlung zugestellt", kurz(naechste["text"], 1500), sitzung=self.kennung)
+                grund = veraltet(self.kennung)
+                if grund:
+                    # Die Regeln des Arbeitsplatzes wurden geändert, während der Auftrag lief (git pull bei laufender Oberfläche). Auch die
+                    # wartende Nachricht setzt die alte Sitzung dann nicht fort: Bis zum 23.11.2026 tat sie es, mit --resume
+                    _neu_beginnen(self.bedienung, self.fall, self.port, grund, [naechste["text"]], self)
+                else:
+                    self.starten(naechste["text"], fortsetzen=True)
+                    self.bedienung.vermerken(self.fall, "Nachricht an die Ermittlung zugestellt", kurz(naechste["text"], 1500), sitzung=self.kennung)
             except bedienung_modul.Fehler as e:
                 self.notieren("oberfläche", f"Die wartende Nachricht liess sich nicht zustellen: {e}", "fehler")
                 self.festhalten("fehler", f"Eine wartende Nachricht liess sich nicht zustellen: {e}")
@@ -684,7 +691,7 @@ class Sitzung:
             if self.abbruch:
                 return {"erlauben": False, "grund": "Die Oberfläche hat diese Sitzung beendet."}
         if werkzeug.startswith(ROBIN):
-            # Dark Web: Über Robin entscheiden die Freigabe des Falls und die Regeln für Robin, nicht ein Dialog je Aufruf. Seit es
+            # Dark Web: Über Robin entscheiden die Freigabe des Falls und die Regeln für Robin, nicht ein Dialog je Aufruf (Ausnahme unten). Seit es
             # keinen Wächter mehr gibt, ist das die Stelle, an der sie für eine Sitzung aus der Oberfläche geprüft werden: die Freigabe
             # «darkweb», der Untersuchungsbereich, den der Sachbearbeiter gewählt hat, und vor dem Lesen einer Seite die Prüfung
             # ihrer Adresse gegen die Sperrliste (gateway/robin.py, absage).
@@ -693,13 +700,17 @@ class Sitzung:
                 grund = robin.absage(werkzeug, eingabe, daten, lambda host: robin.sperrliste_stand(akte, host)[0])
             except (OSError, ValueError):
                 grund = f"Die Fallakte {self.fall} liess sich nicht lesen. Robin wird nicht ausgeführt."
-            if not grund:
+            # Eine aktive Massnahme (eine Seite im offenen Netz über Tor, allow_clearweb) erlaubt die Oberfläche nie von selbst: Die Freigabe
+            # «aktiv» ist dafür nur die Voraussetzung, zugestimmt wird je Aufruf, im Fenster weiter unten. Bis zum 23.11.2026 genügte die
+            # Freigabe, und jede Adresse im offenen Netz liess sich ohne Rückfrage über Tor abrufen.
+            if not grund and not robin.aktive_massnahme(werkzeug, eingabe):
                 return {"erlauben": True, "grund": "", "von_selbst": "Freigabe darkweb ist erteilt, der Aufruf hält die Regeln für Robin ein"}
-            self.notieren("oberfläche", f"{werkzeug} abgelehnt: {grund}")
-            if grund not in self.robin_gemeldet:    # jeder Grund einmal je Sitzung. Den einzelnen Versuch hält der Sitzungs-Hook fest
-                self.robin_gemeldet.add(grund)
-                self.bedienung.vermerken(self.fall, "Dark-Web-Aufruf abgelehnt", f"{werkzeug}: {kurz(grund, 400)}", sitzung=self.kennung)
-            return {"erlauben": False, "grund": f"Fall {self.fall}: {grund}"}
+            if grund:
+                self.notieren("oberfläche", f"{werkzeug} abgelehnt: {grund}")
+                if grund not in self.robin_gemeldet:    # jeder Grund einmal je Sitzung. Den einzelnen Versuch hält der Sitzungs-Hook fest
+                    self.robin_gemeldet.add(grund)
+                    self.bedienung.vermerken(self.fall, "Dark-Web-Aufruf abgelehnt", f"{werkzeug}: {kurz(grund, 400)}", sitzung=self.kennung)
+                return {"erlauben": False, "grund": f"Fall {self.fall}: {grund}"}
         # Eine Frage der Ermittlung an den Sachbearbeiter: Sie braucht eine Antwort, keine Zustimmung
         gestellt = worte.fragen_lesen(eingabe) if werkzeug == worte.FRAGE_WERKZEUG else []
 
@@ -805,12 +816,15 @@ class Sitzung:
             aktiv = [w for w in self.wer.values() if w["stand"] == "arbeitet" and w["zuletzt"]]
             gerade = f" Gerade: {worte.team(aktiv[-1]['name'])}, {aktiv[-1]['zuletzt']}." if aktiv else ""
             return f"Die Ermittlung läuft. {self.schritte} {'Schritt' if self.schritte == 1 else 'Schritte'} bisher.{gerade}"
+        # Begann die Sitzung unter älteren Regeln, setzt sie nichts mehr fort: Die Zeile verspricht dann kein Fortsetzen (bis zum 23.11.2026 tat sie es)
+        neu = (" Seit ihrem Beginn wurden die Regeln des Arbeitsplatzes geändert: «Fortsetzen» oder eine Nachricht beginnt sie in einer neuen Sitzung."
+               if status in ("angehalten", "beendet") and veraltet(self.kennung) else "")
         if status == "angehalten":
-            return "Die Ermittlung ist angehalten. «Fortsetzen» nimmt sie wieder auf, eine Nachricht auch."
+            return "Die Ermittlung ist angehalten." + (neu or " «Fortsetzen» nimmt sie wieder auf, eine Nachricht auch.")
         if status == "beendet":
             return {"laeuft": "Der Auftrag ist zu Ende. Die Unterlagen werden erzeugt.", "bereit": "Die Ermittlung ist abgeschlossen. Die Unterlagen liegen unter «Ergebnisse».",
                     "fehler": "Die Ermittlung ist abgeschlossen. Nicht alle Unterlagen liessen sich erzeugen: unter «Ergebnisse» wiederholen."}.get(
-                        self.unterlagen, "Der Auftrag ist zu Ende. Eine Nachricht setzt die Ermittlung fort.")
+                        self.unterlagen, "Der Auftrag ist zu Ende." + (neu or " Eine Nachricht setzt die Ermittlung fort."))
         if status == "fehler":
             return "Die Ermittlung ist abgebrochen. " + (self.meldung or "Der Grund steht im Verlauf.")
         return ""
@@ -937,6 +951,23 @@ def _fortsetzbar(b: "bedienung_modul.Bedienung", fall: str, port: int) -> Sitzun
     return s
 
 
+def _neu_beginnen(b: "bedienung_modul.Bedienung", fall: str, port: int, grund: str, texte: list[str], alt: Sitzung | None) -> None:
+    """Beginnt die Ermittlung in einer neuen Sitzung, weil die bisherige unter älteren Regeln begann und gerade einen Auftrag hatte.
+    Was der Sachbearbeiter geschrieben hat, geht als Vorgabe mit: die Nachricht und, soweit die Länge reicht, was noch auf die alte
+    Sitzung wartete. Jeder dieser Texte ist beim Senden geprüft oder von ihm bewusst gesendet worden. Darum gilt hier «trotzdem»:
+    Die Prüfung soll ihn nicht ein zweites Mal aufhalten, festgehalten wird ein Fund trotzdem."""
+    texte = [t for t in texte if t]
+    if alt is not None:
+        with alt.sperre:
+            while alt.wartend and len("\n\n".join(texte + [alt.wartend[0]["text"]])) <= NACHRICHT_LAENGE:
+                wartende = alt.wartend.pop(0)
+                alt.version += 1
+                wartende["eintrag"].update(wartet=False, v=alt.version)
+                texte.append(wartende["text"])
+    b.vermerken(fall, "Frühere Sitzung nicht fortgesetzt", grund)
+    ermittlung_starten(b, {"fall": fall, "_port": port, "vorgaben": "\n\n".join(texte), "trotzdem": "1" if texte else ""}, hinweis=grund)
+
+
 def _neu_statt_fortsetzen(b: "bedienung_modul.Bedienung", d: dict, fall: str, vorgaben: str = "") -> dict | None:
     """Begann die Sitzung, die fortgesetzt würde, unter älteren Regeln, beginnt die Ermittlung stattdessen neu: mit dem Stand der
     Fallakte und, wenn es eine gibt, mit der Nachricht des Sachbearbeiters als Vorgabe. Der Chat bleibt stehen, und der Grund
@@ -987,6 +1018,17 @@ def ermittlung_nachricht(b: "bedienung_modul.Bedienung", d: dict) -> dict:
         if not s.kennung:
             raise bedienung_modul.Fehler("Claude Code hat seine Sitzung noch nicht genannt. Bitte in ein paar Sekunden noch einmal senden.")
         s.anhalten()
+        grund = veraltet(s.kennung)
+        if grund:
+            # Wie beim Fortsetzen: Eine Sitzung, die unter älteren Regeln begann, wird nicht mit --resume wieder aufgenommen, auch nicht
+            # nach einer Unterbrechung (bis zum 23.11.2026 geschah das hier). Der Leser der alten Sitzung soll zuerst zu Ende sein
+            if s.leser is not None:
+                s.leser.join(timeout=20)
+            s.notieren("sachbearbeiter", text, "sachbearbeiter")
+            b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500) + " (laufender Auftrag unterbrochen)", sitzung=s.kennung)
+            _trotzdem_vermerken(b, s, fall, text, trotzdem, "Nachricht")
+            _neu_beginnen(b, fall, int(d.get("_port") or 0) or s.port, grund, [text], s)
+            return {"meldung": grund + " Deine Nachricht geht als Vorgabe mit.", "neu": True}
         s.notieren("sachbearbeiter", text, "sachbearbeiter")
         s.starten(UNTERBRECHUNG.format(text=text), fortsetzen=True)
         b.vermerken(fall, "Nachricht an die Ermittlung", kurz(text, 1500) + " (laufender Auftrag unterbrochen)", sitzung=s.kennung)

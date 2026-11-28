@@ -256,13 +256,38 @@ def fassung(projekt: Path | None = None) -> dict | None:
     """Welche Fassung des Arbeitsplatzes in diesem Ordner liegt, laut Git: {"commit", "datum", "zweig"}. Fragt nichts im Netz.
     None ohne Git oder ausserhalb eines Git-Arbeitsverzeichnisses (zum Beispiel aus einem Archiv entpackt)."""
     ordner = str(projekt or plattform.PROJEKT)
-    code, text = einrichten.lauf(["git", "-C", ordner, "log", "-1", "--format=%h%x09%cI"], 15)
-    letzte = text.splitlines()[-1] if code == 0 and text.strip() else ""
-    if "\t" not in letzte:
+    if not eigenes_git(ordner):
         return None
-    commit, datum = letzte.split("\t", 1)
-    code, zweig = einrichten.lauf(["git", "-C", ordner, "rev-parse", "--abbrev-ref", "HEAD"], 15)
-    return {"commit": commit.strip(), "datum": datum.strip(), "zweig": zweig.strip() if code == 0 else ""}
+    code, text = einrichten.lauf(["git", "-C", ordner, "log", "-1", "--format=%h%x09%cI"], 15)
+    # Die Zeile mit dem Commit wird an ihrer Form erkannt, nicht an ihrer Stelle: lauf() hängt den Fehlerkanal hinter die Ausgabe, und
+    # eine Warnung von Git stand bis zum 23.11.2026 als «letzte Zeile» da. Dann galt die Fassung als nicht feststellbar
+    zeile = next((z for z in text.splitlines() if re.fullmatch(r"[0-9a-f]{4,40}\t\S+", z.strip())), "") if code == 0 else ""
+    if not zeile:
+        return None
+    commit, datum = zeile.strip().split("\t", 1)
+    code, text = einrichten.lauf(["git", "-C", ordner, "rev-parse", "--abbrev-ref", "HEAD"], 15)
+    zweig = next((z.strip() for z in text.splitlines() if re.fullmatch(r"[\w./+@-]{1,200}", z.strip())), "") if code == 0 else ""
+    return {"commit": commit, "datum": datum, "zweig": zweig}
+
+
+def eigenes_git(ordner: str) -> bool:
+    """Ist dieser Ordner selbst ein Git-Arbeitsverzeichnis? «git -C» sucht sonst nach oben: Liegt ein entpackter Arbeitsplatz in einem
+    Ordner, der einem anderen Repository gehört, nähme er dessen Fassung für die eigene und fragte dessen Server (so bis zum
+    23.11.2026). «.git» ist ein Ordner oder, in einem zweiten Arbeitsbaum, eine Datei."""
+    return (Path(ordner) / ".git").exists()
+
+
+def ssh_vorgabe(ordner: str) -> dict[str, str]:
+    """Was die Nachfrage beim Git-Server für SSH mitgibt: kein Anmeldedialog und eine kurze Frist. Nur, wenn nichts eingestellt ist.
+    GIT_SSH_COMMAND aus der Umgebung geht einer Einstellung core.sshCommand und GIT_SSH vor: Wer dort ein eigenes Programm führt
+    (unter Windows oft das SSH von Windows mit dessen Schlüsselagenten, oder «ssh -i <Schlüssel>»), verlöre es sonst für diese eine
+    Anfrage, und sie scheiterte (so bis zum 23.11.2026)."""
+    if os.environ.get("GIT_SSH_COMMAND") or os.environ.get("GIT_SSH"):
+        return {}
+    code, text = einrichten.lauf(["git", "-C", ordner, "config", "--get", "core.sshCommand"], 15)
+    if code == 0 and text.strip():
+        return {}
+    return {"GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=5"}
 
 
 def fassung_fern(projekt: Path | None = None, zeit: int = 8) -> dict | None:
@@ -272,8 +297,9 @@ def fassung_fern(projekt: Path | None = None, zeit: int = 8) -> dict | None:
     geholt, aber nicht übernommen wurde). None, wenn es sich nicht feststellen lässt (kein Netz, kein Git, keine Anmeldung
     beim Server)."""
     ordner = str(projekt or plattform.PROJEKT)
-    umgebung = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
-    umgebung.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=5")
+    if not eigenes_git(ordner):
+        return None
+    umgebung = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", **ssh_vorgabe(ordner)}
     code, text = einrichten.lauf(["git", "-C", ordner, "ls-remote", "origin", "HEAD"], zeit, env=umgebung)
     treffer = re.search(r"^([0-9a-f]{40})\s+HEAD\s*$", text, re.M) if code == 0 else None
     if not treffer:

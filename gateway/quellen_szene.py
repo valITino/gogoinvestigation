@@ -185,24 +185,35 @@ async def onion_sperrliste(fall: Fall, zweck: Zweck,
     Suche ausschliesst, vor allem Seiten mit Missbrauchsdarstellungen. Einen Grund nennt die Liste nicht. PFLICHT vor
     jedem Öffnen einer Onion-Seite (robin_scrape). Steht die Adresse auf der Liste: nicht öffnen, dem Sachbearbeiter
     melden. Die Adresse verlässt das Haus nicht: Die Liste wird geladen und lokal verglichen."""
-    host = robin.onion_host(entschaerfen(onion_adresse))
+    host = robin.onion_host(entschaerfen(onion_adresse))       # leer auch, wenn sich die Adresse nicht eindeutig lesen lässt (robin.host_aus)
     if not robin.onion_gueltig(host):
-        raise Abbruch(f"'{onion_adresse}' ist keine gültige Onion-Adresse (16 oder 56 Zeichen vor .onion).")
+        raise Abbruch(f"'{saeubern(onion_adresse, 200)}' ist keine gültige Onion-Adresse (16 oder 56 Zeichen vor .onion) oder nicht eindeutig zu lesen. "
+                      "Geprüft wird nur die schlichte Schreibweise: ohne Benutzerteil («@»), Rückstrich, Leer- und unsichtbare Zeichen.")
     a = await abfrage(fall, zweck, werkzeug="onion_sperrliste", quelle="Ahmia", ziel=host, ziel_typ="onion",
                       url="https://ahmia.fi/blacklist/banned/", endung="txt", cache_h=24, deutung=_liste_deuten)
     if a.ergebnis != "ok":
         return a.als_dict()
-    gesperrt = robin.auf_sperrliste(host, a.text or "")
-    return a.als_dict({"onion": host, "gesperrt": gesperrt, "eintraege_in_liste": len(set(re.findall(r"\b[a-f0-9]{32}\b", a.text or ""))),
+    liste = robin.sperrliste_werte(a.text, robin.SPERRLISTE_MINDESTENS)
+    if liste is None:       # nach _liste_deuten kommt das nicht vor. Käme es doch vor, gälte ohne diese Zeile «nicht auf der Liste»
+        return a.als_dict(ergebnis="fehler", fehler=KEINE_LISTE)
+    gesperrt = robin.in_liste(host, liste)
+    return a.als_dict({"onion": host, "gesperrt": gesperrt, "eintraege_in_liste": len(liste),
                        "anweisung": ("NICHT öffnen. Ahmia sperrt diese Adresse, den Grund nennt die Liste nicht. Dem Sachbearbeiter melden."
                                      if gesperrt else "Nicht auf der Sperrliste. Das ist keine Unbedenklichkeitserklärung.")})
 
 
+KEINE_LISTE = "Sperrliste nicht im erwarteten Format. Onion-Seite vorsichtshalber NICHT öffnen."
+
+
 def _liste_deuten(status: int, daten: object, text: str | None) -> tuple[str, str | None] | None:
-    """Kommt statt der Liste etwas anderes zurück (eine Fehlerseite mit Status 200), ist die Prüfung gescheitert. Das steht dann
-    auch so im Protokoll: Sonst gälte die Adresse dort als geprüft."""
-    if status == 200 and robin.auf_sperrliste("", text or "") is None:
-        return "fehler", "Sperrliste nicht im erwarteten Format. Onion-Seite vorsichtshalber NICHT öffnen."
+    """Alles ausser der Liste selbst ist ein Fehler der Quelle, und so steht es im Protokoll: Sonst gälte die Adresse dort als
+    geprüft. Das gilt für eine Fehlerseite mit Status 200, für jede andere Antwort ohne Liste (204, 206 mit einem Teil davon) und
+    für jeden anderen Status. HTTP 404 hiess bis zum 23.11.2026 «kein Treffer», als stünde die Adresse nicht auf der Liste, und
+    blieb einen Tag im Fall-Cache. Was eine Liste ist, sagt robin.sperrliste_werte: je Zeile ein MD5-Wert, und genug davon."""
+    if not 200 <= status < 300:
+        return "fehler", f"Ahmia hat die Sperrliste nicht geliefert (HTTP {status}). Die Adresse ist nicht geprüft: Onion-Seite NICHT öffnen."
+    if robin.sperrliste_werte(text, robin.SPERRLISTE_MINDESTENS) is None:
+        return "fehler", KEINE_LISTE
     return None
 
 

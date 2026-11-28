@@ -11,7 +11,8 @@ Was «passt» heisst, steht je Quelle in gateway/quellen.py (VORGABEN). Ob eine 
 dem Protokoll. Eine Abfrage gehört zu einem Indikator, wenn sie seinen Wert zum Ziel hatte, wenn sie Grundlage einer
 Auswertung zu ihm ist oder wenn der Indikator sie unter seinen Belegen führt. Gefragt ist eine Quelle, wenn die Anfrage
 hinausging: mit Treffer, ohne Treffer oder mit einem Fehlschlag. Was das Gateway selbst abgelehnt hat (fehlende Freigabe,
-Schranke), hat die Quelle nie erreicht und zählt nicht.
+Schranke), hat die Quelle nie erreicht und zählt nicht. Robin: Kam Tor nicht hoch, gilt die Quelle als gefragt und gescheitert,
+auch ohne Suchversuch (siehe _ohne_tor).
 
     waehlbar(fall)                               was sich vorgeben lässt, mit Bereitschaft
     stand(fall, indikatoren, eintraege, pfad)    was fällig ist, was erfüllt, was fehlgeschlagen, was offen
@@ -43,6 +44,8 @@ TYP_NAME = {"ip": "IP-Adressen", "domain": "Domains", "url": "URLs", "hash": "Da
             "onion": "Onion-Adressen", "gruppe": "Gruppen", "konto": "Konten"}
 STAND_WORT = {"erfuellt": "erfüllt", "offen": "offen", "fehlgeschlagen": "Fehlschlag", "entfaellt": "entfällt", "wartet": "noch nicht fällig",
               "unbekannt": "unbekannt"}
+OHNE_ANTWORT = "Gefragt, aber ohne verwertbare Antwort."
+TOR_BLIEB_AUS = "Tor war nicht bereit: Robin konnte im Dark Web nicht suchen."
 REGEL = ("Vom Sachbearbeiter vorgegeben. Jede dieser Quellen ist für jeden Indikator aus den Eingangsdokumenten abzufragen, zu dem sie passt. "
          "Suchquellen und Quellen für Gruppen und Konten mindestens einmal im Fall. Weitere Quellen sind zusätzlich erlaubt. Die Vorgabe ersetzt "
          "keine Freigabe und keinen Zweck: Abgefragt werden nur Indikatoren des Falls, und der Zweck nennt die Vorgabe und die Fundstelle.")
@@ -227,6 +230,26 @@ def _nie_gesendet(e: dict) -> bool:
     return e.get("ergebnis") == "nicht_ausgefuehrt" and (e.get("robin") or {}).get("status") != "tor_bootstrapping"
 
 
+def _tor_nicht_bereit(e: dict) -> bool:
+    """Sagt dieser Eintrag von Robin, dass Tor nicht bereit war? Das sagt eine Bereitschaftsprüfung mit «tor: down» und ein Aufruf,
+    den Robin deshalb nicht ausführte."""
+    r = e.get("robin") or {}
+    return (e.get("werkzeug") == "robin_health" and r.get("tor") is False) or r.get("status") == "tor_bootstrapping"
+
+
+def _ohne_tor(eintraege: list[dict]) -> list[dict]:
+    """Die Bereitschaftsprüfungen von Robin, die «Tor nicht bereit» ergaben, wenn auch die jüngste so ausfiel. Sonst leer.
+
+    Kommt Tor nicht hoch, endet die Arbeit des Dark-Web-Analysten nach der Bereitschaftsprüfung: Er meldet die Lücke und sucht
+    nicht. Bis zum 23.11.2026 zählte für die Pflicht nur ein Suchversuch. Wer seiner Anweisung folgte, hinterliess die Pflichtquelle
+    «nie abgefragt», ohne Grund, und der Rapport entstand nur als Entwurf. Die Prüfung steht als Beleg im Protokoll: Sie gilt als
+    gefragt und gescheitert. War Tor bei einer späteren Prüfung bereit, entschuldigt die frühere nichts: Dann war zu suchen."""
+    pruefungen = [e for e in eintraege if e.get("werkzeug") == "robin_health" and isinstance((e.get("robin") or {}).get("tor"), bool)]
+    if not pruefungen or pruefungen[-1]["robin"]["tor"]:
+        return []
+    return [e for e in pruefungen if not e["robin"]["tor"]]
+
+
 def _gelungen(e: dict, pfad: Path | None) -> bool:
     """Hat die Quelle auf diese Abfrage geantwortet? Robin meldet auch dann eine Antwort, wenn Tor noch startet: Das zählt nicht.
     Seit dem 20.11.2026 steht das im Eintrag selbst (ergebnis). Bei älteren Einträgen sagt es nur die Rohdatei."""
@@ -305,6 +328,8 @@ def stand(fall: dict, indikatoren: list[dict], eintraege: list[dict], pfad: Path
                 continue
             gefragt = [e for e in eintraege if gilt(e)]
             gut = [e["id"] for e in gefragt if _gelungen(e, pfad)]
+            if name == ROBIN and not gefragt and freigabe_erteilt(fall, v.freigabe):
+                gefragt = _ohne_tor(eintraege)      # nie gesucht, weil Tor nicht hochkam: gefragt und gescheitert. Ohne Freigabe bleibt sie das Hindernis
             zeile["faellig"] = ["Fall"]
             zahlen["faellig"] += 1
             if gut:
@@ -312,7 +337,7 @@ def stand(fall: dict, indikatoren: list[dict], eintraege: list[dict], pfad: Path
                 zahlen["erfuellt"] += 1
             elif gefragt:
                 zeile.update(stand="fehlgeschlagen", fehlgeschlagen=["Fall"], belege={"Fall": [e["id"] for e in gefragt][-3:]},
-                             grund="Gefragt, aber ohne verwertbare Antwort.")
+                             grund=TOR_BLIEB_AUS if name == ROBIN and all(_tor_nicht_bereit(e) for e in gefragt) else OHNE_ANTWORT)
                 zahlen["fehlgeschlagen"] += 1
             else:
                 zeile.update(stand="offen", offen=["Fall"], grund=hindernis)
@@ -381,7 +406,8 @@ def hinweise(s: dict | None) -> list[str]:
         elif z["fehlgeschlagen"]:
             wo = "die Abfrage" if z["einmal"] else f"die Abfrage für {_ids(z['fehlgeschlagen'])}"
             belege = ", ".join(dict.fromkeys(b for i in z["fehlgeschlagen"] for b in z["belege"].get(i, [])))
-            aus.append(f"Pflichtquelle {z['quelle']}: {wo} ist fehlgeschlagen ({belege}). Das gehört unter 'luecken'.")
+            grund = f"{z['grund']} " if z["grund"] and z["grund"] != OHNE_ANTWORT else ""      # der besondere Grund, wo es einen gibt
+            aus.append(f"Pflichtquelle {z['quelle']}: {wo} ist fehlgeschlagen ({belege}). {grund}Das gehört unter 'luecken'.")
     return aus
 
 

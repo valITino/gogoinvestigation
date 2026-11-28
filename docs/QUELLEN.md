@@ -309,9 +309,21 @@ Die API PRO wiederholt in jeder Antwort unter `client` die E-Mail-Adresse, auf d
 Gateway ersetzt sie in der Rohdatei durch `***` und vermerkt das im Protokolleintrag (`antwort.bereinigt`). Sonst
 bleibt die Rohdatei, wie die Quelle sie geliefert hat.
 
-**Ahmia-Sperrliste.** Liefert die Liste nichts, was wie eine Liste von MD5-Werten aussieht, meldet das Werkzeug
-einen Fehler und rät vom Öffnen ab. Die Prüfung steht dann auch im Protokoll als Fehler, und die Adresse gilt nicht als
-geprüft (bis zum 20.11.2026 stand der Eintrag als «ok» da). «Nicht auf der Liste» ist keine Unbedenklichkeitserklärung.
+**Ahmia-Sperrliste.** Die Liste ist reiner Text, je Zeile ein MD5-Wert. Nur das gilt als Liste: jede nichtleere Zeile
+ein MD5-Wert, und mindestens 1'000 verschiedene Einträge (`SPERRLISTE_MINDESTENS` in `gateway/robin.py`; gesehen sind
+rund 60'000). Alles andere ist ein Fehler der Quelle, nie «nicht auf der Liste» und nie «kein Treffer»: eine Fehler- oder
+Wartungsseite, eine leere oder abgeschnittene Antwort, HTTP 404 und jeder andere Status. Das Werkzeug meldet dann einen
+Fehler und rät vom Öffnen ab, die Prüfung steht so im Protokoll, sie kommt nicht in den Fall-Cache, und die Adresse gilt
+nicht als geprüft. Bis zum 20.11.2026 stand ein solcher Eintrag als «ok» da. Bis zum 23.11.2026 genügten irgendwo im
+Text 32 Hex-Zeichen, damit er als Liste galt (der Dateiname eines Stylesheets auf einer Wartungsseite: eine «Liste» mit
+einem Eintrag, jede Adresse einen Tag lang «frei»), und HTTP 404 hiess «kein Treffer». Ändert Ahmia die Form der Liste,
+scheitert jede Prüfung, bis das Gateway nachgeführt ist: Das ist die sichere Seite. Die Untergrenze erkennt keine Liste,
+die nur zur Hälfte ankam. «Nicht auf der Liste» ist keine Unbedenklichkeitserklärung.
+
+Geprüft wird nur eine Adresse, die sich auf genau eine Art lesen lässt (`host_aus` in `gateway/robin.py`): reines ASCII,
+`http://` oder `https://` oder gar kein Schema, im Host-Teil nur Buchstaben, Ziffern, Punkt und Bindestrich, kein
+Benutzerteil («@»), kein Rückstrich, keine Leer-, Steuer- und unsichtbaren Zeichen. Alles andere weist das Werkzeug
+zurück. Bis zum 23.11.2026 las es nachsichtig: Bei `http://A.onion\@B.onion/` prüfte es B, während ein Abruf A öffnet.
 
 Was ein Treffer heisst: Ahmia führt auf der Liste Adressen, die es aus seiner Suche ausschliesst. Einen Grund nennt die
 Liste nicht. Sie ist keine reine Liste von Seiten mit Missbrauchsdarstellungen: Am 20.11.2026 standen auch die
@@ -320,6 +332,8 @@ P-1160). Die Regel bleibt trotzdem: Steht eine Adresse auf der Liste, wird die S
 Sachbearbeiter gemeldet. Für die Arbeit an Erpressungsfällen kostet das nach der Stichprobe vom selben Tag nichts:
 Sieben öffentlich gelistete Leak-Seiten von zwei Gruppen (laut ransomware.live) standen nicht auf der Liste (P-1152 bis
 P-1158). Im Ermittlungsprotokoll heisst das Ergebnis der Prüfung «nicht auf der Sperrliste» oder «auf der Sperrliste».
+Lässt sich die gesicherte Antwort nicht lesen oder ist sie keine Liste (so entstanden Einträge bis zum 23.11.2026),
+heisst es «Liste nicht lesbar»: Der Eintrag belegt dann keine Prüfung.
 «Treffer» stünde dort für das Gegenteil dessen, was ein Leser erwartet.
 
 **Telegram Breach Monitor.** Die Seite auf osintcabal.org ist eine Hinweisseite auf den Telegram-Kanal
@@ -354,7 +368,7 @@ ausgenommen):
 |---|---|---|
 | `robin_health` | Sagt, ob Tor im Container bereit ist, auf Wunsch auch, welche der 16 Suchmaschinen antworten. | Erster Schritt jeder Recherche. |
 | `robin_search` | Fragt die Suchmaschinen über Tor und gibt Titel und Adressen der Treffer zurück. Sucht nur mit einem Untersuchungsbereich, den ein Mensch gewählt hat (`preset`, `user_chose=true`). | Den Bereich wählt der Sachbearbeiter mit der Freigabe `darkweb`. `fall_status` gibt dem Analysten die beiden Angaben mit. |
-| `robin_scrape` | Liest Seiten über Tor: nur Text (HTML und Klartext, höchstens 1 MB je Seite), keine Bilder, keine Dateien. Gibt je Seite Stand, Text und die Verweise darauf zurück. | Über `urls`, nicht über Treffernummern: Nur so lässt sich jede Adresse ihrer Prüfung gegen die Sperrliste zuordnen. `allow_clearweb` (eine Seite im offenen Netz über Tor lesen) braucht die Freigabe `aktiv`. |
+| `robin_scrape` | Liest Seiten über Tor: nur Text (HTML und Klartext, höchstens 1 MB je Seite), keine Bilder, keine Dateien. Gibt je Seite Stand, Text und die Verweise darauf zurück. | Über `urls` als Liste, nicht über Treffernummern: Nur so lässt sich jede Adresse ihrer Prüfung gegen die Sperrliste zuordnen. Jede Adresse in der schlichten, eindeutigen Form. `allow_clearweb` (eine Seite im offenen Netz über Tor lesen) ist eine aktive Massnahme: Freigabe `aktiv` und Zustimmung je Aufruf. |
 | `robin_refine`, `robin_filter` | Schärfen den Suchtext und sortieren Treffer aus, mit einem eigenen Sprachmodell. | Robin hat hier keines (Claude Code bietet ihm keines an): Beide geben die Arbeit an den Analysten zurück. Erlaubt, aber ohne Nutzen. |
 | `robin_list_models`, `robin_list_investigations` | Listen Robins Sprachmodelle und bei Robin abgelegte Recherchen. | Beides ist hier leer. |
 | `robin_investigate`, `robin_save_investigation` | Eine ganze Recherche in einem Aufruf, mit eigenem Sprachmodell. Ablage des Ergebnisses in einem Docker-Volume. | **Verboten** (`.claude/settings.json`). `robin_investigate` öffnet Seiten von sich aus, ohne Prüfung gegen die Sperrliste, und liefe hier mangels Sprachmodell ohnehin nicht. Die Ablage wäre ein zweiter Ort ausserhalb der Fallakte. Das Volume wird seit dem 20.11.2026 nicht mehr eingehängt. |
@@ -378,6 +392,44 @@ gegen die Sperrliste, `allow_clearweb` nur mit Freigabe `aktiv`. Die Oberfläche
 Terminal entscheidet der Mensch. Der Sitzungs-Hook prüft denselben Aufruf nach der Ausführung und schreibt einen
 Verstoss in den Beleg (`regel`): Im Ermittlungsprotokoll steht dann «Regel verletzt» mit dem Grund, und der Analyst
 bekommt den Hinweis, es unter Auffälligkeiten zu melden.
+
+Im Einzelnen, seit dem 23.11.2026 (Gegenprüfung der Pakete S und T):
+
+- **Was sich nicht prüfen lässt, ist nicht zulässig.** `urls` muss eine Liste von Texten sein. Kam die Liste als Text
+  (auch als JSON-Text, so senden Sprachmodelle Listenfelder gelegentlich), fand die Prüfung vorher keine Onion-Adresse
+  und liess den Aufruf zu. Jede Adresse muss sich auf genau eine Art lesen lassen (dieselbe strenge Form wie bei
+  `onion_sperrliste`, siehe [Hinweise](#hinweise-je-quelle)): So prüft die Regel denselben Host, den Robin öffnet. Die
+  Absage zeigt unsichtbare Zeichen in der Adresse als `\u200b` und ähnlich. Umlaute im Pfad gehören in die
+  Prozent-Schreibweise.
+- **Offenes Netz.** Ohne `allow_clearweb` ist eine Adresse, die nicht auf `.onion` endet, nicht zulässig (Robin weist
+  sie ohnehin zurück). Mit `allow_clearweb` und Freigabe `aktiv` hält der Aufruf die Regeln ein, ist aber eine aktive
+  Massnahme: Die Oberfläche erlaubt ihn nie von selbst, sie legt ihn dem Sachbearbeiter als Fenster vor, jeden Aufruf
+  einzeln. Der Beleg führt ihn mit den Freigaben «darkweb, aktiv». Steht hinter einer Adresse im offenen Netz ein
+  Onion-Dienst (Tor2Web: `<name>.onion.ly`), gilt für ihn die Sperrliste wie für die Onion-Adresse selbst.
+- **Platzhalter.** Erkannt werden `[PERSON_01]` in jeder Schreibweise (`[person_01]`, `[ PERSON_01 ]`) und die Form
+  ohne Klammern für die Typen dieses Arbeitsplatzes (`PERSON_03`, `ADRESSE_02`: so schreiben sie manche Werkzeuge im
+  Haus). Ein Platzhalter eines fremden Werkzeugs mit anderem Typnamen und ohne Klammern bleibt unerkannt: Das breite
+  Muster der PII-Prüfung träfe auch Suchbegriffe wie `LOCKBIT_30`.
+- **Zu jeder gelesenen Seite** steht im Beleg, was für sie galt: «frei» oder «gesperrt» mit der Nummer der Prüfung,
+  «nicht geprüft», oder «offenes Netz» für eine Adresse, die eindeutig dorthin führt.
+
+Als Pflichtquelle gilt Robin als gefragt, wenn eine Suche oder ein Lesen hinausging. Kommt Tor nicht hoch, sucht der
+Analyst nicht (seine Anweisung endet nach der dritten Bereitschaftsprüfung). Dann zählt die Bereitschaftsprüfung: Ist
+die Freigabe `darkweb` erteilt und ergab auch die jüngste Prüfung «Tor nicht bereit», steht die Pflichtquelle als
+Fehlschlag da, mit dem Grund «Tor war nicht bereit», im Stand (`fall_status`, Oberfläche) und im Rapport. Das ist eine
+Lücke, kein Mangel. War Tor bei einer späteren Prüfung bereit, und es wurde trotzdem nie gesucht, bleibt die Pflicht
+offen (`gateway/pflichtquellen.py`, `_ohne_tor`). Bis zum 23.11.2026 zählte nur ein Suchversuch: Wer der Anweisung
+folgte, hinterliess «nie abgefragt» ohne Grund.
+
+Der Sitzungs-Hook zerlegt jede Antwort von `robin_scrape`, um die Seiten zu nennen. Der Ausdruck für Robins
+Verweisliste («Onion links on this page») rechnete bis zum 23.11.2026 exponentiell, wenn eine Seite diese Überschrift
+mitten im Text über einer Zeile aus lauter «- » trug: Der Hook lief über sein Zeitlimit von 20 Sekunden, und die Antwort
+wurde kein Beleg. Ob Robin eine Leerzeile aus dem Seitentext durchreicht (ohne sie greift der Ausdruck nur auf Robins
+eigene Liste), ist nicht geprüft. Der Ausdruck ist jetzt eindeutig gefasst. Bricht die Sicherung trotzdem einmal ab,
+nachdem die Rohdatei geschrieben ist, scheitert der nächste Aufruf nicht mehr an ihr: Sie bleibt unverändert und rückt
+unter dem Namen `X-000N_<werkzeug>.abgebrochen.txt` zur Seite, und der neue Beleg nennt sie (`antwort.liegen_geblieben`).
+Dasselbe gilt seit dem 28.11.2026 für die Rohdateien des Gateways (`P-000N_<werkzeug>.abgebrochen.<Endung>`): Vorher
+scheiterte nach einem solchen Abbruch jede weitere Abfrage des Falls an der schreibgeschützten Datei.
 
 ```bash
 docker build -t robin-intern /pfad/zu/eurem/robin-fork

@@ -39,6 +39,12 @@ hast keinen Zugang zu externen Quellen.
 Melde zurück: Zahl der Indikatoren und Befunde, verbleibende Mängel, und was dir an den Meldungen widersprüchlich
 oder dünn vorkam.
 
+**Liegt `befunde.json` schon vor** (die Hauptsitzung sagt es im Auftrag und nennt die neuen Meldungen, etwa
+`…-nachtrag.md`): Ergänze die Datei, statt sie neu zu schreiben. Neue und inhaltlich geänderte Befunde bekommen
+`gegenpruefung: "offen"`, unveränderte behalten ihr Urteil und ihre Notiz. Eine Lücke, die inzwischen geschlossen ist
+(die Freigabe wurde erteilt, die Quelle eingerichtet, die Abfrage nachgeholt), berichtigst oder streichst du: Der
+Rapport nennt keine Lücke, die es nicht mehr gibt. Passe Zusammenfassung, Kernaussagen, Beziehungen und Zeitachse an.
+
 ## Zweiter Einsatz: Gegenprüfung einarbeiten
 
 Du bekommst die Urteile des Gegenprüfers.
