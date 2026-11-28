@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from gateway import pflichtquellen as pq, plattform, robin  # noqa: E402
-from gateway.akte import FAELLE, FREIGABEN, KEINE_ABFRAGE, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
+from gateway.akte import FAELLE, FREIGABEN, KEINE_ABFRAGE, extern_lesen, fall_pfad, freigabe_erteilt, jsonl_lesen, kette_pruefen, sha256_datei  # noqa: E402
 from gateway.quellen import EINSTELLUNG_AUS, NICHT_SCHALTBAR, QUELLEN, aus_namen, schaltbar  # noqa: E402
 from tools import protokoll as protokollwerkzeug, rapport  # noqa: E402
 from tools.ui import blaetter, darsteller as ds  # noqa: E402
@@ -136,7 +136,8 @@ class Fall:
 
     def eintraege(self) -> list[dict]:
         a, x = self.pfad / "protokoll" / "abfragen.jsonl", self.pfad / "protokoll" / "extern.jsonl"
-        return self._gemerkt("eintraege", [a, x], lambda: jsonl_lesen(a) + jsonl_lesen(x))
+        # Ältere Einträge von Robin kommen eingeordnet (akte.extern_lesen): Die Oberfläche zählt und zeigt sie wie Protokoll und Rapport
+        return self._gemerkt("eintraege", [a, x], lambda: jsonl_lesen(a) + extern_lesen(self.pfad))
 
     def eintrag(self, beleg: str) -> dict:
         for e in self.eintraege():

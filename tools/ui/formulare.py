@@ -408,7 +408,10 @@ def ermittlung_feld(fall_id: str, stand: dict | None, verfuegbar: str = "", klar
         h.append(f'<p class="banner">{esc(stand["meldung"])}</p>')
     knoepfe = []        # starten, senden, anhalten und fortsetzen stehen im Chat. Hier nur der Weg zu den Ergebnissen
     if status == "aus" and stand.get("frueher") and not verfuegbar:
-        h.append(f'<p class="klein">Zu diesem Fall gibt es eine frühere Sitzung (<span class="mono">{esc(stand["frueher"])}</span>). Eine Nachricht im Chat setzt sie fort.</p>')
+        # Begann sie unter älteren Regeln des Arbeitsplatzes, setzt der Server sie nicht fort: Dann verspricht auch diese Zeile es nicht
+        weiter = ("Sie wird nicht fortgesetzt, weil seither die Regeln des Arbeitsplatzes geändert wurden: «Fortsetzen» oder eine Nachricht im Chat "
+                  "beginnt die Ermittlung in einer neuen Sitzung." if stand.get("frueher_alt") else "Eine Nachricht im Chat setzt sie fort.")
+        h.append(f'<p class="klein">Zu diesem Fall gibt es eine frühere Sitzung (<span class="mono">{esc(stand["frueher"])}</span>). {weiter}</p>')
     if stand.get("unterlagen") == "bereit" or (status == "beendet" and not stand.get("unterlagen")):
         knoepfe.append(f'<a class="knopf" href="{pfad(fall_id, "ergebnisse")}">Ergebnisse ansehen</a>')
     h.append('<div class="knopfzeile">' + "".join(knoepfe) + "</div>")

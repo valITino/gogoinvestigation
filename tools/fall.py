@@ -32,7 +32,7 @@ from gateway import pflichtquellen, plattform, robin  # noqa: E402
 if __name__ == "__main__":
     plattform.start()
 
-from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, eingang_stand, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
+from gateway.akte import (FAELLE, FREIGABE_TEXT, FREIGABEN, eingang_stand, extern_lesen, fall_daten, fall_pfad, freigabe_erteilt,  # noqa: E402
                           jsonl_lesen, sha256_datei)
 from tools.pii_pruefung import GEWANDELT, NichtLesbar, bericht, pruefen, text_lesen  # noqa: E402
 
@@ -392,7 +392,7 @@ def cmd_quellen(a: argparse.Namespace) -> int:
             hindernis = (f"nicht bereit: {w['grund']}" if not w["bereit"] else f"braucht die Freigabe {w['freigabe']}" if w["freigabe_fehlt"] else "")
             print(f"  [{'x' if w['name'] in vorgegeben else ' '}] {w['name']:<26} {w['gruppe']:<15} {hindernis or w['faellig']}")
         pfad = fall_pfad(a.fall)
-        stand = pflichtquellen.stand_fuer(daten, pfad, jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl") + jsonl_lesen(pfad / "protokoll" / "extern.jsonl"))
+        stand = pflichtquellen.stand_fuer(daten, pfad, jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl") + extern_lesen(pfad))
         if stand:
             z = stand["zahlen"]
             print(f"  Stand: {z['erfuellt']} von {z['faellig']} fälligen Abfragen erfüllt, {z['fehlgeschlagen']} fehlgeschlagen, {z['offen']} offen."

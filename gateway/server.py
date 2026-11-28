@@ -8,7 +8,7 @@ from __future__ import annotations
 from . import (kern, quellen_infrastruktur, quellen_ip, quellen_krypto, quellen_szene, quellen_urlscan,  # noqa: F401  (registrieren die Werkzeuge)
                quellen_web)
 from . import pflichtquellen, plattform, robin
-from .akte import eingang_stand, jsonl_lesen
+from .akte import eingang_stand, extern_lesen
 from .kern import FREIGABEN, Fall, einstellung, fall_laden, protokoll_lesen, werkzeug
 from .quellen import QUELLEN
 
@@ -86,7 +86,7 @@ async def fall_status(fall: Fall) -> dict:
     # Genannt werden nur Dokumente, die die PII-Prüfung aufgenommen hat. Was von Hand in den Eingang kopiert oder danach
     # verändert wurde, ist nicht geprüft: Der Agent bekommt die Zahl, nicht den Namen (ein Dateiname kann eine Person nennen).
     eingang, ungeprueft = eingang_stand(akte.pfad)
-    pflicht = pflichtquellen.kurz(pflichtquellen.stand_fuer(akte.daten, akte.pfad, eintraege + jsonl_lesen(akte.pfad / "protokoll" / "extern.jsonl")))
+    pflicht = pflichtquellen.kurz(pflichtquellen.stand_fuer(akte.daten, akte.pfad, eintraege + extern_lesen(akte.pfad)))
     # Ist ein Proxy eingestellt, geht jede Abfrage über ihn. Antwortet er nicht, braucht es keinen einzigen Versuch: Die Ermittlung
     # hält an und meldet es. Geprüft wird nur, ob der Proxy selbst eine Verbindung annimmt.
     proxy = einstellung("OSINT_PROXY")

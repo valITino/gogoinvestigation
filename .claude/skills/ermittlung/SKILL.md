@@ -66,12 +66,20 @@ Unter Windows heisst der Interpreter `python` statt `python3`. Die Befehle unten
    nicht fortsetzen. Was sie abgelegt hat, übernimmst du, statt es ein zweites Mal zu erarbeiten:
    - `indikatoren.json` liegt vor: Phase 1 ist getan. Lies die Liste und die Dokumente im Eingang und ergänze nur, was
      fehlt (ein Dokument, das die Liste noch nicht nennt, ein übersehener Indikator). `klartext.json` führst du weiter.
-   - `plan.md` liegt vor: Phase 2 ist getan. Passe den Plan nur an, wenn Vorgaben, Pflichtquellen oder Indikatoren
-     dazugekommen sind.
-   - Befundmeldungen liegen vor (`<analyst>-runde1.md`, `…-runde2.md`, `…-pflicht.md`): Diese Runde dieses Analysten ist
-     getan. Beauftrage nur, wer im Plan steht und noch keine Meldung abgelegt hat.
-   - `faelle/<Fall-ID>/befunde.json` liegt vor: Stehen Befunde noch auf `gegenpruefung: "offen"`, fahre bei Phase 7
+   - `plan.md` liegt vor: Phase 2 ist getan. Vergleiche den Plan mit `fall_status` und mit deinem Auftrag und passe ihn
+     an, wenn seit der Ablage etwas dazugekommen ist: Vorgaben, Pflichtquellen, Indikatoren (ein Nachtrag), eine
+     Freigabe oder eine Quelle, die der Plan noch als fehlend führt.
+   - Befundmeldungen liegen vor (`<analyst>-runde1.md`, `…-runde2.md`, `…-pflicht.md`, `…-nachtrag.md`): Diese Runde
+     dieses Analysten ist getan. Beauftrage, wer im Plan steht und noch keine Meldung abgelegt hat. Teilt der
+     angepasste Plan einem Analysten Neues zu (neue Indikatoren, eine neue Vorgabe, eine Lücke, die eine neue Freigabe
+     oder Quelle jetzt schliessen kann), beauftragst du ihn mit genau diesem Teil, auch wenn er schon eine Meldung
+     abgelegt hat, und legst seine Meldung als `<analyst>-nachtrag.md` ab.
+   - `faelle/<Fall-ID>/befunde.json` liegt vor: Hast du eben jemanden neu beauftragt, fahre bei Phase 6 fort: Der
+     `rapportfuehrer` ergänzt die Befunde. Sonst: Stehen Befunde noch auf `gegenpruefung: "offen"`, fahre bei Phase 7
      fort, sonst bei Phase 8.
+
+   Übernehmen heisst nicht, Neues zu übergehen: Was der Sachbearbeiter seit der letzten Ermittlung erteilt, eingerichtet
+   oder nachgereicht hat, wird bearbeitet. Ein Rapport, der eine Lücke nennt, die heute nicht mehr besteht, ist falsch.
 
    Sag dem Sachbearbeiter in einem Satz, was du übernimmst und bei welcher Phase du weitermachst. Ist eine Ablage
    unvollständig oder widerspricht sie dem Dokument, erarbeitest du diesen einen Teil neu und sagst es. Verlangt der
@@ -147,6 +155,10 @@ Pflichtquellen (vom Sachbearbeiter vorgegeben, für jeden dieser Indikatoren abz
 Grenzen: nur passive Abfragen. Keine Pivots ausführen, nur vorschlagen. Rückmeldung als Befundmeldung nach Ermittlungsstandard.
 ```
 
+Eine Ausnahme regelt der `darkweb-analyst` in seinen eigenen Grenzen: Er liest Unterseiten hinter den Verweisen einer
+gelesenen Seite, soweit der Auftrag sie braucht, höchstens zwei Schritte vom Eingangsdokument entfernt. Das ist kein Pivot
+im Sinn dieses Auftrags. Alles andere schlägt auch er vor.
+
 Speichere jede Befundmeldung unverändert als `arbeitsstand/<analyst>-runde1.md`.
 
 ## Phase 4: Pivots
@@ -168,7 +180,9 @@ Nur wenn der Sachbearbeiter Pflichtquellen vorgegeben hat. Rufe `fall_status` au
 - Ist die Liste leer, ist die Vorgabe erfüllt. Fahre fort.
 - Steht dort ein Paar, wurde diese Quelle für diesen Indikator noch nie gefragt. Beauftrage den zuständigen Analysten mit
   genau diesen Paaren (`…-pflicht.md`). Das ist keine Pivot-Runde und zählt nicht zu den zwei Runden.
-- Eine fehlgeschlagene Abfrage gilt als gefragt. Sie wird nicht wiederholt und kommt unter Lücken.
+- Eine fehlgeschlagene Abfrage gilt als gefragt. Sie wird nicht wiederholt und kommt unter Lücken. Dasselbe gilt für
+  Robin, wenn Tor nicht hochkam: Die Bereitschaftsprüfung des `darkweb-analyst` («Tor nicht bereit») steht im Protokoll,
+  `fall_status` nennt die Quelle dann unter `anmerkungen` als Fehlschlag mit diesem Grund. Gesucht wird dafür nicht.
 - Ein Versuch, den das Gateway ablehnt (fehlende Freigabe), gilt nicht als gefragt. Er wird nicht unternommen, um eine
   Pflicht abzuhaken.
 - Lässt sich ein Paar nicht erfüllen, weil eine Freigabe oder ein Schlüssel fehlt oder die Quelle ausgeschaltet ist,
@@ -193,6 +207,10 @@ Zustimmung: als Empfehlung in den Rapport.
 Beauftrage den `rapportfuehrer`: Er liest `arbeitsstand/` und schreibt `befunde.json` nach dem Skill
 `abschlussrapport`, alle Befunde mit `gegenpruefung: "offen"`. Er führt `python3 tools/rapport.py <Fall-ID> --nur-pruefen`
 aus und behebt formale Mängel.
+
+Liegt `befunde.json` schon vor (Phase 0, Ziff. 6), sag ihm das im Auftrag und nenne die Meldungen, die dazugekommen
+sind: Er ergänzt die Datei, statt sie neu zu schreiben. Neue und geänderte Befunde stehen auf `gegenpruefung: "offen"`,
+unveränderte behalten ihr Urteil. Lücken, die inzwischen geschlossen sind, berichtigt er.
 
 ## Phase 7: Gegenprüfung
 

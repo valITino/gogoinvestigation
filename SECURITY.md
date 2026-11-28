@@ -39,7 +39,7 @@ Schlüssel oder Personendaten. Ein Nachweis mit dem Musterfall oder mit erfunden
   Robin am Terminal ohne Freigabe `darkweb` läuft, wenn der Mensch den Aufruf erlaubt. Wer Claude Code so startet,
   dass es nicht mehr nachfragt, schaltet die Rückfrage ab. Verhindert wird ein solcher Aufruf von Robin nicht, aber
   er bleibt sichtbar: Der Beleg hält fest, welche Regel er nicht einhielt (Freigabe, Untersuchungsbereich, Prüfung
-  gegen die Sperrliste), und das Ermittlungsprotokoll zeigt «Regel verletzt».
+  gegen die Sperrliste, Adresse nicht eindeutig zu lesen), und das Ermittlungsprotokoll zeigt «Regel verletzt».
 - Wegen Personendaten in einem aufgenommenen Dokument hält die Ermittlung nicht an (Entscheid des Eigentümers vom
   20.11.2026). Was in einen Fall kommt, entscheidet die PII-Prüfung bei der Aufnahme, und nur der Sachbearbeiter kann
   sie übersteuern. Danach nennt die Ermittlung die Stellen ohne die Werte und verwendet sie nicht. Dass sie das einhält,

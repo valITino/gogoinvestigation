@@ -47,7 +47,7 @@ os.environ["OSINT_ZEITZONE"] = "Europe/Zurich"     # der Musterfall soll auf jed
 try:
     import httpx
     from gateway import (kern, quellen_infrastruktur as infra, quellen_ip as ipq, quellen_krypto as krypto, quellen_szene as szene,
-                         quellen_urlscan as us, quellen_web as web)
+                         quellen_urlscan as us, quellen_web as web, robin)
     from tools import _kryptowelt as kw, _vorlagen as vorlagen
 except ModuleNotFoundError as e:
     sys.exit(f"Paket '{e.name}' fehlt. Bitte zuerst {plattform.SETUP} ausführen.")
@@ -812,6 +812,9 @@ def main() -> int:
     # 2. Ermitteln, mit vorgefertigten Antworten und gestellter Uhr
     uhr = Uhr(datetime(2026, 11, 12, 8, 2, 0, tzinfo=timezone.utc))
     kern.uhr, kern.transport = uhr, httpx.MockTransport(antworten)
+    # Die gestellte Sperrliste hat 40 erfundene Einträge, die echte rund 60'000. Die Untergrenze des Gateways gilt der echten Quelle
+    # (gateway/robin.py). Für diesen Lauf liegt sie beim Umfang der gestellten Liste: So bleibt der Musterfall, wie er im Repo liegt.
+    robin.SPERRLISTE_MINDESTENS = 40
     zufall, stand = random.Random(7), [0.0]
 
     def stoppuhr() -> float:      # gestellte Antwortzeiten, bei jedem Lauf dieselben

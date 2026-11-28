@@ -78,8 +78,12 @@ auf demselben Rechner läuft:
 | `#/arbeitsplatz` | Was zum Arbeitsplatz gehört und gerade läuft. Bedienbar: dazu «Alles abschalten» |
 
 Jede Tabelle lässt sich sortieren (Klick auf die Spaltenüberschrift), filtern (Feld über der Tabelle) und als CSV
-ausgeben. Jede Ansicht lässt sich drucken: Navigation, Arbeitsspur und Bedienelemente fallen im Druck weg.
-Die Oberfläche ist mit der Tastatur bedienbar und folgt der hellen oder dunklen Einstellung des Systems.
+ausgeben. Ausnahme: Auf einem Bildschirm mit dem Band «lokal, Klartext» (Akten-Eingang, Pseudonymisieren, Zurückführen)
+gibt es den Knopf «CSV» nicht. Die Datei läge im Ordner für Downloads, ausserhalb der geschützten Ablage, und auf dem
+Bildschirm «Pseudonymisieren» stünden darin Platzhalter und Klartext nebeneinander.
+Jede Ansicht lässt sich drucken: Navigation, Arbeitsspur und Bedienelemente fallen im Druck weg.
+Die Oberfläche ist mit der Tastatur bedienbar und folgt der hellen oder dunklen Einstellung des Systems. Der Sprungverweis
+«Zum Inhalt» (erster Halt der Tabulatortaste) setzt den Fokus auf die Ansicht und lässt die Adresse, wie sie ist.
 
 ## Ansichten
 
@@ -558,8 +562,9 @@ müssen. Sie ist freiwillig. Ohne Vorgabe wählt das Team die Quellen selbst.
   oder beendet ist. Der Rapport prüft am Ende die Vorgabe, die dann im Fall steht.
 - **Am Ende.** `tools/rapport.py` prüft die Vorgabe am Protokoll. Was nie gefragt wurde, ist ein Mangel und steht
   unter den offenen Punkten. Ein Fehlschlag gilt als gefragt und gehört unter die Lücken. Eine Abfrage, die das Gateway
-  abgelehnt hat (fehlende Freigabe), gilt nicht als gefragt. Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4
-  aus.
+  abgelehnt hat (fehlende Freigabe), gilt nicht als gefragt. Robin (Dark Web) steht als Fehlschlag mit dem Grund «Tor
+  war nicht bereit» da, wenn Tor nicht hochkam: Dann wurde nicht gesucht, und die Bereitschaftsprüfung ist der Beleg.
+  Der Abschlussrapport weist die Pflichtquellen in Abschnitt 4 aus.
 
 Wofür eine Quelle fällig wird, steht an einer Stelle im Code (`gateway/quellen.py`, `VORGABEN`). Die Regel ist enger
 als die Abdeckung der Fallübersicht: Dort steht, wozu eine Quelle etwas sagen kann. Hier steht, wofür sie gefragt
@@ -581,7 +586,7 @@ wozu, und warum es fragt. Die Eingabe im Wortlaut und der Name des Werkzeugs ste
 
 | Warum gefragt wird | Was das Fenster sagt | Knöpfe |
 |---|---|---|
-| Aktive Massnahme (`urlquery_einreichen`, `urlscan_einreichen`, `wayback_sichern`, `webcheck_aktiv`) | was das Ziel davon bemerkt | Erlauben, Ablehnen. Immer einzeln. |
+| Aktive Massnahme (`urlquery_einreichen`, `urlscan_einreichen`, `wayback_sichern`, `webcheck_aktiv`, `robin_scrape` mit `allow_clearweb`) | was das Ziel davon bemerkt | Erlauben, Ablehnen. Immer einzeln. |
 | Abruf am Gateway vorbei (`WebFetch`, `WebSearch`) | er stünde in keinem Protokoll. Empfehlung: ablehnen | Ablehnen, Trotzdem erlauben |
 | Das Werkzeug steht auf der Erlaubt-Liste des Projekts | Claude Code wendet die Liste nicht an, meist weil es dem Projektordner noch nicht vertraut | Erlauben, Erlauben und nicht mehr fragen, Ablehnen |
 | Ein Befehl oder eine Datei auf keiner Liste | der Befehl oder die Datei | Erlauben, Ablehnen |
@@ -602,9 +607,13 @@ wozu, und warum es fragt. Die Eingabe im Wortlaut und der Name des Werkzeugs ste
   eines Falls (`arbeitsstand/`, `befunde.json`, `rapport/`). Aktive Massnahmen, die Websuche und alles Übrige fragen nach.
 - Über Aufrufe von Robin (Dark Web) entscheiden die Freigabe «darkweb» des Falls und die Regeln für Robin, ohne
   Fenster: Gesucht wird nur im Untersuchungsbereich, den ihr mit der Freigabe gewählt habt, und nie mit einem
-  Platzhalter. Eine Seite wird nur gelesen, wenn ihre Adresse in diesem Fall mit `onion_sperrliste` geprüft wurde und
-  nicht auf der Liste steht. Was die Regeln verletzt, lehnt die Oberfläche ab und sagt der Ermittlung den Grund. Jeder
-  Grund steht einmal im Sitzungsprotokoll, jeder einzelne Versuch im Ermittlungsprotokoll (Abschnitt 4).
+  Platzhalter. Eine Onion-Seite wird nur gelesen, wenn ihre Adresse eindeutig zu lesen ist, in diesem Fall mit
+  `onion_sperrliste` geprüft wurde und nicht auf der Liste steht. Was die Regeln verletzt oder sich nicht prüfen lässt,
+  lehnt die Oberfläche ab und sagt der Ermittlung den Grund. Jeder Grund steht einmal im Sitzungsprotokoll, jeder
+  einzelne Versuch im Ermittlungsprotokoll (Abschnitt 4).
+  Eine Ausnahme fragt immer: Will Robin eine Seite im offenen Netz über Tor lesen (`allow_clearweb`), ist das eine aktive
+  Massnahme. Ohne die Freigabe für aktive Massnahmen lehnt die Oberfläche ab. Mit ihr kommt das Fenster, für jeden
+  Aufruf einzeln (bis zum 23.11.2026 genügte die Freigabe, und es kam keines).
   Den Bereich wählt ihr unter «Bedienen» mit der Freigabe: Ohne ihn sendet der Browser das Formular nicht ab. Ändern
   lässt er sich dort später, ohne die Freigabe neu zu erteilen. Der Bereich «Personen und Konten» braucht zusätzlich
   die Freigabe für Kontoabfragen. Gesehen im Browser am 20.11.2026 (Chromium), mit einem erfundenen Fall.

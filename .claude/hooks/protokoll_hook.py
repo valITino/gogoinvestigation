@@ -23,7 +23,7 @@ PROJEKT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path(__file__).resolve().
 sys.path.insert(0, str(PROJEKT))
 
 from gateway import plattform, robin  # noqa: E402
-from gateway.akte import FAELLE, SITZUNGEN, jsonl_lesen, kette, ursprung_extern  # noqa: E402
+from gateway.akte import FAELLE, SITZUNGEN, beiseite_legen, jsonl_lesen, kette, ursprung_extern  # noqa: E402
 
 plattform.utf8()
 
@@ -138,8 +138,9 @@ def gateway_antwort(antwort: object, antwort_text: str) -> tuple[str | None, str
     Das Gateway antwortet mit einem JSON-Objekt. Die Nummer ist sein Feld protokoll_id auf der obersten Ebene, und nur dieses:
     fall_status nennt unter «letzte_protokoll_id» die jüngste Abfrage des Falls. Wer sie als Nummer dieses Aufrufs läse, schriebe
     die Abfrage dem Agenten zu, der danach den Stand abgefragt hat (so geschah es bis zum 20.11.2026).
-    Ohne Nummer hat das Gateway nichts abgefragt (Quelle ausgeschaltet, Schlüssel fehlt, Eingabe ungültig, Zweck fehlt) oder nur
-    Auskunft gegeben. Dann sagen ergebnis und Meldung, was geschah."""
+    Ohne Nummer und ohne Nummern dahinter hat das Gateway nichts abgefragt (Quelle ausgeschaltet, Schlüssel fehlt, Eingabe ungültig,
+    Zweck fehlt) oder nur Auskunft gegeben. Dann sagen ergebnis und Meldung, was geschah. Nennt die Antwort Nummern dahinter, sind
+    diese Abfragen hinausgegangen, auch wenn das Werkzeug danach abbrach oder scheiterte."""
     try:
         daten = json.loads(robin.text_aus(antwort))
     except ValueError:
@@ -149,8 +150,9 @@ def gateway_antwort(antwort: object, antwort_text: str) -> tuple[str | None, str
         return (m.group(1) if m else None), None, "", []
     nummer = daten.get("protokoll_id")
     ergebnis = daten.get("ergebnis")
-    # Werkzeuge, die mehrere Abfragen bündeln, nennen sie unter «belege». Scheitert ein solches Werkzeug, gibt es keine Auswertung
-    # mit eigener Nummer: Dann ordnen nur diese Nummern die Abfragen dem Agenten zu.
+    # Werkzeuge, die mehrere Abfragen bündeln, nennen sie unter «belege». Scheitert ein solches Werkzeug, bricht es ab oder findet es
+    # nichts, gibt es keine Auswertung mit eigener Nummer: Dann ordnen nur diese Nummern die Abfragen dem Agenten zu. Das gilt auch,
+    # wenn die Antwort eine Nummer trägt: Sie ist dann die der letzten Abfrage, nicht die einer Auswertung.
     belege = [b for b in daten.get("belege") or [] if isinstance(b, str) and re.fullmatch(r"P-\d{4,}", b)][:400] \
         if isinstance(daten.get("belege"), list) else []
     return (nummer if isinstance(nummer, str) and re.fullmatch(r"P-\d{4,}", nummer) else None,
@@ -159,15 +161,19 @@ def gateway_antwort(antwort: object, antwort_text: str) -> tuple[str | None, str
 
 def seiten_pruefstand(fall: str, text: str) -> list[dict]:
     """Zu jeder Seite, die robin_scrape gelesen oder versucht hat: ob ihre Adresse vorher gegen die Sperrliste geprüft war.
-    So zeigt das Protokoll, dass die Pflichtprüfung stattfand, und nicht nur, dass sie aufgetragen war."""
+    So zeigt das Protokoll, dass die Pflichtprüfung stattfand, und nicht nur, dass sie aufgetragen war.
+    «Offenes Netz» heisst eine Seite nur, wenn ihre Adresse eindeutig dorthin führt. Steht ein Onion-Dienst dahinter (auch über
+    Tor2Web), zählt seine Prüfung. Eine Adresse, die sich nicht eindeutig lesen lässt, ist nicht geprüft (bis zum 23.11.2026 hiess
+    auch sie «offenes Netz», und für das gilt die Sperrliste nicht)."""
     pfad = FAELLE / fall
     abfragen = jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl")
     aus = []
     for seite in robin.lesen(text)["seiten"]:
-        host = robin.onion_host(seite["adresse"])
-        stand, beleg = robin.sperrliste_stand(pfad, host, abfragen) if host else (None, None)
+        dienst = robin.onion_host(seite["adresse"])
+        stand, beleg = robin.sperrliste_stand(pfad, dienst, abfragen) if dienst else (None, None)
+        offen = not dienst and robin.host_aus(seite["adresse"]) is not None
         aus.append({"adresse": seite["adresse"][:300], "stand": seite["stand"], **({"http": seite["http"]} if seite["http"] else {}),
-                    "sperrliste": stand or ("offenes Netz" if not host else "nicht geprüft"), **({"sperrliste_beleg": beleg} if beleg else {})})
+                    "sperrliste": stand or ("offenes Netz" if offen else "nicht geprüft"), **({"sperrliste_beleg": beleg} if beleg else {})})
     return aus
 
 
@@ -194,18 +200,23 @@ def extern_sichern(fall: str, werkzeug: str, eingabe: object, antwort: object, s
         ordner = pfad / "rohdaten" / "extern"
         ordner.mkdir(parents=True, exist_ok=True)
         roh = ordner / f"{kennung}_{re.sub(r'[^A-Za-z0-9_-]', '_', name)}.{'txt' if ist_robin else 'json'}"
+        liegen_geblieben = beiseite_legen(roh)
         roh.write_bytes(inhalt)
         roh.chmod(0o444)
         e = {"nr": nr, "id": kennung, "zeit_utc": sitzungseintrag["zeit_utc"], "zeit_lokal": sitzungseintrag["zeit_lokal"],
              "fall": fall, "werkzeug": name, "quelle": robin.QUELLE if ist_robin else f"MCP-Server {server}",
-             # «tor»: Der Aufruf ging über Tor nach aussen. «robin_lokal»: Robin hat im Container gearbeitet, ohne Abfrage nach aussen
-             "art": ("tor" if aussen else "robin_lokal") if ist_robin else "extern", "freigabe": "darkweb" if ist_robin else None,
+             # «tor»: Der Aufruf ging über Tor nach aussen. «robin_lokal»: Robin hat im Container gearbeitet, ohne Abfrage nach aussen.
+             # Eine Seite im offenen Netz über Tor (allow_clearweb) ist zudem eine aktive Massnahme: Der Beleg nennt beide Freigaben
+             "art": ("tor" if aussen else "robin_lokal") if ist_robin else "extern",
+             "freigabe": ("darkweb, aktiv" if robin.aktive_massnahme(werkzeug, eingabe) else "darkweb") if ist_robin else None,
              "ziel": ziel_aus(eingabe, name), "ziel_typ": "extern", "zweck": None,
              "anfrage": {"server": server, "eingabe": kuerzen(eingabe)},
              "antwort": {"bytes": len(inhalt), "sha256": hashlib.sha256(inhalt).hexdigest(),
                          "rohdaten": f"rohdaten/extern/{roh.name}"},
              "ergebnis": stand["ergebnis"], "fehler": stand.get("fehler"), "agent": sitzungseintrag.get("agent"),
              "sitzung": sitzungseintrag.get("sitzung")}
+        if liegen_geblieben:    # die Antwort eines früheren Aufrufs, der keinen Eintrag bekam: Wer den Beleg liest, soll sie finden
+            e["antwort"]["liegen_geblieben"] = f"rohdaten/extern/{liegen_geblieben}"
         if ist_robin:
             e["robin"] = {k: v for k, v in stand.items() if k not in ("ergebnis", "fehler")}
             if name == "robin_scrape" and stand.get("status") == "ok":
@@ -330,7 +341,9 @@ def main() -> int:
                     # Kein Eintrag im Abfrageprotokoll. Was das Gateway dazu sagte, hält das Sitzungsprotokoll fest. Sonst tauchte
                     # der Versuch im Ermittlungsprotokoll nirgends auf.
                     eintrag["ergebnis"], eintrag["meldung"] = ergebnis, meldung
-                if belege and not nummer:
+                if belege:
+                    # Auch neben einer Nummer. Bis zum 23.11.2026 fielen sie dann weg: Fand krypto_transaktion nichts, stand nur die
+                    # letzte seiner Abfragen unter dem Analysten, die übrigen ohne «durch» im Ermittlungsprotokoll.
                     eintrag["belege"] = belege
             # Antworten fremder MCP-Server (z. B. Robin) als Beleg X-… in die Fallakte legen.
             # Das Gateway sieht diese Aufrufe nicht, also übernimmt der Hook Sicherung und Verkettung.

@@ -16,6 +16,7 @@ import fnmatch
 import json
 from pathlib import Path
 
+from gateway import robin
 from gateway.akte import PROJEKT
 
 GATEWAY = "mcp__osint__"
@@ -81,6 +82,9 @@ AKTIV = {"urlscan_einreichen": "urlscan.io ruft die Adresse von seinen Servern a
          "urlquery_einreichen": "urlquery ruft die Adresse in seiner Sandbox auf. Der Betreiber der Zielseite sieht einen Besuch.",
          "wayback_sichern": "Die Wayback Machine ruft die Seite ab und archiviert sie öffentlich und dauerhaft. Der Betreiber sieht einen Besuch.",
          "webcheck_aktiv": "Web-Check ruft das Ziel direkt auf. Der Betreiber sieht die Adresse eurer Web-Check-Instanz in seinen Logs."}
+# Dasselbe für Robin: eine Seite im offenen Netz über Tor lesen (robin_scrape mit allow_clearweb, gateway/robin.py: aktive_massnahme)
+ROBIN_AKTIV = ("Robin ruft eine Seite im offenen Netz über Tor auf (allow_clearweb). Der Betreiber der Zielseite sieht einen Besuch aus dem "
+               "Tor-Netz.")
 PERSONENBEZUG = ("telegram_entitaet", "telegram_suche", "mastodon_konto")
 # Die Felder einer Eingabe, die das Ziel nennen, in der Reihenfolge ihres Gewichts
 ZIELE = ("ip", "domain", "url", "hashwert", "adresse", "tx", "wert", "suchtext", "ziel", "gruppe", "kanal", "konto", "instanz", "query", "uuid", "board", "thread")
@@ -140,7 +144,8 @@ def schritt(werkzeug: str, eingabe: object) -> dict:
     if werkzeug.startswith(ROBIN):
         name = werkzeug[len(ROBIN):]
         z = ziel(e)
-        return {"text": f"Robin (Dark Web): {ROBIN_WORT.get(name, name)}" + (f" · {kurz(z, 200)}" if z else ""), "technik": name, "ziel": z, "zweck": zweck, "art": "robin"}
+        was = "Robin (über Tor): Seite im offenen Netz lesen" if robin.aktive_massnahme(werkzeug, eingabe) else f"Robin (Dark Web): {ROBIN_WORT.get(name, name)}"
+        return {"text": was + (f" · {kurz(z, 200)}" if z else ""), "technik": name, "ziel": z, "zweck": zweck, "art": "robin"}
     if werkzeug in AUSSEN:
         z = str(e.get("url") or e.get("query") or "")
         return {"text": f"Am Gateway vorbei {AUSSEN[werkzeug]}" + (f" · {kurz(z, 200)}" if z else ""), "technik": werkzeug, "ziel": z, "zweck": "", "art": "aussen"}
@@ -225,6 +230,10 @@ def zustimmung(werkzeug: str, eingabe: object, alle: dict[str, list[str]] | None
     if werkzeug.startswith(GATEWAY) and name in AKTIV:
         return {**aus, "art": "aktiv", "grund": "Aktive Massnahme: " + AKTIV[name],
                 "folge": "Erlauben gilt für diesen einen Aufruf. Das Gateway führt ihn nur aus, wenn der Fall die Freigabe «Aktive Massnahmen» hat."}
+    if werkzeug.startswith(ROBIN) and robin.aktive_massnahme(werkzeug, eingabe):
+        return {**aus, "art": "aktiv", "grund": "Aktive Massnahme: " + ROBIN_AKTIV,
+                "folge": "Erlauben gilt für diesen einen Aufruf. Die Freigaben «Dark Web» und «Aktive Massnahmen» des Falls sind erteilt, und "
+                         "die Regeln für Robin sind eingehalten: Sonst hätte die Oberfläche den Aufruf abgelehnt, ohne zu fragen."}
     if werkzeug in AUSSEN:
         return {**aus, "art": "aussen", "grund": "Dieser Abruf ginge nicht über das Gateway: Er stünde in keinem Protokoll, und seine Antwort wäre nicht gesichert.",
                 "folge": "Erlauben gilt für diesen einen Aufruf.", "rat": "Empfehlung: ablehnen. Die Regeln des Arbeitsplatzes sehen Abfragen nur über das Gateway vor."}

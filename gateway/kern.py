@@ -40,7 +40,7 @@ import httpx
 from pydantic import Field
 
 from . import plattform, quellen
-from .akte import (FAELLE, FALL_RE, FREIGABEN, PROJEKT, freigabe_erteilt, kanonisch, kette,  # noqa: F401
+from .akte import (FAELLE, FALL_RE, FREIGABEN, PROJEKT, beiseite_legen, freigabe_erteilt, kanonisch, kette,  # noqa: F401
                    protokoll_lesen, ursprung)
 
 # Typen für die beiden Pflichtangaben jedes Werkzeugs
@@ -220,9 +220,14 @@ def protokollieren(akte: Fallakte, felder: dict, rohdaten: bytes | None = None,
             # Fremdes HTML liegt als Textdatei in der Akte. Unter .html würde ein Klick im Ermittlungsprotokoll die Seite
             # der Gegenseite im Browser öffnen: mit ihren Skripten und mit Bildern, die beim Laden deren Server kontaktieren.
             datei = ordner / f"{eintrag['id']}_{felder['werkzeug']}.{ROHENDUNG.get(endung, endung)}"
+            # Endete das Gateway zwischen Rohdatei und Protokollzeile, liegt die Datei schreibgeschützt da, und ihre Nummer ist frei.
+            # Ohne diesen Schritt scheiterte danach jede Abfrage des Falls an ihr (PermissionError), bis jemand sie von Hand entfernte.
+            liegen_geblieben = beiseite_legen(datei)
             datei.write_bytes(rohdaten)
             datei.chmod(0o444)
             eintrag["antwort"]["rohdaten"] = f"rohdaten/{datei.name}"
+            if liegen_geblieben:    # die Antwort einer früheren Abfrage, die keinen Eintrag bekam: Wer den Beleg liest, soll sie finden
+                eintrag["antwort"]["liegen_geblieben"] = f"rohdaten/{liegen_geblieben}"
         eintrag["vorher"] = vorher
         eintrag["kette"] = kette(vorher, eintrag)
         plattform.zeile_anhaengen(akte.protokoll, json.dumps(eintrag, ensure_ascii=False))
@@ -745,8 +750,18 @@ def werkzeug(fn: Callable) -> Callable:
         try:
             return await fn(*args, **kwargs)
         except Abbruch as e:
-            return {**({"protokoll_id": e.protokoll_id} if e.protokoll_id else {}),
-                    "ergebnis": "nicht_ausgefuehrt", "fehler": str(e)}
+            aus = {**({"protokoll_id": e.protokoll_id} if e.protokoll_id else {}),
+                   "ergebnis": "nicht_ausgefuehrt", "fehler": str(e)}
+            davor = [nummer for nummer in geschrieben if nummer != e.protokoll_id]
+            if davor:
+                # Abbruch nach der ersten Abfrage (krypto_geldfluss: Die Startzahlung ist abgefragt, dann zeigt sich, dass sie mehrere
+                # Empfänger hat). Was bis dahin geschah, steht im Protokoll, also nennt die Antwort die Nummern: Daran ordnet der
+                # Sitzungs-Hook die Abfragen dem Agenten zu, und das Ermittlungsprotokoll führt den Aufruf nicht unter «es ging nichts
+                # hinaus». Bis zum 23.11.2026 kamen hier nur ergebnis und Meldung zurück.
+                aus["belege"] = list(geschrieben)
+                aus["hinweis"] = (f"Vor dem Abbruch protokolliert: {', '.join(davor[:12])}{' …' if len(davor) > 12 else ''}. "
+                                  "Ein Ergebnis des Werkzeugs gibt es nicht.")
+            return aus
         except (KeyError, TypeError, ValueError, IndexError, AttributeError) as e:
             if einstellung("OSINT_DEBUG"):
                 raise

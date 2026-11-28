@@ -34,7 +34,7 @@ from gateway import plattform, robin  # noqa: E402
 if __name__ == "__main__":
     plattform.start()
 
-from gateway.akte import SITZUNGEN, fall_daten, fall_pfad, ist_abfrage, jsonl_lesen, kette, kette_pruefen  # noqa: E402
+from gateway.akte import SITZUNGEN, extern_lesen, fall_daten, fall_pfad, ist_abfrage, jsonl_lesen, kette, kette_pruefen  # noqa: E402
 from tools._html import balken, csv_sicher, esc, kachel, kuerzen, seite  # noqa: E402
 
 try:
@@ -54,6 +54,7 @@ ERGEBNIS = {"ok": ("✓ Treffer", "var(--gut)"), "kein_treffer": ("○ kein Tref
 # Ereignisse des Sitzungsprotokolls vor der Ausführung: was verlangt wurde, und ob Claude Code dafür nachfragte
 VORAB = ("PreToolUse", "PermissionRequest")
 ENDE = ("PostToolUse", "PostToolUseFailure")
+AUFTRAG = ("Agent", "Task")       # das Werkzeug, mit dem ein Agent einen Subagenten beauftragt, unter beiden Namen (wie in tools/ui/sitzung.py)
 _ERZEUGER = re.compile(r"tools[/\\]+protokoll\.py")
 
 
@@ -129,20 +130,33 @@ def mcp_eingabe(eingabe: object, n: int = 260) -> str:
 
 
 def nicht_ausgefuehrt(sitzung: list[dict]) -> list[dict]:
-    """Was verlangt, aber nicht ausgeführt wurde, aus den Sitzungsprotokollen. Je Versuch ein Eintrag mit zeit_utc, agent, werkzeug,
-    eingabe, art und grund. Drei Arten:
+    """Was verlangt wurde und ohne Abschluss blieb, aus den Sitzungsprotokollen. Je Versuch ein Eintrag mit zeit_utc, agent, werkzeug,
+    eingabe, art, grund und am_ende. Drei Arten:
 
         gateway     Das Gateway hat den Aufruf zurückgewiesen, ohne etwas abzufragen (Quelle ausgeschaltet, Schlüssel fehlt, Angabe
                     ungültig, Zweck fehlt). Solche Aufrufe bekommen keine Nummer im Abfrageprotokoll.
-        rueckfrage  Claude Code hat für den Aufruf nachgefragt, danach wurde er nicht ausgeführt: abgelehnt oder nicht beantwortet.
-        verboten    Der Aufruf wurde ohne Rückfrage nicht ausgeführt: Eine Berechtigung verbot ihn, oder er brach vorher ab.
+        rueckfrage  Claude Code hat für den Aufruf nachgefragt, ein Abschluss folgte nicht: abgelehnt oder nicht beantwortet.
+        verboten    Ohne Rückfrage und ohne Abschluss: Eine Berechtigung verbot den Aufruf, oder er brach ab.
 
     Claude Code meldet einen abgelehnten Aufruf nicht eigens (gesehen am 20.11.2026 mit Claude Code 2.1.329). Erkennbar ist er
     daran, dass zu einem angekündigten Aufruf kein Abschluss folgt. Das trifft auch auf einen Aufruf zu, der beim Erzeugen dieses
-    Protokolls noch läuft. Sicher nicht mehr läuft er, wenn sein Agent danach einen Schritt abgeschlossen hat oder geendet hat
-    (Ende der Antwort bei der Hauptsitzung, Ende des Subagenten). Sonst steht er am offenen Ende seiner Sitzung, und der Eintrag
-    sagt das (``am_ende``). Die Sitzung, die dieses Protokoll gerade selbst erzeugt, läuft mit Sicherheit noch: Ihre offenen
-    Aufrufe am Ende sind keine Versuche."""
+    Protokolls noch läuft. ``am_ende`` trennt die beiden:
+
+        False   Der Aufruf ist sicher vorbei und wurde nicht ausgeführt. Sein Agent hat danach geendet (Ende der Antwort bei der
+                Hauptsitzung, Ende des Subagenten), oder er hat danach einen Schritt abgeschlossen und dann einen neuen angekündigt.
+                Ein Agent stellt mehrere Aufrufe zugleich (so startet die Hauptsitzung die Analysten). Einen neuen Zug beginnt er
+                erst, wenn alle Aufrufe des vorigen zurück sind: Erst der neue Zug zeigt, dass der alte vorbei ist.
+        True    Der Aufruf steht am offenen Ende: Er läuft noch, wartet auf eine Antwort oder wurde abgelehnt. Das lässt sich nicht
+                unterscheiden. Er gilt nicht als «nicht ausgeführt», und Protokoll und Oberfläche zählen ihn nicht dazu.
+
+    Bis zum 23.11.2026 galt ein Aufruf als sicher vorbei, sobald sein Agent irgendeinen Schritt abgeschlossen hatte. Von zwei
+    zugleich gestarteten Analysten stand damit der zweite als «nicht ausgeführt» da, sobald der erste zurück war.
+
+    Kein Versuch ist, was nachweislich ausgeführt wird oder wurde: der Aufruf, der dieses Protokoll gerade erzeugt, und ein Auftrag
+    an einen Subagenten, der danach gearbeitet hat (er ist gestartet oder hat einen eigenen Schritt gemacht). Das gilt auch, wenn
+    die Sitzung angehalten wurde, bevor der Auftrag zurückkam: Seine Abfragen stehen im Protokoll, sein Start im Sitzungsverlauf.
+    Alles andere am offenen Ende bleibt stehen. Bis zum 23.11.2026 fiel dort alles weg, sobald die Sitzung selbst das Protokoll
+    erzeugte, auch ein Aufruf, den der Sachbearbeiter kurz davor abgelehnt hatte."""
     je: dict[str, list[dict]] = {}
     for z in sitzung:
         je.setdefault(str(z.get("sitzung") or ""), []).append(z)
@@ -152,32 +166,54 @@ def nicht_ausgefuehrt(sitzung: list[dict]) -> list[dict]:
         wer = lambda z: str(z.get("agent_id") or "")                          # noqa: E731
         gleich = lambda a, b: (a.get("werkzeug") == b.get("werkzeug") and a.get("eingabe") == b.get("eingabe") and wer(a) == wer(b))  # noqa: E731
         fertig = {z["tool_use_id"] for z in zeilen if z.get("ereignis") in ENDE and z.get("tool_use_id")}
-        letzter: dict[str, int] = {}
-        beendet: dict[str, int] = {}
+        beendet: dict[str, int] = {}        # der Subagent ist fertig, oder die Hauptsitzung hat ihre Antwort beendet
+        gestartet: set[int] = set()         # Aufträge, deren Subagent danach gearbeitet hat
+        wartend: dict[str, list[int]] = {}  # je Art des Subagenten die Aufträge, zu denen noch keiner erschienen ist
+        bekannt: set[str] = set()
         for i, z in enumerate(zeilen):
-            if z.get("ereignis") in ENDE:
-                letzter[wer(z)] = i
-            elif z.get("ereignis") in ("SubagentStop", "Stop"):     # der Subagent ist fertig, oder die Hauptsitzung hat ihre Antwort beendet
+            if z.get("ereignis") in ("SubagentStop", "Stop"):
                 beendet[wer(z)] = i
-        offen = [(i, z) for i, z in enumerate(zeilen)
-                 if z.get("ereignis") == "PreToolUse" and z.get("tool_use_id") and z["tool_use_id"] not in fertig]
-        am_ende = {i for i, z in offen if i > letzter.get(wer(z), -1) and beendet.get(wer(z), -1) < i}
-        erzeugt_gerade = any(i in am_ende and z.get("werkzeug") == "Bash" and _ERZEUGER.search(eingabe_kurz(z.get("eingabe"), 2000)) for i, z in offen)
-        for i, z in offen:
-            if i in am_ende and erzeugt_gerade:
+            if wer(z) and wer(z) not in bekannt:
+                # Der erste Eintrag eines Subagenten gehört zum jüngsten Auftrag seiner Art, zu dem noch keiner erschienen ist. Das
+                # Sitzungsprotokoll nennt zum Subagenten nur die Art, nicht den Auftrag: Zugeordnet wird deshalb über sie.
+                bekannt.add(wer(z))
+                if wartend.get(str(z.get("agent") or "")):
+                    gestartet.add(wartend[str(z.get("agent"))].pop())
+            if z.get("ereignis") == "PreToolUse" and z.get("werkzeug") in AUFTRAG and isinstance(z.get("eingabe"), dict):
+                wartend.setdefault(str(z["eingabe"].get("subagent_type") or ""), []).append(i)
+
+        def vorbei(i: int, w: str) -> bool:
+            """Ist der Zug vorbei, zu dem der Aufruf an Stelle i gehört?"""
+            if beendet.get(w, -1) > i:
+                return True
+            abschluss = next((n for n in range(i + 1, len(zeilen)) if zeilen[n].get("ereignis") in ENDE and wer(zeilen[n]) == w), None)
+            return abschluss is not None and any(z.get("ereignis") == "PreToolUse" and wer(z) == w for z in zeilen[abschluss + 1:])
+
+        for i, z in enumerate(zeilen):
+            if z.get("ereignis") != "PreToolUse" or not z.get("tool_use_id") or z["tool_use_id"] in fertig or i in gestartet:
                 continue
+            am_ende = not vorbei(i, wer(z))
+            if am_ende and z.get("werkzeug") == "Bash" and _ERZEUGER.search(eingabe_kurz(z.get("eingabe"), 2000)):
+                continue        # dieser Aufruf erzeugt gerade das Protokoll: Er läuft mit Sicherheit
             gefragt = any(r.get("ereignis") == "PermissionRequest" and gleich(r, z)
                           and not any(v.get("ereignis") == "PreToolUse" and gleich(v, z) for v in zeilen[i + 1:j])
                           for j, r in enumerate(zeilen) if j > i)
-            grund = ("Claude Code hat für diesen Aufruf nachgefragt. Er wurde danach nicht ausgeführt: abgelehnt oder nicht beantwortet."
-                     if gefragt else
-                     "Ohne Rückfrage nicht ausgeführt: Eine Berechtigung des Projekts verbietet den Aufruf, oder er brach vor der Ausführung ab.")
-            if i in am_ende:
-                grund += " Letzter Schritt dieser Sitzung: Lief der Aufruf noch, als dieses Protokoll entstand, steht sein Ergebnis im nächsten Protokoll."
-            aus.append({**z, "art": "rueckfrage" if gefragt else "verboten", "grund": grund, "am_ende": i in am_ende})
+            if am_ende:
+                grund = (("Claude Code hat für diesen Aufruf nachgefragt. Bis dieses Protokoll entstand, kam kein Abschluss: Die Rückfrage "
+                          "war noch offen oder wurde abgelehnt, oder der Aufruf lief noch." if gefragt else
+                          "Bis dieses Protokoll entstand, kam kein Abschluss: Der Aufruf lief noch, eine Berechtigung des Projekts verbietet "
+                          "ihn, oder er brach ab.") + " Lief er noch, steht sein Ergebnis im nächsten Protokoll.")
+            else:
+                grund = ("Claude Code hat für diesen Aufruf nachgefragt. Er wurde danach nicht ausgeführt: abgelehnt oder nicht beantwortet."
+                         if gefragt else
+                         "Ohne Rückfrage nicht ausgeführt: Eine Berechtigung des Projekts verbietet den Aufruf, oder er brach ab, bevor er "
+                         "abgeschlossen war.")
+            aus.append({**z, "art": "rueckfrage" if gefragt else "verboten", "grund": grund, "am_ende": am_ende})
         for z in zeilen:
+            # Nennt der Eintrag Nummern (belege), hat das Werkzeug nach diesen Abfragen abgebrochen: Es ging etwas hinaus. Der Aufruf
+            # steht dann mit seiner Meldung im Sitzungsverlauf, die Abfragen stehen in Abschnitt 2
             if (z.get("ereignis") == "PostToolUse" and str(z.get("werkzeug") or "").startswith("mcp__osint__") and not z.get("protokoll_id")
-                    and z.get("ergebnis") == "nicht_ausgefuehrt"):
+                    and z.get("ergebnis") == "nicht_ausgefuehrt" and not z.get("belege")):
                 aus.append({**z, "art": "gateway", "grund": z.get("meldung") or "Das Gateway hat den Aufruf nicht ausgeführt.", "am_ende": False})
     aus.sort(key=lambda z: (z.get("zeit_utc") or "", str(z.get("sitzung") or ""), z.get("nr") or 0))
     return aus
@@ -188,23 +224,14 @@ def extern_stand(e: dict, pfad: Path | None = None) -> dict:
 
     Robin antwortet auch dann, wenn es nichts getan hat (Tor noch nicht bereit, Untersuchungsbereich nicht angegeben). Der Eintrag
     sagt seit dem 20.11.2026 selbst, was die Antwort bedeutet. Bei älteren Einträgen wird die gesicherte Antwort gelesen: Dort
-    stand bei jedem Aufruf «ok». ``text`` ist leer, wenn sich nichts sagen lässt ausser «gesichert»."""
+    stand bei jedem Aufruf «ok». Das besorgt robin.eingeordnet, an einer Stelle für alle, die Einträge auswerten: Wer sie über
+    akte.extern_lesen holt, bekommt sie schon so. ``text`` ist leer, wenn sich nichts sagen lässt ausser «gesichert»."""
     name = str(e.get("werkzeug") or "")
     if ((e.get("anfrage") or {}).get("server") or "") != robin.SERVER:
         return {"ergebnis": e.get("ergebnis") or "ok", "text": "", "farbe": "var(--gut)", "meldung": e.get("fehler") or "", "angaben": []}
+    if pfad is not None:
+        e = robin.eingeordnet(e, pfad)
     stand = {**(e.get("robin") or {}), "ergebnis": e.get("ergebnis"), "fehler": e.get("fehler")} if "robin" in e else None
-    if stand is None and pfad is not None:
-        roh = (e.get("antwort") or {}).get("rohdaten") or ""
-        try:
-            inhalt = (pfad / roh).read_text(encoding="utf-8", errors="replace") if roh else ""
-        except OSError:
-            inhalt = ""
-        if inhalt:
-            try:
-                inhalt = robin.text_aus(json.loads(inhalt)) if roh.endswith(".json") else inhalt
-            except ValueError:
-                pass
-            stand = robin.einordnen(robin.PRAEFIX + name, inhalt)
     if stand is None:
         return {"ergebnis": e.get("ergebnis") or "ok", "text": "", "farbe": "var(--gut)", "meldung": "", "angaben": []}
     ergebnis = stand.get("ergebnis") or "ok"
@@ -277,6 +304,8 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
     Sperrliste ergab und was ein älterer Eintrag von Robin belegt."""
     h: list[str] = []
     versuche = nicht_ausgefuehrt([z for z in sitzung if z.get("fall") == fall_id])
+    if pfad is not None:        # wer die Einträge roh übergibt, bekommt trotzdem ein Dokument, in dem Kopf und Zeilen dasselbe sagen
+        extern = [robin.eingeordnet(e, pfad) for e in extern]
     staende = {e["id"]: extern_stand(e, pfad) for e in extern if e.get("art") != "von_hand"}
     if fall.get("muster"):
         h.append('<div class="banner">MUSTER – fiktiver Fall mit erfundenen Daten. Dient nur zur Veranschaulichung.</div>')
@@ -299,7 +328,9 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
 
     k = kennzahlen(abfragen, extern)
     auswertungen, echte, teil_von, zaehler, cache, aktiv = k["auswertungen"], k["echte"], k["teil_von"], k["ergebnis"], k["cache"], k["aktiv"]
-    ohne_ausfuehrung = len(k["ohne_ausfuehrung"]) + len(versuche)       # mit Beleg (Abschnitt 3) und ohne (Abschnitt 4)
+    # Was am offenen Ende einer Sitzung ohne Abschluss ist, kann noch laufen: Es zählt nicht als «nicht ausgeführt» und steht für sich
+    offene = [v for v in versuche if v["am_ende"]]
+    ohne_ausfuehrung = len(k["ohne_ausfuehrung"]) + len(versuche) - len(offene)       # mit Beleg (Abschnitt 3) und ohne (Abschnitt 4)
     h.append("<div class='kacheln'>")
     h.append(kachel(len(echte), "Abfragen", f"{cache} davon aus dem Fall-Cache"))
     h.append(kachel(zaehler["ok"], "mit Treffer"))
@@ -313,11 +344,16 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         h.append(kachel(len(auswertungen), "Auswertungen", "aus mehreren Abfragen errechnet"))
     h.append("</div>")
     if ohne_ausfuehrung:        # damit die Zahlen aufgehen: Was nicht ausgeführt wurde, steht neben den Abfragen, nicht darin
-        mit, ohne = len(k["ohne_ausfuehrung"]), len(versuche)
+        mit, ohne = len(k["ohne_ausfuehrung"]), len(versuche) - len(offene)
         wo = (f"{mit} mit Beleg in Abschnitt 3, {ohne} ohne Nummer in Abschnitt 4" if mit and ohne else
               "Es steht mit Beleg in Abschnitt 3" if mit else "Es steht ohne Nummer in Abschnitt 4")
         h.append("<p class='klein'>Treffer, ohne Treffer, fehlgeschlagen und abgelehnt ergeben zusammen die Zahl der Abfragen. "
                  f"Was nicht ausgeführt wurde, zählt nicht dazu: {wo}.</p>")
+    if offene:
+        h.append(f"<p class='klein'>{'1 Aufruf hatte' if len(offene) == 1 else f'{len(offene)} Aufrufe hatten'} keinen Abschluss, als dieses "
+                 "Protokoll entstand: verlangt, aber weder beendet noch sicher abgelehnt. Ob ein solcher Aufruf noch lief, auf eine Antwort "
+                 "wartete oder abgelehnt wurde, lässt sich am offenen Ende einer Sitzung nicht unterscheiden. Er zählt weder als Abfrage "
+                 "noch als «nicht ausgeführt» und steht in Abschnitt 4 mit der Marke «ohne Abschluss».</p>")
     je_quelle = k["je_quelle"]
     if je_quelle:
         h.append("<figure>" + balken([{"name": q or "?", "wert": n, "anzeige": str(n)} for q, n in je_quelle.most_common()],
@@ -353,9 +389,10 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
             text, farbe = ERGEBNIS.get(e.get("ergebnis"), ("?", "var(--neutral)"))
             if e.get("werkzeug") == "onion_sperrliste" and e.get("ergebnis") == "ok" and pfad is not None:
                 # «Treffer» hiesse hier das Gegenteil: Die Liste wurde geladen. Ob die Adresse darauf steht, sagt die gesicherte Liste.
+                # Lässt sie sich nicht lesen oder ist sie keine Liste (Einträge von vor dem 23.11.2026), belegt der Eintrag keine Prüfung.
                 urteil = robin.sperrliste_urteil(pfad, e)
                 text, farbe = {"frei": ("✓ nicht auf der Sperrliste", "var(--gut)"),
-                               "gesperrt": ("⊘ auf der Sperrliste", "var(--kritisch)")}.get(urteil, ("✓ Liste geladen", "var(--gut)"))
+                               "gesperrt": ("⊘ auf der Sperrliste", "var(--kritisch)")}.get(urteil, ("? Liste nicht lesbar", "var(--neutral)"))
             akteur = akteure.get(e["id"]) or {}
             if e.get("art") == "auswertung":
                 grundlage = e.get("grundlage") or []
@@ -413,6 +450,9 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
             technik = [esc(zeile) for zeile in s.get("angaben") or []]
             if s.get("meldung"):
                 technik.append(f"{'Meldung' if s.get('ergebnis') in ('fehler', 'nicht_ausgefuehrt') else 'Hinweis'}: {esc(s['meldung'])}")
+            if e.get("nachgelesen"):        # die gespeicherte Zeile nennt bei jedem solchen Eintrag «ok»: Wer sie daneben hält, soll den Unterschied verstehen
+                technik.append("Eintrag aus der Zeit vor dem 20.11.2026: Damals hielt das Protokoll bei jeder Antwort «ok» fest. "
+                               "Was dieser Eintrag belegt, ist aus der gesicherten Antwort gelesen.")
             if e.get("regel"):      # der Aufruf lief (am Terminal vom Sachbearbeiter zugelassen), hielt aber die Regeln des Falls nicht ein
                 technik.append(f"<b>Nicht nach den Regeln für Robin:</b> {esc(e['regel'])}")
             for seite_ in e.get("seiten") or []:        # je Seite, die robin_scrape gelesen oder versucht hat
@@ -455,9 +495,10 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
         for z in versuche[:grenze]:
             werkzeug = str(z.get("werkzeug") or "")
             angabe = mcp_eingabe(z.get("eingabe")) if werkzeug.startswith("mcp__") else eingabe_kurz(z.get("eingabe"), 260)
+            marke = "<span class='marke'><span class='punkt' style='background:var(--neutral)'></span>ohne Abschluss</span> " if z.get("am_ende") else ""
             h.append(f"<tr><td>{esc(lokal(z.get('zeit_utc')))}</td><td>{esc(z.get('agent') or '')}</td>"
                      f"<td><span class='mono'>{esc(werkzeug)}</span><br><span class='klein'>{esc(angabe or 'ohne Angaben')}</span></td>"
-                     f"<td class='klein'>{esc(z.get('grund') or '')}</td></tr>")
+                     f"<td class='klein'>{marke}{esc(z.get('grund') or '')}</td></tr>")
         h.append("</table></div>")
         if len(versuche) > grenze:
             h.append(f"<p class='klein'>{len(versuche) - grenze} weitere stehen in den Sitzungsprotokollen unter protokoll/sitzungen/.</p>")
@@ -521,7 +562,12 @@ def bauen(fall_id: str, fall: dict, abfragen: list[dict], sitzung: list[dict], s
             if z.get("werkzeug") == "mcp__osint__fall_status":
                 angabe = "Stand des Falls abgefragt. Keine Abfrage nach aussen."
             if mcp and z.get("ergebnis"):       # das Gateway hat ohne Nummer geantwortet, etwa nach einem Fehler in einem gebündelten Werkzeug
-                angabe += f" → {ERGEBNIS.get(z['ergebnis'], (z['ergebnis'],))[0]}" + (f": {kuerzen(str(z.get('meldung') or ''), 200)}" if z.get("meldung") else "")
+                wort = ERGEBNIS.get(z["ergebnis"], (z["ergebnis"],))[0]
+                if z["ergebnis"] == "nicht_ausgefuehrt" and z.get("belege"):
+                    # Das Werkzeug brach ab, nachdem Abfragen hinausgegangen waren: «nicht ausgeführt» hiesse hier, es sei nichts geschehen
+                    nummern = z["belege"]
+                    wort = f"⊘ abgebrochen nach {', '.join(nummern[:6])}{f' und {len(nummern) - 6} weiteren' if len(nummern) > 6 else ''} (Abschnitt 2)"
+                angabe += f" → {wort}" + (f": {kuerzen(str(z.get('meldung') or ''), 200)}" if z.get("meldung") else "")
             elif z.get("ereignis") == "PostToolUseFailure" and z.get("fehler"):
                 angabe += f" → {eingabe_kurz(z.get('fehler'), 200)}"
             h.append(f"<tr><td>{esc(lokal(z.get('zeit_utc')))}</td><td>{esc(z.get('agent') or '')}</td>"
@@ -569,7 +615,7 @@ def main(argv: list[str]) -> int:
     # Bei ihnen zählt jede Sitzung, die den Fall berührt hat.
     sitzung, sitzungsmeldungen = sitzungen_laden(fall_id, set(fall["sitzungen"]) if fall.get("muster") and fall.get("sitzungen") else None)
     akteure = akteure_aus(sitzung, abfragen, fall_id)
-    extern = jsonl_lesen(pfad / "protokoll" / "extern.jsonl")
+    extern = extern_lesen(pfad)         # ältere Einträge von Robin sind hier schon eingeordnet: Kopf, Zeilen und Tabelle sagen dasselbe
 
     ziel = pfad / "rapport"
     ziel.mkdir(exist_ok=True)
@@ -598,14 +644,15 @@ def main(argv: list[str]) -> int:
                 " ".join(teil for teil in (s["meldung"], f"Nicht nach den Regeln für Robin: {e['regel']}" if e.get("regel") else "") if teil),
                 a.get("bytes", ""), a.get("sha256") or "", a.get("rohdaten") or "", "", "", e.get("agent") or "",
                 e.get("sitzung") or "", e.get("kette"), ""]))
-        # Was verlangt, aber nicht ausgeführt wurde (Abschnitt 4): ohne Nummer, denn es steht in keinem der beiden Abfrageprotokolle
+        # Was verlangt, aber nicht ausgeführt wurde (Abschnitt 4): ohne Nummer, denn es steht in keinem der beiden Abfrageprotokolle.
+        # Ein Aufruf am offenen Ende einer Sitzung kann noch laufen: Er heisst «ohne_abschluss», nicht «nicht_ausgefuehrt»
         for z in nicht_ausgefuehrt([z for z in sitzung if z.get("fall") == fall_id]):
             werkzeug = str(z.get("werkzeug") or "")
             w.writerow(csv_sicher([
                 "", z.get("zeit_utc"), z.get("zeit_lokal"), "", werkzeug, "versuch", "",
                 mcp_eingabe(z.get("eingabe"), 400) if werkzeug.startswith("mcp__") else eingabe_kurz(z.get("eingabe"), 400), "", "",
-                "", "", "", "", "nicht_ausgefuehrt", z.get("grund") or "", "", "", "", "", "", z.get("agent") or "",
-                z.get("sitzung") or "", "", ""]))
+                "", "", "", "", "ohne_abschluss" if z["am_ende"] else "nicht_ausgefuehrt", z.get("grund") or "", "", "", "", "", "",
+                z.get("agent") or "", z.get("sitzung") or "", "", ""]))
     print(f"Protokoll erzeugt: faelle/{fall_id}/rapport/Ermittlungsprotokoll.html ({len(abfragen)} Einträge)")
     print(f"Maschinenlesbar:   faelle/{fall_id}/rapport/Ermittlungsprotokoll.csv")
     if stand["ok"] and not sitzungsmeldungen:

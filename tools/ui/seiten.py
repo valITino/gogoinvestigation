@@ -62,7 +62,7 @@ def ergebnis_marke(e: dict, pfad_akte: object = None) -> str:
     zeichen, wort, farbe = ERGEBNIS.get(e.get("ergebnis"), ("?", str(e.get("ergebnis") or "unbekannt"), "neutral"))
     if pfad_akte is not None and e.get("werkzeug") == "onion_sperrliste" and e.get("ergebnis") == "ok":
         zeichen, wort, farbe = {"frei": ("✓", "nicht auf der Sperrliste", "gut"), "gesperrt": ("⊘", "auf der Sperrliste", "kritisch")}.get(
-            robin.sperrliste_urteil(pfad_akte, e), ("✓", "Liste geladen", "gut"))
+            robin.sperrliste_urteil(pfad_akte, e), ("?", "Liste nicht lesbar", "neutral"))
     elif pfad_akte is not None and ((e.get("anfrage") or {}).get("server") or "") == robin.SERVER:
         text = protokollwerkzeug.extern_stand(e, pfad_akte)["text"]
         if text:
@@ -709,7 +709,11 @@ def ergebnisse_seite(fall: daten.Fall, bedienbar: bool = False) -> str:
     sitzungen = sorted({str(z.get("sitzung") or "") for z in eigene})
     kette = fall.kette()
     verlaeufe = len(list((fall.pfad / "arbeitsstand").glob("verlauf-oberflaeche-*.txt"))) if (fall.pfad / "arbeitsstand").is_dir() else 0
-    versuche = len(protokollwerkzeug.nicht_ausgefuehrt(eigene))
+    alle_versuche = protokollwerkzeug.nicht_ausgefuehrt(eigene)
+    # Was am offenen Ende einer Sitzung ohne Abschluss ist, läuft vielleicht noch. Bis zum 23.11.2026 zählte es hier mit: Solange ein Analyst
+    # arbeitete, stand sein Auftrag unter «nicht ausgeführt»
+    offene = sum(1 for v in alle_versuche if v["am_ende"])
+    versuche = len(alle_versuche) - offene
     mit_beleg = len(fall.kennzahlen()["protokoll"]["ohne_ausfuehrung"])
     nie = versuche + mit_beleg                                              # dieselbe Zahl wie die Kachel «nicht ausgeführt» im Ermittlungsprotokoll
     h.append("<h2>Protokoll der Sitzung</h2><ul>"
@@ -719,6 +723,9 @@ def ergebnisse_seite(fall: daten.Fall, bedienbar: bool = False) -> str:
              f"<li>Verlangt, aber nicht ausgeführt: {nie} {'Aufruf' if nie == 1 else 'Aufrufe'}. Davon {mit_beleg} mit Beleg (Robin hat geantwortet, aber nichts "
              f"gesucht und nichts gelesen: Ermittlungsprotokoll, Abschnitt 3) und {versuche} ohne Nummer (vom Gateway zurückgewiesen, von einer Berechtigung "
              "verboten oder in der Rückfrage abgelehnt: Abschnitt 4). Sie zählen nicht als Abfrage.</li>"
+             + (f"<li>Ohne Abschluss: {offene} {'Aufruf' if offene == 1 else 'Aufrufe'}. Verlangt, aber weder beendet noch sicher abgelehnt: "
+                "Ein solcher Aufruf läuft noch, wartet auf eine Antwort oder wurde abgelehnt. Er zählt nicht als «nicht ausgeführt» "
+                "(Ermittlungsprotokoll, Abschnitt 4, Marke «ohne Abschluss»).</li>" if offene else "") +
              f"<li>Verlauf aus dem Chat: {verlaeufe} Datei{'en' if verlaeufe != 1 else ''} im Arbeitsstand des Falls. Eine Lesehilfe, kein Beleg.</li>"
              f"<li>Protokollkette der Abfragen: <span class='z-{'gut' if kette['ok'] else 'kritisch'}'>{'✓ unversehrt' if kette['ok'] else '✕ gebrochen'}</span>, "
              f"{len(fall.eintraege())} Einträge. Lesbar aufbereitet im Ermittlungsprotokoll.</li>"

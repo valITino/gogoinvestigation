@@ -90,6 +90,22 @@ def sha256_datei(pfad: Path) -> str:
     return h.hexdigest()
 
 
+def beiseite_legen(roh: Path) -> str | None:
+    """Liegt unter dem Namen der neuen Rohdatei schon eine, stammt sie von einem Aufruf, dessen Sicherung abbrach, bevor seine Nummer
+    vergeben war (der Sitzungs-Hook lief über sein Zeitlimit, oder der Prozess wurde beendet, nachdem die Rohdatei geschrieben war
+    und bevor der Eintrag im Protokoll stand). Sie ist schreibgeschützt: Der nächste Aufruf bekam dieselbe Nummer, scheiterte ohne
+    Rootrechte an der Datei und blieb wieder ohne Beleg (für den Hook nachgestellt am 23.11.2026, für das Gateway am 28.11.2026).
+    Mit Rootrechten hätte er sie überschrieben. Beides ist falsch: Die Datei bleibt, was sie ist, und rückt unter eigenem Namen
+    zur Seite («….abgebrochen.txt»). Gibt diesen Namen zurück, oder None, wenn nichts dalag."""
+    if not roh.exists():
+        return None
+    n = 1
+    while (ziel := roh.with_name(f"{roh.stem}.abgebrochen{'' if n == 1 else f'-{n}'}{roh.suffix}")).exists():
+        n += 1
+    roh.rename(ziel)
+    return ziel.name
+
+
 def eingang_stand(pfad: Path) -> tuple[list[str], list[str]]:
     """Die Dokumente im Eingang einer Fallakte: (geprüft, ungeprüft). Geprüft ist, was die PII-Prüfung aufgenommen hat und
     seither unverändert ist (Register eingang/.freigabe.json mit Prüfsumme). Alles andere wurde von Hand hineinkopiert
@@ -164,7 +180,17 @@ def ist_abfrage(e: dict) -> bool:
     return e.get("art") not in KEINE_ABFRAGE and e.get("ergebnis") != "nicht_ausgefuehrt"
 
 
+def extern_lesen(pfad: Path) -> list[dict]:
+    """Die Einträge der weiteren Werkzeuge (extern.jsonl) einer Fallakte, so wie sie auszuwerten sind. ``pfad`` ist ihr Ordner.
+
+    Einträge von Robin aus der Zeit vor dem 20.11.2026 sagen nicht selbst, was sie belegen. Sie werden hier eingeordnet
+    (robin.eingeordnet), damit Ermittlungsprotokoll, Rapport, Oberfläche und fall_status dasselbe sagen. Die Datei bleibt, wie
+    sie ist: Die Kettenprüfung liest sie unverändert (jsonl_lesen), ebenso, wer einen Eintrag anhängt."""
+    from . import robin         # robin lädt dieses Modul: deshalb erst hier
+    return [robin.eingeordnet(e, pfad) for e in jsonl_lesen(pfad / "protokoll" / "extern.jsonl")]
+
+
 def belege_lesen(fall_id: str) -> list[dict]:
     """Alle belegfähigen Einträge der Fallakte: Gateway-Abfragen (P-…) und externe Antworten (X-…)."""
-    pfad = fall_pfad(fall_id) / "protokoll"
-    return jsonl_lesen(pfad / "abfragen.jsonl") + jsonl_lesen(pfad / "extern.jsonl")
+    pfad = fall_pfad(fall_id)
+    return jsonl_lesen(pfad / "protokoll" / "abfragen.jsonl") + extern_lesen(pfad)
